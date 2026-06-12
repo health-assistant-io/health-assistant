@@ -8,6 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-lightgrey?logo=github)](https://github.com/sponsors/health-assistant-io)
 
 <p align="center">
   <img src="assets/screenshots/main-dashboard.png" width="100%" alt="Health Assistant Dashboard">
@@ -23,6 +24,14 @@ A self-hosted, privacy-first web application for centralizing, monitoring, and a
 
 > **Development Status:** This project is currently in **Beta**. The core platform is fully functional, featuring AI-powered OCR, dynamic visualizers, and multi-tenant patient management, but is still undergoing active development.
 
+## 💖 Support the Project
+
+If Health Assistant has helped you take control of your health data, or if you believe in privacy-first healthcare infrastructure, please consider supporting the project.
+
+Your sponsorship directly supports the continued development, maintenance, and improvement of the platform.
+
+[Sponsor on GitHub](https://github.com/sponsors/health-assistant-io)
+
 ## 📖 Documentation
 
 - [Technical Architecture](./docs/ARCHITECTURE.md)
@@ -36,6 +45,7 @@ For a detailed breakdown of the codebase, see the [Project Structure](./docs/PRO
 ## Key Features
 
 - **Multi-Tenancy & Household-Ready**: Zero-config setup for home users. The first user becomes the System Admin, and households are auto-provisioned upon registration.
+- **Data Sovereignty & No Vendor Lock-in**: Perfect for healthcare startups and clinics. Deploy Health-Assistant on your own HIPAA-compliant infrastructure. You own the code and the data, avoiding the trap of BAA-locked proprietary platforms.
 - **Identity & Record Linking**: Seamlessly link login accounts to clinical Patient or Doctor records, perfect for individual users managing their own family's health.
 - **HL7 FHIR Standard**: Full compliance with Fast Healthcare Interoperability Resources.
 - **Examinations Platform**: Native grouping of medical documents, clinical notes (Rich-Text/Markdown), and analytics exclusively by distinct clinical visits.
