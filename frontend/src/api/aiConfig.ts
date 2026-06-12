@@ -9,6 +9,10 @@ export interface AIProvider {
   api_key?: string;
   is_active: boolean;
   settings?: Record<string, any>;
+  is_local?: boolean;
+  company_name?: string;
+  company_website?: string;
+  company_country?: string;
   tenant_id?: string;
   user_id?: string;
   created_at?: string;
@@ -25,6 +29,7 @@ export interface AIModel {
   is_active: boolean;
   max_tokens: number;
   temperature: number;
+  is_local?: boolean;
   settings?: Record<string, any>;
   created_at?: string;
   updated_at?: string;
@@ -66,6 +71,7 @@ export interface AIModelCreate {
   is_active?: boolean;
   max_tokens?: number;
   temperature?: number;
+  is_local?: boolean;
   settings?: Record<string, any>;
 }
 
