@@ -1,0 +1,162 @@
+[
+  {
+    "category": {
+      "name": "Reproductive Health",
+      "slug": "reproductive-health",
+      "icon": { "type": "lucide", "value": "Baby" },
+      "color": "#ec4899"
+    },
+    "types": [
+      {
+        "name": "Pregnancy",
+        "slug": "pregnancy",
+        "description": "Monitor pregnancy milestones, LMP, and estimated due date.",
+        "icon": { "type": "lucide", "value": "Baby" },
+        "color": "#ec4899",
+        "metadata_schema": {
+          "fields": [
+            {"name": "lmp", "label": "LMP Date", "type": "date", "required": false},
+            {"name": "edd", "label": "EDD Date", "type": "date", "required": false},
+            {"name": "trimester", "label": "Current Trimester", "type": "number", "required": false}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "category": {
+      "name": "Acute & Chronic",
+      "slug": "acute-chronic",
+      "icon": { "type": "lucide", "value": "Activity" },
+      "color": "#ef4444"
+    },
+    "types": [
+      {
+        "name": "Pain Episode",
+        "slug": "pain-episode",
+        "description": "Track recurring or chronic pain with intensity and location.",
+        "icon": { "type": "lucide", "value": "Activity" },
+        "color": "#ef4444",
+        "metadata_schema": {
+          "fields": [
+            {"name": "intensity", "label": "Intensity (1-10)", "type": "number", "min": 1, "max": 10},
+            {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
+            {"name": "trigger", "label": "Trigger", "type": "text"}
+          ]
+        }
+      },
+      {
+        "name": "Chronic Flare-up",
+        "slug": "flare-up",
+        "description": "Manage cyclic flare-ups for chronic conditions like Arthritis or Migraines.",
+        "icon": { "type": "lucide", "value": "Zap" },
+        "color": "#8b5cf6",
+        "metadata_schema": {
+          "fields": [
+            {"name": "severity", "label": "Severity", "type": "text"},
+            {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
+            {"name": "duration", "label": "Duration (Hours)", "type": "number"}
+          ]
+        }
+      },
+      {
+        "name": "Acute Accident",
+        "slug": "accident",
+        "description": "Record specific injuries or medical emergencies.",
+        "icon": { "type": "lucide", "value": "AlertTriangle" },
+        "color": "#f59e0b",
+        "metadata_schema": {
+          "fields": [
+            {"name": "mechanism", "label": "Mechanism of Injury", "type": "text"},
+            {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
+            {"name": "emergency_flag", "label": "Emergency Visit?", "type": "boolean"}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "category": {
+      "name": "Specialized Care",
+      "slug": "specialized-care",
+      "icon": { "type": "lucide", "value": "Stethoscope" },
+      "color": "#3b82f6"
+    },
+    "types": [
+      {
+        "name": "Surgical Recovery",
+        "slug": "surgical-recovery",
+        "description": "Monitor post-operative healing and milestones.",
+        "icon": { "type": "lucide", "value": "Scissors" },
+        "color": "#10b981",
+        "metadata_schema": {
+          "fields": [
+            {"name": "procedure_date", "label": "Procedure Date", "type": "date"},
+            {"name": "wound_status", "label": "Wound Status", "type": "text"}
+          ]
+        }
+      },
+      {
+        "name": "Dental Journey",
+        "slug": "dental",
+        "description": "Long-term dental treatments like braces or implants.",
+        "icon": { "type": "lucide", "value": "Smile" },
+        "color": "#3b82f6",
+        "metadata_schema": {
+          "fields": [
+            {"name": "area", "label": "Dental Area", "type": "text"},
+            {"name": "milestones", "label": "Milestones", "type": "text"}
+          ]
+        }
+      },
+      {
+        "name": "Vision & Ophthalmology",
+        "slug": "vision",
+        "description": "Tracking eye conditions and vision changes.",
+        "icon": { "type": "lucide", "value": "Eye" },
+        "color": "#6366f1",
+        "metadata_schema": {
+          "fields": [
+            {"name": "diopters", "label": "Diopters (OD/OS)", "type": "text"},
+            {"name": "procedure", "label": "Procedure Type", "type": "text"}
+          ]
+        }
+      },
+      {
+        "name": "Aesthetic & Skin",
+        "slug": "aesthetic",
+        "description": "Cosmetic procedures and skin health.",
+        "icon": { "type": "lucide", "value": "Sparkles" },
+        "color": "#8b5cf6",
+        "metadata_schema": {
+          "fields": [
+            {"name": "product", "label": "Product Used", "type": "text"},
+            {"name": "region", "label": "Target Region", "type": "text"}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "category": {
+      "name": "Routine & Wellness",
+      "slug": "routine-wellness",
+      "icon": { "type": "lucide", "value": "CheckCircle" },
+      "color": "#22c55e"
+    },
+    "types": [
+      {
+        "name": "Routine Maintenance",
+        "slug": "maintenance",
+        "description": "Regular checkups and wellness cycles.",
+        "icon": { "type": "lucide", "value": "CheckCircle" },
+        "color": "#22c55e",
+        "metadata_schema": {
+          "fields": [
+            {"name": "frequency", "label": "Frequency", "type": "text"}
+          ]
+        }
+      }
+    ]
+  }
+]

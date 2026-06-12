@@ -1,0 +1,78 @@
+# FastAPI and server
+fastapi
+uvicorn[standard]
+python-multipart
+starlette
+
+# Database
+sqlalchemy
+asyncpg
+alembic
+psycopg2-binary
+sqlalchemy-utils
+
+# Redis and task queue
+redis
+celery
+flower
+
+# Core AI/OCR (lightweight)
+openai
+langchain
+langchain-openai
+pytesseract
+pillow
+pdf2image
+requests>=2.31.0
+httpx>=0.25.0
+
+# Authentication and security
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+bcrypt
+itsdangerous
+
+# Email
+fastapi-mail
+aiofiles
+jinja2
+
+# File handling
+python-magic
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+pytest-dotenv
+httpx
+faker
+
+# Utilities
+python-dateutil
+pytz
+pydantic[email]
+uvloop
+python-slugify
+
+# Monitoring
+prometheus-client
+structlog
+
+# WebSocket support
+websockets
+
+# Web Push
+pywebpush
+
+# Pydantic settings
+pydantic-settings
+
+# Data processing
+pandas
+numpy
+pydicom
+pylibjpeg
+pylibjpeg-libjpeg
+python-gdcm

@@ -1,0 +1,73 @@
+[
+  {
+    "name": "Metformin",
+    "description": "Oral diabetes medicine that helps control blood sugar levels.",
+    "indications": "Type 2 Diabetes mellitus",
+    "side_effects": ["Nausea", "Diarrhea", "Stomach pain", "Metallic taste"],
+    "contraindications": "Severe kidney disease, metabolic acidosis",
+    "dosage_info": "Usually 500mg or 850mg once or twice daily with meals."
+  },
+  {
+    "name": "Lisinopril",
+    "description": "ACE inhibitor used to treat high blood pressure and heart failure.",
+    "indications": "Hypertension, Congestive Heart Failure",
+    "side_effects": ["Dry cough", "Dizziness", "Headache", "Fatigue"],
+    "contraindications": "History of angioedema, pregnancy",
+    "dosage_info": "Typically 10mg to 40mg once daily."
+  },
+  {
+    "name": "Atorvastatin",
+    "description": "Statin medication used to prevent cardiovascular disease and treat abnormal lipid levels.",
+    "indications": "Hypercholesterolemia, Cardiovascular disease prevention",
+    "side_effects": [
+      "Joint pain",
+      "Diarrhea",
+      "Muscle pain (myalgia)",
+      "Cold-like symptoms"
+    ],
+    "contraindications": "Active liver disease, pregnancy",
+    "dosage_info": "Usually 10mg to 80mg once daily."
+  },
+  {
+    "name": "Aspirin",
+    "description": "Nonsteroidal anti-inflammatory drug (NSAID) used to reduce pain, fever, or inflammation.",
+    "indications": "Pain, Fever, Inflammation, Prevention of heart attack/stroke",
+    "side_effects": [
+      "Stomach upset",
+      "Heartburn",
+      "Easy bruising",
+      "Gastrointestinal bleeding"
+    ],
+    "contraindications": "Asthma, stomach ulcers, bleeding disorders",
+    "dosage_info": "75mg-81mg (low dose) for prevention, 325mg-650mg for pain."
+  },
+  {
+    "name": "Amoxicillin",
+    "description": "Penicillin-type antibiotic that fights bacteria.",
+    "indications": "Bacterial infections (ear, nose, throat, skin, urinary tract)",
+    "side_effects": ["Nausea", "Vomiting", "Diarrhea", "Rash"],
+    "contraindications": "Penicillin allergy",
+    "dosage_info": "Usually 250mg to 500mg every 8 hours or 500mg to 875mg every 12 hours."
+  },
+  {
+    "name": "Levothyroxine",
+    "description": "Thyroid medicine that replaces a hormone normally produced by your thyroid gland.",
+    "indications": "Hypothyroidism",
+    "side_effects": ["Weight loss", "Tremors", "Headache", "Nervousness"],
+    "contraindications": "Uncorrected adrenal insufficiency, thyrotoxicosis",
+    "dosage_info": "Varies widely based on weight and age, taken on an empty stomach."
+  },
+  {
+    "name": "Amlodipine",
+    "description": "Calcium channel blocker that dilates blood vessels and improves blood flow.",
+    "indications": "Hypertension, Angina",
+    "side_effects": [
+      "Swelling (edema)",
+      "Dizziness",
+      "Palpitations",
+      "Fatigue"
+    ],
+    "contraindications": "Severe hypotension, cardiogenic shock",
+    "dosage_info": "Typically 2.5mg to 10mg once daily."
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "domain": "dev_dummy",
+  "name": "Developer Dummy Data",
+  "version": "1.0.0",
+  "integration_type": ["pull", "push"],
+  "dependencies": []
+}

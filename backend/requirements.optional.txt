@@ -1,0 +1,9 @@
+# Optional dependencies for local AI/OCR processing
+# Uncomment if you want to use local models instead of OpenAI API
+
+spacy>=3.7.0
+scispacy>=0.5.2
+nltk>=3.8.0
+transformers>=4.35.0
+torch>=2.1.0
+pdf2image>=1.16.3

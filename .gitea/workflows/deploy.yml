@@ -1,0 +1,238 @@
+name: CI/CD Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  # Completely secure: these values are pulled from Gitea Secrets at runtime
+  REGISTRY: ${{ secrets.REGISTRY_HOST }}
+  REPOSITORY: ${{ github.repository_owner }}
+  DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/home/deploy/health_assistant' }}
+
+jobs:
+  test-backend:
+    name: Run Backend Pytest Suite
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg14
+        env:
+          POSTGRES_DB: health_assistant_test
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd "pg_isready -U admin -d health_assistant_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run Pytest Suite
+        env:
+          DATABASE_URL: postgresql+asyncpg://admin:password@postgres:5432/health_assistant_test
+          REDIS_URL: redis://redis:6379
+        run: |
+          cd backend
+          pytest
+
+  test-frontend:
+    name: Run Frontend Lint & Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run Frontend Lint & Build Test
+        run: |
+          cd frontend
+          npm run lint
+          npm run build
+
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Lowercase Registry and Repository
+        run: |
+          echo "REGISTRY_LOWER=$(echo '${{ env.REGISTRY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "REPOSITORY_LOWER=$(echo '${{ env.REPOSITORY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Log in to Gitea Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY_LOWER }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN }} # Personal Access Token with package write/read permissions
+
+      - name: Build and Push Backend
+        run: |
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:${{ github.sha }} -f ./backend/Dockerfile ./backend
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:latest
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:${{ github.sha }}
+
+      - name: Build and Push Frontend
+        run: |
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:${{ github.sha }} -f ./frontend/Dockerfile ./frontend
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:latest
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Target Server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Lowercase Registry and Repository
+        run: |
+          echo "REGISTRY_LOWER=$(echo '${{ env.REGISTRY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "REPOSITORY_LOWER=$(echo '${{ env.REPOSITORY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Prepare Deployment Directory via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT || '22' }}
+          script: |
+            mkdir -p ${{ env.DEPLOY_PATH }}
+
+      - name: Copy Compose and Database Init Configs
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT || '22' }}
+          source: "docker/docker-compose.prod.yml,docker/init-db.sql"
+          target: ${{ env.DEPLOY_PATH }}
+          strip_components: 1
+
+      - name: Deploy Stack and Run Migrations
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT || '22' }}
+          script: |
+            # Enable strict error tracking (Exit on any error/undefined-variable/pipeline-failure)
+            set -euo pipefail
+            
+            cd ${{ env.DEPLOY_PATH }}
+            
+            # Log in to registry on the target server
+            echo "${{ secrets.REGISTRY_TOKEN }}" | docker login ${{ env.REGISTRY_LOWER }} -u ${{ github.actor }} --password-stdin
+            
+            # Write environmental configs using secrets stored in Gitea Repo Settings
+            cat << 'EOF' > .env
+            REGISTRY=${{ env.REGISTRY_LOWER }}
+            REPOSITORY=${{ env.REPOSITORY_LOWER }}
+            IMAGE_TAG=${{ github.sha }}
+            
+            # Application
+            APP_ENV=production
+            DEBUG=false
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS || '24' }}
+            
+            # PostgreSQL Secrets
+            POSTGRES_DB=${{ secrets.POSTGRES_DB || 'health_assistant' }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER || 'admin' }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_PORT=${{ secrets.POSTGRES_PORT || '5432' }}
+            
+            # Redis Secrets
+            REDIS_PORT=${{ secrets.REDIS_PORT || '6379' }}
+            
+            # Ports exposed by container
+            BACKEND_PORT=${{ secrets.BACKEND_PORT || '8000' }}
+            FRONTEND_PORT=${{ secrets.FRONTEND_PORT || '3000' }}
+            FLOWER_PORT=${{ secrets.FLOWER_PORT || '5555' }}
+            
+            # AI / OCR API Key and Model Customization
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OPENAI_API_BASE=${{ secrets.OPENAI_API_BASE || 'https://api.openai.com/v1' }}
+            OPENAI_MODEL=${{ secrets.OPENAI_MODEL || 'gpt-4o-mini' }}
+            OCR_PROVIDER=${{ secrets.OCR_PROVIDER || 'openai' }}
+            
+            # SMTP Secrets (optional)
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=${{ secrets.SMTP_PORT || '587' }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+            SMTP_FROM=${{ secrets.SMTP_FROM || 'noreply@health-assistant.local' }}
+            EOF
+            
+            # 1. Pull new images explicitly BEFORE bringing down active containers
+            # This prevents downtime if network or authentication fails during pull!
+            echo "Pulling new Docker images..."
+            docker compose -f docker-compose.prod.yml pull
+            
+            # 2. Stop old containers and start new ones
+            echo "Restarting application stack..."
+            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # 3. Wait and verify that containers successfully started
+            echo "Verifying application startup..."
+            sleep 5
+            CONTAINER_EXITS=$(docker compose -f docker-compose.prod.yml ps --format json | grep -i "exited" || true)
+            if [ -n "$CONTAINER_EXITS" ]; then
+                echo "CRITICAL ERROR: One or more containers failed to start and exited immediately!"
+                docker compose -f docker-compose.prod.yml ps
+                docker compose -f docker-compose.prod.yml logs
+                exit 1
+            fi
+            
+            # 4. Run Database Migrations
+            echo "Running database migrations..."
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+            
+            # 5. Clean up old docker images to preserve disk space
+            echo "Pruning old unused Docker images..."
+            docker image prune -af
+            echo "Deployment completed successfully! 🎉"

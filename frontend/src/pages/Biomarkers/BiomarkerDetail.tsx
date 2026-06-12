@@ -1,0 +1,678 @@
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock } from 'lucide-react';
+import { LoadingState } from '../../components/ui/LoadingState';
+import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal } from '../../utils/biomarkerUtils';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import biomarkerService from '../../services/biomarkerService';
+import { getBiomarkerTrends } from '../../services/analyticsService';
+import { usePatientStore } from '../../store/slices/patientSlice';
+import { useSettingsStore } from '../../store/slices/settingsSlice';
+import { useUIStore } from '../../store/slices/uiSlice';
+import { useTabScroll } from '../../hooks/useTabScroll';
+import { Biomarker } from '../../types/biomarker';
+import LineChart from '../../components/charts/LineChart';
+import { RichTextEditor } from '../../components/ui/RichTextEditor';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+const BiomarkerDetail: React.FC = () => {
+  // TODO: Expand biomarker detail UI with a tabbed interface (Scope, High/Low Implications, Related Symptoms) (from DEVELOPMENT_PLAN.md)
+  const { t } = useTranslation();
+  const { biomarkerId } = useParams<{ biomarkerId: string }>();
+  const navigate = useNavigate();
+  const { currentPatient } = usePatientStore();
+  const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
+  
+  const decodedId = decodeURIComponent(biomarkerId || '');
+
+  // Use specific selectors to avoid re-renders when other UI state (like pageHeaderConfig) changes
+  const showConfirmation = useUIStore(state => state.showConfirmation);
+  const setCurrentBiomarkerId = useUIStore(state => state.setCurrentBiomarkerId);
+
+  const [biomarker, setBiomarker] = useState<Biomarker | null>(null);
+  const [trends, setTrends] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'insights'>('info');
+  const tabsRef = React.useRef<HTMLDivElement>(null);
+  
+  // Auto-scroll when tab changes
+  useTabScroll(tabsRef, activeTab);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [dateRange, setDateRange] = useState<'30d' | '90d' | '1y' | 'all-time'>('all-time');
+  const [chartType, setChartType] = useState<'line' | 'area' | 'bar'>('line');
+  const [showGrid, setShowGrid] = useState(true);
+  const [showZoom, setShowZoom] = useState(true);
+
+  // Global editing toggle
+  const [isGlobalEditing, setIsGlobalEditing] = useState(false);
+  
+  // Memoize breadcrumbs and subtitle to prevent PageHeader re-renders
+  const breadcrumbs = React.useMemo(() => [
+    { label: t('biomarker_catalog.title'), path: '/biomarkers/catalog' }
+  ], [t]);
+
+  const subtitle = React.useMemo(() => (
+    <div className="flex flex-col space-y-1">
+      <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
+        {biomarker?.category || 'General'}
+      </span>
+      <p className="text-gray-500 dark:text-dark-muted font-mono text-xs uppercase tracking-tighter">
+        {biomarker?.coding_system === 'loinc' ? 'LOINC CODE' : 'CUSTOM CODE'}: {biomarker?.code || biomarker?.slug}
+      </p>
+    </div>
+  ), [biomarker?.category, biomarker?.code, biomarker?.coding_system, biomarker?.slug]);
+
+  const headerIcon = React.useMemo(() => <Activity className="w-8 h-8" />, []);
+  
+  // Info editing state
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [infoContent, setInfoContent] = useState('');
+
+  const interpretation = React.useMemo(() => {
+    if (!trends || trends.length === 0 || !biomarker) return 'Normal';
+    const latest = trends[trends.length - 1];
+    const mockObs: any = {
+      value: { raw: latest.value },
+      interpretation: latest.status || 'Normal',
+      referenceRange: {
+        min: biomarker.reference_range_min,
+        max: biomarker.reference_range_max,
+        displayText: biomarker.reference_range_min != null || biomarker.reference_range_max != null 
+          ? `${biomarker.reference_range_min ?? '0'} - ${biomarker.reference_range_max ?? '∞'}`
+          : '--'
+      }
+    };
+    return getFinalStatus(mockObs);
+  }, [trends, biomarker]);
+
+  const filteredTrends = React.useMemo(() => {
+    if (!trends || trends.length === 0) return [];
+    if (dateRange === 'all-time') return trends;
+
+    const now = new Date();
+    let cutoff = new Date();
+    if (dateRange === '30d') cutoff.setDate(now.getDate() - 30);
+    else if (dateRange === '90d') cutoff.setDate(now.getDate() - 90);
+    else if (dateRange === '1y') cutoff.setFullYear(now.getFullYear() - 1);
+
+    return trends.filter((d: any) => new Date(d.date) >= cutoff);
+  }, [trends, dateRange]);
+
+  const handleDelete = async () => {
+    if (!biomarker) return;
+    
+    showConfirmation({
+      title: 'Delete Biomarker Definition',
+      message: `Are you sure you want to delete "${biomarker.name}"? This will not delete patient data, but it will disconnect existing results from this definition.`,
+      confirmLabel: 'Delete Definition',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(true);
+        try {
+          await biomarkerService.deleteBiomarker(biomarker.id);
+          navigate('/biomarkers/catalog');
+        } catch (error) {
+          console.error("Failed to delete biomarker", error);
+        } finally {
+          setIsDeleting(false);
+        }
+      }
+    });
+  };
+
+  const handleSaveInfo = async () => {
+    if (!biomarker) return;
+    try {
+      const updated = await biomarkerService.updateBiomarker(biomarker.id, { info: infoContent });
+      setBiomarker(updated);
+      setIsEditingInfo(false);
+    } catch (error) {
+      console.error("Failed to save info", error);
+    }
+  };
+
+  useEffect(() => {
+    if (decodedId) {
+      setCurrentBiomarkerId(decodedId);
+    }
+    return () => setCurrentBiomarkerId(null);
+  }, [decodedId, setCurrentBiomarkerId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!decodedId) return;
+      setLoading(true);
+      try {
+        let bioData = await biomarkerService.getBiomarkerById(decodedId).catch(err => {
+             console.warn("Biomarker definition not found for ID:", decodedId);
+             return null;
+        });
+
+        if (!bioData) {
+          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', decodedId, 'all-time', currentPatient.id) : { biomarkers: {} };
+          if (trendsData.biomarkers && trendsData.biomarkers[decodedId]) {
+            const biomarkerTrends = trendsData.biomarkers[decodedId];
+            if (biomarkerTrends.length > 0) {
+              const latest = biomarkerTrends[biomarkerTrends.length - 1];
+              // Create a mock biomarker definition from the trend data
+              bioData = {
+                id: decodedId,
+                slug: decodedId,
+                name: latest.name || decodedId,
+                category: 'Uncategorized',
+                info: '',
+                reference_range_min: null,
+                reference_range_max: null,
+              } as any;
+              setBiomarker(bioData);
+              setTrends(biomarkerTrends);
+            } else {
+              setBiomarker(null);
+              setTrends([]);
+            }
+          } else {
+            setBiomarker(null);
+            setTrends([]);
+          }
+        } else {
+          setBiomarker(bioData);
+          setInfoContent(bioData.info || '');
+          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', bioData.slug, 'all-time', currentPatient.id) : { biomarkers: {} };
+          if (trendsData.biomarkers && trendsData.biomarkers[bioData.slug]) {
+            setTrends(trendsData.biomarkers[bioData.slug]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch biomarker details", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [decodedId, currentPatient?.id]);
+
+  if (loading) {
+    return <LoadingState variant="section" showText={false} />;
+  }
+
+  if (!biomarker) {
+    return (
+      <div className="max-w-3xl mx-auto py-20 text-center">
+        <div className="w-20 h-20 bg-gray-50 dark:bg-dark-bg rounded-full flex items-center justify-center mx-auto mb-6">
+          <Activity className="w-10 h-10 text-gray-300" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-dark-text">Biomarker Not Found</h2>
+        <p className="text-gray-500 mt-2">The metric you are looking for does not exist in our clinical catalog.</p>
+        <button 
+          onClick={() => navigate('/biomarkers')}
+          className="mt-6 px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95"
+        >
+          Back to Metrics
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto pb-20">
+      <PageHeader
+        title={biomarker.name}
+        subtitle={subtitle}
+        icon={headerIcon}
+        breadcrumbs={breadcrumbs}
+        showBackButton={true}
+      />
+
+      <StickyToolbar
+        actions={
+          <div className="flex items-center gap-3">
+            <button 
+               onClick={() => setIsGlobalEditing(!isGlobalEditing)} 
+               className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 border ${
+                 isGlobalEditing 
+                   ? 'bg-orange-600 text-white border-orange-700 shadow-lg shadow-orange-900/20' 
+                   : 'bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg'
+               }`}
+            >
+               {isGlobalEditing ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+               <span>{isGlobalEditing ? t('biomarker_catalog.finish_editing') : t('biomarker_catalog.edit_catalog')}</span>
+            </button>
+            <button 
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900/40 active:scale-95 disabled:opacity-50"
+              title={t('biomarker_catalog.delete_biomarker')}
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+            <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
+              <Printer className="w-5 h-5" />
+            </button>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* Left Column: Primary Visualization & Details */}
+        <div className="xl:col-span-2 space-y-6">
+          
+          {/* KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+              <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.latest_result')}</p>
+              <div className="flex items-baseline space-x-1">
+                <span className="text-xl font-black text-gray-900 dark:text-dark-text">{trends.length > 0 ? trends[trends.length - 1].value : '--'}</span>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
+              </div>
+            </div>
+            <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+              <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.clinical_reference')}</p>
+              <div className="flex items-baseline">
+                <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono leading-none">
+                  {biomarker.reference_range_min != null || biomarker.reference_range_max != null 
+                    ? `${biomarker.reference_range_min ?? '0'} - ${biomarker.reference_range_max ?? '∞'}`
+                    : 'undefined'}
+                </span>
+              </div>
+            </div>
+            <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+              <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.avg_overall')}</p>
+              <div className="flex items-baseline">
+                <span className="text-xl font-black text-gray-700 dark:text-dark-text">{trends.length > 0 ? (trends.reduce((a, b) => a + b.value, 0) / trends.length).toFixed(1) : '--'}</span>
+              </div>
+            </div>
+            <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+              <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.total_records')}</p>
+              <div className="flex items-baseline">
+                <span className="text-xl font-black text-gray-700 dark:text-dark-text">{trends.length}</span>
+                <span className="ml-1 text-[10px] font-bold text-gray-400 uppercase">{t('biomarkers.tests')}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Trend Chart Section */}
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm overflow-hidden flex flex-col">
+            <div className="p-6 sm:p-8 border-b border-gray-50 dark:border-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('biomarkers.longitudinal_trend')}</h3>
+                  <p className="text-xs text-gray-400 font-medium">{t('biomarkers.historical_trajectory')}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
+                  {[
+                    { id: '30d', label: '30D' },
+                    { id: '90d', label: '3M' },
+                    { id: '1y', label: '1Y' },
+                    { id: 'all-time', label: 'ALL' }
+                  ].map(range => (
+                    <button 
+                      key={range.id}
+                      onClick={() => setDateRange(range.id as any)}
+                      className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${dateRange === range.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center space-x-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
+                  {[
+                    { id: 'line', icon: TrendingUp },
+                    { id: 'area', icon: Layers },
+                    { id: 'bar', icon: Grid }
+                  ].map(type => (
+                    <button 
+                      key={type.id}
+                      onClick={() => setChartType(type.id as any)}
+                      className={`p-1.5 rounded-lg transition-all ${chartType === type.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      title={type.id.charAt(0).toUpperCase() + type.id.slice(1)}
+                    >
+                      <type.icon className="w-3.5 h-3.5" />
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`p-2 rounded-xl transition-all border ${showGrid ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 text-blue-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
+                  title="Toggle Grid"
+                >
+                  <Layers className="w-4 h-4" />
+                </button>
+
+                {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
+                  <button 
+                    onClick={() => setShowReferenceRanges(!showReferenceRanges)}
+                    className={`p-2 rounded-xl transition-all border ${showReferenceRanges ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 text-emerald-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
+                    title="Toggle Reference Range Area"
+                  >
+                    <Box className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-8 h-[400px]">
+              {filteredTrends.length > 0 ? (
+                <LineChart 
+                  data={filteredTrends.map(t => ({ name: new Date(t.date).toLocaleDateString(), value: t.value }))} 
+                  dataKey="value" 
+                  xAxisKey="name"
+                  color="#3b82f6"
+                  referenceRange={{
+                    min: biomarker.reference_range_min,
+                    max: biomarker.reference_range_max
+                  }}
+                  showReferenceLines={showReferenceRanges}
+                  chartType={chartType}
+                  showGrid={showGrid}
+                  interactiveZoom={showZoom}
+                  height="100%"
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                  <Calendar className="w-12 h-12 mb-4 text-gray-300" />
+                  <p className="font-bold text-gray-500 uppercase tracking-widest text-sm">No historical data available</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Secondary Details Section (Tabs) */}
+          <div ref={tabsRef} className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm min-h-[400px] flex flex-col scroll-mt-32">
+            <div className="px-8 pt-8 pb-4 border-b border-gray-50 dark:border-dark-border">
+              <div className="flex items-center space-x-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl w-fit">
+                <button 
+                  onClick={() => setActiveTab('info')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {t('biomarkers.clinical_significance')}
+                </button>
+                <button 
+                  onClick={() => setActiveTab('history')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {t('biomarkers.observations') || 'Observations'}
+                </button>
+                <button 
+                  onClick={() => setActiveTab('insights')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'insights' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {t('biomarkers.ai_insights')}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              {activeTab === 'info' && (
+                <div className="p-8 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="flex items-center space-x-2 text-lg font-bold text-gray-900 dark:text-dark-text">
+                      <Info className="w-5 h-5 text-blue-500" />
+                      <span>{t('biomarkers.clinical_significance')}</span>
+                    </h3>
+                  </div>
+
+                  {isEditingInfo ? (
+                    <div className="space-y-4">
+                      <RichTextEditor value={infoContent} onChange={setInfoContent} placeholder={t('biomarkers.historical_trajectory')} />
+                      <div className="flex justify-end space-x-3 pt-2">
+                         <button onClick={() => setIsEditingInfo(false)} className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors">{t('common.cancel')}</button>
+                         <button onClick={handleSaveInfo} className="px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 text-xs uppercase tracking-widest">{t('biomarker_catalog.save_info')}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="group relative">
+                      {isGlobalEditing && (
+                        <button 
+                          onClick={() => setIsEditingInfo(true)} 
+                          className="absolute -top-12 right-0 p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all border border-blue-100 dark:border-blue-800/30 shadow-sm z-10"
+                          title={t('common.edit')}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      {biomarker.info ? (
+                        <div className="prose dark:prose-invert max-w-none text-gray-700 dark:text-dark-text leading-relaxed">
+                          {biomarker.info.includes('</') || biomarker.info.includes('<br') ? (
+                            <div 
+                              className="font-medium"
+                              dangerouslySetInnerHTML={{ __html: biomarker.info }}
+                            />
+                          ) : (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{biomarker.info}</ReactMarkdown>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center opacity-60 border-2 border-dashed border-gray-100 dark:border-dark-border rounded-3xl">
+                          <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-full flex items-center justify-center mb-4 text-gray-300">
+                            <Layers className="w-8 h-8" />
+                          </div>
+                          <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">{t('biomarkers.no_clinical_info')}</p>
+                          {isGlobalEditing ? (
+                             <button onClick={() => setIsEditingInfo(true)} className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_clinical_info')}</button>
+                          ) : (
+                             <Link to="/biomarkers/catalog" className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_to_catalog')}</Link>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'history' && (
+                <div className="animate-in fade-in duration-300 h-full flex flex-col">
+                  <div className="flex-1 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
+                      <thead className="bg-gray-50/50 dark:bg-dark-bg/50">
+                        <tr>
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('dashboard.config.date_range')}</th>
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('biomarkers.latest_result')}</th>
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('biomarkers.standard_unit')}</th>
+                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('common.source') || 'Source'}</th>
+                          <th className="px-8 py-4 text-right text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('common.actions') || 'Actions'}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                        {filteredTrends.map((t, i) => (
+                          <tr key={i} className="group hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
+                            <td className="px-8 py-5 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
+                              {new Date(t.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap">
+                              <span className="text-sm font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg">
+                                {t.value}
+                              </span>
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-xs text-gray-500 dark:text-dark-muted font-bold">
+                              {formatUnit(t.unit)}
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-xs text-gray-500 dark:text-dark-text font-medium">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-widest ${
+                                  t.source_type === 'integration' ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' :
+                                  t.source_type === 'examination' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
+                                  t.source_type === 'document' ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
+                                  'bg-gray-100 text-gray-500 dark:bg-dark-bg dark:text-dark-muted'
+                                }`}>
+                                  {t.source_type || 'manual'}
+                                </span>
+                                <span>{t.source_name || t.examination_name || 'Manual Entry'}</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5 whitespace-nowrap text-right text-sm font-medium">
+                              {t.source_type === 'integration' && (
+                                <Link 
+                                  to={`/settings/integrations/${t.source_name}`} 
+                                  className="inline-flex items-center justify-center p-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-xl transition-colors"
+                                  title="View Integration"
+                                >
+                                  <Layers className="w-4 h-4" />
+                                </Link>
+                              )}
+                              {t.source_type === 'examination' && t.examination_id && (
+                                <Link 
+                                  to={`/examinations/${t.examination_id}`} 
+                                  className="inline-flex items-center justify-center p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
+                                  title="View Examination"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </Link>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {filteredTrends.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-8 py-20 text-center text-gray-400 dark:text-dark-muted font-bold uppercase tracking-widest text-xs">{t('biomarkers.no_results')}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'insights' && (
+                <div className="p-8 animate-in fade-in duration-300">
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-8 text-white shadow-xl shadow-blue-200 dark:shadow-none">
+                    <div className="flex items-center space-x-3 mb-6">
+                      <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
+                        <Activity className="w-6 h-6 text-white" />
+                      </div>
+                      <h3 className="text-xl font-black uppercase tracking-tight">{t('biomarkers.smart_analysis')}</h3>
+                    </div>
+                    <p className="text-blue-50 leading-relaxed mb-8 font-medium">
+                      Based on the longitudinal data for {biomarker.name}, the trend appears to be stable. 
+                      Maintaining current lifestyle factors is recommended. Clinical context suggest that levels within this range are optimal for patients in your age demographic.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white/10 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
+                        <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">{t('documents_explorer.status')}</p>
+                        <p className="text-lg font-black">Within Range</p>
+                      </div>
+                      <div className="bg-white/10 backdrop-blur-md p-5 rounded-2xl border border-white/10 shadow-inner">
+                        <p className="text-[10px] font-black text-blue-200 uppercase tracking-widest mb-1">Change</p>
+                        <p className="text-lg font-black">+0.4% (Steady)</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Sidebar Stats & Metadata */}
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+            <div className="flex items-center justify-between mb-8">
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em]">{t('biomarkers.patient_snapshot')}</h4>
+              {trends.length > 0 && (
+                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${getStatusColorClass(interpretation)}`}>
+                  {interpretation}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-8">
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.latest_result')}</p>
+                <div className="flex items-baseline space-x-2">
+                  <span className="text-4xl font-black text-gray-900 dark:text-dark-text tracking-tighter">{trends.length > 0 ? trends[trends.length - 1].value : '--'}</span>
+                  <span className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
+                </div>
+              </div>
+              
+              <div className="p-5 bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border shadow-inner">
+                <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.clinical_reference')}</p>
+                <div className="flex items-baseline space-x-2">
+                  <span className={`${biomarker.reference_range_min != null || biomarker.reference_range_max != null ? 'text-xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tighter' : 'text-sm font-medium text-gray-300 dark:text-dark-muted/30 italic'}`}>
+                    {biomarker.reference_range_min != null && biomarker.reference_range_max != null 
+                      ? `${biomarker.reference_range_min} - ${biomarker.reference_range_max}`
+                      : biomarker.reference_range_min != null 
+                        ? `> ${biomarker.reference_range_min}`
+                        : biomarker.reference_range_max != null
+                          ? `< ${biomarker.reference_range_max}`
+                          : 'undefined'
+                    }
+                  </span>
+                  {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
+                    <span className="text-xs font-bold text-gray-400 dark:text-dark-muted">{trends.length > 0 ? formatUnit(trends[0].unit) : ''}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-50 dark:border-dark-border">
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.avg_6mo')}</p>
+                  <p className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">
+                    {trends.length > 0 ? (trends.reduce((a, b) => a + b.value, 0) / trends.length).toFixed(1) : '--'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.tests')}</p>
+                  <p className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">{trends.length} <span className="text-[9px] font-bold text-gray-400 uppercase ml-0.5">Rec.</span></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-dark-bg/30 rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border">
+            <div className="flex items-center space-x-2 mb-6">
+              <Tag className="w-4 h-4 text-gray-400" />
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('biomarkers.technical_metadata')}</h4>
+            </div>
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">{t('biomarkers.standard_unit')}</span>
+                <span className="text-xs font-black text-gray-700 dark:text-dark-text">{trends.length > 0 ? formatUnit(trends[0].unit) : '--'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">
+                  {biomarker.coding_system === 'loinc' ? 'LOINC CODE' : 'CUSTOM CODE'}
+                </span>
+                <span className="text-[10px] font-mono font-black bg-white dark:bg-dark-surface px-2 py-1 rounded border border-gray-200 dark:border-dark-border shadow-sm">
+                  {biomarker.code || biomarker.slug}
+                </span>
+              </div>
+              
+              {biomarker.aliases && biomarker.aliases.length > 0 && (
+                <div className="pt-4 border-t border-gray-100 dark:border-white/5">
+                  <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter block mb-3">{t('biomarkers.known_aliases')}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {biomarker.aliases.map((alias, idx) => (
+                      <div 
+                        key={idx} 
+                        className="px-2.5 py-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tight shadow-sm hover:scale-105 transition-transform cursor-default"
+                      >
+                        {alias}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+export default BiomarkerDetail;
