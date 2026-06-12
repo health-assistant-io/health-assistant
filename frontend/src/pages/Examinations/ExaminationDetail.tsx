@@ -718,14 +718,20 @@ const ExaminationDetail = () => {
                           <button onClick={() => handleRunAnalysis('full')} className="w-full flex items-center space-x-3 p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-colors text-left group">
                             <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Cpu className="w-4 h-4" /></div>
                             <div>
-                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{t('examination_detail.header.full_reconstruction')}</p>
+                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
+                                {t('examination_detail.header.full_reconstruction')}
+                                <AIBadge workflow="full_reconstruction" className="ml-1" />
+                              </p>
                               <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.full_reconstruction_desc')}</p>
                             </div>
                           </button>
                           <button onClick={() => handleRunAnalysis('extract_only')} className="w-full flex items-center space-x-3 p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-left group">
                             <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors"><FlaskConical className="w-4 h-4" /></div>
                             <div>
-                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{t('examination_detail.header.fast_extraction')}</p>
+                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
+                                {t('examination_detail.header.fast_extraction')}
+                                <AIBadge workflow="fast_extraction" className="ml-1" />
+                              </p>
                               <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.fast_extraction_desc')}</p>
                             </div>
                           </button>

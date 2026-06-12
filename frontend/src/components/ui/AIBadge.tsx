@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, Info, ShieldAlert, Globe, Server } from 'lucide-react';
-import { useActiveAITask } from '../../hooks/useActiveAITask';
+import { useActiveAIWorkflow, ActiveAITask } from '../../hooks/useActiveAIWorkflow';
 import { useTranslation } from 'react-i18next';
 import { getCountryFlag } from '../../utils/countryUtils';
 
 interface Props {
   className?: string;
   showText?: boolean;
-  taskType?: string;
+  workflow?: string;
+  taskType?: string | string[]; // Added back for backward compatibility with existing components
   label?: string;
   variant?: 'default' | 'white';
 }
@@ -16,13 +17,21 @@ interface Props {
 export const AIBadge: React.FC<Props> = ({ 
   className = '', 
   showText = true, 
-  taskType, 
+  workflow,
+  taskType,
   label,
   variant = 'default'
 }) => {
   const { t } = useTranslation();
-  const { provider, model } = useActiveAITask(taskType);
-  const isLocal = model?.is_local ?? provider?.is_local ?? false;
+  
+  // Use taskType directly if provided (backward compatibility), otherwise use workflow
+  const resolvedWorkflow = workflow || (typeof taskType === 'string' ? taskType : (Array.isArray(taskType) ? taskType[0] : undefined));
+  const tasks = useActiveAIWorkflow(resolvedWorkflow);
+  const isMultipleTasks = tasks.length > 1;
+  
+  // Check if ANY of the tasks uses a local model (for the badge indicator itself)
+  const isLocal = tasks.some(t => t.model?.is_local ?? t.provider?.is_local ?? false);
+
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, height: 0 });
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -63,6 +72,86 @@ export const AIBadge: React.FC<Props> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const renderTaskInfo = (task: ActiveAITask, index: number) => {
+    const taskIsLocal = task.model?.is_local ?? task.provider?.is_local ?? false;
+    
+    // Map internal task types to friendly names
+    let friendlyTaskName = task.taskType;
+    switch(task.taskType) {
+      case 'ocr': friendlyTaskName = 'Document OCR & Extraction'; break;
+      case 'nlp': friendlyTaskName = 'Clinical Data Structuring (NLP)'; break;
+      case 'chat': friendlyTaskName = 'AI Assistant'; break;
+      case 'fill_biomarker_form': friendlyTaskName = 'Biomarker Extraction'; break;
+      case 'magic_fill_examination': friendlyTaskName = 'Smart Examination Extraction'; break;
+      case 'medication_interaction': friendlyTaskName = 'Medication Safety Audit'; break;
+      case 'anomaly_detection': friendlyTaskName = 'Trend & Anomaly Detection'; break;
+      case 'define_biomarker': friendlyTaskName = 'Definition Builder'; break;
+      case 'define_medication': friendlyTaskName = 'Definition Builder'; break;
+    }
+    
+    return (
+      <div key={index} className={`space-y-4 ${index > 0 ? 'pt-4 border-t border-gray-100 dark:border-dark-border' : ''}`}>
+        {isMultipleTasks && (
+           <h5 className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded inline-block">
+             Task: {friendlyTaskName}
+           </h5>
+        )}
+        {/* Model Info */}
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Active Model</span>
+          <span className="text-sm font-bold text-gray-900 dark:text-dark-text">{task.model?.name || task.model?.model_name || 'System Default'}</span>
+        </div>
+
+        {/* Provider Details */}
+        {task.provider ? (
+          <div className="bg-gray-50 dark:bg-dark-bg rounded-lg border border-gray-100 dark:border-dark-border overflow-hidden">
+            <div className="p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Provider</span>
+                {taskIsLocal ? (
+                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                    <Server className="w-3 h-3" /> Local
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                    <Globe className="w-3 h-3" /> Cloud
+                  </span>
+                )}
+              </div>
+              <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                {task.provider.company_name || task.provider.name} {getCountryFlag(task.provider.company_country)}
+              </div>
+              {task.provider.company_website && (
+                <a href={task.provider.company_website} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline truncate block">
+                  {task.provider.company_website}
+                </a>
+              )}
+            </div>
+            
+            {/* Task-specific Privacy Notice integrated into provider card */}
+            <div className={`p-3 border-t border-gray-100 dark:border-dark-border ${taskIsLocal ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : 'bg-blue-50/50 dark:bg-blue-900/10'}`}>
+              <div className="flex items-start gap-2">
+                {taskIsLocal ? (
+                  <Server className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                ) : (
+                  <Globe className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                )}
+                <p className={`text-[9px] leading-relaxed ${taskIsLocal ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                  <strong className="block mb-0.5 font-bold">{t('ai_disclaimer.privacy_notice_title', 'Privacy Notice')}</strong>
+                  {taskIsLocal 
+                    ? t('ai_disclaimer.privacy_local', 'This AI model runs locally. Your data does not leave your infrastructure.')
+                    : t('ai_disclaimer.privacy_cloud', 'Data relevant to this context may be transmitted to and processed by 3rd-party LLM providers based on your system\'s AI configuration.')}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+           <p className="text-xs text-gray-500 italic">No specific provider configured for this task.</p>
+        )}
+      </div>
+    );
+  };
+
   const popover = isOpen ? createPortal(
     <div
       ref={dropdownRef}
@@ -79,45 +168,15 @@ export const AIBadge: React.FC<Props> = ({
           <Activity className="w-4 h-4" />
           {label || t('ai_labels.ai_analysis', 'AI Analysis')}
         </h4>
-        <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-1 font-bold">
-          Task: {taskType || 'default'}
+        <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 mt-1 font-bold truncate uppercase tracking-widest">
+          {workflow ? 'Workflow' : 'Task'}: {workflow ? workflow.replace(/_/g, ' ') : (taskType || 'default')}
         </p>
       </div>
       
-      <div className="p-4 space-y-4">
-        {/* Model Info */}
-        <div className="flex flex-col gap-1">
-          <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Active Model</span>
-          <span className="text-sm font-bold text-gray-900 dark:text-dark-text">{model?.name || model?.model_name || 'System Default'}</span>
+      <div className="p-4">
+        <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+          {tasks.map((task, index) => renderTaskInfo(task, index))}
         </div>
-
-        {/* Provider Details */}
-        {provider ? (
-          <div className="bg-gray-50 dark:bg-dark-bg rounded-lg p-3 border border-gray-100 dark:border-dark-border space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Provider</span>
-              {isLocal ? (
-                <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
-                  <Server className="w-3 h-3" /> Local
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
-                  <Globe className="w-3 h-3" /> Cloud
-                </span>
-              )}
-            </div>
-            <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
-              {provider.company_name || provider.name} {getCountryFlag(provider.company_country)}
-            </div>
-            {provider.company_website && (
-              <a href={provider.company_website} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline truncate block">
-                {provider.company_website}
-              </a>
-            )}
-          </div>
-        ) : (
-           <p className="text-xs text-gray-500 italic">No specific provider configured for this task.</p>
-        )}
 
         {/* Disclaimers */}
         <div className="mt-4 pt-3 border-t border-gray-100 dark:border-dark-border space-y-3">
@@ -126,20 +185,6 @@ export const AIBadge: React.FC<Props> = ({
              <p className="text-[10px] leading-relaxed">
                <strong className="text-gray-900 dark:text-gray-200 block mb-1">{t('ai_disclaimer.medical_warning_title', 'Medical Disclaimer')}</strong>
                {t('ai_disclaimer.medical_warning', 'This content is AI-generated and does not constitute professional medical advice. AI can hallucinate or omit critical information. Always verify with a certified healthcare provider.')}
-             </p>
-           </div>
-           
-           <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
-             {isLocal ? (
-               <Server className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-             ) : (
-               <Globe className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-             )}
-             <p className="text-[10px] leading-relaxed">
-               <strong className="text-gray-900 dark:text-gray-200 block mb-1">{t('ai_disclaimer.privacy_notice_title', 'Privacy Notice')}</strong>
-               {isLocal 
-                 ? t('ai_disclaimer.privacy_local', 'This AI model runs locally. Your data does not leave your infrastructure.')
-                 : t('ai_disclaimer.privacy_cloud', 'Data relevant to this context may be transmitted to and processed by 3rd-party LLM providers based on your system\'s AI configuration.')}
              </p>
            </div>
         </div>
