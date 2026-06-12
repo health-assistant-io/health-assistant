@@ -1,0 +1,164 @@
+# Health Assistant - Development Guide
+
+See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
+
+## Development Setup
+
+### Quick Start
+```bash
+# Using the unified development script
+./scripts/run-dev.sh
+```
+
+### Environment Configuration
+- **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
+- **Frontend**: Configured via `VITE_API_URL`.
+
+## Recent Changes & Optimizations
+- **In-App Viewers**: Replaced external downloads with full-screen Image, PDF, and Text viewers.
+- **Smart Interpretation**: Added automated status detection (High/Low/Normal) for all biomarkers based on clinical reference ranges.
+- **Enhanced Timeline**: Implemented clinical-interval filtering (Last 30 Days, Custom Range, etc.) in the Examinations list.
+- **Safe Deletion**: Implemented cascaded deletion that cleans up physical files and extracted health data when an examination is removed.
+
+### Manual Start
+
+#### Backend
+
+```bash
+cd backend
+source venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+#### Frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+#### Celery Worker
+
+```bash
+cd backend
+source venv/bin/activate
+export PYTHONPATH=$PYTHONPATH:.
+celery -A app.workers.celery_app worker --loglevel=info
+```
+
+## Testing
+
+### Backend
+
+A comprehensive `pytest` suite tests the FastAPI backend endpoints asynchronously.
+
+```bash
+# Run the entire test suite
+./backend/run-tests.sh
+
+# With coverage
+./backend/run-tests.sh --coverage
+```
+
+### Frontend
+
+```bash
+# Build check
+npm run build
+
+# Lint check
+npm run lint
+```
+
+## Development Workflow
+
+### 1. Backend Development
+- Server auto-reloads on code changes.
+- API docs: http://localhost:8000/docs
+- Check terminal for reloader logs.
+
+### 2. Frontend Development
+- Vite provides HMR (Hot Module Replacement).
+- Check browser console for errors.
+- Use React DevTools for state debugging.
+
+## Extending Clinical Events
+
+The clinical events system is metadata-driven. To add new clinical event categories or types:
+
+1.  **Edit the Seed File**: Add the new configuration to `backend/app/core/seeds/clinical_event_types.json`.
+    -   Each category contains a list of types.
+    -   Each type can define a `metadata_schema` with specific fields (text, number, date, boolean).
+2.  **Sync with Database**:
+    ```bash
+    cd backend && source venv/bin/activate
+    export PYTHONPATH=$PYTHONPATH:.
+    python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_clinical_event_types())"
+    ```
+3.  **UI Auto-Generation**: The `ClinicalEventModal` will automatically render the new category as a tab and the `DynamicMetadataForm` will generate the input fields based on the schema you defined.
+
+## Extending Notifications
+
+The notification framework is modular and event-driven. For detailed instructions on adding new notification types or event hooks, see [NOTIFICATION_SYSTEM.md](./docs/NOTIFICATION_SYSTEM.md).
+
+## Project Versioning
+
+We utilize a centralized semantic versioning manager script located in `scripts/version_manager.py` to synchronize versions across backend configs, APIs, frontend packages, and installation docs. It also automates staging, committing, tagging, and pushing to trigger CI/CD pipelines (such as Gitea Package / Docker Image builds).
+
+### Versioning Commands:
+- **Show Current Version**:
+  ```bash
+  python3 scripts/version_manager.py show
+  ```
+- **Set Explicit Version**:
+  ```bash
+  python3 scripts/version_manager.py set 1.1.0-rc.1
+  ```
+- **Automatically Bump Version**:
+  ```bash
+  python3 scripts/version_manager.py bump [major | minor | patch | rc]
+  ```
+  *   `major`: Promotes to next major release (e.g. `1.0.0` -> `2.0.0`)
+  *   `minor`: Promotes to next minor release (e.g. `1.0.0` -> `1.1.0`)
+  *   `patch`: Promotes to next patch release or removes release candidate suffix (e.g. `1.0.0` -> `1.0.1`, `1.0.1-rc.2` -> `1.0.1`)
+  *   `rc`: Sets or increments release candidate number on the upcoming release (e.g. `1.0.0` -> `1.0.1-rc.1`, `1.0.1-rc.1` -> `1.0.1-rc.2`)
+
+### Git & CI/CD Integration:
+When setting or bumping a version, you can automate staging, committing, and tagging using:
+- `--git` or `-g`: Automatically stages updated files, commits them with `chore(release): bump version to X.Y.Z`, and creates an annotated git tag `vX.Y.Z`.
+- `--push` or `-p`: Pushes both the new commit and the release tag to the remote repository (`origin`), which triggers Gitea Package/Container builds.
+
+**Examples:**
+```bash
+# Bump patch version, commit, and tag locally
+python3 scripts/version_manager.py bump patch --git
+
+# Bump minor version, commit, tag, and push to remote (origin)
+python3 scripts/version_manager.py bump minor --git --push
+```
+
+## Key Files
+
+### Backend (`backend/app/`)
+- `main.py`: Entry point.
+- `core/`: Config, Security, Database connection.
+- `api/v1/endpoints/`: Route handlers.
+- `services/`: Business logic & Database operations.
+- `models/`: SQLAlchemy models (Core + FHIR).
+- `processors/`: AI logic (OCR, NLP).
+- `workers/`: Background tasks.
+
+### Frontend (`frontend/src/`)
+- `App.tsx`: Routing.
+- `components/ui/`: Immersion & Reusable components.
+- `pages/`: View components.
+- `store/`: Zustand state management.
+- `services/`: API abstraction layer.
+
+## Known Issues
+1. **WebSocket**: Real-time document processing notifications are currently handled by polling.
+2. **DICOM**: Local conversion requires `pydicom` and `numpy` in the environment.
+
+## Code Style
+- **Backend**: PEP 8, Type hints, Google-style docstrings.
+- **Frontend**: Functional components, TypeScript for all props/state, Tailwind for layout.

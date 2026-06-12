@@ -1,0 +1,171 @@
+@import 'react-grid-layout/css/styles.css';
+@import 'react-resizable/css/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom React Grid Layout Styles */
+.react-grid-placeholder {
+  background: rgba(59, 130, 246, 0.08) !important;
+  border-radius: 1.25rem !important;
+  border: 2px dashed #3b82f6 !important;
+  opacity: 0.5 !important;
+  z-index: 2 !important;
+  transition-duration: 100ms;
+}
+
+.react-grid-item-resizing {
+  opacity: 0.6;
+  z-index: 3;
+}
+
+.react-grid-item-react-draggable-dragging {
+  opacity: 0.6;
+  z-index: 10;
+  cursor: grabbing !important;
+}
+
+.react-grid-item .react-resizable-handle::after {
+  border-right: 2px solid #cbd5e1 !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+  }
+
+  .dark {
+    /* Modern Slate-based Dark Theme (radix-ui inspired) */
+    --background: 222.2 84% 4.9%; /* Very dark slate for main bg */
+    --foreground: 210 40% 98%;    /* Off-white text */
+    
+    --card: 222.2 47.4% 11.2%;    /* Slightly lighter slate for cards */
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 217.2 91.2% 59.8%; /* Vivid blue */
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    --secondary: 217.2 32.6% 17.5%; /* Slate 800 */
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%; /* Slate 400 */
+    
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a; 
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155; 
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569; 
+}
+
+/* Global focus rings for dark mode inputs/buttons */
+.dark *:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+/* Scrollbar Utilities */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+  }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+  }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}

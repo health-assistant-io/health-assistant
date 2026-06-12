@@ -1,0 +1,608 @@
+import logging
+from typing import Dict, Any, List, Optional, Tuple
+from uuid import UUID
+from sqlalchemy import select, update, delete, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_openai import ChatOpenAI
+
+from app.core.config import settings
+from app.models.ai_provider_model import (
+    AIProviderModel,
+    AIModel,
+    AITaskAssignment,
+    AIScope,
+)
+from app.schemas.ai_config import (
+    AIProviderCreate,
+    AIProviderUpdate,
+    AIProviderResponse,
+    AIModelCreate,
+    AIModelUpdate,
+    AIModelResponse,
+    AITaskAssignmentCreate,
+    AITaskAssignmentUpdate,
+    AITaskAssignmentResponse,
+    AIConfigSummary,
+    TaskTypeAssignment,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class AIProviderService:
+    """Service for managing AI providers, models and task assignments"""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    # Providers
+    async def get_provider(self, provider_id: UUID) -> Optional[AIProviderModel]:
+        """Get a specific provider by ID"""
+        result = await self.db.execute(
+            select(AIProviderModel).where(AIProviderModel.id == provider_id)
+        )
+        return result.scalars().first()
+
+    async def get_providers(
+        self,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+        is_active: Optional[bool] = None,
+        include_models: bool = False,
+        scope: Optional[AIScope] = None,
+    ) -> List[AIProviderModel]:
+        """Get providers with optional filtering"""
+        query = select(AIProviderModel)
+
+        if scope:
+            query = query.where(AIProviderModel.scope == scope)
+            if scope == AIScope.TENANT and tenant_id:
+                query = query.where(AIProviderModel.tenant_id == tenant_id)
+            elif scope == AIScope.USER and user_id:
+                query = query.where(AIProviderModel.user_id == user_id)
+        else:
+            # Default: show what the user has access to (Personal + Org + System)
+            conditions = [AIProviderModel.scope == AIScope.SYSTEM]
+            if tenant_id:
+                conditions.append(
+                    (AIProviderModel.scope == AIScope.TENANT)
+                    & (AIProviderModel.tenant_id == tenant_id)
+                )
+            if user_id:
+                conditions.append(
+                    (AIProviderModel.scope == AIScope.USER)
+                    & (AIProviderModel.user_id == user_id)
+                )
+            query = query.where(or_(*conditions))
+
+        if is_active is not None:
+            query = query.where(AIProviderModel.is_active == is_active)
+
+        if include_models:
+            from sqlalchemy.orm import selectinload
+
+            query = query.options(selectinload(AIProviderModel.models))
+
+        query = query.order_by(AIProviderModel.name)
+        result = await self.db.execute(query)
+        return result.scalars().unique().all()
+
+    async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
+        """Create a new provider"""
+        provider = AIProviderModel(**provider_data.model_dump())
+        self.db.add(provider)
+        await self.db.commit()
+        await self.db.refresh(provider)
+        return provider
+
+    async def update_provider(
+        self, provider_id: UUID, provider_data: AIProviderUpdate
+    ) -> Optional[AIProviderModel]:
+        """Update a provider"""
+        update_dict = provider_data.model_dump(exclude_unset=True)
+
+        if not update_dict:
+            return await self.get_provider(provider_id)
+
+        await self.db.execute(
+            update(AIProviderModel)
+            .where(AIProviderModel.id == provider_id)
+            .values(**update_dict)
+        )
+        await self.db.commit()
+        return await self.get_provider(provider_id)
+
+    async def delete_provider(self, provider_id: UUID) -> bool:
+        """Delete a provider"""
+        await self.db.execute(
+            delete(AIProviderModel).where(AIProviderModel.id == provider_id)
+        )
+        await self.db.commit()
+        return True
+
+    async def fetch_external_models(self, provider_id: UUID) -> List[Dict[str, Any]]:
+        """Fetch available models from the provider's external API"""
+        provider = await self.get_provider(provider_id)
+        if not provider:
+            raise ValueError("Provider not found")
+
+        if provider.provider_type == "openai":
+            import httpx
+
+            headers = {"Authorization": f"Bearer {provider.api_key}"}
+            url = f"{provider.api_base.rstrip('/')}/models"
+
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(url, headers=headers, timeout=10.0)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # OpenAI returns a list of model objects in the 'data' field
+                    models = []
+                    for model in data.get("data", []):
+                        models.append(
+                            {
+                                "id": model.get("id"),
+                                "name": model.get("id"),
+                                "created": model.get("created"),
+                                "owned_by": model.get("owned_by"),
+                            }
+                        )
+
+                    # Sort models by name
+                    models.sort(key=lambda x: x["name"])
+                    return models
+                except Exception as e:
+                    logger.error(f"Failed to fetch models from {url}: {e}")
+                    raise RuntimeError(f"Failed to fetch external models: {str(e)}")
+
+        return []
+
+    # Models
+    async def get_model(self, model_id: UUID) -> Optional[AIModel]:
+        """Get a specific model by ID"""
+        result = await self.db.execute(select(AIModel).where(AIModel.id == model_id))
+        return result.scalars().first()
+
+    async def get_models(
+        self, provider_id: Optional[UUID] = None, is_active: Optional[bool] = None
+    ) -> List[AIModel]:
+        """Get models for a provider"""
+        query = select(AIModel)
+        if provider_id:
+            query = query.where(AIModel.provider_id == provider_id)
+        if is_active is not None:
+            query = query.where(AIModel.is_active == is_active)
+
+        query = query.order_by(AIModel.name)
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    async def create_model(self, model_data: AIModelCreate) -> AIModel:
+        """Create a new model"""
+        model = AIModel(**model_data.model_dump())
+        self.db.add(model)
+        await self.db.commit()
+        await self.db.refresh(model)
+        return model
+
+    async def update_model(
+        self, model_id: UUID, model_data: AIModelUpdate
+    ) -> Optional[AIModel]:
+        """Update a model"""
+        update_dict = model_data.model_dump(exclude_unset=True)
+        if not update_dict:
+            return await self.get_model(model_id)
+
+        await self.db.execute(
+            update(AIModel).where(AIModel.id == model_id).values(**update_dict)
+        )
+        await self.db.commit()
+        return await self.get_model(model_id)
+
+    async def delete_model(self, model_id: UUID) -> bool:
+        """Delete a model"""
+        await self.db.execute(delete(AIModel).where(AIModel.id == model_id))
+        await self.db.commit()
+        return True
+
+    # Task Assignments
+    async def get_task_assignment(
+        self, assignment_id: UUID
+    ) -> Optional[AITaskAssignment]:
+        """Get a specific task assignment"""
+        result = await self.db.execute(
+            select(AITaskAssignment).where(AITaskAssignment.id == assignment_id)
+        )
+        return result.scalars().first()
+
+    async def get_task_assignments(
+        self,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+        task_type: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        scope: Optional[AIScope] = None,
+    ) -> List[AITaskAssignment]:
+        """Get all task assignments with optional filtering"""
+        query = select(AITaskAssignment)
+
+        if scope:
+            query = query.where(AITaskAssignment.scope == scope)
+            if scope == AIScope.TENANT and tenant_id:
+                query = query.where(AITaskAssignment.tenant_id == tenant_id)
+            elif scope == AIScope.USER and user_id:
+                query = query.where(AITaskAssignment.user_id == user_id)
+        else:
+            conditions = [AITaskAssignment.scope == AIScope.SYSTEM]
+            if tenant_id:
+                conditions.append(
+                    (AITaskAssignment.scope == AIScope.TENANT)
+                    & (AITaskAssignment.tenant_id == tenant_id)
+                )
+            if user_id:
+                conditions.append(
+                    (AITaskAssignment.scope == AIScope.USER)
+                    & (AITaskAssignment.user_id == user_id)
+                )
+            query = query.where(or_(*conditions))
+
+        if task_type:
+            query = query.where(AITaskAssignment.task_type == task_type)
+        if is_active is not None:
+            query = query.where(AITaskAssignment.is_active == is_active)
+
+        query = query.order_by(
+            AITaskAssignment.scope.desc(), AITaskAssignment.priority.desc()
+        )
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    async def create_task_assignment(
+        self, assignment_data: AITaskAssignmentCreate
+    ) -> AITaskAssignment:
+        """Create a new task assignment"""
+        assignment = AITaskAssignment(**assignment_data.model_dump())
+        self.db.add(assignment)
+        await self.db.commit()
+        await self.db.refresh(assignment)
+        return assignment
+
+    async def update_task_assignment(
+        self, assignment_id: UUID, assignment_data: AITaskAssignmentUpdate
+    ) -> Optional[AITaskAssignment]:
+        """Update a task assignment"""
+        update_dict = assignment_data.model_dump(exclude_unset=True)
+        if not update_dict:
+            return await self.get_task_assignment(assignment_id)
+
+        await self.db.execute(
+            update(AITaskAssignment)
+            .where(AITaskAssignment.id == assignment_id)
+            .values(**update_dict)
+        )
+        await self.db.commit()
+        return await self.get_task_assignment(assignment_id)
+
+    async def delete_task_assignment(self, assignment_id: UUID) -> bool:
+        """Delete a task assignment"""
+        await self.db.execute(
+            delete(AITaskAssignment).where(AITaskAssignment.id == assignment_id)
+        )
+        await self.db.commit()
+        return True
+
+    async def get_active_assignment_for_task(
+        self,
+        task_type: str,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+    ) -> Optional[AITaskAssignment]:
+        """
+        Get active assignment for a task type with fallback.
+        Resolution Order:
+        1. Specific Task (User -> Tenant -> Global)
+        2. Default Task (User -> Tenant -> Global)
+        """
+        # 1. Try specific task
+        query = select(AITaskAssignment).where(
+            AITaskAssignment.task_type == task_type, AITaskAssignment.is_active == True
+        )
+
+        conditions = [AITaskAssignment.scope == AIScope.SYSTEM]
+        if tenant_id:
+            conditions.append(
+                (AITaskAssignment.scope == AIScope.TENANT)
+                & (AITaskAssignment.tenant_id == tenant_id)
+            )
+        if user_id:
+            conditions.append(
+                (AITaskAssignment.scope == AIScope.USER)
+                & (AITaskAssignment.user_id == user_id)
+            )
+
+        query = query.where(or_(*conditions))
+
+        # Order by specificity: User > Tenant > System
+        query = query.order_by(
+            AITaskAssignment.scope.desc(),  # USER (U) > TENANT (T) > SYSTEM (S) alphabetical desc works
+            AITaskAssignment.priority.desc(),
+        )
+
+        result = await self.db.execute(query)
+        assignment = result.scalars().first()
+
+        if assignment:
+            return assignment
+
+        # 2. Try default fallback
+        if task_type != "default":
+            return await self.get_active_assignment_for_task(
+                "default", tenant_id, user_id
+            )
+
+        return None
+
+    async def get_config_summary(
+        self,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+        scope: Optional[AIScope] = None,
+    ) -> AIConfigSummary:
+        """Get a complete summary of AI configuration for the UI"""
+        providers = await self.get_providers(
+            tenant_id=tenant_id, user_id=user_id, scope=scope
+        )
+        models_res = await self.db.execute(
+            select(AIModel).where(AIModel.is_active == True)
+        )
+        models = models_res.scalars().all()
+
+        # Filter models to only those belonging to the visible providers
+        provider_ids = {p.id for p in providers}
+        visible_models = [m for m in models if m.provider_id in provider_ids]
+
+        assignments = await self.get_task_assignments(
+            tenant_id=tenant_id, user_id=user_id, scope=scope
+        )
+
+        # Get task type assignments
+        task_types = [
+            "default",
+            "ocr",
+            "nlp",
+            "medication_interaction",
+            "anomaly_detection",
+            "fill_biomarker_form",
+            "fill_medication_form",
+            "magic_fill_examination",
+            "define_biomarker",
+            "define_medication",
+            "suggest_category_icon",
+            "generate_category_icon",
+            "chat",
+        ]
+        task_assignments = {}
+
+        for task_type in task_types:
+            assignment = await self.get_active_assignment_for_task(
+                task_type, tenant_id, user_id
+            )
+            if assignment:
+                provider = (
+                    await self.get_provider(assignment.provider_id)
+                    if assignment.provider_id
+                    else None
+                )
+                model = (
+                    await self.get_model(assignment.model_id)
+                    if assignment.model_id
+                    else None
+                )
+                task_assignments[task_type] = TaskTypeAssignment(
+                    task_type=task_type,
+                    provider=provider,
+                    model=model,
+                    assignment_id=assignment.id,
+                )
+
+        return AIConfigSummary(
+            providers=[AIProviderResponse.model_validate(p) for p in providers],
+            models=[AIModelResponse.model_validate(m) for m in visible_models],
+            task_assignments=[
+                AITaskAssignmentResponse.model_validate(a) for a in assignments
+            ],
+            default=task_assignments.get("default"),
+            ocr=task_assignments.get("ocr"),
+            nlp=task_assignments.get("nlp"),
+            medication_interaction=task_assignments.get("medication_interaction"),
+            anomaly_detection=task_assignments.get("anomaly_detection"),
+            fill_biomarker_form=task_assignments.get("fill_biomarker_form"),
+            fill_medication_form=task_assignments.get("fill_medication_form"),
+            magic_fill_examination=task_assignments.get("magic_fill_examination"),
+            define_biomarker=task_assignments.get("define_biomarker"),
+            define_medication=task_assignments.get("define_medication"),
+            suggest_category_icon=task_assignments.get("suggest_category_icon"),
+            generate_category_icon=task_assignments.get("generate_category_icon"),
+            chat=task_assignments.get("chat"),
+        )
+
+    async def _resolve_config(
+        self,
+        task_type: str,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+    ) -> Tuple[Optional[AIProviderModel], Optional[AIModel]]:
+        """Resolve the active provider and model for a task type"""
+        assignment = await self.get_active_assignment_for_task(
+            task_type, tenant_id, user_id
+        )
+
+        provider = None
+        model = None
+
+        if assignment:
+            if assignment.provider_id:
+                provider = await self.get_provider(assignment.provider_id)
+            if assignment.model_id:
+                model = await self.get_model(assignment.model_id)
+
+        return provider, model
+
+    async def get_llm(
+        self,
+        task_type: str,
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+    ) -> BaseChatModel:
+        """Get an initialized LangChain chat model for a specific task"""
+        assignment = await self.get_active_assignment_for_task(
+            task_type, tenant_id, user_id
+        )
+
+        provider = None
+        model = None
+
+        if assignment:
+            if assignment.provider_id:
+                provider = await self.get_provider(assignment.provider_id)
+            if assignment.model_id:
+                model = await self.get_model(assignment.model_id)
+
+            logger.info(
+                f"AI Resolution [{task_type}]: Using {assignment.scope} configuration. "
+                f"Provider: {provider.name if provider else 'None'}, "
+                f"Model: {model.model_name if model else 'Default'}"
+            )
+
+            if provider:
+                return ChatOpenAI(
+                    api_key=provider.api_key,
+                    base_url=provider.api_base or "https://api.openai.com/v1",
+                    model=model.model_name if model else "gpt-4o-mini",
+                    temperature=model.temperature if model else 0.7,
+                    max_tokens=model.max_tokens if model else 65536,
+                )
+
+        # Fallback to environment variables
+        logger.warning(
+            f"AI Resolution [{task_type}]: No DB assignment found. Falling back to ENV settings. "
+            f"Model: {settings.OPENAI_MODEL or 'gpt-4o-mini'}"
+        )
+        return ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
+            model=settings.OPENAI_MODEL or "gpt-4o-mini",
+            temperature=0.7,
+            max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
+        )
+
+    async def get_ocr_processor(
+        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
+    ):
+        """Get a configured OCR processor for the tenant/user"""
+        from app.processors.ocr import get_ocr_processor
+
+        assignment = await self.get_active_assignment_for_task(
+            "ocr", tenant_id, user_id
+        )
+
+        provider = None
+        model = None
+
+        if assignment:
+            if assignment.provider_id:
+                provider = await self.get_provider(assignment.provider_id)
+            if assignment.model_id:
+                model = await self.get_model(assignment.model_id)
+
+            logger.info(
+                f"AI Resolution [ocr]: Using {assignment.scope} configuration. "
+                f"Provider: {provider.name if provider else 'None'}, "
+                f"Model: {model.model_name if model else 'Default'}"
+            )
+
+            if provider:
+                llm = None
+                if provider.provider_type == "openai":
+                    llm = ChatOpenAI(
+                        api_key=provider.api_key,
+                        base_url=provider.api_base or "https://api.openai.com/v1",
+                        model=model.model_name if model else "gpt-4o",
+                        temperature=model.temperature if model else 0.0,
+                        max_tokens=model.max_tokens if model else 65536,
+                    )
+
+                return get_ocr_processor(
+                    provider=provider.provider_type,
+                    api_key=provider.api_key,
+                    api_base=provider.api_base,
+                    model=model.model_name if model else "gpt-4o",
+                    max_tokens=model.max_tokens if model else 65536,
+                    temperature=model.temperature if model else 0.0,
+                    llm=llm,
+                )
+
+        # Fallback to settings
+        logger.warning(
+            f"AI Resolution [ocr]: No DB assignment found. Falling back to ENV settings. Provider: {settings.OCR_PROVIDER}"
+        )
+        return get_ocr_processor(
+            provider=settings.OCR_PROVIDER,
+            api_key=settings.OPENAI_API_KEY
+            if settings.OCR_PROVIDER == "openai"
+            else None,
+        )
+
+    async def get_nlp_extractor(
+        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
+    ):
+        """Get a configured NLP extractor for the tenant/user"""
+        from app.processors.nlp import get_nlp_extractor
+
+        assignment = await self.get_active_assignment_for_task(
+            "nlp", tenant_id, user_id
+        )
+
+        provider = None
+        model = None
+
+        if assignment:
+            if assignment.provider_id:
+                provider = await self.get_provider(assignment.provider_id)
+            if assignment.model_id:
+                model = await self.get_model(assignment.model_id)
+
+            logger.info(
+                f"AI Resolution [nlp]: Using {assignment.scope} configuration. "
+                f"Provider: {provider.name if provider else 'None'}, "
+                f"Model: {model.model_name if model else 'Default'}"
+            )
+
+            if provider:
+                llm = None
+                if provider.provider_type == "openai":
+                    llm = ChatOpenAI(
+                        api_key=provider.api_key,
+                        base_url=provider.api_base or "https://api.openai.com/v1",
+                        model=model.model_name if model else "gpt-4o-mini",
+                        temperature=model.temperature if model else 0.7,
+                        max_tokens=model.max_tokens if model else 65536,
+                    )
+
+                return get_nlp_extractor(
+                    provider=provider.provider_type,
+                    api_key=provider.api_key,
+                    api_base=provider.api_base,
+                    model=model.model_name if model else "gpt-4o-mini",
+                    temperature=model.temperature if model else 0.7,
+                    llm=llm,
+                )
+
+        # Fallback to defaults
+        logger.warning(
+            "AI Resolution [nlp]: No DB assignment found. Falling back to standard SPACY extractor."
+        )
+        return get_nlp_extractor(provider="spacy")

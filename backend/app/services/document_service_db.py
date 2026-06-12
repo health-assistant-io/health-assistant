@@ -1,0 +1,493 @@
+from typing import Optional, List, Any, cast
+from uuid import uuid4, UUID
+import os
+from datetime import datetime
+from pathlib import Path
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.document_model import DocumentModel
+from app.core.config import settings
+from app.utils.image_utils import edit_image
+
+
+# Ensure upload directory exists and is writable
+def get_upload_dir():
+    # Try configured path
+    paths_to_try = [
+        Path(settings.UPLOAD_DIR),
+        Path(os.getcwd()) / "uploads",
+        Path("/tmp/health_assistant/uploads"),
+    ]
+
+    for path in paths_to_try:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            # Test writability
+            test_file = path / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            return path
+        except Exception:
+            continue
+
+    # Absolute fallback
+    fallback = Path("/tmp/health_assistant_uploads")
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+UPLOAD_DIR = get_upload_dir()
+
+
+async def upload_document(
+    file,
+    patient_id: Optional[str],
+    owner_id: str | UUID,
+    tenant_id: str | UUID,
+    db: AsyncSession,
+    examination_id: Optional[str] = None,
+    include_in_extraction: bool = False,
+) -> DocumentModel:
+    """Upload a document and save to database"""
+
+    # Generate unique filename
+    doc_id = uuid4()
+    filename = file.filename or "unknown"
+    file_extension = Path(filename).suffix if file.filename else ".bin"
+    safe_filename = f"{doc_id}{file_extension}"
+
+    tenant_dir = UPLOAD_DIR / str(tenant_id)
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = tenant_dir / safe_filename
+
+    # Save file to disk
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error(f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+
+    # Create database record
+    document = DocumentModel(
+        id=doc_id,
+        filename=file.filename or "unknown",
+        file_path=str(file_path),
+        owner_id=owner_id,
+        tenant_id=tenant_id,
+        patient_id=UUID(patient_id) if patient_id else None,
+        examination_id=UUID(examination_id) if examination_id else None,
+        include_in_extraction=include_in_extraction,
+        status="uploaded",
+        progress=0,
+        updated_at=datetime.now(),
+    )
+
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    return document
+
+
+async def get_document(document_id: str, db: AsyncSession) -> Optional[DocumentModel]:
+    """Get document by ID from database"""
+    result = await db.execute(
+        select(DocumentModel).where(DocumentModel.id == document_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def enrich_document_entities(doc_dict: dict, db: AsyncSession):
+    """Enrich document entities JSON with matched biomarker IDs from Observations table"""
+    from app.models.fhir.patient import Observation
+
+    if not doc_dict.get("id") or not doc_dict.get("entities"):
+        return doc_dict
+
+    # Fetch observations linked to this document
+    obs_result = await db.execute(
+        select(Observation).where(Observation.document_id == doc_dict["id"])
+    )
+    observations = obs_result.scalars().all()
+
+    if not observations:
+        return doc_dict
+
+    # Create map: name -> biomarker_id
+    obs_map = {
+        obs.code.get("text", "").lower(): str(obs.biomarker_id)
+        for obs in observations
+        if obs.biomarker_id
+    }
+
+    entities = doc_dict["entities"]
+    if isinstance(entities, dict):
+        # Known
+        known = entities.get("known_biomarkers", [])
+        if isinstance(known, list):
+            for b in known:
+                if isinstance(b, dict):
+                    b_id = obs_map.get(b.get("name", "").lower())
+                    if b_id:
+                        b["biomarker_id"] = b_id
+        # Unknown
+        unknown = entities.get("unknown_biomarkers", [])
+        if isinstance(unknown, list):
+            for b in unknown:
+                if isinstance(b, dict):
+                    b_id = obs_map.get(b.get("raw_name", "").lower())
+                    if b_id:
+                        b["biomarker_id"] = b_id
+
+    return doc_dict
+
+
+async def get_documents(
+    tenant_id: str,
+    owner_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Optional[AsyncSession] = None,
+) -> List[DocumentModel]:
+    """Get documents with optional filtering (hides originals if edited versions exist)"""
+    from uuid import UUID
+    from sqlalchemy import not_
+
+    # Convert tenant_id to UUID
+    tenant_uuid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+
+    if db is None:
+        return []
+
+    # Subquery to identify all parent_ids that have been edited
+    parent_ids_subquery = select(DocumentModel.parent_id).where(
+        DocumentModel.tenant_id == tenant_uuid,
+        DocumentModel.parent_id.isnot(None),
+    )
+
+    base_query = select(DocumentModel).where(
+        DocumentModel.tenant_id == tenant_uuid,
+        not_(DocumentModel.id.in_(parent_ids_subquery)),
+    )
+
+    if owner_id:
+        from uuid import UUID as UUIDType
+
+        owner_uuid = UUIDType(owner_id) if isinstance(owner_id, str) else owner_id
+        base_query = base_query.where(DocumentModel.owner_id == owner_uuid)
+
+    result = await db.execute(
+        base_query.order_by(DocumentModel.updated_at.desc()).limit(limit).offset(offset)
+    )
+
+    documents = list(result.scalars().all())
+    return documents
+
+
+async def update_document(
+    document_id: str, document_update: dict, db: AsyncSession
+) -> Optional[DocumentModel]:
+    """Update document properties"""
+    document = await get_document(document_id, db)
+    if not document:
+        return None
+
+    for key, value in document_update.items():
+        setattr(document, key, value)
+
+    await db.commit()
+    await db.refresh(document)
+    return document
+
+
+async def download_document(document: DocumentModel) -> str:
+    """Download document file"""
+    return str(document.file_path)
+
+
+async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
+    """Trigger document extraction (OCR)"""
+    document = await get_document(document_id, db)
+
+    if not document:
+        raise ValueError(f"Document {document_id} not found")
+
+    cast(Any, document).status = "processing"
+    cast(Any, document).progress = 10
+    cast(Any, document).error_message = None
+    await db.commit()
+
+    # Trigger Celery task (OCR only)
+    try:
+        from app.workers.tasks import ocr_document
+
+        cast(Any, ocr_document).apply_async(
+            args=[
+                str(document.id),
+                str(document.file_path),
+                str(document.tenant_id),
+                str(document.owner_id),
+            ]
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Could not trigger Celery task: {e}")
+
+    return f"ocr-{document_id}"
+
+
+async def trigger_full_examination_extraction(
+    examination_id: str, db: AsyncSession
+) -> str:
+    """Trigger OCR for all included documents in an examination, followed by LLM analysis"""
+    from app.models.examination_model import ExaminationModel
+    from app.models.document_model import DocumentModel
+
+    result = await db.execute(
+        select(ExaminationModel).where(ExaminationModel.id == examination_id)
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise ValueError(f"Examination {examination_id} not found")
+
+    # Get all included documents
+    doc_result = await db.execute(
+        select(DocumentModel).where(
+            DocumentModel.examination_id == UUID(examination_id),
+            DocumentModel.include_in_extraction == True,
+        )
+    )
+    docs = doc_result.scalars().all()
+
+    if not docs:
+        raise ValueError("No documents included in extraction for this examination")
+
+    # Mark examination as processing
+    exam.extraction_status = "processing"
+    exam.extraction_progress = 5
+    exam.error_message = None
+    await db.commit()
+
+    # Trigger OCR for all included docs
+    # This will naturally lead to cumulative_extraction being triggered as each doc finishes
+    for doc in docs:
+        await trigger_extraction(str(doc.id), db)
+
+    return f"full-extraction-{examination_id}"
+
+
+async def trigger_cumulative_extraction(examination_id: str, db: AsyncSession) -> str:
+    """Trigger cumulative extraction for an examination"""
+    from app.models.examination_model import ExaminationModel
+
+    result = await db.execute(
+        select(ExaminationModel).where(ExaminationModel.id == examination_id)
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise ValueError(f"Examination {examination_id} not found")
+
+    exam.extraction_status = "processing"
+    exam.extraction_progress = 10
+    exam.error_message = None
+    await db.commit()
+
+    try:
+        from app.workers.tasks import cumulative_extraction
+
+        # Use the owner of the first included document or similar as the user context
+        # In a multi-user exam, we assume the person triggering it wants their config used
+        # For simplicity, we use owner_id from the exam if it exists (not currently in model)
+        # So we'll fetch one of the docs' owner
+
+        doc_res = await db.execute(
+            select(DocumentModel.owner_id)
+            .where(DocumentModel.examination_id == UUID(examination_id))
+            .limit(1)
+        )
+        user_id = doc_res.scalar()
+
+        cast(Any, cumulative_extraction).apply_async(
+            args=[str(examination_id), str(user_id) if user_id else None]
+        )
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Could not trigger Cumulative task: {e}")
+
+    return f"cumulative-{examination_id}"
+
+
+async def update_document_status(
+    document_id: str,
+    status: str,
+    progress: int,
+    extracted_text: Optional[str] = None,
+    db: Optional[AsyncSession] = None,
+) -> None:
+    """Update document processing status"""
+    if db is None:
+        raise ValueError("Database session is required")
+
+    document = await get_document(document_id, db)
+
+    if document:
+        cast(Any, document).status = status
+        cast(Any, document).progress = progress
+        if extracted_text:
+            cast(Any, document).extracted_text = extracted_text
+        await db.commit()
+
+
+async def edit_document_service(
+    document_id: str,
+    edit_params: dict,
+    db: AsyncSession,
+) -> DocumentModel:
+    """Edit a document and save as a new version"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"edit_document_service called for {document_id} with params: {edit_params}"
+    )
+
+    original = await get_document(document_id, db)
+    if not original:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Only images are supported for now
+    file_extension = Path(original.filename).suffix.lower()
+    if file_extension not in [".jpg", ".jpeg", ".png", ".bmp"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Editing not supported for {file_extension} files. Only images (JPG, PNG, BMP) are currently supported.",
+        )
+
+    new_doc_id = uuid4()
+    safe_filename = f"{new_doc_id}{file_extension}"
+    tenant_dir = UPLOAD_DIR / str(original.tenant_id)
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    new_file_path = tenant_dir / safe_filename
+
+    # Prepare crop tuple
+    crop = None
+    if all(
+        edit_params.get(k) is not None
+        for k in ["crop_left", "crop_top", "crop_right", "crop_bottom"]
+    ):
+        crop = (
+            int(edit_params["crop_left"]),
+            int(edit_params["crop_top"]),
+            int(edit_params["crop_right"]),
+            int(edit_params["crop_bottom"]),
+        )
+        logger.info(f"Prepared crop tuple: {crop}")
+
+    # Perform edit
+    try:
+        edit_image(
+            str(original.file_path),
+            str(new_file_path),
+            crop=crop,
+            perspective_points=edit_params.get("perspective_points"),
+            brightness=float(edit_params.get("brightness", 1.0)),
+            contrast=float(edit_params.get("contrast", 1.0)),
+            sharpness=float(edit_params.get("sharpness", 1.0)),
+            rotation=int(edit_params.get("rotation", 0)),
+        )
+    except Exception as e:
+        logger.error(f"Failed to edit image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to edit image: {str(e)}")
+
+    # Create database record
+    new_document = DocumentModel(
+        id=new_doc_id,
+        filename=f"edited_{original.filename}",
+        file_path=str(new_file_path),
+        owner_id=original.owner_id,
+        tenant_id=original.tenant_id,
+        patient_id=original.patient_id,
+        examination_id=original.examination_id,
+        include_in_extraction=original.include_in_extraction,
+        status="uploaded",
+        progress=0,
+        parent_id=original.id,
+        is_edited=True,
+        updated_at=datetime.now(),
+    )
+
+    # Deactivate original in extraction if it was active
+    if original.include_in_extraction:
+        original.include_in_extraction = False
+
+    db.add(new_document)
+    await db.commit()
+    await db.refresh(new_document)
+
+    # Trigger OCR for new document if extraction is enabled
+    if new_document.include_in_extraction:
+        from app.services.document_service_db import trigger_extraction
+
+        await trigger_extraction(str(new_document.id), db)
+
+    logger.info(f"New edited document created: {new_document.id}")
+    return new_document
+
+
+async def delete_document(
+    document_id: str, db: AsyncSession, trigger_cumulative: bool = True
+) -> bool:
+    """Delete a document"""
+    document = await get_document(document_id, db)
+
+    if not document:
+        return False
+
+    # If this is an edited version, check if we should restore the parent's extraction status
+    if document.is_edited and document.parent_id:
+        parent = await get_document(str(document.parent_id), db)
+        if parent and document.include_in_extraction:
+            parent.include_in_extraction = True
+
+    file_path = Path(str(document.file_path))
+    if file_path.exists():
+        file_path.unlink()
+
+    examination_id = document.examination_id
+
+    # Also delete associated FHIR Observations if they were extracted
+    from sqlalchemy import text
+
+    try:
+        await db.execute(
+            text("DELETE FROM fhir_observations WHERE document_id = :doc_id"),
+            {"doc_id": str(document_id)},
+        )
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            f"Failed to clean up associated FHIR data: {e}"
+        )
+
+    await db.delete(document)
+    await db.commit()
+
+    # Re-trigger cumulative if it was part of an exam and requested
+    if examination_id and trigger_cumulative:
+        try:
+            await trigger_cumulative_extraction(str(examination_id), db)
+        except:
+            pass
+
+    return True

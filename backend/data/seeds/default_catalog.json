@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health-Assistant Standard Ontology",
+    "last_updated": "2026-06-11"
+  },
+  "units": [
+    { "symbol": "mg/dL", "name": "Milligrams per deciliter", "quantity_type": "MASS_CONCENTRATION" },
+    { "symbol": "mmol/L", "name": "Millimoles per liter", "quantity_type": "MOLAR_CONCENTRATION" },
+    { "symbol": "g/L", "name": "Grams per liter", "quantity_type": "MASS_CONCENTRATION" },
+    { "symbol": "10^9/L", "name": "Billion cells per liter", "quantity_type": "NUMBER_CONCENTRATION" },
+    { "symbol": "µmol/L", "name": "Micromoles per liter", "quantity_type": "MOLAR_CONCENTRATION" },
+    { "symbol": "mIU/L", "name": "Milli-international units per liter", "quantity_type": "OTHER" },
+    { "symbol": "%", "name": "Percentage", "quantity_type": "PERCENTAGE" }
+  ],
+  "biomarkers": [
+    {
+      "slug": "glucose-fasting",
+      "coding_system": "loinc",
+      "code": "2345-7",
+      "name": "Fasting Glucose",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mmol/L",
+      "aliases": ["Glucose", "Fasting Blood Sugar", "FBS", "Glu"],
+      "info": "Measures blood sugar levels after fasting."
+    },
+    {
+      "slug": "cholesterol-total",
+      "coding_system": "loinc",
+      "code": "2093-3",
+      "name": "Total Cholesterol",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mmol/L",
+      "aliases": ["Cholesterol", "Chol", "TC"]
+    },
+    {
+      "slug": "cholesterol-hdl",
+      "coding_system": "loinc",
+      "code": "2085-9",
+      "name": "HDL Cholesterol",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mmol/L",
+      "aliases": ["HDL", "HDL-C"]
+    },
+    {
+      "slug": "cholesterol-ldl",
+      "coding_system": "loinc",
+      "code": "2089-1",
+      "name": "LDL Cholesterol",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mmol/L",
+      "aliases": ["LDL", "LDL-C"]
+    },
+    {
+      "slug": "triglycerides",
+      "coding_system": "loinc",
+      "code": "2571-8",
+      "name": "Triglycerides",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mmol/L",
+      "aliases": ["TG", "Trig"]
+    },
+    {
+      "slug": "hemoglobin",
+      "coding_system": "loinc",
+      "code": "718-7",
+      "name": "Hemoglobin",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "g/L",
+      "aliases": ["Hb", "Hgb"]
+    },
+    {
+      "slug": "wbc",
+      "coding_system": "loinc",
+      "code": "6690-2",
+      "name": "White Blood Cells",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "10^9/L",
+      "aliases": ["WBC", "Leukocytes"]
+    },
+    {
+      "slug": "platelets",
+      "coding_system": "loinc",
+      "code": "778-3",
+      "name": "Platelets",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "10^9/L",
+      "aliases": ["PLT", "Thrombocytes"]
+    },
+    {
+      "slug": "creatinine",
+      "coding_system": "loinc",
+      "code": "2160-0",
+      "name": "Creatinine",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "µmol/L",
+      "aliases": ["Cr", "Creat"]
+    },
+    {
+      "slug": "tsh",
+      "coding_system": "loinc",
+      "code": "3016-3",
+      "name": "Thyroid Stimulating Hormone",
+      "category": "blood_laboratory",
+      "preferred_unit_symbol": "mIU/L",
+      "aliases": ["TSH"]
+    }
+  ]
+}

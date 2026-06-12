@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with TimescaleDB
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    container_name: health-assistant-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-health_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - health-assistant-network
+
+  # Redis for caching and task queue
+  redis:
+    image: redis:7-alpine
+    container_name: health-assistant-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - health-assistant-network
+
+  # Backend API
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: health-assistant-backend
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DEBUG=${DEBUG:-false}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - SECRET_KEY=${SECRET_KEY}
+      - OCR_PROVIDER=${OCR_PROVIDER:-openai}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM:-noreply@healthassistant.local}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ../backend:/app
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - health-assistant-network
+    command: sh -c "alembic upgrade head && python scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: health-assistant-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - health-assistant-network
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+
+  # Worker (Celery)
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.worker
+    container_name: health-assistant-worker
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - OCR_PROVIDER=${OCR_PROVIDER:-openai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - health-assistant-network
+    command: celery -A app.workers.celery_app worker --loglevel=info
+
+  # Flower (Celery monitoring)
+  flower:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.worker
+    container_name: health-assistant-flower
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - health-assistant-network
+    command: celery -A app.workers.celery_app flower --port=5555
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
+
+networks:
+  health-assistant-network:
+    driver: bridge
