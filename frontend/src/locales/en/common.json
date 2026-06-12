@@ -830,7 +830,7 @@
     },
     "input": {
       "placeholder": "Describe clinical symptoms or ask for data analysis...",
-      "disclaimer": "Clinical decision support. AI can make mistakes."
+      "disclaimer": "AI is not a medical advisor and can make mistakes. Always consult your doctor."
     },
     "history": {
       "title": "Session History"
