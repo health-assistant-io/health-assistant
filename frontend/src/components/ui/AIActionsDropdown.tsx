@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, MessageSquare, Send, LucideIcon, X } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { AIBadge } from './AIBadge';
 
 export interface AIAction {
   label: string;
@@ -108,10 +109,10 @@ export const AIActionsDropdown: React.FC<Props> = ({
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-4 py-2 border-b border-gray-50 dark:border-dark-border flex items-center justify-between text-indigo-600 dark:text-indigo-400">
+        <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{title}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">{title}</span>
+            <AIBadge taskType="chat" className="ml-1" />
           </div>
           <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full lg:hidden">
             <X className="w-3 h-3" />

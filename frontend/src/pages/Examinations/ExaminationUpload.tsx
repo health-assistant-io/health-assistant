@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { offlineService } from '../../services/offlineService';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { Check, X, FileText, RotateCcw, Sparkles, Plus, Info, Camera } from 'lucide-react';
+import { AIBadge } from '../../components/ui/AIBadge';
 import { AIMagicFillModal } from '../../components/ui/AIMagicFillModal';
 import { AIAssistButton } from '../../components/ui/AIAssistButton';
 import { DoctorSelector } from '../../components/ui/DoctorSelector';
@@ -437,7 +438,8 @@ function ExaminationUpload() {
             <div className="flex flex-col">
               <span className="text-sm font-bold text-gray-900 dark:text-dark-text flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-500" />
-                Smart Extraction
+                Smart Extraction AI
+                <AIBadge taskType="ocr" label="Extraction" showText={false} className="ml-2 bg-blue-100 dark:bg-blue-900/50" />
               </span>
               <span className="text-[10px] text-gray-500 dark:text-dark-muted">AI will auto-fill date, doctors, and notes from documents</span>
             </div>

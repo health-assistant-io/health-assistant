@@ -16,6 +16,7 @@ import { CitationButton } from '../ai/CitationButton';
 import { ChatInspector } from '../ai/ChatInspector';
 import { ChatHistoryOverlay } from '../ai/ChatHistoryOverlay';
 import { ChatLedgerOverlay } from '../ai/ChatLedgerOverlay';
+import { AIBadge } from '../ui/AIBadge';
 
 interface Props {
   isFullScreen?: boolean;
@@ -370,36 +371,41 @@ export const AIChatInterface: React.FC<Props> = ({
                 <div className={`p-1.5 md:p-2 rounded-lg md:rounded-xl ${isFullScreen ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-white/20 text-white'}`}>
                    <Sparkles className="w-4 h-4 md:w-5 md:h-5" />
                 </div>
-                <div className={isFullScreen ? 'hidden md:block' : ''}>
-                   <h2 className="text-xs md:text-sm font-black uppercase tracking-[0.2em]">{t('ai_chat.header.title')}</h2>
-                   {!isFullScreen && <p className="text-[8px] md:text-[10px] opacity-70 font-bold uppercase tracking-widest">{t('ai_chat.header.subtitle')}</p>}
-                   {isFullScreen && <p className="text-[8px] md:text-[10px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-widest">{t('ai_chat.header.subtitle')}</p>}
+                 <div className={isFullScreen ? 'hidden md:block' : ''}>
+                    <h2 className="text-xs md:text-sm font-black uppercase tracking-[0.2em]">
+                      {t('ai_chat.header.title')}
+                    </h2>
+                    {!isFullScreen && <p className="text-[8px] md:text-[10px] opacity-70 font-bold uppercase tracking-widest">{t('ai_chat.header.subtitle')}</p>}
+                    {isFullScreen && <p className="text-[8px] md:text-[10px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-widest">{t('ai_chat.header.subtitle')}</p>}
+                 </div>
+              </div>
+
+              {/* Tabs in Center for Full Screen */}
+              {isFullScreen && (
+                <div className="hidden sm:flex items-center bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl border border-gray-200 dark:border-dark-border mx-2 md:mx-4">
+                   {tabs.map(tab => (
+                      <button
+                       key={tab.id}
+                       onClick={() => setActiveTab(tab.id as any)}
+                       className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-1.5 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${
+                         activeTab === tab.id 
+                           ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' 
+                           : 'text-gray-500 dark:text-dark-muted hover:text-gray-700 dark:hover:text-dark-text hover:bg-white/50 dark:hover:bg-dark-surface'
+                       }`}
+                      >
+                         <tab.icon className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                         <span className="hidden md:inline">{tab.label}</span>
+                         <span className="md:hidden">{tab.label.substring(0, 3)}</span>
+                      </button>
+                   ))}
                 </div>
-             </div>
+              )}
 
-             {/* Tabs in Center for Full Screen */}
-             {isFullScreen && (
-               <div className="hidden sm:flex items-center bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl border border-gray-200 dark:border-dark-border mx-2 md:mx-4">
-                  {tabs.map(tab => (
-                     <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as any)}
-                      className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-1.5 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${
-                        activeTab === tab.id 
-                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' 
-                          : 'text-gray-500 dark:text-dark-muted hover:text-gray-700 dark:hover:text-dark-text hover:bg-white/50 dark:hover:bg-dark-surface'
-                      }`}
-                     >
-                        <tab.icon className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                        <span className="hidden md:inline">{tab.label}</span>
-                        <span className="md:hidden">{tab.label.substring(0, 3)}</span>
-                     </button>
-                  ))}
-               </div>
-             )}
-
-             <div className="flex items-center space-x-0.5 md:space-x-1">
-                 {isFullScreen && (
+              {/* Action Buttons & Badge */}
+              <div className="flex items-center space-x-0.5 md:space-x-1">
+                  <AIBadge taskType="chat" className="mr-2 md:mr-3" variant={isFullScreen ? 'default' : 'white'} />
+                  
+                  {isFullScreen && (
                    <button 
                      onClick={() => setIsHistoryOpen(!isHistoryOpen)}
                      className={`p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all ${
