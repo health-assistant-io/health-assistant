@@ -758,6 +758,18 @@
       }
     }
   },
+  "ai_labels": {
+    "ai_analysis": "AI Analysis",
+    "magic_fill_ai": "Magic Fill AI",
+    "smart_extraction_ai": "Smart Extraction AI"
+  },
+  "ai_disclaimer": {
+    "medical_warning_title": "Medical Disclaimer",
+    "medical_warning": "This content is AI-generated and does not constitute professional medical advice. AI can hallucinate or omit critical information. Always verify with a certified healthcare provider.",
+    "privacy_notice_title": "Privacy Notice",
+    "privacy_local": "This AI model runs locally. Your data does not leave your infrastructure.",
+    "privacy_cloud": "Data relevant to this context may be transmitted to and processed by 3rd-party LLM Cloud providers based on your system's AI configuration."
+  },
   "ai_chat": {
     "welcome_message": "Hello! I'm your medical data assistant. How can I help you today?",
     "tabs": {
