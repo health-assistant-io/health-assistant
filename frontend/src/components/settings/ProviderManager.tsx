@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AIProvider } from '../../api/aiConfig';
 import { Database, Settings, Trash2, Plus, X, Check, Search, Globe, Shield, User } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { SearchableDropdown } from '../ui/SearchableDropdown';
 
 interface ProviderManagerProps {
   onProviderSelected?: (provider: AIProvider) => void;
@@ -38,7 +39,133 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
     api_base: 'https://api.openai.com/v1',
     api_key: '',
     is_active: true,
+    is_local: false,
+    company_name: '',
+    company_website: '',
+    company_country: '',
   });
+
+  const COUNTRIES = [
+    { code: '', name: 'Select Country' },
+    { code: 'AF', name: 'Afghanistan', flag: '🇦🇫' },
+    { code: 'AL', name: 'Albania', flag: '🇦🇱' },
+    { code: 'DZ', name: 'Algeria', flag: '🇩🇿' },
+    { code: 'AD', name: 'Andorra', flag: '🇦🇩' },
+    { code: 'AO', name: 'Angola', flag: '🇦🇴' },
+    { code: 'AR', name: 'Argentina', flag: '🇦🇷' },
+    { code: 'AM', name: 'Armenia', flag: '🇦🇲' },
+    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+    { code: 'AT', name: 'Austria', flag: '🇦🇹' },
+    { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' },
+    { code: 'BS', name: 'Bahamas', flag: '🇧🇸' },
+    { code: 'BH', name: 'Bahrain', flag: '🇧🇭' },
+    { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+    { code: 'BE', name: 'Belgium', flag: '🇧🇪' },
+    { code: 'BZ', name: 'Belize', flag: '🇧🇿' },
+    { code: 'BJ', name: 'Benin', flag: '🇧🇯' },
+    { code: 'BT', name: 'Bhutan', flag: '🇧🇹' },
+    { code: 'BO', name: 'Bolivia', flag: '🇧🇴' },
+    { code: 'BA', name: 'Bosnia and Herzegovina', flag: '🇧🇦' },
+    { code: 'BW', name: 'Botswana', flag: '🇧🇼' },
+    { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+    { code: 'BG', name: 'Bulgaria', flag: '🇧🇬' },
+    { code: 'BF', name: 'Burkina Faso', flag: '🇧🇫' },
+    { code: 'KH', name: 'Cambodia', flag: '🇰🇭' },
+    { code: 'CM', name: 'Cameroon', flag: '🇨🇲' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+    { code: 'CL', name: 'Chile', flag: '🇨🇱' },
+    { code: 'CN', name: 'China', flag: '🇨🇳' },
+    { code: 'CO', name: 'Colombia', flag: '🇨🇴' },
+    { code: 'CR', name: 'Costa Rica', flag: '🇨🇷' },
+    { code: 'HR', name: 'Croatia', flag: '🇭🇷' },
+    { code: 'CU', name: 'Cuba', flag: '🇨🇺' },
+    { code: 'CY', name: 'Cyprus', flag: '🇨🇾' },
+    { code: 'CZ', name: 'Czech Republic', flag: '🇨🇿' },
+    { code: 'DK', name: 'Denmark', flag: '🇩🇰' },
+    { code: 'DO', name: 'Dominican Republic', flag: '🇩🇴' },
+    { code: 'EC', name: 'Ecuador', flag: '🇪🇨' },
+    { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+    { code: 'SV', name: 'El Salvador', flag: '🇸🇻' },
+    { code: 'EE', name: 'Estonia', flag: '🇪🇪' },
+    { code: 'ET', name: 'Ethiopia', flag: '🇪🇹' },
+    { code: 'FJ', name: 'Fiji', flag: '🇫🇯' },
+    { code: 'FI', name: 'Finland', flag: '🇫🇮' },
+    { code: 'FR', name: 'France', flag: '🇫🇷' },
+    { code: 'GE', name: 'Georgia', flag: '🇬🇪' },
+    { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+    { code: 'GH', name: 'Ghana', flag: '🇬🇭' },
+    { code: 'GR', name: 'Greece', flag: '🇬🇷' },
+    { code: 'GT', name: 'Guatemala', flag: '🇬🇹' },
+    { code: 'HN', name: 'Honduras', flag: '🇭🇳' },
+    { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+    { code: 'IS', name: 'Iceland', flag: '🇮🇸' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+    { code: 'IR', name: 'Iran', flag: '🇮🇷' },
+    { code: 'IQ', name: 'Iraq', flag: '🇮🇶' },
+    { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+    { code: 'IL', name: 'Israel', flag: '🇮🇱' },
+    { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+    { code: 'JM', name: 'Jamaica', flag: '🇯🇲' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+    { code: 'JO', name: 'Jordan', flag: '🇯🇴' },
+    { code: 'KZ', name: 'Kazakhstan', flag: '🇰🇿' },
+    { code: 'KE', name: 'Kenya', flag: '🇰🇪' },
+    { code: 'KR', name: 'Korea (South)', flag: '🇰🇷' },
+    { code: 'KW', name: 'Kuwait', flag: '🇰🇼' },
+    { code: 'LV', name: 'Latvia', flag: '🇱🇻' },
+    { code: 'LB', name: 'Lebanon', flag: '🇱🇧' },
+    { code: 'LY', name: 'Libya', flag: '🇱🇾' },
+    { code: 'LT', name: 'Lithuania', flag: '🇱🇹' },
+    { code: 'LU', name: 'Luxembourg', flag: '🇱🇺' },
+    { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
+    { code: 'MT', name: 'Malta', flag: '🇲🇹' },
+    { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+    { code: 'MC', name: 'Monaco', flag: '🇲🇨' },
+    { code: 'ME', name: 'Montenegro', flag: '🇲🇪' },
+    { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
+    { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
+    { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+    { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+    { code: 'NO', name: 'Norway', flag: '🇳🇴' },
+    { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
+    { code: 'PA', name: 'Panama', flag: '🇵🇦' },
+    { code: 'PY', name: 'Paraguay', flag: '🇵🇾' },
+    { code: 'PE', name: 'Peru', flag: '🇵🇪' },
+    { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+    { code: 'PL', name: 'Poland', flag: '🇵🇱' },
+    { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+    { code: 'QA', name: 'Qatar', flag: '🇶🇦' },
+    { code: 'RO', name: 'Romania', flag: '🇷🇴' },
+    { code: 'RU', name: 'Russia', flag: '🇷🇺' },
+    { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' },
+    { code: 'RS', name: 'Serbia', flag: '🇷🇸' },
+    { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+    { code: 'SK', name: 'Slovakia', flag: '🇸🇰' },
+    { code: 'SI', name: 'Slovenia', flag: '🇸🇮' },
+    { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+    { code: 'ES', name: 'Spain', flag: '🇪🇸' },
+    { code: 'SE', name: 'Sweden', flag: '🇸🇪' },
+    { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+    { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+    { code: 'TH', name: 'Thailand', flag: '🇹🇭' },
+    { code: 'TN', name: 'Tunisia', flag: '🇹🇳' },
+    { code: 'TR', name: 'Turkey', flag: '🇹🇷' },
+    { code: 'UA', name: 'Ukraine', flag: '🇺🇦' },
+    { code: 'AE', name: 'UAE', flag: '🇦🇪' },
+    { code: 'UK', name: 'United Kingdom', flag: '🇬🇧' },
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'UY', name: 'Uruguay', flag: '🇺🇾' },
+    { code: 'UZ', name: 'Uzbekistan', flag: '🇺🇿' },
+    { code: 'VE', name: 'Venezuela', flag: '🇻🇪' },
+    { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+  ];
+
+  const COUNTRY_OPTIONS = useMemo(() => COUNTRIES.filter(c => c.code !== '').map(c => ({
+    value: c.code,
+    label: c.name,
+    icon: c.flag
+  })), []);
 
   const handleCreate = async () => {
     try {
@@ -56,6 +183,10 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
         api_base: 'https://api.openai.com/v1',
         api_key: '',
         is_active: true,
+        is_local: false,
+        company_name: '',
+        company_website: '',
+        company_country: '',
       });
     } catch (err) {
       console.error('Failed to create provider:', err);
@@ -184,6 +315,55 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
               </label>
             </div>
           </div>
+          
+          {/* Transparency Fields for Create */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl">
+            <div className="md:col-span-2">
+               <h4 className="text-xs font-bold text-gray-900 dark:text-dark-text uppercase tracking-wider mb-2">Compliance & Transparency</h4>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Deployment Type</label>
+              <select
+                value={formData.is_local ? 'local' : 'cloud'}
+                onChange={(e) => setFormData({ ...formData, is_local: e.target.value === 'local' })}
+                className="w-full px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+              >
+                <option value="cloud">☁️ Cloud / Managed Service</option>
+                <option value="local">🏠 Local / On-Premise</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Company Name</label>
+              <input
+                type="text"
+                value={formData.company_name}
+                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                className="w-full px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                placeholder="e.g. OpenAI, Inc."
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Company Website</label>
+              <input
+                type="url"
+                value={formData.company_website}
+                onChange={(e) => setFormData({ ...formData, company_website: e.target.value })}
+                className="w-full px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                placeholder="https://openai.com"
+              />
+            </div>
+            <div className="space-y-1">
+              <SearchableDropdown
+                label="Jurisdiction / Country"
+                options={COUNTRY_OPTIONS}
+                value={formData.company_country}
+                onChange={(val) => setFormData({ ...formData, company_country: val })}
+                placeholder="Select Country"
+                searchPlaceholder="Search countries..."
+              />
+            </div>
+          </div>
+
           <div className="mt-6 flex justify-end space-x-3">
             <button
               onClick={() => setIsCreating(false)}
@@ -244,6 +424,11 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                       <h4 className="text-md font-bold text-gray-900 dark:text-dark-text">
                         {provider.name}
                       </h4>
+                      {provider.is_local ? (
+                        <span className="px-1.5 py-0.5 bg-green-50 dark:bg-green-900/30 text-green-600 text-[8px] font-black uppercase rounded">Local</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 text-[8px] font-black uppercase rounded">Cloud</span>
+                      )}
                       {/* Scope Badge */}
                       {!provider.user_id && !provider.tenant_id && (
                         <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-[8px] font-black uppercase tracking-tighter rounded">
@@ -311,7 +496,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                       <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Friendly Name</label>
                       <input
                         type="text"
-                        value={editData.name !== undefined ? editData.name : provider.name}
+                        value={editData.name ?? provider.name ?? ''}
                         onChange={(e) => handleEditChange('name', e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
                       />
@@ -320,7 +505,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                       <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Base URL</label>
                       <input
                         type="text"
-                        value={editData.api_base !== undefined ? editData.api_base : provider.api_base}
+                        value={editData.api_base ?? provider.api_base ?? ''}
                         onChange={(e) => handleEditChange('api_base', e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
                       />
@@ -329,7 +514,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                       <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Secret API Key</label>
                       <input
                         type="password"
-                        value={editData.api_key !== undefined ? editData.api_key : (provider.api_key || '')}
+                        value={editData.api_key ?? provider.api_key ?? ''}
                         onChange={(e) => handleEditChange('api_key', e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
                         placeholder="••••••••••••"
@@ -338,13 +523,55 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                     <div className="space-y-1">
                       <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Protocol Type</label>
                       <select
-                        value={editData.provider_type !== undefined ? editData.provider_type : provider.provider_type}
+                        value={editData.provider_type ?? provider.provider_type ?? 'openai'}
                         onChange={(e) => handleEditChange('provider_type', e.target.value)}
                         className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
                       >
                         <option value="openai">OpenAI</option>
                         <option value="tesseract">Tesseract</option>
                       </select>
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-dark-border mt-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Deployment Type</label>
+                        <select
+                          value={(editData.is_local ?? provider.is_local) ? 'local' : 'cloud'}
+                          onChange={(e) => handleEditChange('is_local', e.target.value === 'local')}
+                          className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
+                        >
+                          <option value="cloud">☁️ Cloud / Managed Service</option>
+                          <option value="local">🏠 Local / On-Premise</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Company Name</label>
+                        <input
+                          type="text"
+                          value={editData.company_name ?? provider.company_name ?? ''}
+                          onChange={(e) => handleEditChange('company_name', e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Company Website</label>
+                        <input
+                          type="url"
+                          value={editData.company_website ?? provider.company_website ?? ''}
+                          onChange={(e) => handleEditChange('company_website', e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <SearchableDropdown
+                          label="Country"
+                          options={COUNTRY_OPTIONS}
+                          value={editData.company_country !== undefined ? editData.company_country : (provider.company_country || '')}
+                          onChange={(val) => handleEditChange('company_country', val)}
+                          placeholder="Select Country"
+                          searchPlaceholder="Search countries..."
+                        />
+                      </div>
                     </div>
                   </div>
                   
