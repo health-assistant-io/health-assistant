@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Activity, Info, ShieldAlert, Globe, Server } from 'lucide-react';
 import { useActiveAITask } from '../../hooks/useActiveAITask';
 import { useTranslation } from 'react-i18next';
+import { getCountryFlag } from '../../utils/countryUtils';
 
 interface Props {
   className?: string;
@@ -61,14 +62,6 @@ export const AIBadge: React.FC<Props> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const getCountryFlag = (code?: string) => {
-    const flags: Record<string, string> = {
-      'US': '🇺🇸', 'FR': '🇫🇷', 'UK': '🇬🇧', 'DE': '🇩🇪', 'CA': '🇨🇦', 
-      'JP': '🇯🇵', 'CN': '🇨🇳', 'IL': '🇮🇱', 'AE': '🇦🇪'
-    };
-    return code ? flags[code] || code : '';
-  };
 
   const popover = isOpen ? createPortal(
     <div
