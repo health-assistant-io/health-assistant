@@ -134,6 +134,17 @@ const ExaminationDetail = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const analysisDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (analysisDropdownRef.current && !analysisDropdownRef.current.contains(event.target as Node)) {
+        setIsAnalysisDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
 
   const { getGroupedData, biomarkers: allExamBiomarkers } = useBiomarkers({ 
@@ -699,7 +710,7 @@ const ExaminationDetail = () => {
                       </button>
                     )}
                   </div>
-                  <div className="relative">
+                  <div className="relative" ref={analysisDropdownRef}>
                     <button 
                       onClick={() => setIsAnalysisDropdownOpen(!isAnalysisDropdownOpen)} 
                       disabled={uploading || (examination?.extraction_status && !['completed', 'failed'].includes(examination.extraction_status))} 
@@ -738,7 +749,6 @@ const ExaminationDetail = () => {
                         </div>
                       </div>
                     )}
-                    {isAnalysisDropdownOpen && <div className="fixed inset-0 z-[105]" onClick={() => setIsAnalysisDropdownOpen(false)} />}
                   </div>
                   <ExaminationAIActions examinationId={examinationId!} />
                 </>
