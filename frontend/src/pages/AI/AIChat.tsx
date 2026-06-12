@@ -6,6 +6,7 @@ import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { Sparkles, MessageSquare, BarChart2, History, Plus, Database, Minimize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { AIBadge } from '../../components/ui/AIBadge';
 
 const AIChatPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -53,6 +54,7 @@ const AIChatPage: React.FC = () => {
         }
         actions={
           <div className="flex items-center space-x-1 pl-4">
+            <AIBadge taskType="chat" className="mr-3" />
             <button 
               onClick={() => interfaceRef.current?.toggleHistory()}
               className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Send, X, Loader2 } from 'lucide-react';
 import { getAIAssistance } from '../../services/aiAssistanceService';
+import { AIBadge } from './AIBadge';
 
 interface Props {
   taskType: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination';
@@ -79,7 +80,7 @@ export const AIAssistButton: React.FC<Props> = ({
         title="Get AI Assistance"
       >
         <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">Magic Fill</span>}
+        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">Magic Fill AI</span>}
       </button>
     );
   }
@@ -93,6 +94,7 @@ export const AIAssistButton: React.FC<Props> = ({
             <span className="text-[10px] font-black uppercase tracking-widest">
               {taskType === 'define_biomarker' || taskType === 'define_medication' ? 'Definition Builder' : 'AI Assistant'}
             </span>
+            <AIBadge taskType={taskType} showText={false} className="ml-1" />
           </div>
           <button 
             type="button"
