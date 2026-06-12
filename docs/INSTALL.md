@@ -102,7 +102,7 @@ curl http://localhost:8000/health
 # Expected: {"status":"healthy","database":"connected","redis":"connected"}
 
 curl http://localhost:8000/
-# Expected: {"name":"Health Assistant","version":"0.1.2","docs":"/docs"}
+# Expected: {"name":"Health Assistant","version":"0.1.3","docs":"/docs"}
 ```
 
 ### Test Frontend
