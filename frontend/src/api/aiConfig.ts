@@ -168,6 +168,12 @@ export interface AIConfigSummary {
     model?: AIModel;
     assignment_id?: string;
   };
+  workflows?: Record<string, {
+    task_type: string;
+    provider?: AIProvider;
+    model?: AIModel;
+    assignment_id?: string;
+  }[]>;
 }
 
 // Provider endpoints

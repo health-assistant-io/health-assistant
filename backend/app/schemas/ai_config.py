@@ -245,5 +245,6 @@ class AIConfigSummary(BaseModel):
     suggest_category_icon: Optional[TaskTypeAssignment]
     generate_category_icon: Optional[TaskTypeAssignment]
     chat: Optional[TaskTypeAssignment]
+    workflows: Optional[Dict[str, List[TaskTypeAssignment]]] = None
 
     model_config = ConfigDict(from_attributes=True)

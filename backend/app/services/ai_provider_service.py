@@ -407,6 +407,18 @@ class AIProviderService:
                     assignment_id=assignment.id,
                 )
 
+        # Define abstract workflows for the frontend
+        workflows = {
+            "full_reconstruction": [ta for ta in [task_assignments.get("ocr"), task_assignments.get("nlp")] if ta],
+            "fast_extraction": [ta for ta in [task_assignments.get("nlp")] if ta],
+            "smart_extraction_upload": [ta for ta in [task_assignments.get("ocr")] if ta],
+            "magic_fill": [ta for ta in [task_assignments.get("magic_fill_examination")] if ta],
+            "clinical_chat": [ta for ta in [task_assignments.get("chat")] if ta],
+            "medication_audit": [ta for ta in [task_assignments.get("medication_interaction")] if ta],
+            "biomarker_definition": [ta for ta in [task_assignments.get("define_biomarker")] if ta],
+            "medication_definition": [ta for ta in [task_assignments.get("define_medication")] if ta],
+        }
+
         return AIConfigSummary(
             providers=[AIProviderResponse.model_validate(p) for p in providers],
             models=[AIModelResponse.model_validate(m) for m in visible_models],
@@ -426,6 +438,7 @@ class AIProviderService:
             suggest_category_icon=task_assignments.get("suggest_category_icon"),
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
+            workflows=workflows,
         )
 
     async def _resolve_config(
