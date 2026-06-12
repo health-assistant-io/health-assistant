@@ -26,6 +26,10 @@ class AIProviderCreate(BaseModel):
     settings: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Provider-specific settings"
     )
+    is_local: bool = Field(default=False, description="Whether the provider is run locally")
+    company_name: Optional[str] = Field(None, max_length=200, description="Company Name")
+    company_website: Optional[str] = Field(None, max_length=500, description="Company Website")
+    company_country: Optional[str] = Field(None, max_length=100, description="Company Country")
     tenant_id: Optional[UUID] = Field(
         None, description="Tenant ID (nullable for global providers)"
     )
@@ -45,6 +49,10 @@ class AIProviderUpdate(BaseModel):
     api_key: Optional[str] = Field(None, max_length=500)
     is_active: Optional[bool] = Field(None)
     settings: Optional[Dict[str, Any]] = Field(None)
+    is_local: Optional[bool] = Field(None)
+    company_name: Optional[str] = Field(None, max_length=200)
+    company_website: Optional[str] = Field(None, max_length=500)
+    company_country: Optional[str] = Field(None, max_length=100)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,6 +68,10 @@ class AIProviderResponse(BaseModel):
     api_key: Optional[str]
     is_active: bool
     settings: Optional[Dict[str, Any]]
+    is_local: bool = False
+    company_name: Optional[str] = None
+    company_website: Optional[str] = None
+    company_country: Optional[str] = None
     tenant_id: Optional[UUID]
     user_id: Optional[UUID]
     created_at: Optional[datetime]
@@ -82,6 +94,7 @@ class AIModelCreate(BaseModel):
     temperature: float = Field(
         default=0.7, ge=0.0, le=2.0, description="Temperature setting"
     )
+    is_local: Optional[bool] = Field(None, description="Override provider's is_local setting")
     settings: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Model-specific settings"
     )
@@ -98,6 +111,7 @@ class AIModelUpdate(BaseModel):
     is_active: Optional[bool] = Field(None)
     max_tokens: Optional[int] = Field(None, ge=1)
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    is_local: Optional[bool] = Field(None)
     settings: Optional[Dict[str, Any]] = Field(None)
 
     model_config = ConfigDict(from_attributes=True)
@@ -115,6 +129,7 @@ class AIModelResponse(BaseModel):
     is_active: bool
     max_tokens: Optional[int] = 65536
     temperature: Optional[float] = 0.7
+    is_local: Optional[bool] = None
     settings: Optional[Dict[str, Any]]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
@@ -188,6 +203,10 @@ class AIProviderWithModelsResponse(BaseModel):
     api_key: Optional[str]
     is_active: bool
     settings: Optional[Dict[str, Any]]
+    is_local: bool = False
+    company_name: Optional[str] = None
+    company_website: Optional[str] = None
+    company_country: Optional[str] = None
     tenant_id: Optional[UUID]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
@@ -203,6 +222,8 @@ class TaskTypeAssignment(BaseModel):
     provider: Optional[AIProviderResponse]
     model: Optional[AIModelResponse]
     assignment_id: Optional[UUID]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AIConfigSummary(BaseModel):

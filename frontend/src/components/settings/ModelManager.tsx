@@ -30,6 +30,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
     max_tokens: 65536,
     temperature: 0.7,
     is_active: true,
+    is_local: false,
   });
 
   // External models state
@@ -133,6 +134,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
         max_tokens: 65536,
         temperature: 0.7,
         is_active: true,
+        is_local: false,
       });
     } catch (err) {
       console.error('Failed to create model:', err);
@@ -401,6 +403,20 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
               </div>
             </div>
             
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1 flex items-center">
+                Deployment Type
+              </label>
+              <select
+                value={formData.is_local ? 'local' : 'cloud'}
+                onChange={(e) => setFormData({ ...formData, is_local: e.target.value === 'local' })}
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm shadow-inner outline-none focus:ring-2 focus:ring-blue-500/30 dark:text-dark-text transition-all"
+              >
+                <option value="cloud">☁️ Cloud Override</option>
+                <option value="local">🏠 Local Override</option>
+              </select>
+            </div>
+
             <div className="flex items-center space-x-6 md:col-span-2 pt-2 ml-1">
               <label className="flex items-center cursor-pointer group">
                 <input
@@ -489,6 +505,12 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                       <span className="font-medium">{model.max_tokens?.toLocaleString() || '65,536'} context</span>
                       <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
                       <span className="font-medium">Temp: {model.temperature}</span>
+                      <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
+                      {model.is_local ? (
+                        <span className="px-1.5 py-0.5 bg-green-50 dark:bg-green-900/30 text-green-600 text-[8px] font-black uppercase rounded">Local Override</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 text-[8px] font-black uppercase rounded">Cloud Override</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -524,7 +546,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                       <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1">Display Name</label>
                       <input
                         type="text"
-                        value={editData.name ?? model.name}
+                        value={editData.name ?? model.name ?? ''}
                         onChange={(e) => handleEditChange('name', e.target.value)}
                         className="w-full px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm text-gray-900 dark:text-dark-text outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm"
                       />
@@ -535,9 +557,9 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                       <div className="relative">
                         <input
                           type="text"
-                          value={editData.model_name ?? model.model_name}
+                          value={editData.model_name ?? model.model_name ?? ''}
                           onChange={(e) => handleEditChange('model_name', e.target.value)}
-                          className={`w-full px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm text-gray-900 dark:text-dark-text outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm ${isOpenAI ? 'pr-12' : ''}`}
+                          className={`w-full px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm text-gray-900 dark:text-dark-text outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm \${isOpenAI ? 'pr-12' : ''}`}
                         />
                         {isOpenAI && (
                           <button 
@@ -620,6 +642,20 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                         onChange={(e) => handleEditChange('temperature', parseFloat(e.target.value))}
                         className="w-full h-1.5 bg-gray-200 dark:bg-dark-border rounded-lg appearance-none cursor-pointer accent-blue-600 mt-3"
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1 flex justify-between">
+                        <span>Deployment Override</span>
+                      </label>
+                      <select
+                        value={(editData.is_local !== undefined ? editData.is_local : model.is_local) ? 'local' : 'cloud'}
+                        onChange={(e) => handleEditChange('is_local', e.target.value === 'local')}
+                        className="w-full px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm dark:text-dark-text"
+                      >
+                        <option value="cloud">☁️ Cloud</option>
+                        <option value="local">🏠 Local</option>
+                      </select>
                     </div>
                   </div>
                   

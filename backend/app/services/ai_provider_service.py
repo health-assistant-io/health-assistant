@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from uuid import UUID
-from sqlalchemy import select, update, delete, or_
+from sqlalchemy import select, update, delete, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
@@ -355,14 +355,13 @@ class AIProviderService:
         providers = await self.get_providers(
             tenant_id=tenant_id, user_id=user_id, scope=scope
         )
-        models_res = await self.db.execute(
-            select(AIModel).where(AIModel.is_active == True)
-        )
-        models = models_res.scalars().all()
-
-        # Filter models to only those belonging to the visible providers
+        
+        # Load models for all visible providers
         provider_ids = {p.id for p in providers}
-        visible_models = [m for m in models if m.provider_id in provider_ids]
+        models_res = await self.db.execute(
+            select(AIModel).where(AIModel.provider_id.in_(list(provider_ids)) if provider_ids else text("FALSE"))
+        )
+        visible_models = models_res.scalars().all()
 
         assignments = await self.get_task_assignments(
             tenant_id=tenant_id, user_id=user_id, scope=scope
@@ -403,8 +402,8 @@ class AIProviderService:
                 )
                 task_assignments[task_type] = TaskTypeAssignment(
                     task_type=task_type,
-                    provider=provider,
-                    model=model,
+                    provider=AIProviderResponse.model_validate(provider) if provider else None,
+                    model=AIModelResponse.model_validate(model) if model else None,
                     assignment_id=assignment.id,
                 )
 

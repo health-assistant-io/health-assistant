@@ -37,6 +37,12 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     is_active = Column(Boolean, default=True, index=True)
     settings = Column(JSONB, nullable=True, default=dict)
 
+    # Provider Transparency Info
+    is_local = Column(Boolean, default=False, server_default=text('false'), nullable=False)
+    company_name = Column(String(200), nullable=True)
+    company_website = Column(String(500), nullable=True)
+    company_country = Column(String(100), nullable=True)
+
     # Relationship to models
     models = relationship(
         "AIModel", back_populates="provider", cascade="all, delete-orphan"
@@ -63,6 +69,10 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
             "api_key": self.api_key,
             "is_active": self.is_active,
             "settings": self.settings,
+            "is_local": self.is_local,
+            "company_name": self.company_name,
+            "company_website": self.company_website,
+            "company_country": self.company_country,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "user_id": str(self.user_id) if self.user_id else None,
             "created_at": str(self.created_at) if self.created_at else None,
@@ -87,6 +97,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
     temperature = Column(Float, default=0.7)
+    is_local = Column(Boolean, nullable=True) # Override provider's is_local
     settings = Column(JSONB, nullable=True, default=dict)
 
     # Relationship to provider
@@ -104,6 +115,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
             "is_active": self.is_active,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "is_local": self.is_local,
             "settings": self.settings,
             "created_at": str(self.created_at) if self.created_at else None,
             "updated_at": str(self.updated_at) if self.updated_at else None,
