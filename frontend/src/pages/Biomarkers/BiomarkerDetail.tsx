@@ -517,7 +517,7 @@ const BiomarkerDetail: React.FC = () => {
                             <td className="px-8 py-5 whitespace-nowrap text-right text-sm font-medium">
                               {t.source_type === 'integration' && (
                                 <Link 
-                                  to={`/settings/integrations/${t.source_name}`} 
+                                  to={`/settings/integrations/${t.source_id || t.source_name}`} 
                                   className="inline-flex items-center justify-center p-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-xl transition-colors"
                                   title="View Integration"
                                 >

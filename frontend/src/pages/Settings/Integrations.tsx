@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { integrationService, IntegrationManifest, ActiveIntegration } from '../../services/integrationService';
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Plus, Settings, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, Plus, Settings, RefreshCw, FileText } from 'lucide-react';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
+import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
 import { Link } from 'react-router-dom';
@@ -13,6 +14,7 @@ const Integrations: React.FC = () => {
   const [active, setActive] = useState<ActiveIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  const [docsDomain, setDocsDomain] = useState<string | null>(null);
 
   const loadData = async () => {
     if (!currentPatient) return;
@@ -36,12 +38,12 @@ const Integrations: React.FC = () => {
     loadData();
   }, [currentPatient]);
 
-  const handleRemove = async (domain: string) => {
+  const handleRemove = async (integrationId: string, domain: string) => {
     if (!currentPatient) return;
-    if (!window.confirm(`Are you sure you want to remove the ${domain} integration?`)) return;
+    if (!window.confirm(`Are you sure you want to remove this ${domain} integration instance?`)) return;
     
     try {
-      await integrationService.removeIntegration(domain, currentPatient.id);
+      await integrationService.removeIntegration(integrationId, currentPatient.id);
       toast.success("Integration removed");
       loadData();
     } catch (error: any) {
@@ -91,8 +93,8 @@ const Integrations: React.FC = () => {
                       <XCircle className="h-6 w-6 text-gray-500 mr-3" />
                     )}
                     <div>
-                      <Link to={`/settings/integrations/${integration.domain}`} className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
-                        {manifest?.name || integration.domain}
+                      <Link to={`/settings/integrations/${integration.id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
+                        {integration.instance_name || manifest?.name || integration.domain}
                       </Link>
                       <p className="text-sm text-gray-500">
                         {integration.status === 'ERROR' || integration.status === 'error' ? (
@@ -105,19 +107,13 @@ const Integrations: React.FC = () => {
                   </div>
                   <div className="flex space-x-2">
                     <Link
-                      to={`/settings/integrations/${integration.domain}`}
+                      to={`/settings/integrations/${integration.id}`}
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
                     >
                       <Settings className="h-4 w-4 mr-1"/> Details
                     </Link>
                     <button 
-                      onClick={() => setSelectedDomain(integration.domain)}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-                    >
-                      <Settings className="h-4 w-4 mr-1"/> Configure
-                    </button>
-                    <button 
-                      onClick={() => handleRemove(integration.domain)}
+                      onClick={() => handleRemove(integration.id, integration.domain)}
                       className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none"
                     >
                       Remove
@@ -133,21 +129,34 @@ const Integrations: React.FC = () => {
       {/* Available Integrations */}
       <h2 className="text-xl font-bold text-gray-900 mb-4">Available to Connect</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {available.filter(a => !active.some(act => act.domain === a.domain)).map((integration) => (
+        {available.map((integration) => (
           <div key={integration.domain} className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900">{integration.name}</p>
               <p className="text-sm text-gray-500 truncate">Version {integration.version}</p>
             </div>
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedDomain(integration.domain);
-              }}
-              className="inline-flex items-center p-2 border border-transparent rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none z-10 cursor-pointer"
-            >
-              <Plus className="h-5 w-5" aria-hidden="true" />
-            </button>
+            <div className="flex space-x-2 z-10">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDocsDomain(integration.domain);
+                }}
+                className="inline-flex items-center p-2 border border-gray-300 rounded-full shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none cursor-pointer"
+                title="Documentation"
+              >
+                <FileText className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedDomain(integration.domain);
+                }}
+                className="inline-flex items-center p-2 border border-transparent rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none cursor-pointer"
+                title="Connect"
+              >
+                <Plus className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -160,6 +169,13 @@ const Integrations: React.FC = () => {
             setSelectedDomain(null);
             loadData();
           }} 
+        />
+      )}
+
+      {docsDomain && (
+        <IntegrationDocsModal
+          domain={docsDomain}
+          onClose={() => setDocsDomain(null)}
         />
       )}
     </div>

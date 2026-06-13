@@ -1,33 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { integrationService, CustomAction } from '../../services/integrationService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
+import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
+import { DebugConsole } from '../../components/integrations/DebugConsole';
 
 const IntegrationDetail: React.FC = () => {
-  const { domain } = useParams<{ domain: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentPatient } = usePatientStore();
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
 
+  type SortColumn = 'date' | 'sync_time' | 'metric' | 'value';
+  type SortDirection = 'asc' | 'desc';
+  const [sortColumn, setSortColumn] = useState<SortColumn>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
   useEffect(() => {
-    if (domain && currentPatient) {
+    if (id && currentPatient) {
       loadDetails();
     }
-  }, [domain, currentPatient]);
+  }, [id, currentPatient]);
 
   const loadDetails = async () => {
-    if (!currentPatient || !domain) return;
+    if (!currentPatient || !id) return;
     setLoading(true);
     try {
-      const data = await integrationService.getDetails(domain, currentPatient.id);
+      const data = await integrationService.getDetails(id, currentPatient.id);
       setDetails(data);
     } catch (error) {
       console.error("Failed to load integration details", error);
@@ -38,11 +46,50 @@ const IntegrationDetail: React.FC = () => {
     }
   };
 
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
+  const sortedData = useMemo(() => {
+    if (!details?.recent_data) return [];
+    return [...details.recent_data].sort((a, b) => {
+      let aVal = a[sortColumn];
+      let bVal = b[sortColumn];
+
+      if (sortColumn === 'date' || sortColumn === 'sync_time') {
+        if (!aVal) return sortDirection === 'asc' ? 1 : -1;
+        if (!bVal) return sortDirection === 'asc' ? -1 : 1;
+        return sortDirection === 'asc'
+          ? new Date(aVal).getTime() - new Date(bVal).getTime()
+          : new Date(bVal).getTime() - new Date(aVal).getTime();
+      }
+
+      if (sortColumn === 'value') {
+        const numA = parseFloat(aVal);
+        const numB = parseFloat(bVal);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+      }
+
+      const strA = String(aVal || '').toLowerCase();
+      const strB = String(bVal || '').toLowerCase();
+      if (strA < strB) return sortDirection === 'asc' ? -1 : 1;
+      if (strA > strB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [details?.recent_data, sortColumn, sortDirection]);
+
   const handleSync = async () => {
-    if (!currentPatient || !domain) return;
+    if (!currentPatient || !id) return;
     setSyncing(true);
     try {
-      await integrationService.syncIntegration(domain, currentPatient.id);
+      await integrationService.syncIntegration(id, currentPatient.id);
       toast.success("Sync completed");
       await loadDetails();
     } catch (error) {
@@ -53,12 +100,24 @@ const IntegrationDetail: React.FC = () => {
     }
   };
 
+  const handleToggleDebug = async () => {
+    if (!currentPatient || !id) return;
+    try {
+      const res = await integrationService.toggleDebugMode(id, currentPatient.id);
+      toast.success(res.message);
+      await loadDetails();
+    } catch (error) {
+      console.error("Toggle debug failed", error);
+      toast.error("Failed to toggle debug mode");
+    }
+  };
+
   const handleRemove = async () => {
-    if (!currentPatient || !domain) return;
-    if (!confirm("Are you sure you want to remove this integration? Existing data will not be deleted, but no new data will sync.")) return;
+    if (!currentPatient || !id) return;
+    if (!confirm("Are you sure you want to remove this integration instance? Existing data will not be deleted, but no new data will sync.")) return;
     
     try {
-      await integrationService.removeIntegration(domain, currentPatient.id);
+      await integrationService.removeIntegration(id, currentPatient.id);
       toast.success("Integration removed");
       navigate('/settings/integrations');
     } catch (error) {
@@ -68,10 +127,10 @@ const IntegrationDetail: React.FC = () => {
   };
 
   const handleCustomAction = async (action: CustomAction) => {
-    if (!currentPatient || !domain) return;
+    if (!currentPatient || !id) return;
     try {
       toast.info(`Executing ${action.label}...`);
-      const response = await integrationService.executeAction(domain, currentPatient.id, action.id);
+      const response = await integrationService.executeAction(id, currentPatient.id, action.id);
       toast.success(response.message || "Action completed successfully");
       await loadDetails();
     } catch (error: any) {
@@ -90,6 +149,11 @@ const IntegrationDetail: React.FC = () => {
   const isConnected = details.status === 'active' || details.status === 'ACTIVE';
   const isError = details.status === 'error' || details.status === 'ERROR';
 
+  const renderSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 group-hover:opacity-100" />;
+    return sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-blue-500" /> : <ArrowDown className="w-3 h-3 ml-1 text-blue-500" />;
+  };
+
   return (
     <div className="max-w-5xl mx-auto pb-20">
       <div className="mb-6 flex items-center justify-between">
@@ -100,6 +164,24 @@ const IntegrationDetail: React.FC = () => {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to Integrations
         </button>
         <div className="flex space-x-3">
+          <button 
+            onClick={handleToggleDebug}
+            className={`flex items-center px-4 py-2 rounded-xl font-bold text-sm transition-colors border ${
+              details?.is_debug_enabled 
+                ? 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800' 
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-dark-surface dark:text-dark-text dark:border-dark-border dark:hover:bg-dark-bg'
+            }`}
+          >
+            <Bug className="w-4 h-4 mr-2" />
+            {details?.is_debug_enabled ? 'Debug ON' : 'Debug OFF'}
+          </button>
+          <button 
+            onClick={() => setShowDocs(true)}
+            className="flex items-center px-4 py-2 bg-gray-50 text-gray-700 dark:bg-dark-bg dark:text-dark-text rounded-xl font-bold text-sm hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors border border-gray-200 dark:border-dark-border"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Documentation
+          </button>
           <button 
             onClick={handleSync}
             disabled={syncing || (!isConnected && !isError)}
@@ -125,7 +207,9 @@ const IntegrationDetail: React.FC = () => {
               <Layers className="w-8 h-8 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-900 dark:text-dark-text capitalize">{details.domain.replace('_', ' ')}</h1>
+              <h1 className="text-2xl font-black text-gray-900 dark:text-dark-text capitalize">
+                {details.instance_name || details.domain.replace('_', ' ')}
+              </h1>
               <div className="flex items-center mt-1">
                 {isConnected ? (
                   <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
@@ -229,6 +313,83 @@ const IntegrationDetail: React.FC = () => {
               <p className="text-sm text-gray-400">No specific configuration.</p>
             )}
           </div>
+          
+          {details.is_debug_enabled && (
+            <DebugConsole integrationId={id!} patientId={currentPatient!.id} />
+          )}
+
+          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+            <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+              <Activity className="w-5 h-5 mr-2 text-green-500" /> Recent Measurements
+            </h3>
+            {details.recent_data && details.recent_data.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
+                  <thead>
+                    <tr>
+                      <th 
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
+                        onClick={() => handleSort('date')}
+                      >
+                        <div className="flex items-center">Recorded Time {renderSortIcon('date')}</div>
+                      </th>
+                      <th 
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
+                        onClick={() => handleSort('sync_time')}
+                      >
+                        <div className="flex items-center">Synced Time {renderSortIcon('sync_time')}</div>
+                      </th>
+                      <th 
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
+                        onClick={() => handleSort('metric')}
+                      >
+                        <div className="flex items-center">Metric {renderSortIcon('metric')}</div>
+                      </th>
+                      <th 
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
+                        onClick={() => handleSort('value')}
+                      >
+                        <div className="flex items-center">Value {renderSortIcon('value')}</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                    {sortedData.map((item: any) => (
+                      <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-dark-muted">
+                          {new Date(item.date).toLocaleString(undefined, {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                          })}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400 dark:text-dark-muted italic">
+                          {item.sync_time ? new Date(item.sync_time).toLocaleString(undefined, {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                          }) : 'Unknown'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
+                          {item.slug ? (
+                            <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
+                              {item.metric}
+                            </Link>
+                          ) : (
+                            item.metric
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-dark-text">
+                          <span className="font-black text-blue-600 dark:text-blue-400">{item.value}</span>
+                          <span className="ml-1 text-xs text-gray-500 dark:text-dark-muted font-bold">{item.unit}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
+                <p className="text-sm font-medium text-gray-400">No recent data found.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Col: Sync History */}
@@ -270,15 +431,23 @@ const IntegrationDetail: React.FC = () => {
         </div>
       </div>
 
-      {isEditingConfig && domain && (
+      {isEditingConfig && details?.domain && (
         <ConfigFlowModal
-          domain={domain}
+          domain={details.domain}
+          integrationId={id}
           initialData={details.user_config || {}}
           onClose={() => setIsEditingConfig(false)}
           onSuccess={() => {
             setIsEditingConfig(false);
             loadDetails();
           }}
+        />
+      )}
+
+      {showDocs && details?.domain && (
+        <IntegrationDocsModal
+          domain={details.domain}
+          onClose={() => setShowDocs(false)}
         />
       )}
     </div>

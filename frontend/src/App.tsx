@@ -221,7 +221,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/profile" element={<Settings />} />
           <Route path="/settings/integrations" element={<Integrations />} />
-          <Route path="/settings/integrations/:domain" element={<IntegrationDetail />} />
+          <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
           <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Dashboard />} />
