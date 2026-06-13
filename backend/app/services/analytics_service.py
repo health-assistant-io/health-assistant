@@ -686,6 +686,7 @@ async def get_biomarker_trends(
             # Determine source type and source name
             source_type = "unknown"
             source_name = "Manual Entry"
+            source_id = None
 
             if exam_id:
                 source_type = "examination"
@@ -698,6 +699,11 @@ async def get_biomarker_trends(
                 if p.get("type") == "Integration":
                     source_type = "integration"
                     source_name = p.get("display") or "Integration"
+                    ref = p.get("reference", "")
+                    if ref.startswith("Integration/"):
+                        source_id = ref.split("/")[1]
+                    else:
+                        source_id = source_name # Fallback to domain if no UUID stored
 
             trends[key].append(
                 {
@@ -718,6 +724,7 @@ async def get_biomarker_trends(
                     "reference_range_text": ref_range_text,
                     "source_type": source_type,
                     "source_name": source_name,
+                    "source_id": source_id,
                     "source_category": source_category,
                     "technical_category": technical_category,
                     "clinical_groups": clinical_groups,

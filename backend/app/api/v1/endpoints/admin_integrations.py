@@ -19,18 +19,44 @@ async def list_system_integrations(
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all system integration configurations."""
+    """List all system integration configurations, including newly discovered ones."""
+    from app.core.integration_registry import integration_registry
+    
+    # Get all discovered manifests from the filesystem
+    manifests = integration_registry.get_all_manifests()
+    
+    # Get all database records
     stmt = select(SystemIntegration)
     result = await db.execute(stmt)
-    integrations = result.scalars().all()
+    db_integrations = {i.domain: i for i in result.scalars().all()}
     
-    return [
-        {
-            "domain": i.domain,
-            "is_enabled": i.is_enabled
-        }
-        for i in integrations
-    ]
+    response = []
+    
+    # First, list all discovered integrations (combining DB state if it exists)
+    discovered_domains = set()
+    for manifest in manifests:
+        domain = manifest.get("domain")
+        if domain:
+            discovered_domains.add(domain)
+            db_record = db_integrations.get(domain)
+            response.append({
+                "domain": domain,
+                "name": manifest.get("name", domain),
+                "version": manifest.get("version", "Unknown"),
+                "is_enabled": db_record.is_enabled if db_record else False
+            })
+            
+    # Then, add any stale DB records that might no longer exist on the filesystem
+    for domain, record in db_integrations.items():
+        if domain not in discovered_domains:
+            response.append({
+                "domain": domain,
+                "name": domain,
+                "version": "Unknown (Not on filesystem)",
+                "is_enabled": record.is_enabled
+            })
+            
+    return response
 
 @router.post("/{domain}/enable")
 async def enable_system_integration(
