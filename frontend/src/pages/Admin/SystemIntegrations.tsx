@@ -6,6 +6,8 @@ import { Globe, Link as LinkIcon, Power, PowerOff } from 'lucide-react';
 
 interface SystemIntegration {
   domain: string;
+  name?: string;
+  version?: string;
   is_enabled: boolean;
 }
 
@@ -64,9 +66,9 @@ const SystemIntegrations: React.FC = () => {
             {integrations.map((integration) => (
               <li key={integration.domain} className="px-6 py-5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors">
                 <div>
-                  <h4 className="text-lg font-bold text-gray-900 dark:text-dark-text">{integration.domain}</h4>
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-dark-text">{integration.name || integration.domain}</h4>
                   <p className="text-sm text-gray-500 dark:text-dark-muted mt-1">
-                    Global integration module
+                    Integration domain: <code>{integration.domain}</code> {integration.version ? `• v${integration.version}` : ''}
                   </p>
                 </div>
                 <div className="flex items-center space-x-4">

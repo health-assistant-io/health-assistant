@@ -10,6 +10,7 @@ export interface IntegrationManifest {
 export interface ActiveIntegration {
   id: string;
   domain: string;
+  instance_name: string | null;
   status: string;
   last_synced_at: string | null;
 }
@@ -43,27 +44,46 @@ export const integrationService = {
     return response.data;
   },
 
-  getDetails: async (domain: string, patientId: string): Promise<any> => {
-    const response = await api.get(`/integrations/${domain}/details?patient_id=${patientId}`);
+  getDocumentation: async (domain: string): Promise<{ markdown: string }> => {
+    const response = await api.get(`/integrations/${domain}/documentation`);
     return response.data;
   },
 
-  submitConfigFlow: async (domain: string, patientId: string, data: any): Promise<any> => {
-    const response = await api.post(`/integrations/${domain}/config-flow?patient_id=${patientId}`, data);
+  getDetails: async (integrationId: string, patientId: string): Promise<any> => {
+    const response = await api.get(`/integrations/instance/${integrationId}/details?patient_id=${patientId}`);
     return response.data;
   },
 
-  syncIntegration: async (domain: string, patientId: string): Promise<any> => {
-    const response = await api.post(`/integrations/${domain}/sync?patient_id=${patientId}`);
+  submitConfigFlow: async (domain: string, patientId: string, data: any, integrationId?: string): Promise<any> => {
+    let url = `/integrations/${domain}/config-flow?patient_id=${patientId}`;
+    if (integrationId) {
+      url += `&integration_id=${integrationId}`;
+    }
+    const response = await api.post(url, data);
     return response.data;
   },
 
-  removeIntegration: async (domain: string, patientId: string): Promise<void> => {
-    await api.delete(`/integrations/${domain}?patient_id=${patientId}`);
+  syncIntegration: async (integrationId: string, patientId: string): Promise<any> => {
+    const response = await api.post(`/integrations/instance/${integrationId}/sync?patient_id=${patientId}`);
+    return response.data;
   },
 
-  executeAction: async (domain: string, patientId: string, actionId: string): Promise<any> => {
-    const response = await api.post(`/integrations/${domain}/action/${actionId}?patient_id=${patientId}`);
+  removeIntegration: async (integrationId: string, patientId: string): Promise<void> => {
+    await api.delete(`/integrations/instance/${integrationId}?patient_id=${patientId}`);
+  },
+
+  executeAction: async (integrationId: string, patientId: string, actionId: string): Promise<any> => {
+    const response = await api.post(`/integrations/instance/${integrationId}/action/${actionId}?patient_id=${patientId}`);
+    return response.data;
+  },
+
+  getDebugLogs: async (integrationId: string, patientId: string): Promise<any[]> => {
+    const response = await api.get(`/integrations/instance/${integrationId}/debug-logs?patient_id=${patientId}`);
+    return response.data;
+  },
+
+  toggleDebugMode: async (integrationId: string, patientId: string): Promise<any> => {
+    const response = await api.post(`/integrations/instance/${integrationId}/toggle-debug?patient_id=${patientId}`);
     return response.data;
   }
 };
