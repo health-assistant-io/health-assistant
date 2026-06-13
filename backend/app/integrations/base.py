@@ -18,6 +18,10 @@ class BaseHealthProvider(ABC):
         """For integrations that send data outwards."""
         pass
         
+    async def handle_webhook(self, integration: UserIntegration, payload: Any, request: Any = None) -> List[Observation]:
+        """Process inbound webhook payloads and return FHIR observations."""
+        return []
+        
     async def get_auth_url(self, state: str) -> str:
         """Return the OAuth redirect URL if applicable."""
         return ""

@@ -1,0 +1,7 @@
+{
+  "domain": "webhook",
+  "name": "Universal Webhook",
+  "version": "1.0.0",
+  "integration_type": ["push"],
+  "dependencies": []
+}
