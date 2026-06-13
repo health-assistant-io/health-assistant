@@ -11,11 +11,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
+from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin
 from app.models.enums import Gender
 
 
-class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
+class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
     __tablename__ = "fhir_patients"
 
     user_id = Column(
@@ -79,7 +79,7 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
         }
 
 
-class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
+class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
     __tablename__ = "fhir_observations"
 
     # Custom linkage for Health Assistant
@@ -177,7 +177,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
     )
 
 
-class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
+class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
     __tablename__ = "fhir_diagnostic_reports"
 
     # FHIR DiagnosticReport resource fields
