@@ -67,16 +67,31 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
 
     # --- Debugging ---
     
-    def log_debug_payload(self, integration: UserIntegration, title: str, payload: Any):
-        """Dumps raw payloads for debugging if the user enabled debug mode."""
-        if integration.user_config and integration.user_config.get("debug_mode"):
+    async def log_debug_payload(self, integration: UserIntegration, title: str, payload: Any, level: str = "info"):
+        """Dumps raw payloads for debugging and saves to DB if the user enabled debug mode."""
+        if integration.is_debug_enabled:
             try:
                 dump = json.dumps(payload, indent=2)
-                # Using INFO instead of DEBUG so it appears in standard console output 
-                # when the user explicitly checks the "Enable Debug Mode" box.
                 self.logger.info(f"[{self.domain}] DEBUG PAYLOAD ({title}) for user {integration.user_id}:\n{dump}")
             except Exception:
-                self.logger.info(f"[{self.domain}] DEBUG PAYLOAD ({title}) for user {integration.user_id}: {payload}")
+                dump = str(payload)
+                self.logger.info(f"[{self.domain}] DEBUG PAYLOAD ({title}) for user {integration.user_id}: {dump}")
+
+            try:
+                from app.core.database import AsyncSessionLocal
+                from app.models.user_integration import IntegrationDebugLog
+                async with AsyncSessionLocal() as db:
+                    debug_log = IntegrationDebugLog(
+                        integration_id=integration.id,
+                        tenant_id=integration.tenant_id,
+                        level=level,
+                        title=title,
+                        payload=payload if isinstance(payload, (dict, list)) else {"raw": dump}
+                    )
+                    db.add(debug_log)
+                    await db.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to save debug log to DB: {e}")
 
     # --- Data Building ---
 
@@ -91,6 +106,17 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
         """Fetch data and return Pydantic models."""
         pass
+
+    async def handle_webhook(self, integration: UserIntegration, payload: Any, request: Any = None) -> List[ObservationCreate]:
+        """Process inbound webhook payloads and return Pydantic models.
+        Override this method for push-based integrations.
+        
+        Args:
+            integration: The UserIntegration instance.
+            payload: The parsed JSON payload from the webhook request.
+            request: The raw FastAPI Request object, useful for validating headers or HMAC signatures.
+        """
+        return []
 
     async def fetch_json(
         self, 
@@ -124,7 +150,7 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
                 data = response.json()
                 
                 # Zero-config auto-debugging!
-                self.log_debug_payload(integration, f"HTTP GET {url}", data)
+                await self.log_debug_payload(integration, f"HTTP GET {url}", data)
                 
                 return data
 

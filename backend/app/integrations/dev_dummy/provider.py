@@ -78,7 +78,7 @@ class DevDummyProvider(BaseHealthProvider):
         raw_data = self._simulate_api_fetch(config, current_time)
         
         # 4. DEBUG LOGGING
-        self.log_debug_payload(integration, "Dev Dummy API Response", raw_data)
+        await self.log_debug_payload(integration, "Dev Dummy API Response", raw_data)
         
         # 5. MAP TO FHIR
         observations = []
