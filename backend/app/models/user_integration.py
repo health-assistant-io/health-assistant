@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, DateTime, Text, Enum, UniqueConstraint, Integer
+from sqlalchemy import Column, String, ForeignKey, DateTime, Text, Enum, UniqueConstraint, Integer, Boolean
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
@@ -30,14 +30,12 @@ class UserIntegration(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     scopes = Column(String(1000), nullable=True)
     
     provider_account_id = Column(String(255), nullable=True)
+    instance_name = Column(String(255), nullable=True) # E.g., "My Phone Webhook"
+    is_debug_enabled = Column(Boolean, default=False, nullable=False)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
 
     # Added user_config for integration specific configurations
     user_config = Column(JSONB, nullable=True)
-    
-    __table_args__ = (
-        UniqueConstraint("user_id", "provider", name="uix_user_provider"),
-    )
 
     # Relationships
     user = relationship("UserModel")
@@ -60,4 +58,20 @@ class IntegrationSyncLog(Base, UUIDMixin, TenantMixin):
     completed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     integration = relationship("UserIntegration", back_populates="sync_logs")
+
+class IntegrationDebugLog(Base, UUIDMixin, TenantMixin):
+    __tablename__ = "integration_debug_logs"
+
+    integration_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    level = Column(String(20), default="info") # e.g. 'info', 'error'
+    title = Column(String(255), nullable=False)
+    payload = Column(JSONB, nullable=True)
+
+    integration = relationship("UserIntegration")
 
