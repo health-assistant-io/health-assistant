@@ -51,11 +51,38 @@ async def list_active_integrations(
         {
             "id": str(i.id),
             "domain": i.provider,
+            "instance_name": i.instance_name,
             "status": i.status.value,
             "last_synced_at": i.last_synced_at,
         }
         for i in integrations
     ]
+
+@router.get("/{domain}/documentation")
+async def get_integration_documentation(domain: str) -> Dict[str, str]:
+    """Get the markdown documentation for an integration if it exists."""
+    import os
+    from app.core.integration_registry import integration_registry
+    
+    # We don't check if it's enabled here, so users can read docs before enabling.
+    # We do check if the domain is known to the registry (discovered).
+    manifests = integration_registry.get_all_manifests()
+    if not any(m.get("domain") == domain for m in manifests):
+        raise HTTPException(status_code=404, detail="Integration not found")
+        
+    base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "integrations", domain)
+    doc_paths = [
+        os.path.join(base_path, "README.md"),
+        os.path.join(base_path, "DOCS.md")
+    ]
+    
+    for path in doc_paths:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return {"markdown": f.read()}
+                
+    # If no file exists, return an empty string or a default message
+    return {"markdown": f"# {domain.capitalize()} Integration\n\nNo documentation provided for this integration."}
 
 @router.get("/{domain}/config-flow", response_model=Dict[str, Any])
 async def get_config_flow(
@@ -83,6 +110,7 @@ async def submit_config_flow(
     domain: str,
     patient_id: str,
     payload: Dict[str, Any],
+    integration_id: str = None,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -104,20 +132,31 @@ async def submit_config_flow(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
         
-    # Check for existing integration
-    stmt = select(UserIntegration).where(
-        UserIntegration.user_id == current_user.user_id,
-        UserIntegration.patient_id == patient_id,
-        UserIntegration.provider == domain
-    )
-    result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
-    
-    if existing:
+    # Extract instance_name if provided, otherwise default to domain
+    instance_name = validated_config.pop("instance_name", domain.capitalize())
+
+    # Check if this is an update to an existing instance
+    if integration_id:
+        try:
+            integration_uuid = UUID(integration_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid integration ID format")
+            
+        stmt = select(UserIntegration).where(
+            UserIntegration.id == integration_uuid,
+            UserIntegration.user_id == current_user.user_id,
+            UserIntegration.patient_id == patient_id
+        )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Integration instance not found")
+            
         existing.user_config = validated_config
-        existing.status = IntegrationStatus.ACTIVE
+        existing.instance_name = instance_name
     else:
-        # Create new integration
+        # Create new integration since we allow multiples
         # Verify the patient belongs to the user or their tenant
         stmt_patient = select(Patient).where(
             Patient.id == patient_id,
@@ -133,6 +172,7 @@ async def submit_config_flow(
             user_id=current_user.user_id,
             patient_id=patient.id,
             provider=domain,
+            instance_name=instance_name,
             status=IntegrationStatus.ACTIVE,
             user_config=validated_config,
             tenant_id=current_user.tenant_id
@@ -142,9 +182,9 @@ async def submit_config_flow(
     await db.commit()
     return {"message": "Integration configured successfully."}
 
-@router.get("/{domain}/details")
+@router.get("/instance/{integration_id}/details")
 async def get_integration_details(
-    domain: str,
+    integration_id: str,
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -156,20 +196,23 @@ async def get_integration_details(
     from sqlalchemy import select, desc, func
 
     try:
+        integration_uuid = UUID(integration_id)
         patient_uuid = UUID(patient_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid UUID format for user or patient")
 
     stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
         UserIntegration.user_id == current_user.user_id,
-        UserIntegration.patient_id == patient_uuid,
-        UserIntegration.provider == domain
+        UserIntegration.patient_id == patient_uuid
     )
     result = await db.execute(stmt)
     integration = result.scalar_one_or_none()
 
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found or not active")
+        
+    domain = integration.provider
 
     # Fetch sync logs
     logs_stmt = select(IntegrationSyncLog).where(
@@ -178,12 +221,17 @@ async def get_integration_details(
     logs_result = await db.execute(logs_stmt)
     sync_logs = logs_result.scalars().all()
 
+    from sqlalchemy import or_
+    
     # Fetch exposed items (distinct biomarkers synced by this integration)
-    # This queries observations where performer display is the domain
+    # Match on modern Integration UUID reference OR legacy domain display name
     obs_stmt = select(Observation.biomarker_id, func.max(Observation.effective_datetime).label("last_seen")).where(
         Observation.tenant_id == integration.tenant_id,
         Observation.subject["reference"].astext == f"Patient/{patient_id}",
-        Observation.performer[0]["display"].astext == domain,
+        or_(
+            Observation.performer[0]["reference"].astext == f"Integration/{integration.id}",
+            Observation.performer[0]["display"].astext == domain
+        ),
         Observation.biomarker_id != None
     ).group_by(Observation.biomarker_id)
     
@@ -191,6 +239,7 @@ async def get_integration_details(
     exposed_rows = obs_res.all()
     
     exposed_items = []
+    b_defs = {}
     if exposed_rows:
         b_ids = [row[0] for row in exposed_rows]
         b_stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
@@ -210,6 +259,35 @@ async def get_integration_details(
                     "last_seen": last_seen.isoformat() if last_seen else None
                 })
                 
+    # Fetch recent actual measurements
+    recent_obs_stmt = select(Observation).where(
+        Observation.tenant_id == integration.tenant_id,
+        Observation.subject["reference"].astext == f"Patient/{patient_id}",
+        or_(
+            Observation.performer[0]["reference"].astext == f"Integration/{integration.id}",
+            Observation.performer[0]["display"].astext == domain
+        ),
+        Observation.biomarker_id != None
+    ).order_by(desc(Observation.effective_datetime)).limit(30)
+    
+    recent_obs_res = await db.execute(recent_obs_stmt)
+    recent_obs = recent_obs_res.scalars().all()
+    
+    recent_data = []
+    for obs in recent_obs:
+        b_name = b_defs.get(obs.biomarker_id).name if obs.biomarker_id in b_defs else obs.code.get("text", "Unknown Metric")
+        b_slug = b_defs.get(obs.biomarker_id).slug if obs.biomarker_id in b_defs else None
+        unit = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
+        recent_data.append({
+            "id": str(obs.id),
+            "date": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
+            "sync_time": obs.created_at.isoformat() if hasattr(obs, 'created_at') and obs.created_at else None,
+            "metric": b_name,
+            "slug": b_slug,
+            "value": obs.raw_value,
+            "unit": unit
+        })
+                
     provider = integration_registry.get_provider(domain)
     custom_actions = []
     if provider and hasattr(provider, "get_custom_actions"):
@@ -218,8 +296,10 @@ async def get_integration_details(
     return {
         "id": str(integration.id),
         "domain": integration.provider,
+        "instance_name": integration.instance_name,
         "status": integration.status.value,
         "user_config": integration.user_config,
+        "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat() if integration.last_synced_at else None,
         "sync_history": [
             {
@@ -233,23 +313,101 @@ async def get_integration_details(
             for log in sync_logs
         ],
         "exposed_items": exposed_items,
+        "recent_data": recent_data,
         "custom_actions": custom_actions
     }
 
-@router.delete("/{domain}")
+@router.get("/instance/{integration_id}/debug-logs")
+async def get_integration_debug_logs(
+    integration_id: str,
+    patient_id: str,
+    limit: int = 50,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch debug logs for a specific integration instance."""
+    from app.models.user_integration import UserIntegration, IntegrationDebugLog
+    from sqlalchemy import select, desc
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+
+    # Verify ownership
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.patient_id == patient_id
+    )
+    result = await db.execute(stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    logs_stmt = select(IntegrationDebugLog).where(
+        IntegrationDebugLog.integration_id == integration_uuid
+    ).order_by(desc(IntegrationDebugLog.timestamp)).limit(limit)
+    
+    logs_result = await db.execute(logs_stmt)
+    debug_logs = logs_result.scalars().all()
+
+    return [
+        {
+            "id": str(log.id),
+            "timestamp": log.timestamp.isoformat(),
+            "level": log.level,
+            "title": log.title,
+            "payload": log.payload
+        }
+        for log in debug_logs
+    ]
+
+@router.post("/instance/{integration_id}/toggle-debug")
+async def toggle_integration_debug(
+    integration_id: str,
+    patient_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Toggle debug mode for a specific integration instance."""
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+        
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.patient_id == patient_id
+    )
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+        
+    integration.is_debug_enabled = not integration.is_debug_enabled
+    await db.commit()
+    return {"message": f"Debug mode {'enabled' if integration.is_debug_enabled else 'disabled'}.", "is_debug_enabled": integration.is_debug_enabled}
+
+@router.delete("/instance/{integration_id}")
 async def remove_integration(
-    domain: str,
+    integration_id: str,
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
-    Remove an active integration.
+    Remove an active integration instance.
     """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+        
     stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
         UserIntegration.user_id == current_user.user_id,
-        UserIntegration.patient_id == patient_id,
-        UserIntegration.provider == domain
+        UserIntegration.patient_id == patient_id
     )
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
@@ -263,19 +421,24 @@ async def remove_integration(
 
 import datetime
 
-@router.post("/{domain}/action/{action_id}")
+@router.post("/instance/{integration_id}/action/{action_id}")
 async def execute_custom_action(
-    domain: str,
+    integration_id: str,
     action_id: str,
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Execute a custom action defined by the integration provider."""
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+        
     stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
         UserIntegration.user_id == current_user.user_id,
-        UserIntegration.patient_id == patient_id,
-        UserIntegration.provider == domain
+        UserIntegration.patient_id == patient_id
     )
     result = await db.execute(stmt)
     integration = result.scalar_one_or_none()
@@ -283,6 +446,7 @@ async def execute_custom_action(
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
         
+    domain = integration.provider
     provider = integration_registry.get_provider(domain)
     if not provider:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
@@ -303,20 +467,25 @@ async def execute_custom_action(
         logger.error(f"Custom action {action_id} failed for {domain}: {e}")
         raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
 
-@router.post("/{domain}/sync")
+@router.post("/instance/{integration_id}/sync")
 async def sync_integration(
-    domain: str,
+    integration_id: str,
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
-    Manually trigger a sync for an active integration.
+    Manually trigger a sync for an active integration instance.
     """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+        
     stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
         UserIntegration.user_id == current_user.user_id,
         UserIntegration.patient_id == patient_id,
-        UserIntegration.provider == domain,
         UserIntegration.status == IntegrationStatus.ACTIVE
     )
     result = await db.execute(stmt)
@@ -325,6 +494,7 @@ async def sync_integration(
     if not integration:
         raise HTTPException(status_code=404, detail="Active integration not found")
         
+    domain = integration.provider
     provider = integration_registry.get_provider(domain)
     if not provider:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
@@ -351,7 +521,7 @@ async def sync_integration(
             await map_observations_to_biomarkers(db, observations)
             for obs in observations:
                 if not obs.performer:
-                    obs.performer = [{"type": "Integration", "display": integration.provider}]
+                    obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
                 db.add(obs)
                 count += 1
                 
@@ -409,3 +579,99 @@ async def sync_integration(
         db.add(sync_log)
         await db.commit()
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+from fastapi import Request
+
+@router.post("/{domain}/webhook/{integration_id}")
+async def integration_webhook(
+    domain: str,
+    integration_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """
+    Handle incoming webhooks for a specific integration.
+    This does not require a user token, as the integration_id acts as the secure token.
+    """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID format")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.provider == domain,
+        UserIntegration.status == IntegrationStatus.ACTIVE
+    )
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    
+    if not integration:
+        raise HTTPException(status_code=404, detail="Active integration not found")
+        
+    provider = integration_registry.get_provider(domain)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Integration provider not loaded")
+        
+    if not hasattr(provider, "handle_webhook"):
+        raise HTTPException(status_code=400, detail="Provider does not support webhooks")
+        
+    from app.models.user_integration import IntegrationSyncLog
+    import datetime
+    
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {} # Maybe it's a form or empty body, let the provider handle it
+
+    try:
+        start_time = datetime.datetime.now(datetime.timezone.utc)
+        observations_data = await provider.handle_webhook(integration, payload, request)
+        count = 0
+        if observations_data:
+            from app.models.fhir import Observation
+            # Convert to ORM models BEFORE passing to mapping
+            observations = []
+            for obs_data in observations_data:
+                obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
+                obs = Observation(**obs_dict)
+                observations.append(obs)
+                
+            from app.services.fhir_service import map_observations_to_biomarkers
+            await map_observations_to_biomarkers(db, observations)
+            for obs in observations:
+                if not obs.performer:
+                    obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
+                db.add(obs)
+                count += 1
+                
+        integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
+        
+        # Log the sync
+        sync_log = IntegrationSyncLog(
+            integration_id=integration.id,
+            tenant_id=integration.tenant_id,
+            status="success",
+            records_synced=count,
+            started_at=start_time,
+            completed_at=integration.last_synced_at
+        )
+        db.add(sync_log)
+        
+        await db.commit()
+        return {"message": "Webhook processed successfully", "metrics_synced": count}
+    except Exception as e:
+        logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
+        # Log failure
+        sync_log = IntegrationSyncLog(
+            integration_id=integration.id,
+            tenant_id=integration.tenant_id,
+            status="failed",
+            records_synced=0,
+            started_at=datetime.datetime.now(datetime.timezone.utc),
+            completed_at=datetime.datetime.now(datetime.timezone.utc),
+            error_message=str(e)
+        )
+        db.add(sync_log)
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
