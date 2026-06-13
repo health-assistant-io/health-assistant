@@ -26,13 +26,45 @@ done
 
 if [ "$FORCE_STOP" = true ]; then
     echo -e "${YELLOW}Force stopping all Health Assistant services...${NC}"
+    
+    # Try graceful shutdown first
     pkill -f "uvicorn app.main:app" || true
     pkill -f "celery -A app.workers.celery_app" || true
-    # Find and kill the node process associated with the frontend vite dev server
-    # avoiding killing unrelated npm run dev commands on the system by matching the frontend dir
     pkill -f "vite.*--port 3000" || true
+    
+    # Wait a moment for graceful exit
+    sleep 2
+    
+    # Force kill any stragglers based on patterns
+    pkill -9 -f "uvicorn app.main:app" || true
+    pkill -9 -f "celery -A app.workers.celery_app" || true
+    pkill -9 -f "vite.*--port 3000" || true
+    
+    # Ensure port 8000 and 3000 are freed
+    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo -e "${YELLOW}Force killing process on port 8000...${NC}"
+        lsof -ti :8000 | xargs kill -9 2>/dev/null || true
+    fi
+    
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo -e "${YELLOW}Force killing process on port 3000...${NC}"
+        lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+    fi
+    
     rm -f backend/celerybeat.pid
-    echo -e "${GREEN}All services stopped.${NC}"
+    
+    # Verify the ports are actually free
+    sleep 1
+    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo -e "${RED}Error: Failed to free port 8000. Please check manually using 'lsof -i :8000'.${NC}"
+        exit 1
+    fi
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo -e "${RED}Error: Failed to free port 3000. Please check manually using 'lsof -i :3000'.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}All services stopped successfully.${NC}"
     exit 0
 fi
 

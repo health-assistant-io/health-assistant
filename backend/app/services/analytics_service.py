@@ -456,6 +456,10 @@ async def get_biomarker_trends(
             )
         )
 
+    # Limit the total number of observations fetched to prevent massive unpaginated queries crashing the server
+    # 2000 is usually enough for a single patient's trend history
+    query = query.limit(2000)
+
     result = await db.execute(query)
     observations = result.scalars().all()
 
@@ -500,52 +504,58 @@ async def get_biomarker_trends(
                 bio_to_groups[b_id] = []
             bio_to_groups[b_id].append(g_name)
 
-    doc_ids = [obs.document_id for obs in observations if obs.document_id]
+    # Optimize queries by fetching everything we need for exam info in one go
+    # Only fetch doc_ids we actually care about
+    doc_ids = list(set([obs.document_id for obs in observations if obs.document_id]))
     exam_info_map = {}
 
     if doc_ids:
         from app.models.examination_category import ExaminationCategory
 
-        doc_query = await db.execute(
-            select(
-                DocumentModel.id,
-                ExaminationModel.id.label("exam_id"),
-                ExaminationModel.examination_date,
-                ExaminationCategory.name.label("exam_category"),
-                DocumentModel.entities,
+        # Do it in chunks if there are too many documents
+        chunk_size = 500
+        for i in range(0, len(doc_ids), chunk_size):
+            chunk = doc_ids[i:i + chunk_size]
+            doc_query = await db.execute(
+                select(
+                    DocumentModel.id,
+                    ExaminationModel.id.label("exam_id"),
+                    ExaminationModel.examination_date,
+                    ExaminationCategory.name.label("exam_category"),
+                    DocumentModel.entities,
+                )
+                .outerjoin(
+                    ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
+                )
+                .outerjoin(
+                    ExaminationCategory,
+                    ExaminationModel.category_id == ExaminationCategory.id,
+                )
+                .where(cast(DocumentModel.id, String).in_(chunk))
             )
-            .outerjoin(
-                ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
-            )
-            .outerjoin(
-                ExaminationCategory,
-                ExaminationModel.category_id == ExaminationCategory.id,
-            )
-            .where(cast(DocumentModel.id, String).in_(doc_ids))
-        )
-        for row in doc_query.all():
-            doc_id = row[0]
-            exam_id = row[1]
-            exam_date = row[2]
-            exam_cat = row[3]
-            entities = row[4]
+            for row in doc_query.all():
+                doc_id = row[0]
+                exam_id = row[1]
+                exam_date = row[2]
+                exam_cat = row[3]
+                entities = row[4]
 
-            category = "other"
-            if entities and "document_category" in entities:
-                from app.core.constants import DOCUMENT_CATEGORIES
+                category = "other"
+                if entities and "document_category" in entities:
+                    from app.core.constants import DOCUMENT_CATEGORIES
 
-                cat_name = entities["document_category"].lower()
-                for cat in DOCUMENT_CATEGORIES:
-                    if cat["name"].lower() in cat_name or cat["id"] in cat_name:
-                        category = cat["id"]
-                        break
+                    cat_name = entities["document_category"].lower()
+                    for cat in DOCUMENT_CATEGORIES:
+                        if cat["name"].lower() in cat_name or cat["id"] in cat_name:
+                            category = cat["id"]
+                            break
 
-            exam_info_map[str(doc_id)] = {
-                "date": exam_date,
-                "category": category,
-                "exam_id": str(exam_id) if exam_id else None,
-                "exam_name": exam_cat or "General Visit",
-            }
+                exam_info_map[str(doc_id)] = {
+                    "date": exam_date,
+                    "category": category,
+                    "exam_id": str(exam_id) if exam_id else None,
+                    "exam_name": exam_cat or "General Visit",
+                }
 
     trends = {}
     from datetime import datetime
