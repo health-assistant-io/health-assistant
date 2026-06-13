@@ -16,7 +16,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # Safe binding to localhost on host
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-health_assistant}"]
       interval: 10s
       timeout: 5s
       retries: 5
