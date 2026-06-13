@@ -547,6 +547,7 @@ async def sync_integration(
             "last_synced_at": integration.last_synced_at
         }
     except IntegrationAuthError as e:
+        await db.rollback()
         logger.error(f"Auth failed for {domain}: {e}")
         integration.status = IntegrationStatus.ERROR
         sync_log = IntegrationSyncLog(
@@ -562,9 +563,11 @@ async def sync_integration(
         await db.commit()
         raise HTTPException(status_code=401, detail="Integration authentication failed. Please re-authenticate.")
     except IntegrationRateLimitError as e:
+        await db.rollback()
         logger.error(f"Rate limit hit for {domain}: {e}")
         raise HTTPException(status_code=429, detail="Third-party API rate limit exceeded. Try again later.")
     except Exception as e:
+        await db.rollback()
         logger.error(f"Manual sync failed for {domain}: {e}")
         # Log failure
         sync_log = IntegrationSyncLog(
@@ -661,6 +664,7 @@ async def integration_webhook(
         await db.commit()
         return {"message": "Webhook processed successfully", "metrics_synced": count}
     except Exception as e:
+        await db.rollback()
         logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
         # Log failure
         sync_log = IntegrationSyncLog(
