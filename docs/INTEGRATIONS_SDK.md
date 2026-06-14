@@ -186,6 +186,14 @@ Integrations can expose custom interactive buttons to the frontend UI (e.g., "Re
 ## 4. Building FHIR Observations
 Use the `ObservationBuilder` to map raw third-party data into FHIR compliant schemas easily.
 
+### Supported Coding Systems
+When building observations, the system relies on coding systems to uniquely identify biomarkers without collisions. The `set_biomarker()` method defaults to LOINC, but you can explicitly define the system using the `CodingSystem` enum:
+
+* **`CodingSystem.LOINC`** (Default) - Used for standard clinical laboratory measurements and standard vital signs.
+* **`CodingSystem.SNOMED`** - Used for clinical terms and findings.
+* **`CodingSystem.CUSTOM`** - **Crucial for wearables/IoT.** Use this when the external API provides a proprietary identifier (e.g., Apple's `HKQuantityTypeIdentifierStepCount` or Garmin's internal metric keys) to ensure it does not accidentally collide with a real clinical code.
+
+
 > **Important Developer Note:** You might wonder how telemetry data (like high-frequency heart rate from a wearable) gets saved to the TimescaleDB hypertable if you are returning standard FHIR `ObservationCreate` objects. 
 > 
 > **You do not need to interact with TimescaleDB directly.** Simply return `ObservationCreate` objects for all data. The platform's core sync engine automatically intercepts your observations. It checks the associated Biomarker Definition's `is_telemetry` flag. If it is `true`, the sync engine will dynamically mutate the observation and route it to the `telemetry_data` hypertable instead of saving it as a standard FHIR observation.
