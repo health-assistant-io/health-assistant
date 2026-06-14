@@ -15,6 +15,7 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 - **Frontend**: Configured via `VITE_API_URL`.
 
 ## Recent Changes & Optimizations
+- **Decoupled Telemetry Aggregation:** Separated temporal scoping from aggregation resolution (TimescaleDB gapfilling), complete with real-time CLI migration scripts located in `backend/scripts/`.
 - **In-App Viewers**: Replaced external downloads with full-screen Image, PDF, and Text viewers.
 - **Smart Interpretation**: Added automated status detection (High/Low/Normal) for all biomarkers based on clinical reference ranges.
 - **Enhanced Timeline**: Implemented clinical-interval filtering (Last 30 Days, Custom Range, etc.) in the Examinations list.

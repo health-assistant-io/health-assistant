@@ -578,7 +578,9 @@ GET /api/v1/analytics/trends
 
 **Query Parameters:**
 - `biomarker_codes`: Comma-separated LOINC codes
-- `period`: Time period
+- `period`: Time period (e.g., 'last-30-days', 'last-12-months', 'all-time')
+- `aggregation`: Optional resolution bucket for telemetry data (e.g., '15 minutes', '1 day', '1 week')
+- `patient_id`: Optional override for admin context
 
 #### Get Analytics Summary
 

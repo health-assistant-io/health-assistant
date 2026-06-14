@@ -35,7 +35,7 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 - **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id)
 - **biomarker_groups**: Clinical panels and system groupings (id, name, type)
 - **laboratories**: Source tracking for lab reports (id, name, location)
-- **wearable_data**: Time-series health metrics (id, device_id, timestamp, data)
+- **telemetry_data**: Time-series health metrics (id, device_id, timestamp, data)
 - **notification_triggers**: Scheduling and event rules for notifications
 - **notifications**: Patient-specific message history (FHIR Communication)
 - **notification_subscriptions**: Web Push credentials for PWA support
@@ -51,9 +51,10 @@ The project follows the **HL7 FHIR** standard but enhances it with a high-perfor
 - **Relative Score (0.0 - 1.0)**: Tracks a result's position within its specific lab's reference range, allowing for lab-agnostic trend analysis.
 - **Clinical Grouping**: Biomarkers are organized into **Groups** (e.g., Lipid Panel, CBC) for diagnostic context.
 
-### Wearable Device Synchronization
+### Telemetry & IoT Device Synchronization
 
 To maintain absolute data privacy, Health Assistant relies on a "headless" mobile sync architecture rather than querying third-party clouds (like Google Fit or Apple iCloud). 
+High-frequency device data is routed into TimescaleDB using dynamic `is_telemetry` flags on Biomarker definitions. This enables rapid querying of millions of rows while avoiding FHIR observation bloat. **Note:** This represents an architectural tradeoff—telemetry data is stored outside of strict FHIR compliance for performance reasons and is currently excluded from standard FHIR patient exports.
 A custom React Native companion application bridges the on-device health databases (Android Health Connect / iOS HealthKit) directly to the local FastAPI instance.
 For implementation details and API payload schemas, see the [Mobile Sync App Architecture](MOBILE_SYNC_APP.md).
 
