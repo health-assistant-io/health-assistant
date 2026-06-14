@@ -110,4 +110,3 @@ htmlcov/
 *.p12
 credentials.json
 secrets.json
-docker/docker-compose-dev.yml
