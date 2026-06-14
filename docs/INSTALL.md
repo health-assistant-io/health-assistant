@@ -34,7 +34,18 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose -f docker/docker-compose.prod.yml up -d
    ```
 
-5. **Access the application:**
+5. **First-Time Data Seeding (Required for Production only):**
+   *Note: If you started in development mode, this step is handled automatically. Skip to step 6.*
+   
+   If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account:
+   ```bash
+   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
+   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
+   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
+   ```
+
+6. **Access the application:**
    Once the services are running, open your web browser and navigate to:
    - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
    - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
@@ -94,43 +105,21 @@ npm run dev
 
 Frontend runs on: http://localhost:3000
 
-## First-Time Setup & Data Seeding
+## First-Time Setup & Linking
 
-After your application is running, you need to set up the initial data and your administrator account.
+After your application is running and your data is seeded, you need to finalize your user setup.
 
 ### Development Environments
-If you started the application in development mode (e.g., using `docker-compose-dev.yml` or the run script), database seeding is **automatic**. 
-1. **Register the First User**: Open the application in your browser and register. The very first user created on a fresh installation is automatically granted the **SYSTEM_ADMIN** role.
+If you started the application in development mode:
+1. **Register the First User**: Open the application at [http://localhost:3000](http://localhost:3000) and register. The very first user created on a fresh installation is automatically granted the **SYSTEM_ADMIN** role.
 2. **Auto-Provisioning**: For home users, registering will automatically create a new **Household Tenant** and a **Default Organization**.
 
-### Production Environments (`DEBUG=false`)
-Because automated database seeding is strictly disabled in production for data safety, a brand new production deployment on an empty PostgreSQL database requires a one-time manual bootstrap.
+### Production Environments
+If you started in production mode, you should have already run the `create_system_admin.py` command during the Quickstart.
 
-If using **Docker** for production, run the following commands on your server:
+1. **Log In**: Open the application at [http://localhost:3000](http://localhost:3000) (or your domain) and log in with the credentials you provided to the script.
 
-```bash
-# 1. Create your System Admin User
-docker compose -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
-
-# 2. Seed clinical biomarkers database (crucial for visual charts)
-docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
-
-# 3. Seed default allergy categories
-docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
-
-# 4. Seed default medications lists
-docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
-```
-
-If you installed **manually** (without Docker):
-```bash
-cd backend
-python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
-python scripts/seed_biomarkers.py
-python scripts/seed_allergies.py
-python scripts/seed_medications.py
-```
-
+### Final Step (All Environments)
 3. **Link Your Profile**: Visit your profile settings in the app to link your User account to a Patient or Doctor record.
 
 For more details on managing multiple users and clinical hierarchies, see the [Tenancy and User Management Guide](./TENANCY_AND_USER_MANAGEMENT.md).
