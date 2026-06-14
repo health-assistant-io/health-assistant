@@ -27,11 +27,10 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    cd health-assistant
    ```
 3. **Configure environment variables:**
+   Copy the Docker environment example file to the root directory and update it with your specific values (e.g., adding `OPENAI_API_KEY`):
    ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
+   cp docker/.env.example .env
    ```
-   *Edit the `.env` files to include any required keys (e.g., `OPENAI_API_KEY` in the backend).*
 4. **Start the application:**
    For development (hot-reloading):
    ```bash

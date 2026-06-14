@@ -13,10 +13,9 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    cd health-assistant
    ```
 3. **Configure the environment:**
-   Copy the example environment files to `.env` and update them with your specific values (e.g., adding `OPENAI_API_KEY` to the backend):
+   Copy the Docker environment example file to `.env` in the root directory and update it with your specific values (e.g., adding `OPENAI_API_KEY`):
    ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
+   cp docker/.env.example .env
    ```
 4. **Start the database:**
    ```bash
