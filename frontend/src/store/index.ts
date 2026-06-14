@@ -4,5 +4,5 @@ export { useDashboardStore } from './slices/dashboardSlice';
 export { useSettingsStore } from './slices/settingsSlice';
 export { usePatientStore } from './slices/patientSlice';
 export { useChartStore } from './slices/chartSlice';
-export { useWearableStore } from './slices/wearableSlice';
+export { useTelemetryStore } from './slices/telemetrySlice';
 export { useUserSlice } from './slices/userSlice';

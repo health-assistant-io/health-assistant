@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-interface WearableData {
+interface TelemetryData {
   timestamp: string;
   heart_rate?: number;
   steps?: number;
@@ -8,8 +8,8 @@ interface WearableData {
   distance?: number;
 }
 
-interface WearableState {
-  data: WearableData[];
+interface TelemetryState {
+  data: TelemetryData[];
   summary: {
     steps: number;
     calories: number;
@@ -20,11 +20,11 @@ interface WearableState {
     };
   } | null;
   
-  setData: (data: WearableData[]) => void;
-  setSummary: (summary: WearableState['summary']) => void;
+  setData: (data: TelemetryData[]) => void;
+  setSummary: (summary: TelemetryState['summary']) => void;
 }
 
-export const useWearableStore = create<WearableState>((set) => ({
+export const useTelemetryStore = create<TelemetryState>((set) => ({
   data: [],
   summary: null,
   

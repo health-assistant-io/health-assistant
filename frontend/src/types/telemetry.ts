@@ -1,4 +1,4 @@
-export interface WearableDataItem {
+export interface TelemetryDataItem {
   id: string;
   tenant_id: string;
   device_id: string;
@@ -9,7 +9,7 @@ export interface WearableDataItem {
   calories?: number;
 }
 
-export interface WearableSummary {
+export interface TelemetrySummary {
   date?: string;
   steps: number;
   calories: number;
