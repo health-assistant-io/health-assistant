@@ -174,10 +174,26 @@ export interface AIConfigSummary {
     model?: AIModel;
     assignment_id?: string;
   }[]>;
+  ai_agent_max_iterations: number;
 }
 
 // Provider endpoints
 export const aiConfigApi = {
+  // Settings
+  updateAISettings: async (
+    data: { ai_agent_max_iterations?: number },
+    tenant_id?: string,
+    user_id?: string,
+    scope: string = 'TENANT'
+  ): Promise<void> => {
+    const params = new URLSearchParams();
+    if (tenant_id) params.append('tenant_id', tenant_id);
+    if (user_id) params.append('user_id', user_id);
+    params.append('scope', scope);
+    
+    await api.put(`/ai-config/settings?${params}`, data);
+  },
+
   // Providers
   createProvider: async (data: AIProviderCreate): Promise<AIProvider> => {
     const response = await api.post('/ai-config/providers', data);

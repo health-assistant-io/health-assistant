@@ -17,6 +17,7 @@ from app.schemas.ai_config import (
     AITaskAssignmentResponse,
     AIProviderWithModelsResponse,
     AIConfigSummary,
+    AIConfigUpdate,
 )
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -550,6 +551,38 @@ async def get_config_summary(
     return await service.get_config_summary(
         tenant_id=search_tenant_id, user_id=search_user_id, scope=scope
     )
+
+
+@router.put("/settings", status_code=status.HTTP_204_NO_CONTENT)
+async def update_ai_settings(
+    config_data: AIConfigUpdate,
+    tenant_id: Optional[UUID] = None,
+    user_id: Optional[UUID] = None,
+    scope: AIScope = AIScope.TENANT,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Update AI-specific settings"""
+    service = AIProviderService(db)
+
+    # Security check
+    check_scope_access(scope, current_user, tenant_id=tenant_id, user_id=user_id)
+
+    target_tenant_id = tenant_id
+    if scope == AIScope.TENANT and not target_tenant_id:
+        target_tenant_id = current_user.tenant_id
+
+    success = await service.update_ai_settings(
+        config_data=config_data,
+        tenant_id=target_tenant_id,
+        user_id=user_id,
+        current_user_id=current_user.user_id
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update settings")
+
+    return None
 
 
 @router.get("/default-for-task/{task_type}", response_model=Dict[str, Any])

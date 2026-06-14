@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ProviderManager } from '../../components/settings/ProviderManager';
 import { ModelsPage } from '../../components/settings/ModelsPage';
 import { TaskAssignment } from '../../components/settings/TaskAssignment';
+import { AgentSettings } from '../../components/settings/AgentSettings';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -23,7 +24,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
 }) => {
   const { loadConfigSummary, isLoading } = useAIConfigStore();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'tasks'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'tasks' | 'agent'>('providers');
 
   const targetUserId = userId || (scope === 'user' ? user?.id : undefined);
   const targetTenantId = tenantId || (scope === 'tenant' ? user?.tenant_id : undefined);
@@ -42,6 +43,8 @@ export const AIConfig: React.FC<AIConfigProps> = ({
     if (scope === 'tenant') return 'Tenant AI Overrides';
     return 'My AI Configuration';
   };
+
+  const showAgentSettings = scope === 'global' || scope === 'tenant';
 
   return (
     <div className="space-y-6">
@@ -86,6 +89,18 @@ export const AIConfig: React.FC<AIConfigProps> = ({
         >
           Task Assignments
         </button>
+        {showAgentSettings && (
+          <button
+            onClick={() => setActiveTab('agent')}
+            className={`px-4 py-2 font-medium rounded-lg ${
+              activeTab === 'agent'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 dark:bg-dark-border text-gray-700 dark:text-dark-text'
+            }`}
+          >
+            Agent Settings
+          </button>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -107,6 +122,14 @@ export const AIConfig: React.FC<AIConfigProps> = ({
             scope={scope} 
             userId={targetUserId} 
             tenantId={targetTenantId} 
+          />
+        )}
+
+        {activeTab === 'agent' && (
+          <AgentSettings
+            scope={scope}
+            tenantId={targetTenantId}
+            userId={targetUserId}
           />
         )}
       </div>

@@ -246,5 +246,12 @@ class AIConfigSummary(BaseModel):
     generate_category_icon: Optional[TaskTypeAssignment]
     chat: Optional[TaskTypeAssignment]
     workflows: Optional[Dict[str, List[TaskTypeAssignment]]] = None
+    ai_agent_max_iterations: int = 20
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AIConfigUpdate(BaseModel):
+    """Schema for updating AI configuration settings"""
+
+    ai_agent_max_iterations: Optional[int] = Field(None, ge=1, le=100)

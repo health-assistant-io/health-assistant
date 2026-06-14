@@ -54,6 +54,7 @@ from .clinical_event import (
 from .body_part import BodyPartModel
 from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
+from .system_setting import SystemSetting
 
 __all__ = [
     "Base",
@@ -112,4 +113,5 @@ __all__ = [
     "TriggerType",
     "UserIntegration",
     "SystemIntegration",
+    "SystemSetting",
 ]
