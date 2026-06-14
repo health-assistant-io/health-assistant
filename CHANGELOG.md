@@ -19,6 +19,7 @@
 ### Fixed
 - **Audit Column Mismatch**: Resolved a `ProgrammingError` by adding missing `created_by` and `updated_by` columns to the `system_settings` table via migration.
 - **Fuzzy Match Hijacking**: Fixed a bug where substring matching in biomarker trends would return wrong data if a requested slug was a substring of another metric.
+- **Analytics Endpoint Argument Mismatch**: Fixed a bug where positional arguments were incorrectly passed to `get_biomarker_trends` in the analytics endpoint, causing empty results due to a missing database session.
 - **Timezone Inconsistency**: Fixed a `TypeError` (offset-naive/aware conflict) by standardizing all clinical timestamp columns (`effective_datetime`, `onset_date`, etc.) to use `TIMESTAMPTZ` via database migration and model updates.
 
 ## [1.0.0] - 2026-06-10

@@ -70,7 +70,12 @@ async def get_trends_endpoint(
         return []
 
     trends = await get_biomarker_trends(
-        str(current_user.tenant_id), biomarker_codes, period, aggregation, patient_id, db
+        tenant_id=str(current_user.tenant_id),
+        biomarker_codes=biomarker_codes,
+        period=period,
+        aggregation=aggregation,
+        patient_id=patient_id,
+        db=db,
     )
     return trends
 
