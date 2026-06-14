@@ -24,7 +24,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 2. **Clone the repository:**
    ```bash
    git clone https://github.com/health-assistant-io/health-assistant.git
-   cd health-assistant/core
+   cd health-assistant
    ```
 3. **Configure environment variables:**
    ```bash
