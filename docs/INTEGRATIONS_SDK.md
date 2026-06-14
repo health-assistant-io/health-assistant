@@ -195,10 +195,20 @@ builder = self.create_observation_builder(integration)
 
 obs = (
     builder
-    .set_biomarker("8867-4", "Heart rate") # LOINC Code
+    .set_biomarker("8867-4", "Heart rate") # Defaults to LOINC Code
     .set_value(72.0, "bpm", "{beats}/min")
     .set_reference_range(low=60, high=100)
     .set_effective_date(timestamp_obj) # Defaults to now() if omitted
+    .build()
+)
+
+# For proprietary codes (e.g., Apple HealthKit keys):
+from app.models.enums import CodingSystem
+
+obs_custom = (
+    builder
+    .set_biomarker("HKQuantityTypeIdentifierStepCount", "Step Count", coding_system=CodingSystem.CUSTOM)
+    .set_value(5000, "steps", "{steps}")
     .build()
 )
 ```
