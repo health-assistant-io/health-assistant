@@ -32,7 +32,8 @@ export const CreateBiomarkerModal: React.FC<Props> = ({
     preferred_unit_id: '',
     reference_range_min: '',
     reference_range_max: '',
-    info: ''
+    info: '',
+    is_telemetry: false
   });
   const [aliasInput, setAliasInput] = useState('');
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -73,7 +74,8 @@ export const CreateBiomarkerModal: React.FC<Props> = ({
         preferred_unit_id: '',
         reference_range_min: '',
         reference_range_max: '',
-        info: ''
+        info: '',
+        is_telemetry: false
       });
       
       setHasInitialized(true);
@@ -340,6 +342,25 @@ export const CreateBiomarkerModal: React.FC<Props> = ({
                 }}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Data Source Type</label>
+            <label className="flex items-center space-x-3 p-4 bg-gray-50 dark:bg-dark-bg rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-dark-border cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={formData.is_telemetry}
+                onChange={e => setFormData(prev => ({ ...prev, is_telemetry: e.target.checked }))}
+                className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-gray-900 dark:text-dark-text flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-500" />
+                  Is Telemetry / High-Frequency IoT
+                </span>
+                <span className="text-xs text-gray-500">Route data from smart devices directly to TimescaleDB to handle massive volumes.</span>
+              </div>
+            </label>
           </div>
 
           <div className="space-y-2">

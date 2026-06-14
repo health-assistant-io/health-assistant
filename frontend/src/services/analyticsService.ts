@@ -1,5 +1,6 @@
 import api from '../api/axios';
 import { db } from './db';
+import { DataSourceType } from '../types/biomarker';
 
 export async function getDashboardData(
   _tenantId: string,
@@ -96,7 +97,8 @@ export async function getBiomarkerTrends(
   _tenantId: string,
   biomarkerCodes?: string,
   period: string = 'last-6-months',
-  patientId?: string
+  patientId?: string,
+  aggregation?: string
 ): Promise<{
   biomarkers: {
     [key: string]: Array<{
@@ -107,6 +109,10 @@ export async function getBiomarkerTrends(
       examination_id?: string;
       examination_name?: string;
       status?: string;
+      source_type?: DataSourceType;
+      source_name?: string;
+      source_id?: string;
+      source_category?: string;
     }>;
   };
 }> {
@@ -124,7 +130,8 @@ export async function getBiomarkerTrends(
       params: {
         biomarker_codes: biomarkerCodes,
         period,
-        patient_id: patientId
+        patient_id: patientId,
+        aggregation: aggregation
       }
     });
     

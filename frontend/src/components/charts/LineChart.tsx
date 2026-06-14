@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { 
   LineChart as RechartsLineChart, 
+  ComposedChart,
   Line, 
   AreaChart,
   Area,
@@ -34,6 +35,7 @@ interface LineChartProps {
   chartType?: 'line' | 'area' | 'bar';
   showGrid?: boolean;
   showBrush?: boolean;
+  showSpikes?: boolean;
   strokeWidth?: number;
   interactiveZoom?: boolean;
   hideAxes?: boolean;
@@ -52,6 +54,7 @@ const LineChart = React.memo(({
   chartType = 'line',
   showGrid = true,
   showBrush = false,
+  showSpikes = false,
   strokeWidth = 3,
   interactiveZoom = false,
   hideAxes = false,
@@ -71,9 +74,10 @@ const LineChart = React.memo(({
   }, [data.length, dataKey]);
 
   const displayData = useMemo(() => {
-    const formatted = data.map((item) => ({
+    const formatted = data.map((item: any) => ({
+      ...item,
       name: item.name,
-      [dataKey]: item.value,
+      [dataKey]: item.value !== undefined ? item.value : item[dataKey],
     }));
     
     if (zoomIndices) {
@@ -186,6 +190,17 @@ const LineChart = React.memo(({
   }, [displayData, dataKey, referenceRange, data]);
 
   const renderChartContent = () => {
+    const spikeArea = showSpikes ? (
+      <Area 
+        type="step" 
+        dataKey="range" 
+        fill={color} 
+        fillOpacity={0.15} 
+        stroke="none" 
+        isAnimationActive={!isPanning}
+      />
+    ) : null;
+
     switch (chartType) {
       case 'area':
         return (
@@ -196,6 +211,7 @@ const LineChart = React.memo(({
                 <stop offset="95%" stopColor={color} stopOpacity={0}/>
               </linearGradient>
             </defs>
+            {spikeArea}
             <Area
               type="monotone"
               dataKey={dataKey}
@@ -211,30 +227,36 @@ const LineChart = React.memo(({
         );
       case 'bar':
         return (
-          <Bar 
-            dataKey={dataKey} 
-            fill={color} 
-            radius={[4, 4, 0, 0]}
-            maxBarSize={40}
-            isAnimationActive={!isPanning}
-          />
+          <>
+            {spikeArea}
+            <Bar 
+              dataKey={dataKey} 
+              fill={color} 
+              radius={[4, 4, 0, 0]}
+              maxBarSize={40}
+              isAnimationActive={!isPanning}
+            />
+          </>
         );
       default:
         return (
-          <Line
-            type="monotone"
-            dataKey={dataKey}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            dot={{ r: 4, strokeWidth: 2, fill: isDark ? '#1e293b' : '#fff' }}
-            activeDot={{ r: 6, strokeWidth: 0 }}
-            isAnimationActive={!isPanning}
-          />
+          <>
+            {spikeArea}
+            <Line
+              type="monotone"
+              dataKey={dataKey}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              dot={{ r: 4, strokeWidth: 2, fill: isDark ? '#1e293b' : '#fff' }}
+              activeDot={{ r: 6, strokeWidth: 0 }}
+              isAnimationActive={!isPanning}
+            />
+          </>
         );
     }
   };
 
-  const ChartComponent = chartType === 'area' ? AreaChart : chartType === 'bar' ? BarChart : RechartsLineChart;
+  const ChartComponent = showSpikes ? ComposedChart : chartType === 'area' ? AreaChart : chartType === 'bar' ? BarChart : RechartsLineChart;
 
   return (
     <div className="relative w-full h-full group/chart nodrag" ref={chartRef}>
@@ -307,33 +329,41 @@ const LineChart = React.memo(({
           )}
           {!hideTooltip && (
             <Tooltip
-              content={hideAxes ? ({ active, payload }: any) => {
+              content={({ active, payload }: any) => {
                 if (active && payload && payload.length) {
-                  return (
-                    <div className="bg-black/80 backdrop-blur-sm px-2 py-1.5 rounded-lg border border-white/10 shadow-xl flex flex-col items-center">
-                      <div className="flex items-baseline space-x-1">
-                        <p className="text-[10px] font-black text-white">{payload[0].value}</p>
-                        {unit && <p className="text-[8px] font-bold text-gray-400 uppercase">{unit}</p>}
+                  const dataObj = payload[0].payload;
+                  if (hideAxes) {
+                    return (
+                      <div className="bg-black/80 backdrop-blur-sm px-2 py-1.5 rounded-lg border border-white/10 shadow-xl flex flex-col items-center">
+                        <div className="flex items-baseline space-x-1">
+                          <p className="text-[10px] font-black text-white">{dataObj[dataKey]}</p>
+                          {unit && <p className="text-[8px] font-bold text-gray-400 uppercase">{unit}</p>}
+                        </div>
+                        {(dataObj.tooltipLabel || dataObj.name) && (
+                          <p className="text-[8px] font-medium text-gray-400 mt-0.5">{dataObj.tooltipLabel || dataObj.name}</p>
+                        )}
                       </div>
-                      {payload[0].payload.name && (
-                        <p className="text-[8px] font-medium text-gray-400 mt-0.5">{payload[0].payload.name}</p>
-                      )}
-                    </div>
-                  );
+                    );
+                  } else {
+                    return (
+                      <div className={`p-3 rounded-xl shadow-xl flex flex-col space-y-1 ${isDark ? 'bg-dark-surface border border-dark-border text-dark-text' : 'bg-white border border-gray-100 text-gray-900'}`}>
+                        <p className="text-xs font-bold text-gray-500 mb-1">{dataObj.tooltipLabel || dataObj.name}</p>
+                        <div className="flex items-baseline space-x-1.5">
+                          <p className="text-lg font-black" style={{ color: color }}>{dataObj[dataKey]}</p>
+                          {unit && <p className="text-xs font-bold text-gray-400">{unit}</p>}
+                        </div>
+                        {showSpikes && dataObj.min_value !== undefined && dataObj.max_value !== undefined && (
+                          <div className="flex justify-between items-center text-[10px] font-medium text-gray-500 mt-2 pt-2 border-t border-gray-100 dark:border-dark-border">
+                            <span>Min: <strong>{dataObj.min_value}</strong></span>
+                            <span>Max: <strong>{dataObj.max_value}</strong></span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                 }
                 return null;
-              } : undefined}
-              contentStyle={!hideAxes ? {
-                backgroundColor: isDark ? '#1e293b' : '#fff',
-                border: isDark ? '1px solid #334155' : 'none',
-                borderRadius: '0.75rem',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                color: isDark ? '#f8fafc' : '#000',
-                zIndex: 100,
-              } : undefined}
-              itemStyle={!hideAxes ? {
-                color: isDark ? '#f8fafc' : '#000',
-              } : undefined}
+              }}
             />
           )}
           {showReferenceLines && referenceRange && (

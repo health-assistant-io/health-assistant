@@ -5,11 +5,12 @@ import {
   Activity, 
   TrendingUp,
   ChevronDown,
-  Info
+  Info,
+  Box
 } from 'lucide-react';
 import LineChart from '../../charts/LineChart';
 import { getFinalStatus, isAbnormal, formatUnit } from '../../../utils/biomarkerUtils';
-import { BiomarkerObservation } from '../../../types/biomarker';
+import { BiomarkerObservation, DataSourceType } from '../../../types/biomarker';
 import { CardWrapper } from '../shared/CardWrapper';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
@@ -173,8 +174,23 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
                     </button>
                   )}
                 </div>
-                <div className="flex items-center space-x-2 mt-0.5">
-                   <ReferenceRangeDisplay displayText={latestPoint?.reference_range_text} compact={true} />
+                <div className="flex flex-col space-y-1 mt-0.5">
+                  <ReferenceRangeDisplay displayText={latestPoint?.reference_range_text} compact={true} />
+                  {latestPoint?.source_type && (
+                    <div className="flex items-center">
+                      {latestPoint.source_type === DataSourceType.TELEMETRY ? (
+                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded text-[8px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30">
+                          <Activity className="w-2.5 h-2.5" />
+                          <span>Telemetry</span>
+                        </span>
+                      ) : (
+                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded text-[8px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800">
+                          <Box className="w-2.5 h-2.5" />
+                          <span>FHIR</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}

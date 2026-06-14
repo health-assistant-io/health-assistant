@@ -169,7 +169,7 @@ function Dashboard() {
          }
       }
 
-      const data = await getBiomarkerTrends('', biomarkerCodes, 'all-time', currentPatient.id);
+      const data = await getBiomarkerTrends('', biomarkerCodes, 'all-time', currentPatient.id, '1 month');
       
       if (data && data.biomarkers) {
         setCardsData(data.biomarkers);
@@ -196,7 +196,7 @@ function Dashboard() {
          }
       }
 
-      const data = await getBiomarkerTrends('', '', 'all-time', currentPatient?.id);
+      const data = await getBiomarkerTrends('', '', 'all-time', currentPatient?.id, '1 month');
       if (data && data.biomarkers) {
         const uniqueBiomarkers = Object.keys(data.biomarkers).map(k => {
           const records = data.biomarkers[k];

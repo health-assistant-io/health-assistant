@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   Info, ChevronRight, Search, X, AlertCircle, Trash2,
-  ArrowUpDown, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CheckCircle2
+  ArrowUpDown, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CheckCircle2, Activity
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,6 +26,7 @@ interface BiomarkerListProps {
   onAlertsToggle?: (show: boolean) => void;
   chartType?: 'line' | 'area' | 'bar';
   showGrid?: boolean;
+  showSpikes?: boolean;
   showReferenceRanges?: boolean;
   showDate?: boolean;
   showSource?: boolean;
@@ -55,6 +56,7 @@ export const BiomarkerList = React.memo(({
   onAlertsToggle,
   chartType = 'line',
   showGrid = false,
+  showSpikes = false,
   showReferenceRanges = true,
   showDate = true,
   showSource = true,
@@ -195,7 +197,10 @@ export const BiomarkerList = React.memo(({
     // For trends/history we use the appropriate values
     const dataPts = history.slice(-10).map((d: any) => ({ 
       name: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), 
-      value: activeDataMode === 'raw' ? (d.raw_value || d.value) : d.value 
+      value: activeDataMode === 'raw' ? (d.raw_value || d.value) : d.value,
+      min_value: d.min_value,
+      max_value: d.max_value,
+      range: (d.min_value !== undefined && d.max_value !== undefined) ? [d.min_value, d.max_value] : undefined
     }));
 
     let change = 0;
@@ -234,6 +239,11 @@ export const BiomarkerList = React.memo(({
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
               <h3 className={`${compact ? 'text-base' : 'text-lg sm:text-xl'} font-black text-[#1a2b4b] dark:text-dark-text group-hover:text-blue-600 transition-colors leading-tight mr-2`}>{marker.displayName}</h3>
+              {marker.isTelemetry && (
+                <div className="flex items-center justify-center p-1 mr-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-md" title="Telemetry/IoT Data">
+                  <Activity className="w-3.5 h-3.5" />
+                </div>
+              )}
               {marker.info && (
                 <button 
                   type="button"
@@ -317,6 +327,7 @@ export const BiomarkerList = React.memo(({
               showReferenceLines={showReferenceRanges}
               chartType={chartType}
               showGrid={showGrid}
+              showSpikes={showSpikes}
               unit={formatUnit(active.unit)}
             />
           </div>
@@ -347,7 +358,10 @@ export const BiomarkerList = React.memo(({
     const history = marker._rawJson?.history || [];
     const dataPts = history.slice(-10).map((d: any) => ({ 
       name: new Date(d.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), 
-      value: activeDataMode === 'raw' ? (d.raw_value || d.value) : d.value 
+      value: activeDataMode === 'raw' ? (d.raw_value || d.value) : d.value,
+      min_value: d.min_value,
+      max_value: d.max_value,
+      range: (d.min_value !== undefined && d.max_value !== undefined) ? [d.min_value, d.max_value] : undefined
     }));
 
     let change = 0;
@@ -377,6 +391,11 @@ export const BiomarkerList = React.memo(({
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
               <h3 className="font-bold text-gray-900 dark:text-dark-text truncate hover:text-blue-600 leading-tight mr-2">{marker.displayName}</h3>
+              {marker.isTelemetry && (
+                <div className="flex items-center justify-center p-1 mr-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-md" title="Telemetry/IoT Data">
+                  <Activity className="w-3.5 h-3.5" />
+                </div>
+              )}
               {marker.info && (
                 <button 
                   type="button"
@@ -452,6 +471,7 @@ export const BiomarkerList = React.memo(({
               showReferenceLines={showReferenceRanges}
               chartType={chartType}
               showGrid={showGrid}
+              showSpikes={showSpikes}
               unit={formatUnit(active.unit)}
             />
           </div>
@@ -545,6 +565,11 @@ export const BiomarkerList = React.memo(({
                           <div className="flex flex-col">
                             <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600 transition-colors">{m.displayName}</span>
                           </div>
+                          {m.isTelemetry && (
+                            <div className="ml-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded p-0.5" title="Telemetry/IoT Data">
+                              <Activity className="w-3 h-3" />
+                            </div>
+                          )}
                           {m.info && <Info className="w-3.5 h-3.5 ml-2 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setSelectedInfo(m); }} />}
                        </div>
                     </td>

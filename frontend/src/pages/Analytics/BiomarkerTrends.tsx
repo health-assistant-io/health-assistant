@@ -5,11 +5,13 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { getBiomarkerTrends, getCachedBiomarkerTrends } from '../../services/analyticsService';
 import LineChart from '../../components/charts/LineChart';
-import { Download, TrendingUp, Search, AlertCircle, Grid, List, Table as TableIcon, ChevronDown, ListTree, Box, Layers, Calendar, X, Settings, Check, Filter } from 'lucide-react';
+import { Download, TrendingUp, Search, AlertCircle, Grid, List, Table as TableIcon, ChevronDown, ListTree, Box, Layers, Calendar, X, Settings, Check, Filter, Activity, Info } from 'lucide-react';
 import { useBiomarkers, Perspective } from '../../hooks/useBiomarkers';
+import { TimePeriod, TIME_RANGES, DEFAULT_AGGREGATIONS } from '../../config/timeRanges';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { InfoTooltip } from '../../components/ui/InfoTooltip';
 import { BiomarkerList } from '../../components/biomarkers/BiomarkerList';
 import { isAbnormal } from '../../utils/biomarkerUtils';
 
@@ -110,7 +112,7 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
       {isOpen && (
         <>
           <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] overflow-hidden animate-in slide-in-from-top-4 duration-200">
+          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] animate-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between p-6 pb-0">
               <h3 className="text-sm font-black text-[#1a2b4b] dark:text-dark-text uppercase tracking-widest">{t('biomarkers.filters')}</h3>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
@@ -119,16 +121,18 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
             </div>
             <div className="p-6 space-y-6">
               <div className="space-y-3">
-                <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em]">{t('biomarkers.temporal_scope')}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em]">{t('biomarkers.temporal_scope')}</p>
+                  <InfoTooltip 
+                    className="p-1"
+                    content="Time ranges automatically aggregate high-frequency telemetry metrics into optimized buckets (e.g., hourly, daily) while preserving exact measurements for standard clinical data."
+                    position="left"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'last-30-days', label: t('biomarkers.ranges.30d') },
-                    { id: 'last-90-days', label: t('biomarkers.ranges.90d') },
-                    { id: 'last-12-months', label: t('biomarkers.ranges.1y') },
-                    { id: 'all-time', label: t('biomarkers.ranges.all') }
-                  ].map(range => (
-                    <button key={range.id} onClick={() => setDateRange(range.id as any)} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center justify-between ${dateRange === range.id ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 text-blue-600 dark:text-blue-400' : 'bg-gray-50 dark:bg-dark-bg border-transparent text-gray-500'}`}>
-                      <span>{range.label}</span>
+                  {TIME_RANGES.map(range => (
+                    <button key={range.id} onClick={() => setDateRange(range.id)} className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center justify-between ${dateRange === range.id ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 text-blue-600 dark:text-blue-400' : 'bg-gray-50 dark:bg-dark-bg border-transparent text-gray-500'}`}>
+                      <span>{range.longLabel}</span>
                       {dateRange === range.id && <Check className="w-3 h-3" />}
                     </button>
                   ))}
@@ -168,7 +172,7 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
   );
 };
 
-const VisualizationSettings = ({ chartType, setChartType, showGrid, setShowGrid, showReferenceRanges, setShowReferenceRanges, t }: any) => {
+const VisualizationSettings = ({ chartType, setChartType, showGrid, setShowGrid, showReferenceRanges, setShowReferenceRanges, showSpikes, setShowSpikes, t }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="relative">
@@ -183,7 +187,7 @@ const VisualizationSettings = ({ chartType, setChartType, showGrid, setShowGrid,
       {isOpen && (
         <>
           <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] overflow-hidden animate-in slide-in-from-top-4 duration-200">
+          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] animate-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between p-6 pb-0">
               <h3 className="text-sm font-black text-[#1a2b4b] dark:text-dark-text uppercase tracking-widest">{t('biomarkers.visualization_settings')}</h3>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
@@ -217,6 +221,10 @@ const VisualizationSettings = ({ chartType, setChartType, showGrid, setShowGrid,
                     <div className="flex items-center space-x-3"><Box className="w-4 h-4" /><span className="text-xs font-bold">{t('biomarkers.overlays.reference')}</span></div>
                     <div className={`w-8 h-4 rounded-full relative transition-colors ${showReferenceRanges ? 'bg-emerald-500' : 'bg-gray-300'}`}><div className={`absolute top-1 w-2 h-2 bg-white rounded-full transition-all ${showReferenceRanges ? 'left-5' : 'left-1'}`} /></div>
                   </button>
+                  <button onClick={() => setShowSpikes(!showSpikes)} className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-all ${showSpikes ? 'bg-rose-50 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30 text-rose-600' : 'bg-gray-50 dark:bg-dark-bg border-transparent text-gray-500'}`}>
+                    <div className="flex items-center space-x-3"><Activity className="w-4 h-4" /><span className="text-xs font-bold">Show Min/Max Spikes</span></div>
+                    <div className={`w-8 h-4 rounded-full relative transition-colors ${showSpikes ? 'bg-rose-500' : 'bg-gray-300'}`}><div className={`absolute top-1 w-2 h-2 bg-white rounded-full transition-all ${showSpikes ? 'left-5' : 'left-1'}`} /></div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -242,8 +250,9 @@ function BiomarkerTrends() {
   const [showAlertsOnly, setShowAlertsOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('table');
   const [chartType, setChartType] = useState<'line' | 'area' | 'bar'>('line');
-  const [dateRange, setDateRange] = useState<'last-30-days' | 'last-90-days' | 'last-12-months' | 'all-time'>('last-12-months');
+  const [dateRange, setDateRange] = useState<TimePeriod>('last-12-months');
   const [showGrid, setShowGrid] = useState(false);
+  const [showSpikes, setShowSpikes] = useState(true);
   const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
   const [isLoading, setIsLoading] = useState(true);
   const loadingRef = useRef(false);
@@ -284,7 +293,8 @@ function BiomarkerTrends() {
       }
 
       try {
-        const trends = await getBiomarkerTrends('', '', dateRange, currentPatient?.id);
+        const aggregation = DEFAULT_AGGREGATIONS[dateRange] || '1 day';
+        const trends = await getBiomarkerTrends('', '', dateRange, currentPatient?.id, aggregation);
 
         if (trends && trends.biomarkers) {
           setTrendsData(trends.biomarkers);
@@ -382,6 +392,8 @@ function BiomarkerTrends() {
                setChartType={setChartType} 
                showGrid={showGrid} 
                setShowGrid={setShowGrid} 
+               showSpikes={showSpikes}
+               setShowSpikes={setShowSpikes}
                showReferenceRanges={showReferenceRanges} 
                setShowReferenceRanges={setShowReferenceRanges} 
                t={t} 
@@ -419,6 +431,7 @@ function BiomarkerTrends() {
         onAlertsToggle={setShowAlertsOnly}
         chartType={chartType}
         showGrid={showGrid}
+        showSpikes={showSpikes}
         showReferenceRanges={showReferenceRanges}
         initialDataMode="normalized"
       />

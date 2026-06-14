@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Search, Plus, ListTree, Info, Edit3, X, Save, Trash2, CheckCircle, ChevronDown, CheckSquare, Square, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Search, Plus, ListTree, Info, Edit3, X, Save, Trash2, CheckCircle, ChevronDown, CheckSquare, Square, RefreshCw, Activity } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { CreateBiomarkerModal } from '../../components/examinations/CreateBiomarkerModal';
 import { UnitSelector } from '../../components/ui/UnitSelector';
+import { BiomarkerConfigPanel } from '../../components/biomarkers/BiomarkerConfigPanel';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import biomarkerService from '../../services/biomarkerService';
@@ -30,6 +31,7 @@ const BiomarkerCatalog: React.FC = () => {
   const [rangeMin, setRangeMin] = useState<string>('');
   const [rangeMax, setRangeMax] = useState<string>('');
   const [preferredUnitId, setPreferredUnitId] = useState<string>('');
+  const [isTelemetry, setIsTelemetry] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState(false);
   const [viewingInfo, setViewingInfo] = useState<Biomarker | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -71,6 +73,7 @@ const BiomarkerCatalog: React.FC = () => {
     setRangeMin(biomarker.reference_range_min?.toString() || '');
     setRangeMax(biomarker.reference_range_max?.toString() || '');
     setPreferredUnitId(biomarker.preferred_unit_id || '');
+    setIsTelemetry(biomarker.is_telemetry || false);
   };
 
   const handleSaveInfo = async () => {
@@ -79,9 +82,6 @@ const BiomarkerCatalog: React.FC = () => {
     try {
       await biomarkerService.updateBiomarker(editingBiomarker.id, { 
         info: infoText,
-        reference_range_min: rangeMin === '' ? null : parseFloat(rangeMin),
-        reference_range_max: rangeMax === '' ? null : parseFloat(rangeMax),
-        preferred_unit_id: preferredUnitId === '' ? null : preferredUnitId
       });
       
       // Reload biomarkers
@@ -434,8 +434,8 @@ const BiomarkerCatalog: React.FC = () => {
       {/* Editor Modal */}
       {editingBiomarker && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
+          <div className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
                   <Edit3 className="w-5 h-5 text-blue-600" />
@@ -446,71 +446,52 @@ const BiomarkerCatalog: React.FC = () => {
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">{t('biomarker_catalog.preferred_unit')}</label>
-                    <UnitSelector
-                      units={units}
-                      selectedId={preferredUnitId}
-                      onSelect={(u) => setPreferredUnitId(u.id)}
-                      onUnitsUpdated={setUnits}
-                      className="w-full"
-                    />
-                  </div>
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">{t('biomarker_catalog.min_range')}</label>
-                    <input 
-                      type="number" step="any" placeholder="e.g. 3.9" 
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                      value={rangeMin} onChange={e => setRangeMin(e.target.value)}
-                    />
-                 </div>
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">{t('biomarker_catalog.max_range')}</label>
-                    <input 
-                      type="number" step="any" placeholder="e.g. 5.6" 
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                      value={rangeMax} onChange={e => setRangeMax(e.target.value)}
-                    />
-                 </div>
-              </div>
-              
-              <div className="mb-6 px-1 flex items-center space-x-2 text-blue-600 dark:text-blue-400">
-                <Info className="w-4 h-4" />
-                <p className="text-[10px] font-bold uppercase tracking-wider">
-                  {t('biomarker_catalog.range_warning')}
-                </p>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-dark-bg flex flex-col md:flex-row gap-6">
+              <div className="w-full md:w-1/3 shrink-0">
+                <BiomarkerConfigPanel 
+                  biomarker={editingBiomarker}
+                  units={units}
+                  onUnitsUpdated={setUnits}
+                  onSuccess={(updated: Biomarker) => {
+                    const data = [...biomarkers];
+                    const index = data.findIndex(b => b.id === updated.id);
+                    if (index !== -1) {
+                      data[index] = updated;
+                      setBiomarkers(data);
+                    }
+                    setEditingBiomarker(updated);
+                  }}
+                />
               </div>
 
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-1">{t('biomarker_catalog.detailed_info')}</label>
-              <RichTextEditor 
-                value={infoText} 
-                onChange={setInfoText} 
-                placeholder={t('biomarker_catalog.info_placeholder')} 
-                minHeight="300px"
-              />
-              <p className="mt-2 text-[10px] text-gray-400 px-1 italic">{t('biomarker_catalog.info_note')}</p>
-            </div>
-            <div className="p-6 bg-gray-50 dark:bg-dark-bg border-t border-gray-100 dark:border-dark-border flex justify-end space-x-3">
-              <button 
-                onClick={() => setEditingBiomarker(null)}
-                className="px-6 py-2.5 text-gray-500 font-bold text-sm hover:text-gray-700 transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-              <button 
-                onClick={handleSaveInfo}
-                disabled={isSaving}
-                className="flex items-center space-x-2 px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>{t('biomarker_catalog.save_info')}</span>
-              </button>
+              <div className="flex-1 bg-white dark:bg-dark-surface p-6 rounded-3xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col">
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-1">{t('biomarker_catalog.detailed_info')}</label>
+                <div className="flex-1">
+                  <RichTextEditor 
+                    value={infoText} 
+                    onChange={setInfoText} 
+                    placeholder={t('biomarker_catalog.info_placeholder')} 
+                    minHeight="300px"
+                  />
+                </div>
+                <p className="mt-4 text-[10px] text-gray-400 px-1 italic">{t('biomarker_catalog.info_note')}</p>
+                
+                <div className="mt-6 pt-4 border-t border-gray-50 dark:border-dark-border flex justify-end">
+                  <button 
+                    onClick={handleSaveInfo}
+                    disabled={isSaving}
+                    className="flex items-center space-x-2 px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 disabled:opacity-50"
+                  >
+                    {isSaving ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>Save Text Info</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

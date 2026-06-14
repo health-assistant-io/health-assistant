@@ -1,5 +1,13 @@
 export type CodingSystemType = 'loinc' | 'snomed' | 'custom';
 
+export enum DataSourceType {
+  TELEMETRY = 'telemetry',
+  EXAMINATION = 'examination',
+  DOCUMENT = 'document',
+  INTEGRATION = 'integration',
+  UNKNOWN = 'unknown'
+}
+
 export interface Biomarker {
   id: string;
   slug: string;
@@ -11,6 +19,7 @@ export interface Biomarker {
   preferred_unit_id?: string;
   preferred_unit_symbol?: string;
   info?: string;
+  is_telemetry?: boolean;
   reference_range_min?: number;
   reference_range_max?: number;
 }
@@ -77,5 +86,6 @@ export interface BiomarkerObservation {
   definitionId: string | null;
   info: string | null | undefined;
   aliases?: string[];
+  isTelemetry?: boolean;
   _rawJson?: any; 
 }

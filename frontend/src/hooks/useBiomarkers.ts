@@ -118,6 +118,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
           definitionId: current.biomarker_id || null,
           info: current.info || null,
           aliases: current.aliases || [],
+          isTelemetry: current.source_type === 'telemetry' || points.some((p: any) => p.source_type === 'telemetry'),
           _rawJson: { 
             history: points,
             techCategory: current.technical_category,
