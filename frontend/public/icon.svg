@@ -1,5 +1,48 @@
 <svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="192" height="192" rx="40" fill="#3B82F6"/>
-  <path d="M96 50V142" stroke="white" stroke-width="24" stroke-linecap="round"/>
-  <path d="M50 96H142" stroke="white" stroke-width="24" stroke-linecap="round"/>
+  <defs>
+    <!-- Elevated background: slate-800 to slate-900 for better contrast on dark sites -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E293B" />
+      <stop offset="1" stop-color="#0F172A" />
+    </linearGradient>
+
+    <!-- Glass border highlight -->
+    <linearGradient id="borderGrad" x1="0" y1="0" x2="192" y2="192" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#A78BFA" stop-opacity="0.2"/>
+    </linearGradient>
+
+    <linearGradient id="pulseGrad" x1="0" y1="0" x2="192" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34D399" />
+      <stop offset="0.5" stop-color="#3B82F6" />
+      <stop offset="1" stop-color="#8B5CF6" />
+    </linearGradient>
+
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <rect x="2" y="2" width="188" height="188" rx="42" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="2"/>
+
+  <g stroke="white" stroke-opacity="0.05" stroke-width="1.5">
+    <line x1="48" y1="0" x2="48" y2="192" />
+    <line x1="96" y1="0" x2="96" y2="192" />
+    <line x1="144" y1="0" x2="144" y2="192" />
+    <line x1="0" y1="48" x2="192" y2="48" />
+    <line x1="0" y1="96" x2="192" y2="96" />
+    <line x1="0" y1="144" x2="192" y2="144" />
+  </g>
+
+  <path d="M 24 96 L 52 96 L 72 64 L 96 140 L 124 48 L 144 96 L 168 96"
+        stroke="url(#pulseGrad)"
+        stroke-width="12"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#glow)"/>
+
+  <circle cx="72" cy="64" r="5" fill="white"/>
+  <circle cx="96" cy="140" r="5" fill="white"/>
+  <circle cx="124" cy="48" r="5" fill="white"/>
 </svg>
