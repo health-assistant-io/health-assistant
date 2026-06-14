@@ -16,6 +16,36 @@
 - Redis 7+
 - Tesseract OCR
 
+## Installations - Quickstart (Recommended)
+
+Using Docker is the easiest and most recommended way to get Health Assistant up and running.
+
+1. **Install Docker** and Docker Compose on your system.
+2. **Clone the repository:**
+   ```bash
+   git clone https://github.com/health-assistant-io/health-assistant.git
+   cd health-assistant/core
+   ```
+3. **Configure environment variables:**
+   ```bash
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
+   *Edit the `.env` files to include any required keys (e.g., `OPENAI_API_KEY` in the backend).*
+4. **Start the application:**
+   For development (hot-reloading):
+   ```bash
+   docker compose -f docker/docker-compose-dev.yml up -d
+   ```
+   For production:
+   ```bash
+   docker compose -f docker/docker-compose.prod.yml up -d
+   ```
+
+Once started, the backend API will be available at http://localhost:8000 and the frontend application at http://localhost:3000.
+
+---
+
 ## Manual Installation
 
 ### Step 1: Backend Setup
@@ -44,7 +74,7 @@ uvicorn app.main:app --reload
 
 Backend runs on: http://localhost:8000
 
-#### Step 2: Frontend Setup
+### Step 2: Frontend Setup
 
 ```bash
 cd frontend
@@ -60,10 +90,6 @@ npm run dev
 ```
 
 Frontend runs on: http://localhost:3000
-
-### Method 3: Docker (Coming Soon)
-
-Docker support is planned for future release.
 
 ## First-Time Setup
 
