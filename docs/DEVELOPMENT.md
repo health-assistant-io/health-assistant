@@ -5,10 +5,28 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 ## Development Setup
 
 ### Quick Start
-```bash
-# Using the unified development script
-./scripts/run-dev.sh
-```
+
+1. **Install Docker** and Docker Compose on your system if you haven't already.
+2. **Clone the project:**
+   ```bash
+   git clone https://github.com/health-assistant-io/health-assistant.git
+   cd health-assistant/core
+   ```
+3. **Configure the environment:**
+   Copy the example environment files to `.env` and update them with your specific values (e.g., adding `OPENAI_API_KEY` to the backend):
+   ```bash
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
+4. **Start the database:**
+   ```bash
+   docker compose -f docker/docker-compose-dev.yml up -d
+   ```
+5. **Start the development application:**
+   Run the unified development script:
+   ```bash
+   ./scripts/run-dev.sh
+   ```
 
 ### Environment Configuration
 - **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
