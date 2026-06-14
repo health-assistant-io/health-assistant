@@ -174,6 +174,35 @@ async def seed_data():
                 "category": "vital_signs",
                 "preferred_unit_symbol": "bpm",
                 "aliases": ["Pulse", "HR"],
+                "is_telemetry": True,
+            },
+            {
+                "slug": "oxygen-saturation",
+                "coding_system": CodingSystem.LOINC,
+                "code": "2708-6",
+                "name": "Oxygen Saturation",
+                "category": "vital_signs",
+                "preferred_unit_symbol": "%",
+                "aliases": ["SpO2", "O2 Sat"],
+                "is_telemetry": True,
+            },
+            {
+                "slug": "steps",
+                "coding_system": CodingSystem.LOINC,
+                "code": "41950-7",
+                "name": "Step Count",
+                "category": "activity",
+                "aliases": ["Steps"],
+                "is_telemetry": True,
+            },
+            {
+                "slug": "calories-burned",
+                "coding_system": CodingSystem.LOINC,
+                "code": "41979-6",
+                "name": "Calories Burned",
+                "category": "activity",
+                "aliases": ["Active Energy", "Calories"],
+                "is_telemetry": True,
             }
         ]
 
