@@ -29,34 +29,34 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
     gender = Column(Enum(Gender), nullable=False)
     birth_date = Column(Date, nullable=True)
     deceased_boolean = Column(Boolean, nullable=True)
-    deceased_datetime = Column(DateTime, nullable=True)
+    deceased_datetime = Column(DateTime(timezone=True), nullable=True)
     address = Column(JSONB, nullable=True)
     telecom = Column(JSONB, nullable=True)
-
+    
     # Additional metadata
     mrn = Column(String, nullable=True, unique=True)  # Medical Record Number
     emergency_contact = Column(JSONB, nullable=True)
     dashboard_layout = Column(JSONB, nullable=True)  # Custom dashboard layout
-
+    
     # Indexes for common queries
     __table_args__ = (
         Index("idx_patient_tenant_mrn", "tenant_id", "mrn"),
         Index("idx_patient_tenant_name", "tenant_id", "name"),
     )
-
+    
     @property
     def age(self) -> int | None:
         if not self.birth_date:
             return None
         from datetime import date
-
+        
         today = date.today()
         return (
             today.year
             - self.birth_date.year
             - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         )
-
+    
     def to_dict(self):
         return {
             "id": str(self.id),
@@ -96,7 +96,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
     category = Column(JSONB, nullable=True)
     code = Column(JSONB, nullable=False)  # LOINC code
     subject = Column(JSONB, nullable=False)  # Reference to Patient
-    effective_datetime = Column(DateTime, nullable=True)
+    effective_datetime = Column(DateTime(timezone=True), nullable=True)
     value_quantity = Column(JSONB, nullable=True)
     value_string = Column(String, nullable=True)
     value_codeableConcept = Column(JSONB, nullable=True)
@@ -124,6 +124,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
         PG_UUID(as_uuid=True),
         ForeignKey("units.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     normalized_value = Column(Float, nullable=True)
     relative_score = Column(Float, nullable=True)
@@ -185,8 +186,8 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
     category = Column(JSONB, nullable=True)
     code = Column(JSONB, nullable=False)
     subject = Column(JSONB, nullable=False)  # Reference to Patient
-    effective_datetime = Column(DateTime, nullable=True)
-    issued = Column(DateTime, nullable=True)
+    effective_datetime = Column(DateTime(timezone=True), nullable=True)
+    issued = Column(DateTime(timezone=True), nullable=True)
     performer = Column(JSONB, nullable=True)
     conclusion = Column(String, nullable=True)
     conclusion_code = Column(JSONB, nullable=True)
