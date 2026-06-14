@@ -1,18 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock, Save } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal } from '../../utils/biomarkerUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { InfoTooltip } from '../../components/ui/InfoTooltip';
 import biomarkerService from '../../services/biomarkerService';
 import { getBiomarkerTrends } from '../../services/analyticsService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useTabScroll } from '../../hooks/useTabScroll';
-import { Biomarker } from '../../types/biomarker';
+import { Biomarker, Unit } from '../../types/biomarker';
+import { TimePeriod, TIME_RANGES, AGGREGATION_OPTIONS, DEFAULT_AGGREGATIONS, AggregationBucket, getCutoffDate } from '../../config/timeRanges';
+import { UnitSelector } from '../../components/ui/UnitSelector';
+import { BiomarkerConfigPanel } from '../../components/biomarkers/BiomarkerConfigPanel';
 import LineChart from '../../components/charts/LineChart';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import ReactMarkdown from 'react-markdown';
@@ -41,9 +45,12 @@ const BiomarkerDetail: React.FC = () => {
   // Auto-scroll when tab changes
   useTabScroll(tabsRef, activeTab);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [dateRange, setDateRange] = useState<'30d' | '90d' | '1y' | 'all-time'>('all-time');
+  const [dateRange, setDateRange] = useState<TimePeriod>('all-time');
+  const [aggregation, setAggregation] = useState<AggregationBucket | null>(null);
+  const [initialDateRangeSet, setInitialDateRangeSet] = useState(false);
   const [chartType, setChartType] = useState<'line' | 'area' | 'bar'>('line');
   const [showGrid, setShowGrid] = useState(true);
+  const [showSpikes, setShowSpikes] = useState(true);
   const [showZoom, setShowZoom] = useState(true);
 
   // Global editing toggle
@@ -55,21 +62,40 @@ const BiomarkerDetail: React.FC = () => {
   ], [t]);
 
   const subtitle = React.useMemo(() => (
-    <div className="flex flex-col space-y-1">
-      <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
-        {biomarker?.category || 'General'}
-      </span>
+    <div className="flex flex-col space-y-2">
+      <div className="flex items-center space-x-2">
+        <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
+          {biomarker?.category || 'General'}
+        </span>
+        {biomarker?.is_telemetry ? (
+          <span className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 w-fit" title="High-frequency telemetry data from IoT devices">
+            <Activity className="w-3 h-3" />
+            <span>Telemetry</span>
+          </span>
+        ) : (
+          <span className="flex items-center space-x-1 px-2.5 py-1 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 w-fit" title="Standard clinical FHIR data">
+            <Box className="w-3 h-3" />
+            <span>FHIR</span>
+          </span>
+        )}
+      </div>
       <p className="text-gray-500 dark:text-dark-muted font-mono text-xs uppercase tracking-tighter">
         {biomarker?.coding_system === 'loinc' ? 'LOINC CODE' : 'CUSTOM CODE'}: {biomarker?.code || biomarker?.slug}
       </p>
     </div>
-  ), [biomarker?.category, biomarker?.code, biomarker?.coding_system, biomarker?.slug]);
+  ), [biomarker?.category, biomarker?.code, biomarker?.coding_system, biomarker?.slug, biomarker?.is_telemetry]);
 
   const headerIcon = React.useMemo(() => <Activity className="w-8 h-8" />, []);
   
   // Info editing state
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [infoContent, setInfoContent] = useState('');
+  const [rangeMin, setRangeMin] = useState<string>('');
+  const [rangeMax, setRangeMax] = useState<string>('');
+  const [preferredUnitId, setPreferredUnitId] = useState<string>('');
+  const [isTelemetry, setIsTelemetry] = useState<boolean>(false);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   const interpretation = React.useMemo(() => {
     if (!trends || trends.length === 0 || !biomarker) return 'Normal';
@@ -92,12 +118,7 @@ const BiomarkerDetail: React.FC = () => {
     if (!trends || trends.length === 0) return [];
     if (dateRange === 'all-time') return trends;
 
-    const now = new Date();
-    let cutoff = new Date();
-    if (dateRange === '30d') cutoff.setDate(now.getDate() - 30);
-    else if (dateRange === '90d') cutoff.setDate(now.getDate() - 90);
-    else if (dateRange === '1y') cutoff.setFullYear(now.getFullYear() - 1);
-
+    const cutoff = getCutoffDate(dateRange as TimePeriod);
     return trends.filter((d: any) => new Date(d.date) >= cutoff);
   }, [trends, dateRange]);
 
@@ -125,12 +146,17 @@ const BiomarkerDetail: React.FC = () => {
 
   const handleSaveInfo = async () => {
     if (!biomarker) return;
+    setIsSaving(true);
     try {
-      const updated = await biomarkerService.updateBiomarker(biomarker.id, { info: infoContent });
+      const updated = await biomarkerService.updateBiomarker(biomarker.id, { 
+        info: infoContent
+      });
       setBiomarker(updated);
       setIsEditingInfo(false);
     } catch (error) {
       console.error("Failed to save info", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -142,17 +168,32 @@ const BiomarkerDetail: React.FC = () => {
   }, [decodedId, setCurrentBiomarkerId]);
 
   useEffect(() => {
+    if (biomarker?.is_telemetry && dateRange) {
+      setAggregation(DEFAULT_AGGREGATIONS[dateRange as TimePeriod] || '1 day');
+    } else {
+      setAggregation(null);
+    }
+  }, [dateRange, biomarker?.is_telemetry]);
+
+  useEffect(() => {
     const fetchData = async () => {
       if (!decodedId) return;
-      setLoading(true);
+      if (!biomarker) setLoading(true);
       try {
         let bioData = await biomarkerService.getBiomarkerById(decodedId).catch(err => {
              console.warn("Biomarker definition not found for ID:", decodedId);
              return null;
         });
+        
+        try {
+            const unitsData = await biomarkerService.getUnits();
+            setUnits(unitsData);
+        } catch (e) {
+            console.error("Failed to load units", e);
+        }
 
         if (!bioData) {
-          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', decodedId, 'all-time', currentPatient.id) : { biomarkers: {} };
+          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', decodedId, dateRange, currentPatient.id, aggregation || undefined) : { biomarkers: {} };
           if (trendsData.biomarkers && trendsData.biomarkers[decodedId]) {
             const biomarkerTrends = trendsData.biomarkers[decodedId];
             if (biomarkerTrends.length > 0) {
@@ -166,7 +207,16 @@ const BiomarkerDetail: React.FC = () => {
                 info: '',
                 reference_range_min: null,
                 reference_range_max: null,
+                is_telemetry: latest.source_type === 'telemetry'
               } as any;
+              
+              if (bioData?.is_telemetry && !initialDateRangeSet) {
+                setDateRange('last-24-hours');
+                setInitialDateRangeSet(true);
+                return; // Will re-trigger effect
+              }
+              setInitialDateRangeSet(true);
+
               setBiomarker(bioData);
               setTrends(biomarkerTrends);
             } else {
@@ -178,11 +228,20 @@ const BiomarkerDetail: React.FC = () => {
             setTrends([]);
           }
         } else {
+          if (bioData?.is_telemetry && !initialDateRangeSet) {
+            setDateRange('last-24-hours');
+            setInitialDateRangeSet(true);
+            return; // Will re-trigger effect
+          }
+          setInitialDateRangeSet(true);
+
           setBiomarker(bioData);
           setInfoContent(bioData.info || '');
-          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', bioData.slug, 'all-time', currentPatient.id) : { biomarkers: {} };
+          const trendsData = currentPatient?.id ? await getBiomarkerTrends('', bioData.slug, dateRange, currentPatient.id, aggregation || undefined) : { biomarkers: {} };
           if (trendsData.biomarkers && trendsData.biomarkers[bioData.slug]) {
             setTrends(trendsData.biomarkers[bioData.slug]);
+          } else {
+            setTrends([]);
           }
         }
       } catch (error) {
@@ -193,7 +252,7 @@ const BiomarkerDetail: React.FC = () => {
     };
 
     fetchData();
-  }, [decodedId, currentPatient?.id]);
+  }, [decodedId, currentPatient?.id, dateRange, aggregation]);
 
   if (loading) {
     return <LoadingState variant="section" showText={false} />;
@@ -298,7 +357,7 @@ const BiomarkerDetail: React.FC = () => {
           </div>
 
           {/* Primary Trend Chart Section */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm overflow-hidden flex flex-col">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm flex flex-col">
             <div className="p-6 sm:p-8 border-b border-gray-50 dark:border-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
@@ -311,21 +370,40 @@ const BiomarkerDetail: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
-                  {[
-                    { id: '30d', label: '30D' },
-                    { id: '90d', label: '3M' },
-                    { id: '1y', label: '1Y' },
-                    { id: 'all-time', label: 'ALL' }
-                  ].map(range => (
-                    <button 
-                      key={range.id}
-                      onClick={() => setDateRange(range.id as any)}
-                      className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${dateRange === range.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                      {range.label}
-                    </button>
-                  ))}
+                <div className="flex items-center space-x-2">
+                  <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
+                    {TIME_RANGES.map(range => (
+                      <button 
+                        key={range.id}
+                        onClick={() => setDateRange(range.id)}
+                        className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${dateRange === range.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                        {range.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {biomarker?.is_telemetry && aggregation && (
+                    <div className="flex items-center ml-2 bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
+                      <select
+                        value={aggregation}
+                        onChange={(e) => setAggregation(e.target.value as AggregationBucket)}
+                        className="bg-transparent text-[10px] font-black text-gray-700 dark:text-gray-300 outline-none cursor-pointer pl-2 pr-6 py-1.5 appearance-none"
+                        style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239CA3AF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right .5rem top 50%', backgroundSize: '.65rem auto' }}
+                      >
+                        {AGGREGATION_OPTIONS.map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.label} avg</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <InfoTooltip 
+                    className="p-1"
+                    content={biomarker?.is_telemetry 
+                      ? "High-frequency telemetry data is automatically aggregated into dynamic time buckets (e.g. 15-minute, 1-hour, or 1-day averages) based on the selected time range to ensure fast loading." 
+                      : "Standard clinical FHIR data displays every recorded data point exactly as it was measured without aggregation."}
+                  />
                 </div>
 
                 <div className="flex items-center space-x-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
@@ -362,13 +440,36 @@ const BiomarkerDetail: React.FC = () => {
                     <Box className="w-4 h-4" />
                   </button>
                 )}
+
+                {biomarker.is_telemetry && (
+                  <button 
+                    onClick={() => setShowSpikes(!showSpikes)}
+                    className={`p-2 rounded-xl transition-all border ${showSpikes ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 text-rose-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
+                    title="Toggle Min/Max Spikes"
+                  >
+                    <Activity className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="p-4 sm:p-8 h-[400px]">
               {filteredTrends.length > 0 ? (
                 <LineChart 
-                  data={filteredTrends.map(t => ({ name: new Date(t.date).toLocaleDateString(), value: t.value }))} 
+                  data={filteredTrends.map(t => ({ 
+                    name: new Date(t.date).toLocaleDateString(), 
+                    tooltipLabel: new Date(t.date).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: biomarker?.is_telemetry ? 'numeric' : undefined,
+                      minute: biomarker?.is_telemetry ? '2-digit' : undefined,
+                    }),
+                    value: t.value,
+                    min_value: t.min_value,
+                    max_value: t.max_value,
+                    range: (t.min_value !== undefined && t.max_value !== undefined) ? [t.min_value, t.max_value] : undefined
+                  }))} 
                   dataKey="value" 
                   xAxisKey="name"
                   color="#3b82f6"
@@ -379,6 +480,8 @@ const BiomarkerDetail: React.FC = () => {
                   showReferenceLines={showReferenceRanges}
                   chartType={chartType}
                   showGrid={showGrid}
+                  showSpikes={showSpikes && biomarker.is_telemetry}
+                  showBrush={true}
                   interactiveZoom={showZoom}
                   height="100%"
                 />
@@ -428,17 +531,23 @@ const BiomarkerDetail: React.FC = () => {
 
                   {isEditingInfo ? (
                     <div className="space-y-4">
-                      <RichTextEditor value={infoContent} onChange={setInfoContent} placeholder={t('biomarkers.historical_trajectory')} />
+                      <RichTextEditor value={infoContent} onChange={setInfoContent} placeholder={t('biomarkers.historical_trajectory') || 'Add detailed clinical context here...'} />
                       <div className="flex justify-end space-x-3 pt-2">
                          <button onClick={() => setIsEditingInfo(false)} className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors">{t('common.cancel')}</button>
-                         <button onClick={handleSaveInfo} className="px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 text-xs uppercase tracking-widest">{t('biomarker_catalog.save_info')}</button>
+                         <button onClick={handleSaveInfo} disabled={isSaving} className="flex items-center space-x-2 px-8 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 text-xs uppercase tracking-widest disabled:opacity-50">
+                            {isSaving ? <Activity className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            <span>{t('biomarker_catalog.save_info')}</span>
+                         </button>
                       </div>
                     </div>
                   ) : (
                     <div className="group relative">
                       {isGlobalEditing && (
                         <button 
-                          onClick={() => setIsEditingInfo(true)} 
+                          onClick={() => {
+                            setInfoContent(biomarker.info || '');
+                            setIsEditingInfo(true);
+                          }} 
                           className="absolute -top-12 right-0 p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all border border-blue-100 dark:border-blue-800/30 shadow-sm z-10"
                           title={t('common.edit')}
                         >
@@ -463,7 +572,10 @@ const BiomarkerDetail: React.FC = () => {
                           </div>
                           <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">{t('biomarkers.no_clinical_info')}</p>
                           {isGlobalEditing ? (
-                             <button onClick={() => setIsEditingInfo(true)} className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_clinical_info')}</button>
+                             <button onClick={() => {
+                                setInfoContent(biomarker.info || '');
+                                setIsEditingInfo(true);
+                             }} className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_clinical_info')}</button>
                           ) : (
                              <Link to="/biomarkers/catalog" className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_to_catalog')}</Link>
                           )}
@@ -491,7 +603,13 @@ const BiomarkerDetail: React.FC = () => {
                         {filteredTrends.map((t, i) => (
                           <tr key={i} className="group hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
                             <td className="px-8 py-5 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
-                              {new Date(t.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                              {new Date(t.date).toLocaleString(undefined, { 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: biomarker?.is_telemetry ? 'numeric' : undefined,
+                                minute: biomarker?.is_telemetry ? '2-digit' : undefined
+                              })}
                             </td>
                             <td className="px-8 py-5 whitespace-nowrap">
                               <span className="text-sm font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg">
@@ -579,6 +697,19 @@ const BiomarkerDetail: React.FC = () => {
 
         {/* Right Column: Sidebar Stats & Metadata */}
         <div className="space-y-6">
+          {isGlobalEditing && (
+            <BiomarkerConfigPanel 
+              biomarker={biomarker}
+              units={units}
+              isEditable={isGlobalEditing}
+              onUnitsUpdated={setUnits}
+              onSuccess={(updated) => {
+                setBiomarker(updated);
+                // Update local state flags so UI reflects changes instantly
+                setIsTelemetry(updated.is_telemetry || false);
+              }}
+            />
+          )}
           <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
             <div className="flex items-center justify-between mb-8">
               <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em]">{t('biomarkers.patient_snapshot')}</h4>

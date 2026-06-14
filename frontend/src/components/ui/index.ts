@@ -7,3 +7,4 @@ export { default as PageHeader } from './PageHeader';
 export { LoadingState } from './LoadingState';
 export { AIBadge } from './AIBadge';
 export { Portal } from './Portal';
+export * from './InfoTooltip';
