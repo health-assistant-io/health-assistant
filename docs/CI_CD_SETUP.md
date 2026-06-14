@@ -124,27 +124,4 @@ To completely eliminate Cross-Origin Resource Sharing (CORS) errors, the Health 
 
 ## 6. Initial Database Seeding (First-Time Deploy Setup)
 
-Because automated database seeding is disabled in production for data safety (`DEBUG=false`), a brand new deployment on an empty PostgreSQL database requires a one-time manual bootstrap.
-
-Once the deployment pipeline completes successfully, SSH into your target server host, navigate to your deployment directory (`~/health_assistant`), and run the following bootstrap commands:
-
-```bash
-cd ~/health_assistant
-
-# 1. Create your System Admin User (it will prompt you with the credentials)
-docker compose -f docker-compose.prod.yml exec backend python scripts/create_system_admin.py
-
-# 2. Seed clinical biomarkers database (crucial for visual charts)
-docker compose -f docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
-
-# 3. Seed default allergy categories
-docker compose -f docker-compose.prod.yml exec backend python scripts/seed_allergies.py
-
-# 4. Seed default medications lists
-docker compose -f docker-compose.prod.yml exec backend python scripts/seed_medications.py
-```
-
-### Default Login Credentials:
-Once seeded, you can immediately access the portal and log in at your configured domain `/login` (e.g. `https://health_assistant.example.com/login`) using:
-- **Email:** `sysadmin@health-assistant.local`
-- **Password:** `admin123`
+*Note: The detailed manual data seeding and user creation commands for production deployments have been moved to the [Installation Guide](./INSTALL.md#initial-database-seeding-for-production).*
