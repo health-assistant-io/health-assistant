@@ -37,6 +37,7 @@ The pipeline (`.gitea/workflows/deploy.yml`) is split into four highly optimized
    - Establishes an SSH connection to your target deployment server.
    - Transfers `docker-compose.prod.yml` and updates server-level `.env` configs.
    - Pulls updated images, restarts containers, and triggers automatic backend Alembic database migrations.
+   - Verifies container health (checks for premature container exits after startup to fail the pipeline if a crash loop occurs).
 
 ---
 
