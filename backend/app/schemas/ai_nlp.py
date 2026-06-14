@@ -103,6 +103,10 @@ class NewBiomarkerDefinition(BaseModel):
         None,
         description="Detailed patient-friendly information about the biomarker in Markdown format. Explain what it is, why it's important, and how it affects the patient's health.",
     )
+    is_telemetry: bool = Field(
+        False,
+        description="Set to true if this metric is typically tracked continuously via IoT/wearables (e.g., heart rate, steps, continuous glucose)."
+    )
 
 
 class NewBiomarkerDefinitions(BaseModel):

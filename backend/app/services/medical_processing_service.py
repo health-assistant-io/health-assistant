@@ -386,6 +386,7 @@ class MedicalProcessingService:
                         reference_range_max=def_data.reference_range_max,
                         preferred_unit_id=preferred_unit_id,
                         info=def_data.info,
+                        is_telemetry=def_data.is_telemetry,
                         tenant_id=tenant_id,
                     )
                 )
