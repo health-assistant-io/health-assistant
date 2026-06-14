@@ -50,6 +50,7 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     info = Column(Text, nullable=True)
     reference_range_min = Column(Float, nullable=True)
     reference_range_max = Column(Float, nullable=True)
+    is_telemetry = Column(Boolean, nullable=False, default=False)
     meta_data = Column(JSONB, nullable=True)
     tenant_id = Column(
         PG_UUID(as_uuid=True),

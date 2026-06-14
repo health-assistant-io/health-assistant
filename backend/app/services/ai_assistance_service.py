@@ -81,6 +81,7 @@ class BiomarkerDefinitionOutput(BaseModel):
     aliases: List[str] = Field(default_factory=list, description="Common abbreviations")
     reference_range_min: Optional[float] = Field(None, description="Lower bound")
     reference_range_max: Optional[float] = Field(None, description="Upper bound")
+    is_telemetry: bool = Field(False, description="Set to true if this metric is continuously tracked via IoT/wearables (e.g., heart rate, continuous glucose, steps)")
     info: str = Field(..., description="Detailed clinical significance and info")
 
 
@@ -579,6 +580,7 @@ class AIAssistanceService:
         - aliases: List of synonyms.
         - reference_range_min: Typical lower bound (float).
         - reference_range_max: Typical upper bound (float).
+        - is_telemetry: Boolean. True only if this metric is tracked continuously via IoT/wearables (e.g. heart rate, steps).
         - info: Detailed clinical explanation.
         
         Suggested values are mandatory for all fields even if the user only provides a name.

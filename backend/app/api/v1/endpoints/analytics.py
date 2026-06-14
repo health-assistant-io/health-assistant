@@ -58,6 +58,7 @@ async def get_summary_endpoint(
 async def get_trends_endpoint(
     biomarker_codes: str = Query(None),
     period: str = Query("last-6-months"),
+    aggregation: str = Query(None),
     patient_id: str = Query(None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -69,7 +70,7 @@ async def get_trends_endpoint(
         return []
 
     trends = await get_biomarker_trends(
-        str(current_user.tenant_id), biomarker_codes, period, patient_id, db
+        str(current_user.tenant_id), biomarker_codes, period, aggregation, patient_id, db
     )
     return trends
 

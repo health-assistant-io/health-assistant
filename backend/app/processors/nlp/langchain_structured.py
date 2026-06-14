@@ -129,8 +129,9 @@ IMPORTANT RULES:
 7. If the input data contains `reference_range_min` or `reference_range_max`, YOU MUST use those values as the definition's reference ranges.
 8. Provide a `preferred_unit_symbol` (e.g. mg/dL, mmol/L) that is the standard for this biomarker in clinical practice.
 9. If those values are NOT in the input, but you know the standard clinical ranges for this biomarker, you may provide them.
-10. ALL values must be returned as floats.
-11. FOR EACH BIOMARKER, you MUST generate the `info` field in Markdown format. If you don't have specific clinical knowledge for a rare biomarker, provide the best possible general medical explanation or mark the section as 'Consult your physician for details'.
+10. Set `is_telemetry` to true if this metric is tracked continuously via IoT/wearables (e.g. heart rate, steps, continuous glucose, etc.).
+11. ALL values must be returned as floats.
+12. FOR EACH BIOMARKER, you MUST generate the `info` field in Markdown format. If you don't have specific clinical knowledge for a rare biomarker, provide the best possible general medical explanation or mark the section as 'Consult your physician for details'.
    Structure the `info` as follows:
    ### What is it?
    A simple explanation for a patient.

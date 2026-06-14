@@ -26,6 +26,7 @@ class BiomarkerBase(BaseModel):
     info: Optional[str] = None
     reference_range_min: Optional[float] = None
     reference_range_max: Optional[float] = None
+    is_telemetry: Optional[bool] = False
 
 class BiomarkerCreate(BiomarkerBase):
     preferred_unit_symbol: Optional[str] = None
@@ -38,6 +39,7 @@ class BiomarkerUpdate(BaseModel):
     info: Optional[str] = None
     reference_range_min: Optional[float] = None
     reference_range_max: Optional[float] = None
+    is_telemetry: Optional[bool] = None
     preferred_unit_id: Optional[UUID] = None
 
 class BiomarkerResponse(BiomarkerBase):

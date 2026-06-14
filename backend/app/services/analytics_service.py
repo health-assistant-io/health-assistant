@@ -8,9 +8,10 @@ from app.models.user_model import UserModel
 # FHIR models
 from app.models.fhir import Observation, Medication, DiagnosticReport
 
-
 import re
+import logging
 
+logger = logging.getLogger(__name__)
 
 def normalize_unit(unit: str) -> str:
     """Normalize common clinical unit variations to a canonical form for better comparison."""
@@ -418,6 +419,7 @@ async def get_biomarker_trends(
     tenant_id: str,
     biomarker_codes: str = None,
     period: str = "last-6-months",
+    aggregation: str = None,
     patient_id: str = None,
     db: AsyncSession = None,
 ) -> dict:
@@ -742,6 +744,129 @@ async def get_biomarker_trends(
                     "examination_name": exam_name,
                 }
             )
+
+    # Telemetry Data Aggregation using TimescaleDB
+    from sqlalchemy import text
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    
+    PERIOD_MAPPING = {
+        "last-1-hour": {"delta": timedelta(hours=1), "bucket": "1 minute"},
+        "last-6-hours": {"delta": timedelta(hours=6), "bucket": "5 minutes"},
+        "last-24-hours": {"delta": timedelta(days=1), "bucket": "15 minutes"},
+        "last-7-days": {"delta": timedelta(days=7), "bucket": "1 hour"},
+        "last-30-days": {"delta": timedelta(days=30), "bucket": "1 day"},
+        "last-90-days": {"delta": timedelta(days=90), "bucket": "1 day"},
+        "last-12-months": {"delta": timedelta(days=365), "bucket": "1 week"},
+        "last-year": {"delta": timedelta(days=365), "bucket": "1 week"},
+        "last-6-months": {"delta": timedelta(days=180), "bucket": "1 day"},
+        "all-time": {"delta": timedelta(days=3650), "bucket": "1 month"},
+    }
+    
+    config = PERIOD_MAPPING.get(period, PERIOD_MAPPING["last-6-months"])
+    start_date = now - config["delta"]
+    bucket = aggregation if aggregation else config["bucket"]
+
+    telemetry_slugs = []
+    telemetry_defs = {}
+    for b in bio_map_def.values():
+        if getattr(b, "is_telemetry", False):
+            telemetry_slugs.append(b.slug)
+            telemetry_defs[b.slug] = b
+
+    if biomarker_codes:
+        codes = [c.strip() for c in biomarker_codes.split(",")]
+        telemetry_to_query = [s for s in telemetry_slugs if any(c.lower() in s.lower() for c in codes)]
+    else:
+        telemetry_to_query = telemetry_slugs
+
+    for slug in telemetry_to_query:
+        if slug == "8867-4" or "heart-rate" in slug:
+            col = "heart_rate"
+            where_clause = "heart_rate IS NOT NULL"
+        elif slug == "41950-7" or "steps" in slug:
+            col = "steps"
+            where_clause = "steps IS NOT NULL"
+        elif "calories" in slug:
+            col = "calories"
+            where_clause = "calories IS NOT NULL"
+        else:
+            col = f"CAST(data->>'{slug}' AS FLOAT)"
+            where_clause = f"data ? '{slug}'"
+
+        sql = f"""
+            SELECT 
+                time_bucket_gapfill(INTERVAL '{bucket}', timestamp) AS bucket,
+                device_id,
+                AVG({col}) as avg_val,
+                MAX({col}) as max_val,
+                MIN({col}) as min_val
+            FROM telemetry_data
+            WHERE tenant_id = :tenant_id
+              AND timestamp >= :start_date AND timestamp <= :end_date
+              AND {where_clause}
+            GROUP BY bucket, device_id
+            ORDER BY bucket
+        """
+        
+        try:
+            res = await db.execute(text(sql), {
+                "tenant_id": tenant_id, 
+                "start_date": start_date, 
+                "end_date": now
+            })
+            rows = res.all()
+            
+            if rows:
+                if slug not in trends:
+                    trends[slug] = []
+                    
+                b_def = telemetry_defs[slug]
+                technical_category = b_def.category if b_def else "other"
+                
+                clinical_groups = bio_to_groups.get(b_def.id) if b_def else None
+                if not clinical_groups:
+                    if b_def and b_def.category:
+                        clinical_groups = [b_def.category.replace("_", " ").replace("-", " ").title()]
+                    else:
+                        clinical_groups = ["Telemetry"]
+                
+                for row in rows:
+                    bucket_date = row.bucket
+                    device_id = row.device_id
+                    avg_val = row.avg_val
+                    max_val = row.max_val
+                    min_val = row.min_val
+                    
+                    if avg_val is None:
+                        continue # Gapfill returned null
+                        
+                    trends[slug].append({
+                        "date": bucket_date.isoformat() if bucket_date else "",
+                        "value": round(avg_val, 2),
+                        "max_value": round(max_val, 2),
+                        "min_value": round(min_val, 2),
+                        "unit": getattr(b_def, "preferred_unit_symbol", ""),
+                        "name": b_def.name if b_def else slug,
+                        "status": "Normal",
+                        "biomarker_id": str(b_def.id) if b_def else None,
+                        "reference_range_min": b_def.reference_range_min if b_def else None,
+                        "reference_range_max": b_def.reference_range_max if b_def else None,
+                        "reference_range_text": f"{b_def.reference_range_min} - {b_def.reference_range_max}" if b_def and b_def.reference_range_min else "--",
+                        "source_type": "telemetry",
+                        "source_name": device_id or "IoT Device",
+                        "source_id": None,
+                        "source_category": "telemetry",
+                        "technical_category": technical_category,
+                        "clinical_groups": clinical_groups,
+                        "examination_id": None,
+                        "examination_name": None,
+                    })
+        except Exception as e:
+            logger.error(f"Failed to query telemetry data for '{slug}': {e}", exc_info=True)
+            # If timescale is not perfectly configured or missing data, skip
+            pass
 
     for key in trends:
         trends[key].sort(key=lambda x: x["date"])

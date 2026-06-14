@@ -193,7 +193,7 @@ async def get_integration_details(
     from app.models.user_integration import UserIntegration, IntegrationSyncLog
     from app.models.fhir.patient import Observation
     from app.models.biomarker_model import BiomarkerDefinition
-    from sqlalchemy import select, desc, func
+    from sqlalchemy import desc, func
 
     try:
         integration_uuid = UUID(integration_id)
@@ -327,7 +327,7 @@ async def get_integration_debug_logs(
 ):
     """Fetch debug logs for a specific integration instance."""
     from app.models.user_integration import UserIntegration, IntegrationDebugLog
-    from sqlalchemy import select, desc
+    from sqlalchemy import desc
     try:
         integration_uuid = UUID(integration_id)
     except ValueError:
@@ -510,6 +510,8 @@ async def sync_integration(
         count = 0
         if observations_data:
             from app.models.fhir import Observation
+            from app.models.biomarker_model import BiomarkerDefinition
+            
             # Convert to ORM models BEFORE passing to mapping
             observations = []
             for obs_data in observations_data:
@@ -519,11 +521,59 @@ async def sync_integration(
                 
             from app.services.fhir_service import map_observations_to_biomarkers
             await map_observations_to_biomarkers(db, observations)
+            
+            # Fetch all definitions used
+            b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
+            b_defs_map = {}
+            if b_ids:
+                stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
+                res = await db.execute(stmt)
+                for b in res.scalars().all():
+                    b_defs_map[b.id] = b
+
+            from app.models.telemetry_model import TelemetryDataModel
+
+            telemetry_records = []
+            fhir_records = []
+
             for obs in observations:
-                if not obs.performer:
-                    obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
-                db.add(obs)
-                count += 1
+                is_telemetry = False
+                if obs.biomarker_id and obs.biomarker_id in b_defs_map:
+                    is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
+                
+                if is_telemetry:
+                    # Convert observation to telemetry data point
+                    slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
+                    val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
+                    
+                    hr = val if slug == "8867-4" or "heart-rate" in slug else None
+                    steps = val if slug == "41950-7" or "steps" in slug else None
+                    cal = val if "calories" in slug else None
+                    
+                    data_payload = {}
+                    if not hr and not steps and not cal:
+                        data_payload[slug] = val
+                        data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
+
+                    telemetry_records.append(TelemetryDataModel(
+                        tenant_id=integration.tenant_id,
+                        device_id=integration.instance_name or integration.provider,
+                        timestamp=obs.effective_datetime,
+                        heart_rate=hr,
+                        steps=steps,
+                        calories=cal,
+                        data=data_payload if data_payload else None
+                    ))
+                else:
+                    if not obs.performer:
+                        obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
+                    fhir_records.append(obs)
+            
+            if telemetry_records:
+                db.add_all(telemetry_records)
+            if fhir_records:
+                db.add_all(fhir_records)
+            count += len(telemetry_records) + len(fhir_records)
                 
         await provider.push_data(integration, {"status": "manual_sync"})
         
@@ -633,6 +683,8 @@ async def integration_webhook(
         count = 0
         if observations_data:
             from app.models.fhir import Observation
+            from app.models.biomarker_model import BiomarkerDefinition
+            
             # Convert to ORM models BEFORE passing to mapping
             observations = []
             for obs_data in observations_data:
@@ -642,11 +694,59 @@ async def integration_webhook(
                 
             from app.services.fhir_service import map_observations_to_biomarkers
             await map_observations_to_biomarkers(db, observations)
+            
+            # Fetch all definitions used
+            b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
+            b_defs_map = {}
+            if b_ids:
+                stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
+                res = await db.execute(stmt)
+                for b in res.scalars().all():
+                    b_defs_map[b.id] = b
+
+            from app.models.telemetry_model import TelemetryDataModel
+
+            telemetry_records = []
+            fhir_records = []
+
             for obs in observations:
-                if not obs.performer:
-                    obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
-                db.add(obs)
-                count += 1
+                is_telemetry = False
+                if obs.biomarker_id and obs.biomarker_id in b_defs_map:
+                    is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
+                
+                if is_telemetry:
+                    # Convert observation to telemetry data point
+                    slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
+                    val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
+                    
+                    hr = val if slug == "8867-4" or "heart-rate" in slug else None
+                    steps = val if slug == "41950-7" or "steps" in slug else None
+                    cal = val if "calories" in slug else None
+                    
+                    data_payload = {}
+                    if not hr and not steps and not cal:
+                        data_payload[slug] = val
+                        data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
+
+                    telemetry_records.append(TelemetryDataModel(
+                        tenant_id=integration.tenant_id,
+                        device_id=integration.instance_name or integration.provider,
+                        timestamp=obs.effective_datetime,
+                        heart_rate=hr,
+                        steps=steps,
+                        calories=cal,
+                        data=data_payload if data_payload else None
+                    ))
+                else:
+                    if not obs.performer:
+                        obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
+                    fhir_records.append(obs)
+            
+            if telemetry_records:
+                db.add_all(telemetry_records)
+            if fhir_records:
+                db.add_all(fhir_records)
+            count += len(telemetry_records) + len(fhir_records)
                 
         integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
         
