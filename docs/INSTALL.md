@@ -11,7 +11,8 @@
 - 10GB disk space
 
 ### Optional (for full features)
-- PostgreSQL 14+ with TimescaleDB
+- PostgreSQL 14+ **with TimescaleDB extension** (e.g., `timescale/timescaledb:latest-pg14` Docker image)
+  - *Note: A standard PostgreSQL installation will crash during database migrations. The TimescaleDB extension is strictly required for the `telemetry_data` hypertable to initialize correctly.*
 - Redis 7+
 - Tesseract OCR
 
