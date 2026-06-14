@@ -3,8 +3,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base, TenantMixin, AuditMixin, VersionedMixin
 
 
-class WearableDataModel(Base, TenantMixin, AuditMixin, VersionedMixin):
-    __tablename__ = "wearable_data"
+class TelemetryDataModel(Base, TenantMixin, AuditMixin, VersionedMixin):
+    __tablename__ = "telemetry_data"
 
     # Composite Primary Key (Required by TimescaleDB for hypertables)
     id = Column(UUID(as_uuid=True), primary_key=True, default=text("gen_random_uuid()"))
