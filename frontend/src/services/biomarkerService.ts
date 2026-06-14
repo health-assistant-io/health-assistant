@@ -49,6 +49,10 @@ class BiomarkerService {
     return response.data;
   }
 
+  async retryMigration(id: string): Promise<Biomarker> {
+    return api.post<Biomarker>(`${API_URL}/${id}/retry-migration`).then(res => res.data);
+  }
+
   async deleteBiomarker(id: string): Promise<any> {
     const response = await api.delete(`${API_URL}/${id}`);
     return response.data;

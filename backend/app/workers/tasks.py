@@ -587,3 +587,237 @@ async def sync_active_integrations(self):
         logger.error(f"Critical error during integration sync cycle: {e}")
     finally:
         await engine.dispose()
+@celery_app.task(bind=True)
+@async_task
+async def migrate_biomarker_data(
+    self, biomarker_id_str: str, tenant_id_str: str, to_telemetry: bool
+):
+    import logging
+    from uuid import UUID
+    from sqlalchemy import select, delete, func
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.models.biomarker_model import BiomarkerDefinition, Unit
+    from app.models.fhir.patient import Observation, Patient
+    from app.models.telemetry_model import TelemetryDataModel
+
+    logger = logging.getLogger(__name__)
+    biomarker_id = UUID(biomarker_id_str)
+    tenant_id = UUID(tenant_id_str)
+
+    logger.info(f"Starting async migration for biomarker {biomarker_id} to_telemetry={to_telemetry}")
+
+    db, engine = get_async_session()
+    try:
+        async with db:
+            # 1. Fetch Biomarker
+            res = await db.execute(
+                select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+            )
+            db_biomarker = res.scalar_one_or_none()
+            if not db_biomarker:
+                logger.error(f"Biomarker {biomarker_id} not found during migration.")
+                return {"status": "failed", "error": "Biomarker not found"}
+
+            # Update status to in_progress
+            meta = dict(db_biomarker.meta_data or {})
+            meta["migration_status"] = "in_progress"
+            meta["migration_progress"] = 0
+            if "migration_error" in meta:
+                del meta["migration_error"]
+            db_biomarker.meta_data = meta
+            flag_modified(db_biomarker, "meta_data")
+            await db.commit()
+
+            slug = db_biomarker.slug.lower() if db_biomarker.slug else ""
+            batch_size = 5000
+
+            if to_telemetry:
+                # Migrate FHIR -> Telemetry
+                count_res = await db.execute(
+                    select(func.count(Observation.id)).where(Observation.biomarker_id == biomarker_id)
+                )
+                total_records = count_res.scalar_one() or 0
+                logger.info(f"Total FHIR records to migrate to telemetry: {total_records}")
+
+                if total_records > 0:
+                    processed = 0
+                    while processed < total_records:
+                        obs_res = await db.execute(
+                            select(Observation)
+                            .where(Observation.biomarker_id == biomarker_id)
+                            .limit(batch_size)
+                        )
+                        observations = obs_res.scalars().all()
+                        
+                        if not observations:
+                            break
+
+                        telemetry_records = []
+                        obs_ids_to_delete = []
+
+                        for obs in observations:
+                            val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if getattr(obs, "value_quantity", None) else None)
+                            
+                            hr = val if slug == "8867-4" or "heart-rate" in slug else None
+                            steps = val if slug == "41950-7" or "steps" in slug else None
+                            cal = val if "calories" in slug else None
+                            
+                            data_payload = {}
+                            if not hr and not steps and not cal:
+                                data_payload[slug] = val
+                                data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if getattr(obs, "value_quantity", None) else ""
+
+                            telemetry_records.append(TelemetryDataModel(
+                                tenant_id=obs.tenant_id,
+                                device_id="fhir_migration",
+                                timestamp=obs.effective_datetime,
+                                heart_rate=hr,
+                                steps=steps,
+                                calories=cal,
+                                data=data_payload if data_payload else None
+                            ))
+                            obs_ids_to_delete.append(obs.id)
+                        
+                        db.add_all(telemetry_records)
+                        await db.execute(delete(Observation).where(Observation.id.in_(obs_ids_to_delete)))
+                        
+                        processed += len(observations)
+                        
+                        # Update progress
+                        progress = int((processed / total_records) * 100)
+                        meta = dict(db_biomarker.meta_data or {})
+                        meta["migration_status"] = "in_progress"
+                        meta["migration_progress"] = progress
+                        db_biomarker.meta_data = meta
+                        flag_modified(db_biomarker, "meta_data")
+                        await db.commit()
+
+            else:
+                # Migrate Telemetry -> FHIR
+                stmt = select(TelemetryDataModel).where(TelemetryDataModel.tenant_id == tenant_id)
+                if slug == "8867-4" or "heart-rate" in slug:
+                    stmt = stmt.where(TelemetryDataModel.heart_rate.is_not(None))
+                elif slug == "41950-7" or "steps" in slug:
+                    stmt = stmt.where(TelemetryDataModel.steps.is_not(None))
+                elif "calories" in slug:
+                    stmt = stmt.where(TelemetryDataModel.calories.is_not(None))
+                else:
+                    stmt = stmt.where(TelemetryDataModel.data.has_key(slug))
+
+                # Unfortunately, counting JSONB keys is complex across rows, but we can count total matches
+                count_stmt = select(func.count(TelemetryDataModel.id)).where(stmt.whereclause)
+                count_res = await db.execute(count_stmt)
+                total_records = count_res.scalar_one() or 0
+                logger.info(f"Total Telemetry records to migrate to FHIR: {total_records}")
+
+                if total_records > 0:
+                    u_res = await db.execute(select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id))
+                    symbol = u_res.scalar_one_or_none() or ""
+                    
+                    p_res = await db.execute(select(Patient.id).where(Patient.tenant_id == tenant_id).limit(1))
+                    patient_id = p_res.scalar_one_or_none()
+
+                    if patient_id:
+                        processed = 0
+                        while processed < total_records:
+                            tel_res = await db.execute(stmt.limit(batch_size).offset(processed))
+                            telemetry_records = tel_res.scalars().all()
+                            
+                            if not telemetry_records:
+                                break
+
+                            fhir_records = []
+                            for tr in telemetry_records:
+                                if slug == "8867-4" or "heart-rate" in slug:
+                                    val = tr.heart_rate
+                                    tr.heart_rate = None
+                                elif slug == "41950-7" or "steps" in slug:
+                                    val = tr.steps
+                                    tr.steps = None
+                                elif "calories" in slug:
+                                    val = tr.calories
+                                    tr.calories = None
+                                else:
+                                    val = tr.data.get(slug) if tr.data else None
+                                    if tr.data and slug in tr.data:
+                                        del tr.data[slug]
+                                        flag_modified(tr, "data")
+                                    
+                                if val is not None:
+                                    obs = Observation(
+                                        tenant_id=tr.tenant_id,
+                                        subject={"reference": f"Patient/{patient_id}"},
+                                        status="final",
+                                        code={
+                                            "coding": [{
+                                                "system": db_biomarker.coding_system.value if db_biomarker.coding_system else "http://loinc.org",
+                                                "code": db_biomarker.code or db_biomarker.slug,
+                                                "display": db_biomarker.name
+                                            }],
+                                            "text": db_biomarker.name
+                                        },
+                                        effective_datetime=tr.timestamp,
+                                        value_quantity={
+                                            "value": float(val) if val is not None else None,
+                                            "unit": symbol
+                                        },
+                                        raw_value=float(val) if val is not None else None,
+                                        normalized_value=float(val) if val is not None else None,
+                                        biomarker_id=db_biomarker.id
+                                    )
+                                    fhir_records.append(obs)
+                                
+                                is_empty = (
+                                    tr.heart_rate is None and
+                                    tr.steps is None and
+                                    tr.calories is None and
+                                    (tr.data is None or len(tr.data) == 0)
+                                )
+                                if is_empty:
+                                    await db.delete(tr)
+
+                            if fhir_records:
+                                db.add_all(fhir_records)
+                                
+                            processed += len(telemetry_records)
+                            
+                            progress = int((processed / total_records) * 100)
+                            meta = dict(db_biomarker.meta_data or {})
+                            meta["migration_status"] = "in_progress"
+                            meta["migration_progress"] = progress
+                            db_biomarker.meta_data = meta
+                            flag_modified(db_biomarker, "meta_data")
+                            await db.commit()
+                    else:
+                        logger.warning(f"Could not migrate telemetry to FHIR for {db_biomarker.slug} - no patient found in tenant")
+
+            # Mark as completed
+            meta = dict(db_biomarker.meta_data or {})
+            meta["migration_status"] = "completed"
+            meta["migration_progress"] = 100
+            if "migration_error" in meta:
+                del meta["migration_error"]
+            db_biomarker.meta_data = meta
+            flag_modified(db_biomarker, "meta_data")
+            await db.commit()
+            logger.info(f"Migration completed successfully for biomarker {biomarker_id}")
+
+            return {"status": "success", "biomarker_id": str(biomarker_id)}
+            
+    except Exception as e:
+        logger.exception(f"Error during async migration for biomarker {biomarker_id}: {e}")
+        async with db:
+            # Try to mark as failed
+            res = await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id))
+            b_err = res.scalar_one_or_none()
+            if b_err:
+                meta = dict(b_err.meta_data or {})
+                meta["migration_status"] = "failed"
+                meta["migration_error"] = str(e)
+                meta["migration_progress"] = 0
+                b_err.meta_data = meta
+                flag_modified(b_err, "meta_data")
+                await db.commit()
+        raise
+    finally:
+        await engine.dispose()

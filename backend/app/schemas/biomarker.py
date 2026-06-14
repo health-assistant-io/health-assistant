@@ -46,6 +46,7 @@ class BiomarkerResponse(BiomarkerBase):
     id: UUID
     preferred_unit_id: Optional[UUID]
     preferred_unit_symbol: Optional[str] = None
+    meta_data: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

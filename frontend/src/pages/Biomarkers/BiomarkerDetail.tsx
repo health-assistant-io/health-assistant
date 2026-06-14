@@ -17,6 +17,7 @@ import { Biomarker, Unit } from '../../types/biomarker';
 import { TimePeriod, TIME_RANGES, AGGREGATION_OPTIONS, DEFAULT_AGGREGATIONS, AggregationBucket, getCutoffDate } from '../../config/timeRanges';
 import { UnitSelector } from '../../components/ui/UnitSelector';
 import { BiomarkerConfigPanel } from '../../components/biomarkers/BiomarkerConfigPanel';
+import { MigrationProgressIndicator } from '../../components/biomarkers/MigrationProgressIndicator';
 import LineChart from '../../components/charts/LineChart';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import ReactMarkdown from 'react-markdown';
@@ -55,6 +56,66 @@ const BiomarkerDetail: React.FC = () => {
 
   // Global editing toggle
   const [isGlobalEditing, setIsGlobalEditing] = useState(false);
+  
+  const handleRetryMigration = async () => {
+    if (!biomarker) return;
+    try {
+      const updated = await biomarkerService.retryMigration(biomarker.id);
+      setBiomarker(updated);
+    } catch (error) {
+      console.error("Failed to retry migration", error);
+    }
+  };
+
+  // Polling for migration status
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    let staleCount = 0;
+    let lastProgress = biomarker?.meta_data?.migration_progress ?? 0;
+    
+    if (biomarker?.meta_data?.migration_status === 'in_progress') {
+      interval = setInterval(async () => {
+        try {
+          const updated = await biomarkerService.getBiomarkerById(biomarker.id);
+          
+          // Check if progress is stalled (e.g. celery worker died)
+          const currentProgress = updated.meta_data?.migration_progress ?? 0;
+          if (currentProgress === lastProgress) {
+             staleCount++;
+          } else {
+             staleCount = 0;
+             lastProgress = currentProgress;
+          }
+
+          // If no progress for 30 seconds (10 ticks of 3s), assume stuck
+          if (staleCount >= 10 && updated.meta_data?.migration_status === 'in_progress') {
+             // Mock a failure state in the UI so the user gets the retry button
+             updated.meta_data.migration_status = 'failed';
+             updated.meta_data.migration_error = 'Migration stalled. The background worker may be offline or unresponsive.';
+          }
+
+          setBiomarker(updated);
+          
+          if (updated.meta_data?.migration_status !== 'in_progress') {
+            clearInterval(interval);
+            // Refresh trends once migration is complete
+            if (currentProgress === 100 && currentPatient?.id) {
+              const trendsData = await getBiomarkerTrends('', updated.slug, dateRange, currentPatient.id, aggregation || undefined);
+              if (trendsData.biomarkers && trendsData.biomarkers[updated.slug]) {
+                setTrends(trendsData.biomarkers[updated.slug]);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to poll biomarker migration status", error);
+        }
+      }, 3000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [biomarker?.id, biomarker?.meta_data?.migration_status, biomarker?.meta_data?.migration_progress, currentPatient?.id, dateRange, aggregation]);
   
   // Memoize breadcrumbs and subtitle to prevent PageHeader re-renders
   const breadcrumbs = React.useMemo(() => [
@@ -697,11 +758,17 @@ const BiomarkerDetail: React.FC = () => {
 
         {/* Right Column: Sidebar Stats & Metadata */}
         <div className="space-y-6">
+          <MigrationProgressIndicator 
+            status={biomarker.meta_data?.migration_status as any}
+            progress={biomarker.meta_data?.migration_progress}
+            errorMessage={biomarker.meta_data?.migration_error}
+            onRetry={handleRetryMigration}
+          />
           {isGlobalEditing && (
             <BiomarkerConfigPanel 
               biomarker={biomarker}
               units={units}
-              isEditable={isGlobalEditing}
+              isEditable={isGlobalEditing && biomarker.meta_data?.migration_status !== 'in_progress'}
               onUnitsUpdated={setUnits}
               onSuccess={(updated) => {
                 setBiomarker(updated);

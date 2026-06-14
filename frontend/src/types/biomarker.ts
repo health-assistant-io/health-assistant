@@ -22,6 +22,12 @@ export interface Biomarker {
   is_telemetry?: boolean;
   reference_range_min?: number;
   reference_range_max?: number;
+  meta_data?: {
+    migration_status?: 'in_progress' | 'completed' | 'failed';
+    migration_progress?: number;
+    migration_error?: string;
+    [key: string]: any;
+  } | null;
 }
 
 export interface Unit {

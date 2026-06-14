@@ -54,6 +54,7 @@ async def get_biomarkers(
             "reference_range_min": bio.reference_range_min,
             "reference_range_max": bio.reference_range_max,
             "is_telemetry": bio.is_telemetry,
+            "meta_data": bio.meta_data,
             "preferred_unit_symbol": symbol,
         }
         response.append(bio_dict)
@@ -190,6 +191,7 @@ async def create_biomarker(
             "reference_range_min": new_bio.reference_range_min,
             "reference_range_max": new_bio.reference_range_max,
             "is_telemetry": new_bio.is_telemetry,
+            "meta_data": new_bio.meta_data,
             "preferred_unit_symbol": symbol,
         }
     except Exception as e:
@@ -273,6 +275,7 @@ async def get_biomarker_by_slug(
         "reference_range_min": bio.reference_range_min,
         "reference_range_max": bio.reference_range_max,
         "is_telemetry": bio.is_telemetry,
+        "meta_data": bio.meta_data,
         "preferred_unit_symbol": symbol,
     }
 
@@ -308,9 +311,75 @@ async def get_biomarker_by_id(
         "reference_range_min": bio.reference_range_min,
         "reference_range_max": bio.reference_range_max,
         "is_telemetry": bio.is_telemetry,
+        "meta_data": bio.meta_data,
         "preferred_unit_symbol": symbol,
     }
 
+
+@router.post("/{biomarker_id}/retry-migration", response_model=BiomarkerResponse)
+async def retry_biomarker_migration(
+    biomarker_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Retry a stuck or failed biomarker data migration"""
+    result = await db.execute(
+        select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+    )
+    db_biomarker = result.scalar_one_or_none()
+
+    if not db_biomarker:
+        raise HTTPException(status_code=404, detail="Biomarker not found")
+
+    meta = dict(db_biomarker.meta_data or {})
+    
+    # We only allow retrying if it actually was marked as in progress or failed
+    if meta.get("migration_status") not in ["failed", "in_progress"]:
+        raise HTTPException(status_code=400, detail="No active or failed migration to retry")
+        
+    meta["migration_status"] = "in_progress"
+    meta["migration_progress"] = 0
+    if "migration_error" in meta:
+        del meta["migration_error"]
+        
+    db_biomarker.meta_data = meta
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(db_biomarker, "meta_data")
+
+    # Trigger celery task again using current is_telemetry state
+    from app.workers.tasks import migrate_biomarker_data
+    migrate_biomarker_data.delay(str(db_biomarker.id), str(current_user.tenant_id), bool(db_biomarker.is_telemetry))
+
+    try:
+        await db.commit()
+        await db.refresh(db_biomarker)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Return with symbol
+    u_res = await db.execute(
+        select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id)
+    )
+    symbol = u_res.scalar_one_or_none()
+
+    return {
+        "id": db_biomarker.id,
+        "slug": db_biomarker.slug,
+        "coding_system": db_biomarker.coding_system,
+        "code": db_biomarker.code,
+        "name": db_biomarker.name,
+        "category": db_biomarker.category,
+        "aliases": db_biomarker.aliases,
+        "preferred_unit_id": db_biomarker.preferred_unit_id,
+        "info": db_biomarker.info,
+        "reference_range_min": db_biomarker.reference_range_min,
+        "reference_range_max": db_biomarker.reference_range_max,
+        "is_telemetry": db_biomarker.is_telemetry,
+        "meta_data": db_biomarker.meta_data,
+        "preferred_unit_symbol": symbol,
+    }
 
 @router.patch("/{biomarker_id}", response_model=BiomarkerResponse)
 async def update_biomarker(
@@ -341,133 +410,21 @@ async def update_biomarker(
 
     try:
         if needs_migration:
-            import logging
-            from app.models.fhir.patient import Observation, Patient
-            from app.models.telemetry_model import TelemetryDataModel
+            # We set the initial state to in_progress
+            meta = dict(db_biomarker.meta_data or {})
+            meta["migration_status"] = "in_progress"
+            meta["migration_progress"] = 0
+            if "migration_error" in meta:
+                del meta["migration_error"]
+            db_biomarker.meta_data = meta
             
-            logger = logging.getLogger(__name__)
+            # Need to flag the JSONB column as modified
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(db_biomarker, "meta_data")
             
-            if new_is_telemetry is True:
-                # Migrate FHIR -> Telemetry
-                obs_res = await db.execute(
-                    select(Observation).where(Observation.biomarker_id == db_biomarker.id)
-                )
-                observations = obs_res.scalars().all()
-                
-                if observations:
-                    telemetry_records = []
-                    for obs in observations:
-                        slug = db_biomarker.slug.lower() if db_biomarker.slug else ""
-                        val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if getattr(obs, "value_quantity", None) else None)
-                        
-                        hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                        steps = val if slug == "41950-7" or "steps" in slug else None
-                        cal = val if "calories" in slug else None
-                        
-                        data_payload = {}
-                        if not hr and not steps and not cal:
-                            data_payload[slug] = val
-                            data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if getattr(obs, "value_quantity", None) else ""
-
-                        telemetry_records.append(TelemetryDataModel(
-                            tenant_id=obs.tenant_id,
-                            device_id="fhir_migration",
-                            timestamp=obs.effective_datetime,
-                            heart_rate=hr,
-                            steps=steps,
-                            calories=cal,
-                            data=data_payload if data_payload else None
-                        ))
-                    
-                    db.add_all(telemetry_records)
-                    await db.execute(delete(Observation).where(Observation.biomarker_id == db_biomarker.id))
-                    
-            else:
-                # Migrate Telemetry -> FHIR
-                slug = db_biomarker.slug.lower() if db_biomarker.slug else ""
-                
-                # We need to find telemetry records matching this slug
-                # This could be tricky because we have to check columns or JSONB data
-                stmt = select(TelemetryDataModel).where(TelemetryDataModel.tenant_id == current_user.tenant_id)
-                if slug == "8867-4" or "heart-rate" in slug:
-                    stmt = stmt.where(TelemetryDataModel.heart_rate.is_not(None))
-                elif slug == "41950-7" or "steps" in slug:
-                    stmt = stmt.where(TelemetryDataModel.steps.is_not(None))
-                elif "calories" in slug:
-                    stmt = stmt.where(TelemetryDataModel.calories.is_not(None))
-                else:
-                    stmt = stmt.where(TelemetryDataModel.data.has_key(slug))
-                    
-                tel_res = await db.execute(stmt)
-                telemetry_records = tel_res.scalars().all()
-                
-                if telemetry_records:
-                    # Get unit symbol
-                    u_res = await db.execute(select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id))
-                    symbol = u_res.scalar_one_or_none() or ""
-                    
-                    # Find a patient to attach these to
-                    p_res = await db.execute(select(Patient.id).where(Patient.tenant_id == current_user.tenant_id).limit(1))
-                    patient_id = p_res.scalar_one_or_none()
-                    
-                    if patient_id:
-                        fhir_records = []
-                        for tr in telemetry_records:
-                            if slug == "8867-4" or "heart-rate" in slug:
-                                val = tr.heart_rate
-                                tr.heart_rate = None
-                            elif slug == "41950-7" or "steps" in slug:
-                                val = tr.steps
-                                tr.steps = None
-                            elif "calories" in slug:
-                                val = tr.calories
-                                tr.calories = None
-                            else:
-                                val = tr.data.get(slug) if tr.data else None
-                                if tr.data and slug in tr.data:
-                                    del tr.data[slug]
-                                    # SQLAlchemy JSONB mutation tracking might need this:
-                                    from sqlalchemy.orm.attributes import flag_modified
-                                    flag_modified(tr, "data")
-                                
-                            if val is not None:
-                                obs = Observation(
-                                    tenant_id=tr.tenant_id,
-                                    subject={"reference": f"Patient/{patient_id}"},
-                                    status="final",
-                                    code={
-                                        "coding": [{
-                                            "system": db_biomarker.coding_system.value if db_biomarker.coding_system else "http://loinc.org",
-                                            "code": db_biomarker.code or db_biomarker.slug,
-                                            "display": db_biomarker.name
-                                        }],
-                                        "text": db_biomarker.name
-                                    },
-                                    effective_datetime=tr.timestamp,
-                                    value_quantity={
-                                        "value": float(val) if val is not None else None,
-                                        "unit": symbol
-                                    },
-                                    raw_value=float(val) if val is not None else None,
-                                    normalized_value=float(val) if val is not None else None,
-                                    biomarker_id=db_biomarker.id
-                                )
-                                fhir_records.append(obs)
-                            
-                            # Determine if the record is completely empty and should be deleted
-                            is_empty = (
-                                tr.heart_rate is None and
-                                tr.steps is None and
-                                tr.calories is None and
-                                (tr.data is None or len(tr.data) == 0)
-                            )
-                            if is_empty:
-                                await db.delete(tr)
-                            
-                        if fhir_records:
-                            db.add_all(fhir_records)
-                    else:
-                        logger.warning(f"Could not migrate telemetry to FHIR for {db_biomarker.slug} - no patient found in tenant")
+            # Trigger celery task
+            from app.workers.tasks import migrate_biomarker_data
+            migrate_biomarker_data.delay(str(db_biomarker.id), str(current_user.tenant_id), bool(new_is_telemetry))
 
         await db.commit()
         await db.refresh(db_biomarker)
@@ -491,6 +448,7 @@ async def update_biomarker(
             "reference_range_min": db_biomarker.reference_range_min,
             "reference_range_max": db_biomarker.reference_range_max,
             "is_telemetry": db_biomarker.is_telemetry,
+            "meta_data": db_biomarker.meta_data,
             "preferred_unit_symbol": symbol,
         }
     except Exception as e:
