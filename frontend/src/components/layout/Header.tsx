@@ -159,8 +159,12 @@ function Header() {
 
           <div className="flex items-center space-x-3">
             {pageHeaderConfig?.icon && (
-              <div className="hidden sm:flex w-9 h-9 bg-blue-600 rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0">
-                {cloneElement(pageHeaderConfig.icon as ReactElement, { className: "w-5 h-5" })}
+              <div className={`hidden sm:flex w-9 h-9 ${pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0 overflow-hidden`}>
+                {pageHeaderConfig.icon.type === 'img' ? (
+                  pageHeaderConfig.icon
+                ) : (
+                  cloneElement(pageHeaderConfig.icon as ReactElement, { className: "w-5 h-5" })
+                )}
               </div>
             )}
             <div className="flex flex-col min-w-0">

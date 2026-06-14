@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useState, useMemo } from 'react';
 import AppVersion from '../ui/AppVersion';
 
@@ -47,6 +48,7 @@ function Sidebar() {
   const toggleSidebarCollapse = useUIStore(state => state.toggleSidebarCollapse);
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
+  const theme = useSettingsStore(state => state.theme);
   const [expandedItems, setExpandedItems] = useState<string[]>(['/analytics', '/admin/system', '/admin/tenant']);
 
   const menuItems = useMemo<MenuItem[]>(() => [
@@ -136,11 +138,7 @@ function Sidebar() {
     <div className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative`}>
       <div className={`p-6 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} mt-2 mb-4`}>
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 bg-[#0088CC] rounded-xl flex items-center justify-center shadow-md shadow-blue-200 dark:shadow-none shrink-0">
-            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 12h4l3-6 4 12 3-6h4" />
-            </svg>
-          </div>
+          <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-9 h-9 shrink-0" alt="Health Assistant Logo" />
           {!sidebarCollapsed && <h1 className="text-xl font-bold text-[#1a2b4b] dark:text-white truncate">Health Assistant</h1>}
         </div>
         
