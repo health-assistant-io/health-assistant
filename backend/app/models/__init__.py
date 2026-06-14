@@ -7,7 +7,7 @@ from .examination_category import ExaminationCategory
 from .doctor_model import DoctorModel
 from .fhir.organization import OrganizationModel
 from .associations import examination_doctors, organization_doctors
-from .wearable_model import WearableDataModel
+from .telemetry_model import TelemetryDataModel
 from .alert_model import AlertModel
 from .notification import (
     NotificationTrigger,
