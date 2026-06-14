@@ -89,18 +89,31 @@ Health Assistant features a deeply integrated Agentic AI Copilot designed to pro
 
 ### Tool-Calling Capabilities
 The `ChatbotTools` class (in `backend/app/services/ai_chatbot_tools.py`) dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id`. These tools allow the LLM to:
+- **Search Available Biomarkers:** Discover metrics, slugs, and data types (Telemetry vs Clinical) using Regex support.
+- **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling.
 - Read raw OCR document extractions.
-- Fetch recent biomarker values and historical trends.
+- Fetch recent biomarker values and historical trends (for discrete clinical labs).
 - Query active medications and catalogs.
 - Look up specific clinical visit details and notes.
 - Write updates to examination notes.
 
 ### Streaming & Context Awareness
-The `AIAssistanceService` utilizes a 5-step reasoning loop (`astream_events` pattern equivalent) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline `[Ref: type=uuid]` citations linking back to the precise clinical entities.
+The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline `[Ref: type=uuid]` citations linking back to the precise clinical entities.
 
 ---
 
-## 6. Background Task Patterns
+## 6. AI Configuration Hierarchy
+
+Health Assistant uses a multi-tiered resolution system for AI settings (like model selection or the reasoning loop limit):
+
+1. **User Scope:** Personal overrides.
+2. **Tenant Scope:** Organization-wide settings stored in `Tenant.settings`.
+3. **System DB Scope:** Global defaults stored in the `system_settings` table, manageable via the Admin UI.
+4. **Environment Fallback:** Hardcoded defaults in `.env` and `config.py`.
+
+---
+
+## 7. Background Task Patterns
 
 We use an `@async_task` decorator to bridge Celery's synchronous execution with FastAPI's asynchronous logic:
 

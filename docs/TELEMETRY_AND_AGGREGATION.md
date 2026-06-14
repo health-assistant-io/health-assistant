@@ -49,10 +49,13 @@ The system decouples the "Temporal Scope" (e.g., viewing the Last 30 Days) from 
 - **Compression Policies:** Implement TimescaleDB native compression policies (e.g., `compress_after => INTERVAL '7 days'`) to achieve 90%+ storage savings on raw minute-by-minute data older than a week.
 - **FHIR Interoperability Boundary:** The split architecture inherently moves high-frequency telemetry data outside of strict FHIR compliance. Currently, when exporting patient records to FHIR, telemetry data is excluded. Future versions will need to dynamically downsample and map TimescaleDB data back into FHIR `Observation` bundles during export.
 
-## Unified Clinical View (UI Integration)
-Despite the data being physically split across two different database engines, the `BiomarkerDetail` view in the frontend presents a seamless, unified chart.
+## Unified Clinical View (UI & AI Integration)
+Despite the data being physically split across two different database engines, both the frontend and the AI Chatbot provide a seamless longitudinal view.
+
+1. **Frontend:** The `BiomarkerDetail` view uses the `AnalyticsService` to merge and sort FHIR and TimescaleDB data.
+2. **AI Chatbot:** The AI Assistant uses the `get_aggregated_biomarker_trends` tool, which routes through the same `AnalyticsService` logic. This ensures the AI can reason over high-frequency wearable data (steps, heart rate) without being overwhelmed by raw records, while strictly adhering to aggregated OHLC (Average, Min, Max) values.
 
 This is achieved dynamically by the `AnalyticsService` in the backend:
 1. **FHIR Data:** The service queries standard `fhir_observations` matching the `biomarker_id`.
 2. **Telemetry Data:** The service inspects the `slug` of the biomarker (e.g., `"heart-rate"`, `"oxygen-saturation"`). It then queries the TimescaleDB `telemetry_data` table, pulling metrics that match either the hardcoded high-performance columns (like `heart_rate`) or dynamically querying the `data` JSONB column (`WHERE data ? 'oxygen-saturation'`).
-3. **Merge & Sort:** The backend formats both datasets into the identical JSON response structure, sorts them chronologically by timestamp, and returns them to the frontend React chart as a single cohesive longitudinal record.
+3. **Merge & Sort:** The backend formats both datasets into the identical JSON response structure, sorts them chronologically by timestamp, and returns them to the requester (React chart or AI Tool) as a single cohesive longitudinal record.

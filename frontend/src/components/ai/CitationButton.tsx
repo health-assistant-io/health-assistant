@@ -200,6 +200,8 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
           navigate(`/examinations/${args.examination_id}`);
         } else if (toolCall.name === 'get_biomarker_details' && args.biomarker_id) {
           navigate(`/biomarkers/details/${args.biomarker_id}`);
+        } else if (toolCall.name === 'get_aggregated_biomarker_trends' && args.biomarker_slug) {
+          navigate(`/biomarkers/details/${args.biomarker_slug}`);
         } else if (toolCall.name.includes('biomarker')) {
           navigate('/biomarkers');
         } else if (toolCall.name.includes('medication')) {
@@ -241,6 +243,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
         const args = typeof toolCall.args === 'string' ? JSON.parse(toolCall.args) : toolCall.args;
         if (toolCall.name === 'get_examination_details' && args.examination_id) return `/examinations/${args.examination_id}`;
         if (toolCall.name === 'get_biomarker_details' && args.biomarker_id) return `/biomarkers/details/${args.biomarker_id}`;
+        if (toolCall.name === 'get_aggregated_biomarker_trends' && args.biomarker_slug) return `/biomarkers/details/${args.biomarker_slug}`;
         if (toolCall.name.includes('biomarker')) return '/biomarkers';
         if (toolCall.name.includes('medication')) return '/medications';
       } catch (e) {}
@@ -248,7 +251,9 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
     return '#';
   };
 
-  const displayName = isUUIDReference ? type : reference.replace(/get_|recent_|history|_details/g, '').replace(/_/g, ' ');
+  const displayName = isUUIDReference 
+    ? (uuid && uuid.length < 20 ? uuid.replace(/-/g, ' ') : type)
+    : reference.replace(/get_|recent_|history|_details/g, '').replace(/_/g, ' ');
 
   if (!isUUIDReference && !toolCall) {
     return (

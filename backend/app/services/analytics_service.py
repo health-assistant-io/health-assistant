@@ -1,4 +1,5 @@
 from typing import Any
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, String, cast
 from app.models.document_model import DocumentModel
@@ -421,6 +422,8 @@ async def get_biomarker_trends(
     period: str = "last-6-months",
     aggregation: str = None,
     patient_id: str = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
     db: AsyncSession = None,
 ) -> dict:
     if not db:
@@ -457,6 +460,11 @@ async def get_biomarker_trends(
                 *[BiomarkerDefinition.slug.ilike(f"%{code}%") for code in codes],
             )
         )
+
+    if start_date:
+        query = query.where(Observation.effective_datetime >= start_date)
+    if end_date:
+        query = query.where(Observation.effective_datetime <= end_date)
 
     # Limit the total number of observations fetched to prevent massive unpaginated queries crashing the server
     # 2000 is usually enough for a single patient's trend history
@@ -765,8 +773,24 @@ async def get_biomarker_trends(
     }
     
     config = PERIOD_MAPPING.get(period, PERIOD_MAPPING["last-6-months"])
-    start_date = now - config["delta"]
+    
+    effective_start_date = start_date if start_date else (now - config["delta"])
+    effective_end_date = end_date if end_date else now
+    
     bucket = aggregation if aggregation else config["bucket"]
+    if start_date and end_date and not aggregation:
+        # Auto-calculate a sensible bucket if custom dates are provided without one
+        delta_days = (effective_end_date - effective_start_date).days
+        if delta_days <= 1:
+            bucket = "15 minutes"
+        elif delta_days <= 7:
+            bucket = "1 hour"
+        elif delta_days <= 90:
+            bucket = "1 day"
+        elif delta_days <= 365:
+            bucket = "1 week"
+        else:
+            bucket = "1 month"
 
     telemetry_slugs = []
     telemetry_defs = {}
@@ -813,8 +837,8 @@ async def get_biomarker_trends(
         try:
             res = await db.execute(text(sql), {
                 "tenant_id": tenant_id, 
-                "start_date": start_date, 
-                "end_date": now
+                "start_date": effective_start_date, 
+                "end_date": effective_end_date
             })
             rows = res.all()
             

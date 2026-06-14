@@ -25,6 +25,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
   const isExamination = toolName.includes('examination') || (items[0] && 'examination_date' in items[0]);
   const isEvent = toolName === 'event' || (items[0] && ('onset_date' in items[0] || 'occurrences' in items[0]));
   const isDocument = toolName.includes('document') || (items[0] && ('filename' in items[0] && 'extracted_text' in items[0]));
+  const isTelemetryData = !isObservation && !isBiomarkerDef && !isMedication && !isExamination && !isEvent && !isDocument && items[0] && 'value' in items[0] && 'date' in items[0];
 
   const handleNavigate = (type: string, id: string, extraData?: any) => {
     if (onClose) onClose();
@@ -136,9 +137,17 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                       {item.name}
                       <ExternalLink className="w-2 sm:w-2.5 h-2 sm:h-2.5 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
                     </h4>
-                    <span className="px-1 sm:px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
-                      Definition
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="px-1 sm:px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
+                        Definition
+                      </span>
+                      {item.is_telemetry && (
+                        <span className="px-1 sm:px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
+                          <Activity className="w-2 h-2" />
+                          Telemetry
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
                 <div className="flex flex-col mt-0.5 sm:mt-1">
@@ -314,7 +323,47 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
               </div>
             )}
 
-            {!isObservation && !isBiomarkerDef && !isMedication && !isExamination && !isEvent && !isDocument && (
+            {isTelemetryData && (
+              <div className="space-y-1.5 sm:space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex-1 text-left min-w-0">
+                    <h4 className="text-[10px] sm:text-[11px] font-black uppercase text-gray-900 dark:text-white leading-tight flex items-center gap-1 sm:gap-1.5 truncate">
+                      <Activity className="w-2.5 sm:w-3 h-2.5 sm:h-3 text-amber-500 shrink-0" />
+                      <span className="truncate">{name !== 'Unknown Record' ? name : toolName.replace(/get_aggregated_|trends|_/g, ' ')}</span>
+                    </h4>
+                  </div>
+                  <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400`}>
+                    Telemetry
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-1 sm:gap-2 mt-0.5 sm:mt-1">
+                  <div className="flex flex-col">
+                    <span className="text-[7px] sm:text-[8px] uppercase text-gray-400 dark:text-dark-muted font-bold tracking-widest leading-none mb-1">Average Value</span>
+                    <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 leading-none">
+                      {item.value} <span className="text-[8px] sm:text-[9px] ml-0.5 opacity-70 font-normal">{item.unit}</span>
+                    </span>
+                  </div>
+                  {(item.min_value !== undefined || item.max_value !== undefined) && (
+                    <div className="flex flex-col">
+                      <span className="text-[7px] sm:text-[8px] uppercase text-gray-400 dark:text-dark-muted font-bold tracking-widest leading-none mb-1">Range (Min-Max)</span>
+                      <span className="text-[9px] sm:text-[10px] font-medium text-gray-600 dark:text-dark-text truncate leading-none font-mono">
+                        {item.min_value ?? '--'} - {item.max_value ?? '--'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {item.date && (
+                  <div className="flex items-center gap-1 sm:gap-1.5 pt-1 sm:pt-1.5 border-t border-gray-50 dark:border-white/5 opacity-60">
+                     <Calendar className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
+                     <span className="text-[8px] sm:text-[9px] font-medium">{format(new Date(item.date), 'MMM d, yyyy HH:mm')}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isObservation && !isBiomarkerDef && !isMedication && !isExamination && !isEvent && !isDocument && !isTelemetryData && (
               <div className="space-y-1">
                 {Object.entries(item).filter(([k]) => k !== 'id' && !k.startsWith('_')).slice(0, 4).map(([key, val]) => (
                   <div key={key} className="flex justify-between items-center py-1 border-b border-gray-50 dark:border-white/5 last:border-0">

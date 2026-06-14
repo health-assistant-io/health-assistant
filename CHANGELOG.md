@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.0] - 2026-06-14
+
+### Added
+- **AI Telemetry Integration**: Enabled the AI Chatbot to access high-frequency telemetry data (heart rate, steps, etc.) stored in TimescaleDB using new aggregated tools.
+- **Biomarker Discovery Tool**: Added `search_available_biomarkers` tool to the AI with regex support, allowing the LLM to identify correct metric slugs and data types (Telemetry vs Clinical).
+- **Aggregated Trends Tool**: Created `get_aggregated_biomarker_trends` providing OHLC (Open-High-Low-Close) data to the AI, ensuring context window protection via record limiting.
+- **Configurable Reasoning Loop**: Moved the hardcoded AI reasoning loop limit to a multi-tiered configuration system (Global Default -> System DB -> Tenant Override).
+- **Persistent System Settings**: Implemented a `SystemSetting` database table and model for managing global application configurations via the UI.
+- **AI Agent Admin UI**: Added a new "Agent Settings" management tab in the AI Configuration pages for both System and Tenant scopes.
+
+### Changed
+- Refactored `AnalyticsService.get_biomarker_trends` to support explicit `start_date` and `end_date` parameters for both clinical and telemetry data.
+- Optimized AI tool-calling logic to prefer exact matches and prevent cross-metric data contamination (e.g., Heart Rate vs HRV).
+- Updated AI System Prompts with strict biomarker routing rules and discovery-first logic.
+- Bumped the default AI reasoning loop limit to 20 iterations.
+
+### Fixed
+- **Audit Column Mismatch**: Resolved a `ProgrammingError` by adding missing `created_by` and `updated_by` columns to the `system_settings` table via migration.
+- **Fuzzy Match Hijacking**: Fixed a bug where substring matching in biomarker trends would return wrong data if a requested slug was a substring of another metric.
+- **Timezone Inconsistency**: Fixed a `TypeError` (offset-naive/aware conflict) by standardizing all clinical timestamp columns (`effective_datetime`, `onset_date`, etc.) to use `TIMESTAMPTZ` via database migration and model updates.
+
 ## [1.0.0] - 2026-06-10
 
 ### Added

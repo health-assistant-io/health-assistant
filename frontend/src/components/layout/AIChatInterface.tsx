@@ -648,7 +648,7 @@ export const AIChatInterface: React.FC<Props> = ({
                                 >
                                   {(() => {
                                     let text = msg.content;
-                                    text = text.replace(/\[(?:Ref:\s*)?([a-z_]+)=([a-f0-9-]+)(\.\.\.)?\]/gi, (match, type, uuid, truncated) => {
+                                    text = text.replace(/\[(?:Ref:\s*)?([a-z_]+)=([a-z0-9-_]+)(\.\.\.)?\]/gi, (match, type, uuid, truncated) => {
                                       return `@@@REF:${type}=${uuid}${truncated ? '...' : ''}@@@`;
                                     });
                                     text = text.replace(/\[(?:Ref:\s*)?([a-z_0-9]+)\]/gi, (match, name) => {
