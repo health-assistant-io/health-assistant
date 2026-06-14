@@ -1,16 +1,18 @@
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { Info, Github, Globe, Heart, ShieldCheck, Code, Award } from 'lucide-react';
 
 const AboutPage = () => {
   const { t } = useTranslation();
+  const theme = useSettingsStore(state => state.theme);
 
   return (
     <div className="w-full max-w-4xl mx-auto pb-20">
       <PageHeader
         title={t('common.about')}
         subtitle="Universal Health Data Platform"
-        icon={<Info className="w-6 h-6" />}
+        icon={<img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-6 h-6" alt="About" />}
       />
 
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">

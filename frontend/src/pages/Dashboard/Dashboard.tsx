@@ -5,6 +5,7 @@ import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useDashboardStore } from '../../store/slices/dashboardSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useChartStore } from '../../store/slices/chartSlice';
+import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { getDashboardData, getBiomarkerTrends, getCachedDashboardData, getCachedBiomarkerTrends } from '../../services/analyticsService';
 import { getPatientMedications } from '../../services/medicationService';
 import { getPatientAllergies } from '../../services/allergyService';
@@ -122,6 +123,7 @@ function Dashboard() {
   } = useDashboardStore();
   const { currentPatient } = usePatientStore();
   const { selectedBiomarker, setSelectedBiomarker } = useChartStore();
+  const theme = useSettingsStore(state => state.theme);
   
   const [availableBiomarkers, setAvailableBiomarkers] = useState<BiomarkerOption[]>([]);
   const [layouts, setLayouts] = useState<any>(DEFAULT_LAYOUT_CONFIG);
@@ -619,7 +621,7 @@ function Dashboard() {
       <PageHeader
         title={t('dashboard.title')}
         subtitle={currentPatient ? `${currentPatient.name?.given?.join(' ')} ${currentPatient.name?.family}` : t('dashboard.all_patients')}
-        icon={<Activity className="w-6 h-6" />}
+        icon={<img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-6 h-6" alt="Dashboard" />}
       />
 
       <StickyToolbar

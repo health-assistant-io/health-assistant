@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { useSettingsStore } from '../../store/slices/settingsSlice';
 import api from '../../api/axios';
 import { validateToken, clearAuthData } from '../../utils/auth';
 import AppVersion from '../../components/ui/AppVersion';
@@ -8,6 +9,7 @@ import AppVersion from '../../components/ui/AppVersion';
 function Login() {
   const navigate = useNavigate();
   const { login, logout } = useAuthStore();
+  const theme = useSettingsStore(state => state.theme);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,6 +84,7 @@ function Login() {
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-dark-bg">
       <div className="max-w-md w-full bg-white dark:bg-dark-surface rounded-lg shadow-md p-8">
         <div className="text-center mb-8">
+          <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-16 h-16 mx-auto mb-4" alt="Health Assistant Logo" />
           <h1 className="text-3xl font-bold text-blue-600">Health Assistant</h1>
           <p className="text-gray-600 dark:text-dark-muted mt-2">
             Sign in to your account
