@@ -16,7 +16,8 @@ class ObservationBuilder:
             "status": "final",
             "effective_datetime": datetime.utcnow(),
         }
-        self._loinc_code: Optional[str] = None
+        self._code: Optional[str] = None
+        self._coding_system: CodingSystem = CodingSystem.LOINC
         self._display_name: Optional[str] = None
         self._value: Optional[float] = None
         self._unit: Optional[str] = None
@@ -33,9 +34,10 @@ class ObservationBuilder:
         self._data["effective_datetime"] = dt
         return self
 
-    def set_biomarker(self, loinc_code: str, display_name: str, biomarker_id: Optional[UUID] = None):
-        self._loinc_code = loinc_code
+    def set_biomarker(self, code: str, display_name: str, coding_system: CodingSystem = CodingSystem.LOINC, biomarker_id: Optional[UUID] = None):
+        self._code = code
         self._display_name = display_name
+        self._coding_system = coding_system
         self._biomarker_id = biomarker_id
         return self
 
@@ -58,13 +60,20 @@ class ObservationBuilder:
         return self
 
     def build(self) -> ObservationCreate:
-        if not self._loinc_code or not self._display_name:
-            raise ValueError("Biomarker LOINC code and display name are required")
+        if not self._code or not self._display_name:
+            raise ValueError("Biomarker code and display name are required")
+
+        # Map enum to proper FHIR system URL
+        system_url = "http://loinc.org"
+        if self._coding_system == CodingSystem.SNOMED:
+            system_url = "http://snomed.info/sct"
+        elif self._coding_system == CodingSystem.CUSTOM:
+            system_url = "http://healthassistant.local/custom"
 
         coding = [
             {
-                "system": "http://loinc.org",
-                "code": self._loinc_code,
+                "system": system_url,
+                "code": self._code,
                 "display": self._display_name
             }
         ]
