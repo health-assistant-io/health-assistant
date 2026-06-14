@@ -34,7 +34,10 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose -f docker/docker-compose.prod.yml up -d
    ```
 
-Once started, the backend API will be available at http://localhost:8000 and the frontend application at http://localhost:3000.
+5. **Access the application:**
+   Once the services are running, open your web browser and navigate to:
+   - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
+   - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
 
 ---
 
