@@ -130,11 +130,25 @@ export const streamAIAssistance = async (
                 onMessage({ toolCall: { name, status: 'executing' } });
               } else if (rawContent.startsWith('[TOOL_CALL_RESULT]')) {
                 const payload = rawContent.replace('[TOOL_CALL_RESULT] ', '').trim();
-                const parts = payload.split('|');
-                const name = parts[0];
-                const args = parts[1];
-                const result = parts.slice(2).join('|');
-                onMessage({ toolCall: { name, status: 'finished', args, result } });
+                try {
+                  // New format: JSON string
+                  const payloadData = JSON.parse(payload);
+                  onMessage({ 
+                    toolCall: { 
+                      name: payloadData.name, 
+                      status: 'finished', 
+                      args: typeof payloadData.args === 'string' ? payloadData.args : JSON.stringify(payloadData.args), 
+                      result: payloadData.result 
+                    } 
+                  });
+                } catch (e) {
+                  // Fallback to old pipe-separated format
+                  const parts = payload.split('|');
+                  const name = parts[0];
+                  const args = parts[1];
+                  const result = parts.slice(2).join('|');
+                  onMessage({ toolCall: { name, status: 'finished', args, result } });
+                }
               } else if (rawContent === '[TOOL_CALL_FINISHED]') {
                 onMessage({ toolCall: { name: '', status: 'finished' } });
               } else if (rawContent.startsWith('[CITATION]')) {

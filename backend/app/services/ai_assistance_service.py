@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field
 from app.services.ai_provider_service import AIProviderService
 from app.services.ai_chatbot_tools import ChatbotTools
 from app.services.chat_session_service import ChatSessionService
+from app.core.config import settings
+from app.models.tenant_model import TenantModel
+from app.models.system_setting import SystemSetting
 from app.utils.svg import sanitize_svg
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation
@@ -115,6 +118,31 @@ class AIAssistanceService:
         self.db = db
         self.ai_provider_service = AIProviderService(db)
         self.chat_session_service = ChatSessionService(db)
+
+    async def _get_max_iterations(self, tenant_id: UUID) -> int:
+        """Get the maximum iterations for the AI reasoning loop"""
+        # 1. Check Tenant-specific setting
+        if tenant_id:
+            result = await self.db.execute(
+                select(TenantModel.settings).where(TenantModel.id == tenant_id)
+            )
+            tenant_settings = result.scalar_one_or_none()
+            if tenant_settings and "ai_agent_max_iterations" in tenant_settings:
+                try:
+                    return int(tenant_settings["ai_agent_max_iterations"])
+                except (ValueError, TypeError):
+                    pass
+        
+        # 2. Check System-wide DB setting
+        system_max = await SystemSetting.get_value(self.db, "ai_agent_max_iterations")
+        if system_max is not None:
+            try:
+                return int(system_max)
+            except (ValueError, TypeError):
+                pass
+
+        # 3. Fallback to ENV setting
+        return settings.AI_AGENT_MAX_ITERATIONS
 
     async def _get_recent_biomarkers_context(
         self, patient_id: UUID, limit: int = 10
@@ -241,20 +269,27 @@ class AIAssistanceService:
         - Use Markdown TABLES for presenting lists of data (biomarkers, medications, examinations) when multiple records are involved. This makes the data easier to read.
         - For scientific units with exponents (like 10^3, 10^6, m^2), use UNICODE superscript characters (e.g., ³, ⁶, ⁹, ²) instead of the caret (^) symbol.
         
+        BIOMARKER & TELEMETRY RULES:
+        1. Discovery: If asked about a health metric, ALWAYS use the `search_available_biomarkers` tool first to find its exact `slug` and verify its `is_telemetry` type (unless you already know it).
+        2. Clinical Data: If `is_telemetry` is FALSE, you MUST fetch the data using `get_biomarker_history`. This targets standard FHIR laboratory records.
+        3. Telemetry Data: If `is_telemetry` is TRUE (e.g., heart rate, steps, continuous monitors), you MUST fetch the data using `get_aggregated_biomarker_trends`. This targets high-frequency TimescaleDB records. NEVER use `get_biomarker_history` for telemetry data.
+        
         REPETITION POLICY:
         - DO NOT repeat your own preamble or any text you generated before calling a tool.
         - Focus ONLY on the new information derived from the tool results.
 
         CITATION POLICY:
-        - When you use information from a tool result, you MUST cite it inline using the format [Ref: type=uuid].
+        - When you use information from a tool result, you MUST cite it inline using the format [Ref: type=uuid] or [Ref: type=slug].
         - Use "observation" for a specific lab result value (use the 'id' field).
-        - Use "biomarker" for the general definition/info of a test (use the 'biomarker_id' field).
+        - Use "biomarker" for general biomarker info or TELEMETRY TRENDS. You can use the 'slug' (e.g. [Ref: biomarker=heart-rate]) or the 'id' (UUID).
         - Use "medication" for prescriptions, "examination" for clinical visits, "event" for health journeys, and "document" for uploaded reports/images.
         - GRANULARITY: If you report multiple data points (e.g., several biomarkers from a single visit), cite EACH one individually with its specific "observation" ID. 
+        - TELEMETRY: For high-frequency telemetry (heart rate, steps), individual IDs are not available. Cite the "biomarker" slug instead.
         - PREFERENCE: Always prefer a specific "observation" citation over a general "examination" or "document" citation when reporting numerical lab results or specific findings.
 
         - Example: "Total Cholesterol was 225 mg/dL [Ref: observation=uuid1] and LDL was 149 mg/dL [Ref: observation=uuid2]."
-        - ALWAYS provide the FULL UUID. NEVER truncate it with dots.
+        - Example Telemetry: "Your heart rate averaged 72 bpm [Ref: biomarker=heart-rate] during your last workout."
+        - ALWAYS provide the FULL UUID or SLUG. NEVER truncate it with dots.
         """
 
         if examination_id:
@@ -310,7 +345,8 @@ class AIAssistanceService:
         all_citations = []
 
         # Reasoning loop
-        for i in range(5):
+        max_iterations = await self._get_max_iterations(tenant_id)
+        for i in range(max_iterations):
             final_chunk = None
             tool_name_yielded = set()
 
@@ -380,7 +416,12 @@ class AIAssistanceService:
 
                     args_str = json.dumps(tool_call["args"])
                     result_str = str(observation)
-                    yield f"[TOOL_CALL_RESULT] {tool_name}|{args_str}|{result_str}"
+                    payload_dict = {
+                        "name": tool_name,
+                        "args": tool_call["args"],
+                        "result": result_str
+                    }
+                    yield f"[TOOL_CALL_RESULT] {json.dumps(payload_dict)}"
                     yield f"[CITATION] {selected_tool.name}"
 
                     all_tool_calls.append(
@@ -458,6 +499,20 @@ class AIAssistanceService:
 
         system_prompt = """You are Health Assistant AI, a helpful medical data assistant.
         Always answer using Markdown. Use Markdown TABLES for lists of biomarkers or medications to make them readable.
+        
+        BIOMARKER & TELEMETRY RULES:
+        1. Discovery: If asked about a health metric, ALWAYS use the `search_available_biomarkers` tool first to find its exact `slug` and verify its `is_telemetry` type (unless you already know it).
+        2. Clinical Data: If `is_telemetry` is FALSE, you MUST fetch the data using `get_biomarker_history`. This targets standard FHIR laboratory records.
+        3. Telemetry Data: If `is_telemetry` is TRUE (e.g., heart rate, steps, continuous monitors), you MUST fetch the data using `get_aggregated_biomarker_trends`. This targets high-frequency TimescaleDB records. NEVER use `get_biomarker_history` for telemetry data.
+
+        CITATION POLICY:
+        - When you use information from a tool result, you MUST cite it inline using the format [Ref: type=uuid] or [Ref: type=slug].
+        - Use "observation" for a specific lab result value (use the 'id' field).
+        - Use "biomarker" for general biomarker info or TELEMETRY TRENDS. You can use the 'slug' (e.g. [Ref: biomarker=heart-rate]) or the 'id' (UUID).
+        - Use "medication" for prescriptions, "examination" for clinical visits, "event" for health journeys, and "document" for uploaded reports/images.
+        - GRANULARITY: If you report multiple data points (e.g., several biomarkers from a single visit), cite EACH one individually with its specific "observation" ID. 
+        - TELEMETRY: For high-frequency telemetry (heart rate, steps), individual IDs are not available. Cite the "biomarker" slug instead.
+        - PREFERENCE: Always prefer a specific "observation" citation over a general "examination" or "document" citation when reporting numerical lab results or specific findings.
         """
         if examination_id:
             system_prompt += f"\n\nCONTEXT: The user is currently viewing examination {examination_id}. If they ask about 'this visit' or 'this examination', use this ID to fetch details."
@@ -504,7 +559,8 @@ class AIAssistanceService:
         all_tool_calls = []
         all_citations = []
 
-        for _ in range(5):
+        max_iterations = await self._get_max_iterations(tenant_id)
+        for _ in range(max_iterations):
             response = await llm_with_tools.ainvoke(current_history)
             current_history.append(response)
 
