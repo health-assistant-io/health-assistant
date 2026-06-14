@@ -26,6 +26,10 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    ```bash
    ./scripts/run-dev.sh
    ```
+6. **Access the application:**
+   Once the script finishes starting the services, open your web browser and navigate to:
+   - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
+   - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
 
 ### Environment Configuration
 - **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
