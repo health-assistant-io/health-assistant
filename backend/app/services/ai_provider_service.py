@@ -13,6 +13,8 @@ from app.models.ai_provider_model import (
     AITaskAssignment,
     AIScope,
 )
+from app.models.tenant_model import TenantModel
+from app.models.system_setting import SystemSetting
 from app.schemas.ai_config import (
     AIProviderCreate,
     AIProviderUpdate,
@@ -419,6 +421,22 @@ class AIProviderService:
             "medication_definition": [ta for ta in [task_assignments.get("define_medication")] if ta],
         }
 
+        # Get max iterations
+        max_iterations = settings.AI_AGENT_MAX_ITERATIONS
+        
+        # Check system DB setting first if looking at system scope or if no tenant specified
+        system_db_max = await SystemSetting.get_value(self.db, "ai_agent_max_iterations")
+        if system_db_max is not None:
+            max_iterations = int(system_db_max)
+
+        if tenant_id:
+            tenant_res = await self.db.execute(
+                select(TenantModel.settings).where(TenantModel.id == tenant_id)
+            )
+            tenant_settings = tenant_res.scalar_one_or_none()
+            if tenant_settings and "ai_agent_max_iterations" in tenant_settings:
+                max_iterations = int(tenant_settings["ai_agent_max_iterations"])
+
         return AIConfigSummary(
             providers=[AIProviderResponse.model_validate(p) for p in providers],
             models=[AIModelResponse.model_validate(m) for m in visible_models],
@@ -439,7 +457,51 @@ class AIProviderService:
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
             workflows=workflows,
+            ai_agent_max_iterations=max_iterations,
         )
+
+    async def update_ai_settings(
+        self,
+        config_data: Any,  # AIConfigUpdate
+        tenant_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+        current_user_id: Optional[UUID] = None,
+    ) -> bool:
+        """Update AI-specific settings for a tenant or user"""
+        if not tenant_id and not user_id:
+            # Update System-wide settings
+            if config_data.ai_agent_max_iterations is not None:
+                await SystemSetting.set_value(
+                    self.db, 
+                    "ai_agent_max_iterations", 
+                    config_data.ai_agent_max_iterations,
+                    user_id=current_user_id
+                )
+            return True
+
+        if tenant_id:
+            result = await self.db.execute(
+                select(TenantModel).where(TenantModel.id == tenant_id)
+            )
+            tenant = result.scalars().first()
+            if not tenant:
+                return False
+
+            if tenant.settings is None:
+                tenant.settings = {}
+            
+            # Merge settings
+            if config_data.ai_agent_max_iterations is not None:
+                tenant.settings["ai_agent_max_iterations"] = config_data.ai_agent_max_iterations
+
+            # Flag for SQLAlchemy to detect change in JSONB
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(tenant, "settings")
+            
+            await self.db.commit()
+            return True
+        
+        return False
 
     async def _resolve_config(
         self,

@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 65536
     OPENAI_TIMEOUT: int = 30
 
+    # AI Agent
+    AI_AGENT_MAX_ITERATIONS: int = 20
+
     # File Storage
     UPLOAD_DIR: str = "/var/healthassistant/uploads"
     MAX_UPLOAD_SIZE: int = 50  # MB

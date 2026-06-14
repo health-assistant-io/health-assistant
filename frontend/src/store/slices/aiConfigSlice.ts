@@ -32,13 +32,16 @@ interface AIConfigState {
   // Summary
   loadConfigSummary: (tenant_id?: string, user_id?: string, scope?: string) => Promise<void>;
   
+  // Settings
+  updateAISettings: (data: { ai_agent_max_iterations?: number }, tenant_id?: string, user_id?: string, scope?: string) => Promise<void>;
+  
   // Utility
   clearError: () => void;
 }
 
 export const useAIConfigStore = create<AIConfigState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       providers: [],
       models: [],
       taskAssignments: [],
@@ -230,6 +233,22 @@ export const useAIConfigStore = create<AIConfigState>()(
           });
         } catch (error: any) {
           set({ error: error.message || 'Failed to load config summary', isLoading: false });
+        }
+      },
+      
+      updateAISettings: async (data, tenant_id, user_id, scope) => {
+        set({ isLoading: true, error: null });
+        try {
+          await aiConfigApi.updateAISettings(data, tenant_id, user_id, scope);
+          // Refresh summary after update
+          const summary = await aiConfigApi.getConfigSummary(tenant_id, user_id, scope);
+          set({ 
+            configSummary: summary,
+            isLoading: false 
+          });
+        } catch (error: any) {
+          set({ error: error.message || 'Failed to update AI settings', isLoading: false });
+          throw error;
         }
       },
       
