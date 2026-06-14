@@ -94,3 +94,11 @@ When an import is triggered:
 If you create a public GitHub repository to share a catalog containing LOINC codes, you **must** include the LOINC attribution per their licensing requirements:
 
 > This material contains content from LOINC (http://loinc.org). LOINC is copyright © Regenstrief Institute, Inc. and the Logical Observation Identifiers Names and Codes (LOINC) Committee and is available at no cost under the license at http://loinc.org/license. LOINC® is a registered United States trademark of Regenstrief Institute, Inc.
+## Data Mapping & Normalization Logic
+
+When external data enters the system (via OCR Document Extraction, API integrations, or Webhooks), it must be assigned to a unified `BiomarkerDefinition`. The system uses a strict waterfall logic to establish this `biomarker_id` link:
+
+1. **Primary Match (By Code):** If the incoming payload provides a standardized medical code (e.g., LOINC), the system queries for `BiomarkerDefinition.code == incoming_code`.
+2. **Fallback 1 (By Name):** If no code exists, the system performs a case-insensitive search against the biomarker's display name (`BiomarkerDefinition.name.ilike(incoming_text)`).
+3. **Fallback 2 (By Slug/Aliases):** If the name fails, it slugifies the incoming text (e.g., "Heart Rate" -> "heart-rate") and attempts a match against `BiomarkerDefinition.slug`. (Aliases are also checked in analytical queries).
+4. **Auto-Creation (Safety Net):** If no matches are found, the system will dynamically insert a new custom `BiomarkerDefinition` into the catalog using the provided name and a generated slug, ensuring no clinical data is ever dropped due to a catalog miss.
