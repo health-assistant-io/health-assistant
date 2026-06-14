@@ -32,7 +32,7 @@ export interface Alert {
   last_triggered?: string;
 }
 
-export interface WearableData {
+export interface TelemetryData {
   timestamp: string;
   heart_rate?: number;
   steps?: number;

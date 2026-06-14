@@ -17,7 +17,7 @@ import { ExaminationCategoryManager } from './pages/Examinations/ExaminationCate
 import TaskManager from './pages/TaskManager';
 import Patients from './pages/Patients/PatientList';
 import PatientDetail from './pages/Patients/PatientDetail';
-import Wearable from './pages/Wearable/WearableData';
+import Telemetry from './pages/Telemetry/TelemetryData';
 import Doctors from './pages/Doctors/DoctorList';
 import MedicationList from './pages/Medications/MedicationList';
 import MedicationCatalog from './pages/Medications/MedicationCatalog';
@@ -215,7 +215,7 @@ function App() {
             </>
           )}
 
-          <Route path="/wearable" element={<Wearable />} />
+          <Route path="/telemetry" element={<Telemetry />} />
           <Route path="/ai-assistant" element={<AIChatPage />} />
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
           <Route path="/settings" element={<Settings />} />

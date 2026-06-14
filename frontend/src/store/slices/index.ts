@@ -5,4 +5,4 @@ export { useDocumentStore } from './documentSlice';
 export { usePatientStore } from './patientSlice';
 export { useSettingsStore } from './settingsSlice';
 export { useUserSlice } from './userSlice';
-export { useWearableStore } from './wearableSlice';
+export { useTelemetryStore } from './telemetrySlice';

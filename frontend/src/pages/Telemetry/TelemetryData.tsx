@@ -1,15 +1,13 @@
 import { useState } from 'react';
-import { uploadWearableData, getWearableData, getWearableSummary } from '../../services/wearableService';
-import { WearableDataItem, WearableSummary } from '../../types/wearable';
+import { uploadTelemetryData, getTelemetryData, getTelemetrySummary } from '../../services/telemetryService';
+import { TelemetryDataItem, TelemetrySummary } from '../../types/telemetry';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Activity } from 'lucide-react';
 
-
-
-function Wearable() {
+function Telemetry() {
   const [deviceId, setDeviceId] = useState('');
-  const [data, setData] = useState<WearableDataItem[]>([]);
-  const [summary, setSummary] = useState<WearableSummary | null>(null);
+  const [data, setData] = useState<TelemetryDataItem[]>([]);
+  const [summary, setSummary] = useState<TelemetrySummary | null>(null);
 
   const handleUpload = async () => {
     if (!deviceId) return;
@@ -24,7 +22,7 @@ function Wearable() {
     ];
 
     try {
-      await uploadWearableData(deviceId, sampleData);
+      await uploadTelemetryData(deviceId, sampleData);
       alert('Data uploaded successfully!');
     } catch (error) {
       console.error('Upload failed:', error);
@@ -37,10 +35,10 @@ function Wearable() {
     try {
       const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const endDate = new Date().toISOString();
-      const fetchData = await getWearableData(deviceId, startDate, endDate);
+      const fetchData = await getTelemetryData(deviceId, startDate, endDate);
       setData(fetchData);
 
-      const summaryData = await getWearableSummary(new Date().toISOString(), deviceId) as WearableSummary;
+      const summaryData = await getTelemetrySummary(new Date().toISOString(), deviceId) as TelemetrySummary;
       setSummary(summaryData);
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -50,14 +48,14 @@ function Wearable() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Wearable Data"
+        title="Telemetry Data"
         subtitle="Monitor your real-time health metrics from connected devices"
         icon={<Activity className="w-8 h-8" />}
       />
 
       <div className="bg-white dark:bg-dark-surface rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-dark-text mb-4">
-          Connect Wearable Device
+          Connect IoT Device
         </h2>
 
         <div className="flex space-x-4">
@@ -156,4 +154,4 @@ function Wearable() {
   );
 }
 
-export default Wearable;
+export default Telemetry;
