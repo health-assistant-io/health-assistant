@@ -63,9 +63,9 @@ class AllergyIntolerance(
     code = Column(JSONB, nullable=False)  # {"text": "Peanuts", "catalog_id": "..."}
 
     # Timeline
-    onset_date = Column(DateTime, nullable=True)
-    resolved_date = Column(DateTime, nullable=True)
-    last_occurrence = Column(DateTime, nullable=True)
+    onset_date = Column(DateTime(timezone=True), nullable=True)
+    resolved_date = Column(DateTime(timezone=True), nullable=True)
+    last_occurrence = Column(DateTime(timezone=True), nullable=True)
 
     # Documentation
     note = Column(Text, nullable=True)
