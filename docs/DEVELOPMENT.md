@@ -10,7 +10,7 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 2. **Clone the project:**
    ```bash
    git clone https://github.com/health-assistant-io/health-assistant.git
-   cd health-assistant/core
+   cd health-assistant
    ```
 3. **Configure the environment:**
    Copy the example environment files to `.env` and update them with your specific values (e.g., adding `OPENAI_API_KEY` to the backend):
