@@ -2,23 +2,16 @@
 
 ## Last Updated: March 2026
 
-## Prerequisites
-
-### Minimum Requirements
-- Python 3.11+
-- Node.js 18+
-- 4GB RAM
-- 10GB disk space
-
-### Optional (for full features)
-- PostgreSQL 14+ **with TimescaleDB extension** (e.g., `timescale/timescaledb:latest-pg14` Docker image)
-  - *Note: A standard PostgreSQL installation will crash during database migrations. The TimescaleDB extension is strictly required for the `telemetry_data` hypertable to initialize correctly.*
-- Redis 7+
-- Tesseract OCR
-
 ## Installations - Quickstart (Recommended)
 
 Using Docker is the easiest and most recommended way to get Health Assistant up and running.
+
+### Prerequisites
+- Docker and Docker Compose
+- 4GB RAM
+- 10GB disk space
+
+### Setup
 
 1. **Install Docker** and Docker Compose on your system.
 2. **Clone the repository:**
@@ -46,6 +39,14 @@ Once started, the backend API will be available at http://localhost:8000 and the
 ---
 
 ## Manual Installation
+
+### Prerequisites for Manual Setup
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL 14+ **with TimescaleDB extension** (e.g., `timescale/timescaledb:latest-pg14` Docker image)
+  - *Note: A standard PostgreSQL installation will crash during database migrations. The TimescaleDB extension is strictly required for the `telemetry_data` hypertable to initialize correctly.*
+- Redis 7+
+- Tesseract OCR
 
 ### Step 1: Backend Setup
 
@@ -111,13 +112,14 @@ For more details on managing multiple users and clinical hierarchies, see the [T
 
 ## Configuration
 
-Both the frontend and backend utilize `.env.example` files to document required configuration variables. 
+Both the frontend and backend utilize `.env` files to document required configuration variables. 
 
-1. Ensure you have copied the example files to create your active `.env` files:
-   - Backend: `cp backend/.env.example backend/.env`
-   - Frontend: `cp frontend/.env.example frontend/.env`
-2. Open these files in your preferred text editor.
-3. Review the inline comments within the `.env` files and supply your required credentials (e.g., `OPENAI_API_KEY`, database credentials).
+1. Ensure you have copied the example file to create your active `.env` file:
+   ```bash
+   cp docker/.env.example .env
+   ```
+2. Open this file in your preferred text editor.
+3. Review the inline comments within the `.env` file and supply your required credentials (e.g., `OPENAI_API_KEY`, database credentials).
 
 ## Verification
 
