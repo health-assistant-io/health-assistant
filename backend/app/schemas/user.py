@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, ConfigDict
 
 
 class UserBase(BaseModel):
@@ -35,8 +35,7 @@ class UserResponse(UserBase):
     tenant_id: UUID
     settings: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class TokenData(BaseModel):

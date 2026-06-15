@@ -5,7 +5,7 @@ Follows security best practices: no sensitive data, proper error handling
 
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
 
@@ -33,7 +33,7 @@ class TaskLogger:
         self.tenant_id = tenant_id
         self.db = db
         self.logger = logging.getLogger(f"celery.{task_name}")
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     async def _persist_log(
         self,
@@ -129,14 +129,14 @@ class TaskLogger:
         }
         """
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": level,
             "task_name": self.task_name,
             "task_id": str(self.task_id),
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "message": message,
             "data": self._sanitize_data(kwargs),
-            "duration_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+            "duration_seconds": (datetime.now(timezone.utc) - self.start_time).total_seconds(),
         }
 
     async def log_start(self, **kwargs):
@@ -297,14 +297,14 @@ class TaskTimeoutMonitor:
 
     def __init__(self, max_duration_seconds: int = 300):  # 5 minutes default
         self.max_duration = max_duration_seconds
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     def check_timeout(self) -> bool:
         """Check if task has exceeded max duration"""
-        elapsed = (datetime.utcnow() - self.start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return elapsed > self.max_duration
 
     def get_remaining_seconds(self) -> int:
         """Get remaining seconds before timeout"""
-        elapsed = (datetime.utcnow() - self.start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
         return max(0, int(self.max_duration - elapsed))

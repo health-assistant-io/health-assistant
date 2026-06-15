@@ -1,6 +1,6 @@
 import bcrypt
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from app.core.config import settings
 from fastapi import HTTPException, status, Header, Depends, Request
 
@@ -27,11 +27,11 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+        expire = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
 
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM
     )
@@ -57,7 +57,7 @@ def verify_access_token(token: str) -> dict:
         return None
 
     exp = payload.get("exp")
-    if exp and datetime.utcnow().timestamp() > float(exp):
+    if exp and datetime.now(timezone.utc).timestamp() > float(exp):
         return None
 
     return payload
@@ -137,8 +137,8 @@ def create_presigned_token(document_id: str) -> str:
     to_encode = {
         "sub": "download",
         "doc_id": document_id,
-        "exp": datetime.utcnow() + timedelta(minutes=5),  # 5 minutes only
-        "iat": datetime.utcnow(),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),  # 5 minutes only
+        "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 

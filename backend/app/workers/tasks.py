@@ -405,7 +405,7 @@ async def deliver_notification(notification_id: str):
             notif.status = (
                 NotificationStatus.DELIVERED if success else NotificationStatus.FAILED
             )
-            notif.sent_at = datetime.datetime.utcnow()
+            notif.sent_at = datetime.now(timezone.utc)
             await db.commit()
             logger.info(
                 f"Notification {notification_id} status updated to {notif.status}"

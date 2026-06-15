@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timezone
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 import random
@@ -14,7 +14,7 @@ class ObservationBuilder:
         self.patient_id = patient_id
         self._data: Dict[str, Any] = {
             "status": "final",
-            "effective_datetime": datetime.utcnow(),
+            "effective_datetime": datetime.now(timezone.utc),
         }
         self._code: Optional[str] = None
         self._coding_system: CodingSystem = CodingSystem.LOINC

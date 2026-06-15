@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import logging
 import json
 from sqlalchemy import select, update, delete, and_, or_
@@ -25,7 +25,7 @@ class NotificationManager:
     @staticmethod
     def calculate_next_occurrence(at_time_str: str, days: List[str] = None) -> datetime:
         """Calculates the next occurrence of a wall-clock time."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         try:
             # Handle HH:MM format
             hour, minute = map(int, at_time_str.split(":"))
@@ -91,7 +91,7 @@ class NotificationManager:
             else:
                 # Fallback to interval
                 interval_mins = config.get("interval_minutes", 1440)
-                next_trigger = datetime.utcnow() + timedelta(minutes=interval_mins)
+                next_trigger = datetime.now(timezone.utc) + timedelta(minutes=interval_mins)
 
         new_trigger = NotificationTrigger(
             patient_id=UUID(str(patient_id)),
@@ -227,7 +227,7 @@ class NotificationManager:
             await session.execute(
                 update(Notification)
                 .where(Notification.id == UUID(str(notification_id)))
-                .values(status=NotificationStatus.READ, read_at=datetime.utcnow())
+                .values(status=NotificationStatus.READ, read_at=datetime.now(timezone.utc))
             )
             await session.commit()
             return True
@@ -243,7 +243,7 @@ class NotificationManager:
                 update(Notification)
                 .where(Notification.id == UUID(str(notification_id)))
                 .values(
-                    status=NotificationStatus.DELIVERED, delivered_at=datetime.utcnow()
+                    status=NotificationStatus.DELIVERED, delivered_at=datetime.now(timezone.utc)
                 )
             )
             await session.commit()
@@ -305,7 +305,7 @@ class NotificationManager:
         if not DATABASE_AVAILABLE:
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         async with AsyncSessionLocal() as session:
             # Select triggers where next_trigger <= now and enabled=True
             query = select(NotificationTrigger).where(

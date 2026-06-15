@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TenantBase(BaseModel):
@@ -31,5 +31,4 @@ class TenantResponse(TenantBase):
     settings: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
