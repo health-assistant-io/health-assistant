@@ -321,7 +321,7 @@ async def get_integration_details(
 async def get_integration_debug_logs(
     integration_id: str,
     patient_id: str,
-    limit: int = 50,
+    limit: int = 200,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -599,6 +599,13 @@ async def sync_integration(
     except IntegrationAuthError as e:
         await db.rollback()
         logger.error(f"Auth failed for {domain}: {e}")
+        
+        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+            try:
+                await provider.log_debug_payload(integration, "Auth Error", {"error": str(e)}, level="error")
+            except Exception:
+                pass
+                
         integration.status = IntegrationStatus.ERROR
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
@@ -615,10 +622,22 @@ async def sync_integration(
     except IntegrationRateLimitError as e:
         await db.rollback()
         logger.error(f"Rate limit hit for {domain}: {e}")
+        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+            try:
+                await provider.log_debug_payload(integration, "Rate Limit Error", {"error": str(e)}, level="warning")
+            except Exception:
+                pass
         raise HTTPException(status_code=429, detail="Third-party API rate limit exceeded. Try again later.")
     except Exception as e:
         await db.rollback()
         logger.error(f"Manual sync failed for {domain}: {e}")
+        
+        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+            try:
+                await provider.log_debug_payload(integration, "Sync Error", {"error": str(e)}, level="error")
+            except Exception:
+                pass
+                
         # Log failure
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
@@ -766,6 +785,13 @@ async def integration_webhook(
     except Exception as e:
         await db.rollback()
         logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
+        
+        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+            try:
+                await provider.log_debug_payload(integration, "Webhook Error", {"error": str(e)}, level="error")
+            except Exception:
+                pass
+                
         # Log failure
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,

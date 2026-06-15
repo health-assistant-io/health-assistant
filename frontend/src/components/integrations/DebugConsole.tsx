@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, RefreshCw, AlertCircle } from 'lucide-react';
+import { Terminal, RefreshCw, AlertCircle, Copy, Check } from 'lucide-react';
 import { integrationService } from '../../services/integrationService';
 import { toast } from 'react-toastify';
 
@@ -11,6 +11,7 @@ interface DebugConsoleProps {
 export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patientId }) => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -28,6 +29,18 @@ export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patie
   useEffect(() => {
     fetchLogs();
   }, [integrationId, patientId]);
+
+  const copyToClipboard = (logId: string, payload: any) => {
+    const textToCopy = payload ? (typeof payload === 'object' ? JSON.stringify(payload, null, 2) : String(payload)) : "Empty Payload";
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopiedId(logId);
+      setTimeout(() => setCopiedId(null), 2000);
+      toast.success("Payload copied to clipboard", { autoClose: 1500, hideProgressBar: true });
+    }).catch(err => {
+      console.error("Could not copy text: ", err);
+      toast.error("Failed to copy");
+    });
+  };
 
   return (
     <div className="bg-gray-900 rounded-[2rem] p-6 shadow-sm overflow-hidden flex flex-col">
@@ -53,12 +66,21 @@ export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patie
             <div key={log.id} className="border-l-2 border-gray-700 pl-3">
               <div className="flex items-center justify-between text-gray-500 mb-1">
                 <span>{new Date(log.timestamp).toLocaleString()}</span>
-                <span className={`uppercase font-bold ${log.level === 'error' ? 'text-red-400' : 'text-blue-400'}`}>
-                  {log.level}
-                </span>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => copyToClipboard(log.id, log.payload)}
+                    className="flex items-center text-gray-400 hover:text-white transition-colors"
+                    title="Copy Payload"
+                  >
+                    {copiedId === log.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                  <span className={`uppercase font-bold ${log.level === 'error' ? 'text-red-400' : 'text-blue-400'}`}>
+                    {log.level}
+                  </span>
+                </div>
               </div>
               <div className="text-gray-300 mb-1 font-bold">{log.title}</div>
-              <pre className="overflow-x-auto bg-black p-2 rounded whitespace-pre-wrap break-all text-[10px]">
+              <pre className="overflow-x-auto bg-black p-2 rounded whitespace-pre-wrap break-all text-[10px] border border-gray-800 group-hover:border-gray-700 transition-colors">
                 {log.payload ? JSON.stringify(log.payload, null, 2) : "Empty Payload"}
               </pre>
             </div>

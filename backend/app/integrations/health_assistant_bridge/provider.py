@@ -205,6 +205,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 raise e
             except Exception as e:
                 logger.error(f"LLM Mapping failed: {e}")
+                if integration.is_debug_enabled:
+                    try:
+                        await self.log_debug_payload(integration, "AI Mapping Error", {"error": str(e)}, level="error")
+                    except Exception:
+                        pass
                 raise ValueError(f"Failed to perform AI mapping: {str(e)}")
 
     async def _process_and_save_observations(self, integration: UserIntegration, observations_data: List[ObservationCreate]) -> int:
@@ -300,6 +305,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             except Exception as e:
                 await db.rollback()
                 logger.error(f"Error saving observations from bridge: {e}")
+                
+                if integration.is_debug_enabled:
+                    try:
+                        await self.log_debug_payload(integration, "Bridge Save Error", {"error": str(e)}, level="error")
+                    except Exception:
+                        pass
                 
                 sync_log = IntegrationSyncLog(
                     integration_id=integration.id,

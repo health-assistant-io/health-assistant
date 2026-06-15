@@ -535,6 +535,13 @@ async def sync_active_integrations(self):
                     
                 except IntegrationAuthError as e:
                     logger.warning(f"Auth error for integration {integration.provider} (user {integration.user_id}): {e}")
+                    
+                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+                        try:
+                            await provider.log_debug_payload(integration, "Auth Error (Background)", {"error": str(e)}, level="error")
+                        except Exception:
+                            pass
+                            
                     # Update integration status to ERROR so we stop hammering it until user fixes it
                     integration.status = IntegrationStatus.ERROR
                     
@@ -553,6 +560,13 @@ async def sync_active_integrations(self):
                     
                 except IntegrationRateLimitError as e:
                     logger.warning(f"Rate limit hit for {integration.provider} (user {integration.user_id}): {e}")
+                    
+                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+                        try:
+                            await provider.log_debug_payload(integration, "Rate Limit Error (Background)", {"error": str(e)}, level="warning")
+                        except Exception:
+                            pass
+                            
                     # Log the delay but don't mark as error so we try again later
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
@@ -569,6 +583,13 @@ async def sync_active_integrations(self):
                     
                 except Exception as e:
                     logger.error(f"Error syncing integration {integration.provider} for user {integration.user_id}: {e}")
+                    
+                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
+                        try:
+                            await provider.log_debug_payload(integration, "Sync Error (Background)", {"error": str(e)}, level="error")
+                        except Exception:
+                            pass
+                            
                     # Log failure
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
