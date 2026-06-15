@@ -819,16 +819,36 @@ async def get_biomarker_trends(
             col = f"CAST(data->>'{slug}' AS FLOAT)"
             where_clause = f"data ? '{slug}'"
 
+        table_name = "telemetry_data"
+        time_col = "timestamp"
+
+        if bucket == "1 hour" and col in ["heart_rate", "steps", "calories"]:
+            table_name = "telemetry_hourly"
+            time_col = "bucket"
+            avg_col = f"{col}_avg"
+            max_col = f"{col}_max"
+            min_col = f"{col}_min"
+        elif bucket == "1 day" and col in ["heart_rate", "steps", "calories"]:
+            table_name = "telemetry_daily"
+            time_col = "bucket"
+            avg_col = f"{col}_avg"
+            max_col = f"{col}_max"
+            min_col = f"{col}_min"
+        else:
+            avg_col = f"AVG({col})"
+            max_col = f"MAX({col})"
+            min_col = f"MIN({col})"
+
         sql = f"""
             SELECT 
-                time_bucket_gapfill(INTERVAL '{bucket}', timestamp) AS bucket,
+                time_bucket_gapfill(INTERVAL '{bucket}', {time_col}) AS bucket,
                 device_id,
-                AVG({col}) as avg_val,
-                MAX({col}) as max_val,
-                MIN({col}) as min_val
-            FROM telemetry_data
+                AVG({avg_col}) as avg_val,
+                MAX({max_col}) as max_val,
+                MIN({min_col}) as min_val
+            FROM {table_name}
             WHERE tenant_id = :tenant_id
-              AND timestamp >= :start_date AND timestamp <= :end_date
+              AND {time_col} >= :start_date AND {time_col} <= :end_date
               AND {where_clause}
             GROUP BY bucket, device_id
             ORDER BY bucket

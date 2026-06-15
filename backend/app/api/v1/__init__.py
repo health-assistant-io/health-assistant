@@ -28,6 +28,7 @@ from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.integrations import router as integrations_router
 from app.api.v1.endpoints.admin_integrations import router as admin_integrations_router
 from app.api.v1.endpoints.search import router as search_router
+from app.api.v1.endpoints.websockets import router as websockets_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -58,3 +59,4 @@ api_router.include_router(admin_router)
 api_router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 api_router.include_router(admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"])
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
+api_router.include_router(websockets_router)
