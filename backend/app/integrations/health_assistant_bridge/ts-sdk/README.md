@@ -59,7 +59,8 @@ async function syncMyData() {
       {
         type: "quantitative",
         name: sodiumMapping?.new_biomarker_name || "Sodium",
-        code: sodiumMapping?.existing_biomarker_id,
+        biomarker_id: sodiumMapping?.existing_biomarker_id,
+        code: sodiumMapping?.new_biomarker_code || "2951-2",
         coding_system: sodiumMapping?.new_biomarker_coding_system || "loinc",
         value: 145.0,
         unit: "mmol/L",

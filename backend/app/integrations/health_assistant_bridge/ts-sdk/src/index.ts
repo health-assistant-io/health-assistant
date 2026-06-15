@@ -25,6 +25,7 @@ export interface MapResponsePayload {
 
 export interface ClientRecord {
   type: "quantitative" | "categorical";
+  biomarker_id?: string | null;
   code?: string | null;
   coding_system?: string;
   name: string;
