@@ -94,7 +94,7 @@ Health Assistant/
 │
 ├── docker/                    # Docker configuration
 │   ├── docker-compose.yml     # Production services
-│   └── docker-compose-dev.yml # Development services
+│   └── docker-compose.db.yml # Development services
 │
 ├── docs/                      # Technical Documentation
 │   ├── ARCHITECTURE.md        # Technical architecture details
