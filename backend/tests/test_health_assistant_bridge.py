@@ -114,7 +114,7 @@ async def test_parse_records(provider, integration_mock):
         )
     ]
     
-    observations = provider._parse_records(records, builder, integration_mock.instance_name)
+    observations = provider._parse_records(records, builder, str(integration_mock.id), integration_mock.instance_name)
     assert len(observations) == 1
     
     obs = observations[0]
@@ -123,6 +123,7 @@ async def test_parse_records(provider, integration_mock):
     assert obs.code["text"] == "Sodium"
     assert str(obs.biomarker_id) == "123e4567-e89b-12d3-a456-426614174000"
     assert obs.performer[0]["display"] == "Test Lab"
+    assert obs.performer[0]["reference"] == f"Integration/{integration_mock.id}"
 
 @pytest.mark.asyncio
 @patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider")

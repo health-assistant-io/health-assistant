@@ -84,7 +84,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             
             # Use universal parsing logic
             builder = self.create_observation_builder(integration)
-            observations = self._parse_records(sync_payload.records, builder, integration.instance_name)
+            observations = self._parse_records(sync_payload.records, builder, str(integration.id), integration.instance_name)
             
             try:
                 inserted_count = await self._process_and_save_observations(integration, observations)
@@ -105,7 +105,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         else:
             raise NotImplementedError(f"Path '{path}' with method '{method}' is not supported by the bridge API.")
 
-    def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, instance_name: str) -> List[ObservationCreate]:
+    def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, integration_id: str, instance_name: str) -> List[ObservationCreate]:
         observations = []
         for record in records:
             dt = datetime.datetime.now(datetime.timezone.utc)
@@ -161,11 +161,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 
             obs = obs_builder.build()
             
-            # Handle performer override if provided
-            if record.performer:
-                obs.performer = [{"type": "Organization", "display": record.performer}]
-            else:
-                obs.performer = [{"type": "Integration", "display": instance_name or "Bridge"}]
+            # Ensure the performer explicitly links to this integration instance so it appears in the UI
+            obs.performer = [{
+                "type": "Integration", 
+                "display": record.performer or instance_name or "Health Assistant Bridge",
+                "reference": f"Integration/{integration_id}"
+            }]
                 
             observations.append(obs)
             
