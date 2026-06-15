@@ -27,6 +27,7 @@ wheels/
 
 # Environment variables
 .env
+.env.test
 .env.local
 .env.*.local
 
