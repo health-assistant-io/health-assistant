@@ -1,0 +1,19 @@
+{
+  "name": "@health-assistant/bridge-client",
+  "version": "1.0.0",
+  "description": "A TypeScript SDK for the Health Assistant Universal Bridge integration.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "health-assistant",
+    "bridge",
+    "integration",
+    "sdk"
+  ],
+  "author": "Health Assistant",
+  "license": "Apache-2.0"
+}
