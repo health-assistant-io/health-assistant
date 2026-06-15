@@ -280,8 +280,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     db.add_all(fhir_records)
                 count += len(telemetry_records) + len(fhir_records)
                 
+                # We do NOT db.add(integration) here because it is already attached 
+                # to the outer session provided by the FastAPI Dependency `Depends(get_db)`.
+                # If we add it to the inner `AsyncSessionLocal()`, SQLAlchemy throws an error.
                 integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-                db.add(integration)
 
                 sync_log = IntegrationSyncLog(
                     integration_id=integration.id,
