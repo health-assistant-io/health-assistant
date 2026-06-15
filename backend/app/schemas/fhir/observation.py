@@ -38,7 +38,7 @@ class ObservationCreate(ObservationBase):
     lab_reference_range: Optional[Dict[str, Any]] = None
     relative_score: Optional[float] = None
     comment: Optional[str] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
 
 class ObservationUpdate(BaseModel):
     """Observation update schema"""
@@ -53,7 +53,7 @@ class ObservationUpdate(BaseModel):
     reference_range: Optional[Dict[str, Any]] = None
     interpretation: Optional[str] = None
     comment: Optional[str] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
 
 class ObservationResponse(ObservationBase):
     """Observation response schema"""
@@ -66,7 +66,7 @@ class ObservationResponse(ObservationBase):
     reference_range: Optional[Dict[str, Any]] = None
     interpretation: Optional[str] = None
     comment: Optional[str] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
