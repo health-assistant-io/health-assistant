@@ -676,7 +676,19 @@ class AIProviderService:
                 )
 
         # Fallback to defaults
+        if settings.OPENAI_API_KEY:
+            logger.warning(
+                "AI Resolution [nlp]: No DB assignment found, but OPENAI_API_KEY is present in environment. Falling back to OpenAI extractor."
+            )
+            return get_nlp_extractor(
+                provider="openai",
+                api_key=settings.OPENAI_API_KEY,
+                api_base=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
+                model=settings.OPENAI_MODEL or "gpt-4o-mini",
+                temperature=0.7,
+            )
+            
         logger.warning(
-            "AI Resolution [nlp]: No DB assignment found. Falling back to standard SPACY extractor."
+            "AI Resolution [nlp]: No DB assignment found and no API keys in environment. Falling back to standard SPACY extractor."
         )
         return get_nlp_extractor(provider="spacy")
