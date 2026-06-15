@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, ReactElement, cloneElement } from 'react';
+import { useEffect, useState, useRef, ReactElement, cloneElement, isValidElement } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/slices/authSlice';
@@ -159,8 +159,8 @@ function Header() {
 
           <div className="flex items-center space-x-3">
             {pageHeaderConfig?.icon && (
-              <div className={`hidden sm:flex w-9 h-9 ${pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0 overflow-hidden`}>
-                {pageHeaderConfig.icon.type === 'img' ? (
+              <div className={`hidden sm:flex w-9 h-9 ${isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0 overflow-hidden`}>
+                {isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? (
                   pageHeaderConfig.icon
                 ) : (
                   cloneElement(pageHeaderConfig.icon as ReactElement, { className: "w-5 h-5" })

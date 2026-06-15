@@ -23,6 +23,7 @@ async def test_ocr_document_async():
 
     # Mock DB
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
     mock_session_factory = MagicMock()
     mock_session_factory.return_value.__aenter__.return_value = mock_db
@@ -97,6 +98,7 @@ async def test_cumulative_extraction_async():
 
     # Mock DB
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
     mock_session_factory = MagicMock()
     mock_session_factory.return_value.__aenter__.return_value = mock_db

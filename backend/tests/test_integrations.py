@@ -110,6 +110,8 @@ async def test_execute_custom_action_success(async_client: AsyncClient):
 
     patient_uuid = uuid.uuid4()
     
+    integration_id = uuid.uuid4()
+    
     # Mock DB
     mock_result = MagicMock()
     mock_integration = MagicMock()
@@ -137,7 +139,7 @@ async def test_execute_custom_action_success(async_client: AsyncClient):
         mock_provider.execute_custom_action = execute_custom_action
         mock_registry.get_provider.return_value = mock_provider
         
-        response = await async_client.post(f"/api/v1/integrations/dev_dummy/action/my_action?patient_id={patient_uuid}")
+        response = await async_client.post(f"/api/v1/integrations/instance/{integration_id}/action/my_action?patient_id={patient_uuid}")
         
         assert response.status_code == 200
         assert response.json()["message"] == "Action executed!"
@@ -151,6 +153,8 @@ async def test_execute_custom_action_not_supported(async_client: AsyncClient):
     from app.core.database import get_db
 
     patient_uuid = uuid.uuid4()
+    
+    integration_id = uuid.uuid4()
     
     mock_result = MagicMock()
     mock_integration = MagicMock()
@@ -174,7 +178,7 @@ async def test_execute_custom_action_not_supported(async_client: AsyncClient):
             
         mock_registry.get_provider.return_value = SimpleProvider()
         
-        response = await async_client.post(f"/api/v1/integrations/test_provider/action/some_action?patient_id={patient_uuid}")
+        response = await async_client.post(f"/api/v1/integrations/instance/{integration_id}/action/some_action?patient_id={patient_uuid}")
         
         assert response.status_code == 400
         assert "not support custom actions" in response.json()["detail"]

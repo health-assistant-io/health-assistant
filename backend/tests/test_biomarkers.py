@@ -70,6 +70,9 @@ async def test_get_biomarkers(async_client: AsyncClient):
     mock_bio.aliases = ["GLU"]
     mock_bio.preferred_unit_id = uuid.uuid4()
     mock_bio.info = "Test info"
+    mock_bio.coding_system = "loinc"
+    mock_bio.code = "1234-5"
+    mock_bio.meta_data = {}
 
     app.dependency_overrides[get_db] = get_mock_db([(mock_bio, "mg/dL")])
 
@@ -170,8 +173,14 @@ async def test_create_biomarker(async_client: AsyncClient):
     mock_unit = MagicMock()
     mock_unit.id = uuid.uuid4()
 
+    async def mock_execute(query):
+        query_str = str(query)
+        if "unit.symbol" in query_str.lower():
+            return MockResult(["mg/dL"])
+        return MockResult([mock_unit])
+
     mock_db = AsyncMock()
-    mock_db.execute = AsyncMock(return_value=MockResult([mock_unit]))
+    mock_db.execute = mock_execute
     mock_db.commit = AsyncMock()
     mock_db.add = MagicMock()
 

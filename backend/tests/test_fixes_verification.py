@@ -43,6 +43,7 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
     )
 
     db_mock = AsyncMock()
+    db_mock.add = MagicMock()
 
     # 1. Mock the first select for the examination
     res_exam = MagicMock()
@@ -114,6 +115,7 @@ async def test_cumulative_extraction_error_logging():
 
     # Mock database setup
     db_mock = AsyncMock()
+    db_mock.add = MagicMock()
 
     exam_id_uuid = UUID(exam_id) if isinstance(exam_id, str) else exam_id
     tenant_id_uuid = uuid.uuid4()
