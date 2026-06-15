@@ -156,3 +156,11 @@ def verify_presigned_token(token: str, expected_doc_id: str) -> bool:
         return True
     except JWTError:
         return False
+
+async def get_current_user_ws(token: str):
+    """Get current user for WebSocket connection"""
+    payload = verify_access_token(token)
+    if not payload:
+        raise Exception("Invalid token")
+    from app.schemas.user import TokenData
+    return TokenData(**payload)

@@ -223,7 +223,7 @@ class TaskProgressTracker:
     ):
         """Update document processing status"""
         from app.models.document_model import DocumentModel
-        from sqlalchemy import update
+        from sqlalchemy import update, select
 
         if not self.document_id:
             return
@@ -240,6 +240,26 @@ class TaskProgressTracker:
             .values(**update_data)
         )
         await self.db.commit()
+
+        # Publish to Redis for WebSocket
+        from app.core.redis import publish_message
+        import json
+        try:
+            # We need tenant_id to channel to the correct user.
+            # But we might not have it in tracker. Let's fetch it or just broadcast doc id.
+            doc_result = await self.db.execute(select(DocumentModel.tenant_id).where(DocumentModel.id == self.document_id))
+            tenant_id = doc_result.scalar_one_or_none()
+            if tenant_id:
+                msg = {
+                    "type": "document_progress",
+                    "document_id": str(self.document_id),
+                    "status": status,
+                    "progress": progress,
+                    "error_message": error_message
+                }
+                await publish_message(f"tenant:{tenant_id}:tasks", json.dumps(msg))
+        except Exception as e:
+            pass
 
     async def update_examination_status(
         self, status: str, progress: int, error_message: Optional[str] = None
@@ -279,6 +299,25 @@ class TaskProgressTracker:
                     .values(**update_data)
                 )
                 await self.db.commit()
+
+        # Publish to Redis for WebSocket
+        from app.core.redis import publish_message
+        import json
+        from sqlalchemy import select
+        try:
+            exam_result = await self.db.execute(select(ExaminationModel.tenant_id).where(ExaminationModel.id == self.examination_id))
+            tenant_id = exam_result.scalar_one_or_none()
+            if tenant_id:
+                msg = {
+                    "type": "examination_progress",
+                    "examination_id": str(self.examination_id),
+                    "status": status,
+                    "progress": progress,
+                    "error_message": error_message
+                }
+                await publish_message(f"tenant:{tenant_id}:tasks", json.dumps(msg))
+        except Exception as e:
+            pass
 
     async def mark_failed(self, error_message: str):
         """Mark task as failed with error message"""
