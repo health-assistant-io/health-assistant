@@ -88,3 +88,28 @@ async def test_parse_document_pass_2_medications(mock_llm):
     result = await extractor.parse_document_pass_2_medications([unknown_med])
 
     assert result == mock_parsed_response
+
+
+@pytest.mark.asyncio
+async def test_map_external_metrics(mock_llm):
+    from app.schemas.ai_nlp import MapResponsePayload, MetricMappingRequest, MappedMetric
+    extractor = LangChainStructuredExtractor(api_key="test-key")
+
+    mock_parsed_response = MagicMock(spec=MapResponsePayload)
+    mock_parsed_response.mappings = [
+        MappedMetric(
+            original_name="Νάτριο",
+            action="map_to_existing",
+            existing_biomarker_id="123e4567-e89b-12d3-a456-426614174000",
+            new_biomarker_coding_system="loinc"
+        )
+    ]
+    
+    # Mock the chain execution
+    mock_ainvoke = AsyncMock(return_value=mock_parsed_response)
+    mock_llm.with_structured_output.return_value = mock_ainvoke
+
+    metrics = [MetricMappingRequest(name="Νάτριο", code="")]
+    result = await extractor.map_external_metrics(metrics, "existing_catalog_str")
+
+    assert result == mock_parsed_response

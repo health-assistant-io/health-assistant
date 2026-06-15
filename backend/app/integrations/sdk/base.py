@@ -118,6 +118,18 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """
         return []
 
+    async def handle_api_request(self, integration: UserIntegration, path: str, method: str, request: Any) -> Dict[str, Any]:
+        """Handle custom two-way API requests for this integration.
+        Override this method for integrations requiring dynamic interactions with headless clients.
+        
+        Args:
+            integration: The UserIntegration instance.
+            path: The relative path called by the client.
+            method: The HTTP method (GET, POST, PUT).
+            request: The raw FastAPI Request object.
+        """
+        raise NotImplementedError(f"API requests are not supported by this integration.")
+
     async def fetch_json(
         self, 
         integration: UserIntegration,

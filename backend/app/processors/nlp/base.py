@@ -5,6 +5,8 @@ from app.schemas.ai_nlp import (
     NewBiomarkerDefinitions,
     NewMedicationDefinitions,
     ExaminationMetadataExtract,
+    MapResponsePayload,
+    MetricMappingRequest,
 )
 
 
@@ -15,6 +17,12 @@ class NLPExtractor(ABC):
     async def extract_entities(self, text: str) -> Dict[str, Any]:
         """Extract medical entities from text"""
         pass
+
+    async def map_external_metrics(
+        self, raw_metrics: List[MetricMappingRequest], existing_catalog_str: str, timeout: float = 45.0
+    ) -> MapResponsePayload:
+        """Map third party integration metric names to the local standardized catalog."""
+        raise NotImplementedError()
 
     async def parse_document_pass_1(
         self,

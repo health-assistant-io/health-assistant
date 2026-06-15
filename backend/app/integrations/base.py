@@ -21,6 +21,10 @@ class BaseHealthProvider(ABC):
     async def handle_webhook(self, integration: UserIntegration, payload: Any, request: Any = None) -> List[Observation]:
         """Process inbound webhook payloads and return FHIR observations."""
         return []
+
+    async def handle_api_request(self, integration: UserIntegration, path: str, method: str, request: Any) -> Dict[str, Any]:
+        """Handle custom two-way API requests for this integration."""
+        raise NotImplementedError(f"API requests are not supported by this integration.")
         
     async def get_auth_url(self, state: str) -> str:
         """Return the OAuth redirect URL if applicable."""

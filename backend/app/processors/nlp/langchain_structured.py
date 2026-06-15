@@ -14,6 +14,8 @@ from app.schemas.ai_nlp import (
     UnknownBiomarkerExtract,
     UnknownMedicationExtract,
     ExaminationMetadataExtract,
+    MapResponsePayload,
+    MetricMappingRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,39 @@ class LangChainStructuredExtractor(NLPExtractor):
     async def extract_entities(self, text: str) -> Dict[str, Any]:
         """Base implementation - should not be used in the new pipeline directly without catalog"""
         return await self.parse_document_pass_1(text, [], [])
+
+    async def map_external_metrics(
+        self, raw_metrics: List[MetricMappingRequest], existing_catalog_str: str, timeout: float = 45.0
+    ) -> MapResponsePayload:
+        system_prompt = """You are an expert medical ontologist. Your job is to map raw clinical metric names (like 'Νάτριο ορού') to an existing patient biomarker catalog, or propose a new standardized definition if it does not exist.
+
+EXISTING BIOMARKER CATALOG:
+{catalog_str}
+
+METRICS TO MAP:
+{metrics_str}
+
+RULES:
+1. Try your best to map the metric to an EXISTING ID from the catalog if it is clinically identical (e.g. 'Νάτριο' -> 'Sodium').
+2. If mapped to existing, set action="map_to_existing" and provide the existing_biomarker_id.
+3. If it absolutely does not exist, set action="create_new", provide a standardized English medical name (new_biomarker_name), and a LOINC code if possible.
+4. Ensure accuracy.
+"""
+        metrics_str = "\n".join([f"- {m.name}" + (f" (Code: {m.code})" if m.code else "") for m in raw_metrics])
+
+        prompt = ChatPromptTemplate.from_template(system_prompt)
+        structured_llm = self.llm.with_structured_output(MapResponsePayload)
+        
+        try:
+            chain = prompt | structured_llm
+            result = await chain.ainvoke({
+                "catalog_str": existing_catalog_str if existing_catalog_str else "Catalog is empty.",
+                "metrics_str": metrics_str
+            })
+            return result
+        except Exception as e:
+            logger.error(f"LangChain map_external_metrics failed: {e}")
+            raise ValueError(f"Failed to perform AI mapping: {str(e)}")
 
     async def parse_document_pass_1(
         self,

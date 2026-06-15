@@ -127,6 +127,31 @@ The system automatically provisions a unique endpoint for each connected user:
         return observations
 ```
 
+### Option C: Two-Way API Proxies (Advanced)
+For integrations needing to act as a bridge for headless clients (like a Browser Extension or Mobile App), you can expose a full two-way REST API rather than just a one-way webhook.
+
+The system provisions a wildcard route for your integration:
+`[GET/POST/PUT] /api/v1/integrations/{domain}/api/{integration_id}/{path}`
+
+Implement the `handle_api_request` method:
+
+```python
+    async def handle_api_request(self, integration: UserIntegration, path: str, method: str, request: Any) -> Dict[str, Any]:
+        
+        if path == "status" and method == "GET":
+            return {
+                "status": "connected",
+                "cursor": self.get_sync_cursor(integration, "last_timestamp")
+            }
+            
+        if path == "sync" and method == "POST":
+            payload = await request.json()
+            # ... process payload ...
+            return {"success": True, "message": "Synced"}
+            
+        raise NotImplementedError("Path not supported")
+```
+
 ---
 
 ## 3. Advanced SDK Features
