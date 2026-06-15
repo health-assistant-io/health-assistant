@@ -1,6 +1,22 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import CodingSystem
+
+
+class MetricMappingRequest(BaseModel):
+    name: str
+    code: Optional[str] = None
+
+class MappedMetric(BaseModel):
+    original_name: str
+    action: Literal["map_to_existing", "create_new"]
+    existing_biomarker_id: Optional[str] = Field(None, description="UUID of the existing biomarker if mapped")
+    new_biomarker_name: Optional[str] = Field(None, description="Standardized English name if creating new")
+    new_biomarker_code: Optional[str] = Field(None, description="LOINC code if available, otherwise short custom code")
+    new_biomarker_coding_system: Optional[str] = Field("loinc", description="'loinc' or 'custom'")
+
+class MapResponsePayload(BaseModel):
+    mappings: List[MappedMetric]
 
 
 class KnownBiomarkerExtract(BaseModel):

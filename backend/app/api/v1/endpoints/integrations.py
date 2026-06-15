@@ -779,3 +779,57 @@ async def integration_webhook(
         db.add(sync_log)
         await db.commit()
         raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
+
+@router.api_route("/{domain}/api/{integration_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def integration_api_proxy(
+    domain: str,
+    integration_id: str,
+    path: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """
+    Handle generic two-way API requests for a specific integration.
+    This does not require a user token, as the integration_id acts as the secure token.
+    """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID format")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.provider == domain,
+        UserIntegration.status == IntegrationStatus.ACTIVE
+    )
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    
+    if not integration:
+        raise HTTPException(status_code=404, detail="Active integration not found")
+        
+    provider = integration_registry.get_provider(domain)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Integration provider not loaded")
+        
+    if not hasattr(provider, "handle_api_request"):
+        raise HTTPException(status_code=400, detail="Provider does not support API requests")
+
+    try:
+        response_data = await provider.handle_api_request(
+            integration=integration,
+            path=path,
+            method=request.method,
+            request=request
+        )
+        # Commit any configuration changes the provider made (e.g., sync cursor update)
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(integration, "user_config")
+        await db.commit()
+        return response_data
+    except NotImplementedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"API request failed for {domain} (Integration: {integration_id}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"API request failed: {str(e)}")
+

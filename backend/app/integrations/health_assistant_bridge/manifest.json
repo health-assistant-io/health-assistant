@@ -1,0 +1,7 @@
+{
+  "domain": "health_assistant_bridge",
+  "name": "Health Assistant Bridge",
+  "version": "1.0.0",
+  "integration_type": ["push"], 
+  "dependencies": []
+}
