@@ -27,6 +27,7 @@ class MapResponsePayload(BaseModel):
 
 class ClientRecord(BaseModel):
     type: Literal["quantitative", "categorical"]
+    biomarker_id: Optional[str] = None
     code: Optional[str] = None
     coding_system: str = "custom"
     name: str

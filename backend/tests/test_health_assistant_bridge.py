@@ -106,7 +106,8 @@ async def test_parse_records(provider, integration_mock):
         ClientRecord(
             type="quantitative",
             name="Sodium",
-            code="123e4567-e89b-12d3-a456-426614174000", # existing UUID
+            biomarker_id="123e4567-e89b-12d3-a456-426614174000",
+            code="2951-2",
             coding_system="custom",
             value=140.0,
             unit="mmol/L",

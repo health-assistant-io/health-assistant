@@ -90,7 +90,8 @@ Send the transformed payload using the established mappings.
   "records": [
     {
       "type": "quantitative",
-      "code": "uuid-of-sodium-record", 
+      "biomarker_id": "uuid-of-sodium-record",
+      "code": "2951-2", 
       "coding_system": "loinc",
       "name": "Sodium",
       "value": 145.0,

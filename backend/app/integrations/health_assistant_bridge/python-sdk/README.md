@@ -53,6 +53,8 @@ def sync_data():
             ClientRecord(
                 type="quantitative",
                 name="Sodium",
+                biomarker_id="1234-uuid-from-mapping",
+                code="2951-2",
                 value=145.0,
                 unit="mmol/L",
                 timestamp="2024-08-10T00:00:00Z",

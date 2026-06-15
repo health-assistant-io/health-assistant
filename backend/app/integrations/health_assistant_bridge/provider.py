@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class ClientRecord(BaseModel):
     type: str = Field(..., description="'quantitative' or 'categorical'")
+    biomarker_id: Optional[str] = Field(None, description="UUID of the mapped biomarker definition")
     code: Optional[str] = None
     coding_system: str = Field(default="custom")
     name: str
@@ -124,17 +125,16 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
             coding_system = system_map.get(record.coding_system.lower(), CodingSystem.CUSTOM)
             
-            # The code could be an existing biomarker_id (UUID) mapped by the client, or a raw string code
+            # Extract biomarker ID directly if provided
             biomarker_id = None
-            code_str = record.code or "unknown"
+            if hasattr(record, "biomarker_id") and record.biomarker_id:
+                try:
+                    from uuid import UUID
+                    biomarker_id = UUID(record.biomarker_id)
+                except ValueError:
+                    pass
             
-            try:
-                # If the client sent a UUID as the code, they successfully mapped it to an existing DB biomarker
-                from uuid import UUID
-                biomarker_id = UUID(code_str)
-                code_str = "mapped-uuid"
-            except ValueError:
-                pass
+            code_str = record.code or "unknown"
             
             obs_builder = builder.set_biomarker(
                 code_str, 
