@@ -173,10 +173,17 @@ async def test_create_biomarker(async_client: AsyncClient):
     mock_unit = MagicMock()
     mock_unit.id = uuid.uuid4()
 
-    async def mock_execute(query):
-        query_str = str(query)
-        if "unit.symbol" in query_str.lower():
-            return MockResult(["mg/dL"])
+    async def mock_execute(*args, **kwargs):
+        query = args[0] if args else kwargs.get("statement")
+        query_str = str(query).lower()
+        if "from units" in query_str and "unit.symbol" not in query_str and "units.symbol" not in query_str:
+            # When lookup full unit (e.g. by symbol or ID to check existence)
+            return MockResult([mock_unit])
+        # The query asks specifically for unit.symbol which is an attribute return value
+        # SQLAlchemy select(Unit.symbol) translates to selecting just the column
+        if "unit.symbol" in query_str or "unit_symbol" in query_str or "select units.symbol" in query_str or "units.symbol" in query_str:
+             return MockResult(["mg/dL"])
+        # Fallback for Unit creation or other queries
         return MockResult([mock_unit])
 
     mock_db = AsyncMock()
