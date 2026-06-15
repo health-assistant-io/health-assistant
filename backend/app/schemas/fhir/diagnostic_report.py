@@ -1,6 +1,6 @@
 """Diagnostic Report FHIR schemas"""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,7 +21,7 @@ class DiagnosticReportCreate(DiagnosticReportBase):
     conclusion: Optional[str] = None
     effective_datetime: Optional[datetime] = None
     issued: Optional[datetime] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
     category: Optional[Dict[str, Any]] = None
     conclusion_code: Optional[Dict[str, Any]] = None
     presented_form: Optional[Dict[str, Any]] = None
@@ -36,7 +36,7 @@ class DiagnosticReportUpdate(BaseModel):
     conclusion: Optional[str] = None
     effective_datetime: Optional[datetime] = None
     issued: Optional[datetime] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
     category: Optional[Dict[str, Any]] = None
     conclusion_code: Optional[Dict[str, Any]] = None
     presented_form: Optional[Dict[str, Any]] = None
@@ -49,7 +49,7 @@ class DiagnosticReportResponse(DiagnosticReportBase):
     conclusion: Optional[str] = None
     effective_datetime: Optional[datetime] = None
     issued: Optional[datetime] = None
-    performer: Optional[Dict[str, Any]] = None
+    performer: Optional[List[Dict[str, Any]]] = None
     category: Optional[Dict[str, Any]] = None
     conclusion_code: Optional[Dict[str, Any]] = None
     presented_form: Optional[Dict[str, Any]] = None
