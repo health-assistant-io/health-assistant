@@ -27,7 +27,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 4. **Start the application:**
    For development (hot-reloading):
    ```bash
-   docker compose -f docker/docker-compose-dev.yml up -d
+   docker compose -f docker/docker-compose.yml up -d
    ```
    For production:
    ```bash
