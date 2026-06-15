@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from uuid import UUID
 from enum import Enum
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 from app.models.enums import Gender
@@ -53,5 +53,4 @@ class PatientResponse(PatientBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

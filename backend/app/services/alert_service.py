@@ -150,7 +150,7 @@ async def trigger_alert(alert_id: str | UUID) -> Optional[AlertModel]:
     if not DATABASE_AVAILABLE:
         return None
         
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     if isinstance(alert_id, str):
         try:
@@ -162,7 +162,7 @@ async def trigger_alert(alert_id: str | UUID) -> Optional[AlertModel]:
         await session.execute(
             update(AlertModel)
             .where(AlertModel.id == alert_id)
-            .values(last_triggered=datetime.utcnow())
+            .values(last_triggered=datetime.now(timezone.utc))
         )
         await session.commit()
         

@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime, date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MedicationBase(BaseModel):
@@ -56,8 +56,7 @@ class MedicationResponse(MedicationBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class MedicationList(BaseModel):

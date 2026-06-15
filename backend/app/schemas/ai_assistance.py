@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 
@@ -26,8 +26,7 @@ class ChatMessageSchema(BaseModel):
     citations: Optional[List[str]] = None
     created_at: Any
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class ChatSessionSchema(BaseModel):
@@ -36,8 +35,7 @@ class ChatSessionSchema(BaseModel):
     patient_id: Optional[UUID] = None
     updated_at: Any
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class AIAssistanceResponse(BaseModel):

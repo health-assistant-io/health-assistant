@@ -1,6 +1,6 @@
 """Authentication schemas"""
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional
 
 
@@ -21,8 +21,7 @@ class TokenResponse(BaseModel):
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(..., description="Token expiration time in seconds")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class TokenRefresh(BaseModel):
@@ -40,5 +39,4 @@ class UserRegister(BaseModel):
     )
     tenant_id: Optional[str] = Field(None, description="Tenant/Organization ID (optional)")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

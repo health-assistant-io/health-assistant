@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DiagnosticReportBase(BaseModel):
@@ -56,5 +56,4 @@ class DiagnosticReportResponse(DiagnosticReportBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

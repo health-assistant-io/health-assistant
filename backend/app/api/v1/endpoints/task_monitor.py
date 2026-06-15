@@ -8,7 +8,7 @@ from sqlalchemy import select, desc, String, cast, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -280,5 +280,5 @@ async def get_task_statistics(
             "by_status": exam_stats,
             "stalled": stalled_exams,
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }

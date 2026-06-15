@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PatientLayoutBase(BaseModel):
@@ -26,5 +26,4 @@ class PatientLayoutResponse(PatientLayoutBase):
     user_id: UUID
     patient_id: UUID
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
