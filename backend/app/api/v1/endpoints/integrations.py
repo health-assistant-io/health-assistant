@@ -829,6 +829,9 @@ async def integration_api_proxy(
         return response_data
     except NotImplementedError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        # Pass ValueErrors (like validation or user errors) as 400 Bad Request
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"API request failed for {domain} (Integration: {integration_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"API request failed: {str(e)}")

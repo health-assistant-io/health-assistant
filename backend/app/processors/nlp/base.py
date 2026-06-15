@@ -22,7 +22,7 @@ class NLPExtractor(ABC):
         self, raw_metrics: List[MetricMappingRequest], existing_catalog_str: str, timeout: float = 45.0
     ) -> MapResponsePayload:
         """Map third party integration metric names to the local standardized catalog."""
-        raise NotImplementedError()
+        raise NotImplementedError("The currently configured NLP provider does not support AI ontology mapping. Please assign an LLM provider to the 'nlp' task in the AI Settings.")
 
     async def parse_document_pass_1(
         self,

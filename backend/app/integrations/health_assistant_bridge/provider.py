@@ -199,6 +199,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     existing_catalog_str=catalog_str
                 )
                 return result.model_dump()
+            except NotImplementedError as e:
+                # Re-raise NotImplementedError to be caught by the router and returned as 400
+                raise e
             except Exception as e:
                 logger.error(f"LLM Mapping failed: {e}")
                 raise ValueError(f"Failed to perform AI mapping: {str(e)}")
