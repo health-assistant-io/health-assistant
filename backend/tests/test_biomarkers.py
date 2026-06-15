@@ -176,14 +176,12 @@ async def test_create_biomarker(async_client: AsyncClient):
     async def mock_execute(*args, **kwargs):
         query = args[0] if args else kwargs.get("statement")
         query_str = str(query).lower()
-        if "from units" in query_str and "unit.symbol" not in query_str and "units.symbol" not in query_str:
-            # When lookup full unit (e.g. by symbol or ID to check existence)
-            return MockResult([mock_unit])
-        # The query asks specifically for unit.symbol which is an attribute return value
-        # SQLAlchemy select(Unit.symbol) translates to selecting just the column
-        if "unit.symbol" in query_str or "unit_symbol" in query_str or "select units.symbol" in query_str or "units.symbol" in query_str:
-             return MockResult(["mg/dL"])
-        # Fallback for Unit creation or other queries
+        # If the query is specifically selecting just the symbol column
+        # and NOT selecting other columns like units.name
+        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
+            return MockResult(["mg/dL"])
+            
+        # Fallback for Unit creation or other queries (select(Unit)...)
         return MockResult([mock_unit])
 
     mock_db = AsyncMock()
@@ -217,6 +215,62 @@ async def test_create_biomarker(async_client: AsyncClient):
     assert data["slug"] == "new-biomarker"
     assert data["name"] == "New Biomarker"
     assert "NB" in data["aliases"]
+    assert data.get("is_telemetry") is False
+    assert mock_db.commit.called
+
+    app.dependency_overrides = {}
+
+@pytest.mark.asyncio
+async def test_create_telemetry_biomarker(async_client: AsyncClient):
+    from app.main import app
+    from app.core.security import get_current_user
+    from app.core.database import get_db
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    mock_unit = MagicMock()
+    mock_unit.id = uuid.uuid4()
+
+    async def mock_execute(*args, **kwargs):
+        query = args[0] if args else kwargs.get("statement")
+        query_str = str(query).lower()
+        
+        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
+            return MockResult(["bpm"])
+            
+        return MockResult([mock_unit])
+
+    mock_db = AsyncMock()
+    mock_db.execute = mock_execute
+    mock_db.commit = AsyncMock()
+    mock_db.add = MagicMock()
+
+    async def mock_refresh(instance):
+        instance.id = uuid.uuid4()
+
+    mock_db.refresh = mock_refresh
+
+    async def get_db_override():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = get_db_override
+
+    response = await async_client.post(
+        "/api/v1/biomarkers/",
+        json={
+            "slug": "heart-rate",
+            "name": "Heart Rate",
+            "category": "telemetry",
+            "aliases": ["HR"],
+            "preferred_unit_symbol": "bpm",
+            "is_telemetry": True,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["slug"] == "heart-rate"
+    assert data["is_telemetry"] is True
     assert mock_db.commit.called
 
     app.dependency_overrides = {}
