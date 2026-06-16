@@ -24,7 +24,21 @@ To build a client (Browser Extension/App), you need the base URL of the Health A
 1.  **Check Status**: `GET /status` to retrieve the `cursor` (last synced timestamp).
 2.  **Scrape & Extract**: Extract data newer than the `cursor`.
 3.  **Map New Metrics**: Use `POST /map` to ask the AI to map raw names (e.g., "Natrium") to standardized definitions. Ask the user to confirm the mapping in the extension UI, and save the mappings locally.
+    > **Why is Mapping Important?**
+    > Different health portals use different naming conventions (e.g., "Natrium", "Sodium (Na)", "Na"). If you push these raw names directly, the system might create duplicate, disconnected biomarker definitions. By using the `/map` endpoint first, the AI aligns these terms to standard IDs. When you subsequently `/sync` data containing the `biomarker_id`, the backend perfectly links the new data to the patient's existing history.
 4.  **Sync Data**: Apply the mappings and send the Universal Client Payload to `POST /sync`.
+
+---
+
+### Deduplication & Idempotency
+
+The `/sync` endpoint is designed to be **idempotent**. You can safely push the same historical data multiple times without creating duplicates.
+
+**For Grouped Examinations (e.g., Lab Reports):**
+To ensure deduplication, you **must** provide the `id` field in your `ClientExaminationRecord`. This should be the unique identifier from the source system (e.g., a `reportId` or `encounterId` from the medical portal). The backend checks if an examination with this `id` already exists for the specific integration instance and patient. If it does, the backend will **skip** processing that examination entirely, preventing duplicate lab reports and duplicate nested biomarker records.
+
+**For Flat Records (e.g., Wearable Telemetry):**
+Flat records rely on backend heuristics for deduplication (matching timestamps and exact values). If you are scraping structured laboratory reports, it is highly recommended to use grouped examinations with explicit `id`s instead of flat records.
 
 ---
 
@@ -115,7 +129,7 @@ Send the transformed payload. You can push flat `records` (ideal for telemetry l
   "cursor": "2024-12-29T15:01:48Z",
   "examinations": [
     {
-      "id": "report-12345",
+      "id": "report-12345", // CRITICAL: Provide the original report ID here to prevent duplicate syncs
       "date": "2024-08-10T00:00:00Z",
       "lab_name": "City General Hospital Laboratory",
       "category": "Biochemical Tests",
