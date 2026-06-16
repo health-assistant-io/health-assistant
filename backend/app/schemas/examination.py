@@ -34,6 +34,12 @@ class ExaminationBase(BaseModel):
     organization_id: Optional[UUID] = Field(
         None, description="Direct ID for the linked facility"
     )
+    source_integration_id: Optional[UUID] = Field(
+        None, description="ID of the integration that synced this examination"
+    )
+    external_id: Optional[str] = Field(
+        None, description="External ID from the source integration"
+    )
     auto_extract_metadata: Optional[bool] = False
     doctor_ids: Optional[List[UUID]] = Field(default_factory=list)
     diagnoses: Optional[List[str]] = Field(default_factory=list)
@@ -57,6 +63,8 @@ class ExaminationUpdate(BaseModel):
     category: Optional[str] = None
     category_id: Optional[UUID] = None
     organization_id: Optional[UUID] = None
+    source_integration_id: Optional[UUID] = None
+    external_id: Optional[str] = None
     doctor_ids: Optional[List[UUID]] = None
     diagnoses: Optional[List[str]] = None
     impressions: Optional[str] = None

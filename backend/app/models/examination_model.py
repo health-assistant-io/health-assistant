@@ -40,6 +40,13 @@ class ExaminationModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMix
         nullable=True,
         index=True,
     )
+    source_integration_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String, nullable=True, index=True)
     auto_extract_metadata = Column(Boolean, nullable=True, default=False)
 
     @property
@@ -117,6 +124,8 @@ class ExaminationModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMix
             if self.organization_id
             else None,
             "organization": self.organization.to_dict() if self.organization else None,
+            "source_integration_id": str(self.source_integration_id) if self.source_integration_id else None,
+            "external_id": self.external_id,
             "auto_extract_metadata": self.auto_extract_metadata,
             "diagnoses": self.diagnoses,
             "impressions": self.impressions,
