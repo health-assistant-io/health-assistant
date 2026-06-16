@@ -84,38 +84,60 @@ Send a list of raw, unrecognized metric names. The backend uses its LLM to map t
 ### 3. Push Data (The Universal Contract)
 `POST /api/v1/integrations/health_assistant_bridge/api/<integration_id>/sync`
 
-Send the transformed payload using the established mappings.
+Send the transformed payload. You can push flat `records` (ideal for telemetry like smartwatches) or grouped `examinations` (ideal for medical portal scrapers that fetch full laboratory reports).
 
-**Request:**
+**Request (Flat Records Example):**
 ```json
 {
-  "client_version": "1.1.0",
-  "source_system": "health_portal_extension",
+  "client_version": "1.2.0",
+  "source_system": "smartwatch_extension",
   "cursor": "2024-12-29T15:01:48Z",
   "records": [
     {
       "type": "quantitative",
-      "biomarker_id": "uuid-of-sodium-record",
-      "code": "2951-2", 
+      "code": "8867-4", 
       "coding_system": "loinc",
-      "name": "Sodium",
-      "value": 145.0,
-      "unit": "mmol/L",
-      "timestamp": "2024-08-10T00:00:00Z",
-      "reference_range": {
-        "low": 137.0,
-        "high": 147.0
-      },
-      "interpretation": "INSIDE_LIMIT",
-      "performer": "City General Hospital Laboratory"
-    },
+      "name": "Heart Rate",
+      "value": 75.0,
+      "unit": "bpm",
+      "timestamp": "2024-08-10T12:00:00Z",
+      "performer": "Apple Watch"
+    }
+  ]
+}
+```
+
+**Request (Grouped Examinations Example):**
+```json
+{
+  "client_version": "1.2.0",
+  "source_system": "health_portal_extension",
+  "cursor": "2024-12-29T15:01:48Z",
+  "examinations": [
     {
-      "type": "categorical",
-      "code": "blood_type",
-      "coding_system": "custom",
-      "name": "Blood Type",
-      "value_string": "A+",
-      "timestamp": "2024-06-16T10:00:00Z"
+      "id": "report-12345",
+      "date": "2024-08-10T00:00:00Z",
+      "lab_name": "City General Hospital Laboratory",
+      "category": "Biochemical Tests",
+      "diagnoses": ["Hypertension"],
+      "records": [
+        {
+          "type": "quantitative",
+          "biomarker_id": "uuid-of-sodium-record",
+          "code": "2951-2", 
+          "coding_system": "loinc",
+          "name": "Sodium",
+          "value": 145.0,
+          "unit": "mmol/L",
+          "timestamp": "2024-08-10T00:00:00Z",
+          "reference_range": {
+            "low": 137.0,
+            "high": 147.0
+          },
+          "interpretation": "INSIDE_LIMIT",
+          "performer": "City General Hospital Laboratory"
+        }
+      ]
     }
   ]
 }
