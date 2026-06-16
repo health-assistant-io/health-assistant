@@ -1,6 +1,8 @@
 import httpx
+import warnings
 from typing import List
 
+from . import __version__
 from .models import (
     BridgeStatus,
     MetricMappingRequest,
@@ -26,7 +28,15 @@ class AsyncHealthAssistantBridgeClient:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{self.api_url}/status")
             response.raise_for_status()
-            return BridgeStatus(**response.json())
+            data = response.json()
+            status_obj = BridgeStatus(**data)
+            
+            if status_obj.latest_sdks and status_obj.latest_sdks.get("python"):
+                latest = status_obj.latest_sdks["python"]
+                if latest != __version__:
+                    warnings.warn(f"You are using SDK version {__version__}, but the latest available is {latest}. Please consider updating.")
+                    
+            return status_obj
         
     async def request_mapping(self, metrics: List[MetricMappingRequest]) -> MapResponsePayload:
         """Ask the Health Assistant AI to map unrecognized metrics."""

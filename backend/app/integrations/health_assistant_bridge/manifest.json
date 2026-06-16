@@ -2,6 +2,12 @@
   "domain": "health_assistant_bridge",
   "name": "Health Assistant Bridge",
   "version": "1.0.0",
-  "integration_type": ["push"], 
-  "dependencies": []
+  "integration_type": [
+    "push"
+  ],
+  "dependencies": [],
+  "sdks": {
+    "python": "1.1.0",
+    "ts": "1.1.0"
+  }
 }

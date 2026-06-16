@@ -1,3 +1,5 @@
+__version__ = "1.1.0"
+
 from .client import HealthAssistantBridgeClient
 from .async_client import AsyncHealthAssistantBridgeClient
 from .models import (
@@ -19,5 +21,6 @@ __all__ = [
     "MapResponsePayload",
     "ClientRecord",
     "SyncPayload",
-    "SyncResponse"
+    "SyncResponse",
+    "__version__"
 ]

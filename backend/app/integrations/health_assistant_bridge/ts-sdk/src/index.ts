@@ -1,8 +1,15 @@
+export const SDK_VERSION = "1.1.0";
+
 export interface BridgeStatus {
   status: string;
   integration_id: string;
   last_synced_at: string | null;
   cursor: string | null;
+  latest_sdks?: {
+    python?: string;
+    ts?: string;
+    [key: string]: string | undefined;
+  };
 }
 
 export interface MetricMappingRequest {
@@ -84,7 +91,11 @@ export class HealthAssistantBridgeClient {
       throw new Error(`Failed to get status: ${response.statusText}`);
     }
 
-    return response.json() as Promise<BridgeStatus>;
+    const data = await response.json() as BridgeStatus;
+    if (data.latest_sdks?.ts && data.latest_sdks.ts !== SDK_VERSION) {
+      console.warn(`[Health Assistant Bridge] Notice: You are using SDK version ${SDK_VERSION}, but the latest available is ${data.latest_sdks.ts}. Please consider updating.`);
+    }
+    return data;
   }
 
   /**

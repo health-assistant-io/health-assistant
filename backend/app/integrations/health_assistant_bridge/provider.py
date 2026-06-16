@@ -56,11 +56,25 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
 
         if path == "status" and method == "GET":
+            # Load the manifest to get the latest SDK versions
+            import os
+            import json
+            manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+            sdks = {}
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, "r") as f:
+                        manifest = json.load(f)
+                        sdks = manifest.get("sdks", {})
+                except Exception as e:
+                    logger.error(f"Failed to read manifest for sdks: {e}")
+
             return {
                 "status": "active",
                 "integration_id": str(integration.id),
                 "last_synced_at": integration.last_synced_at.isoformat() if integration.last_synced_at else None,
-                "cursor": self.get_sync_cursor(integration, "last_timestamp")
+                "cursor": self.get_sync_cursor(integration, "last_timestamp"),
+                "latest_sdks": sdks
             }
             
         elif path == "map" and method == "POST":

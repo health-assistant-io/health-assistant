@@ -6,6 +6,7 @@ class BridgeStatus(BaseModel):
     integration_id: str
     last_synced_at: Optional[str] = None
     cursor: Optional[str] = None
+    latest_sdks: Optional[Dict[str, str]] = None
 
 class MetricMappingRequest(BaseModel):
     name: str
