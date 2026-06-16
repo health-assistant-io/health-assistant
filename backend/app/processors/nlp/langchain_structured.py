@@ -60,11 +60,11 @@ EXISTING BIOMARKER CATALOG:
 METRICS TO MAP:
 {metrics_str}
 
-RULES:
-1. Try your best to map the metric to an EXISTING ID from the catalog if it is clinically identical (e.g. 'Νάτριο' -> 'Sodium').
-2. If mapped to existing, set action="map_to_existing" and provide the existing_biomarker_id.
-3. If it absolutely does not exist, set action="create_new", provide a standardized English medical name (new_biomarker_name), and a LOINC code if possible.
-4. Ensure accuracy.
+CRITICAL RULES:
+1. BEFORE proposing a new biomarker, you MUST thoroughly search the EXISTING BIOMARKER CATALOG.
+2. If the metric is clinically identical or synonymous to an existing catalog entry (e.g., 'PDW' -> 'Platelet Distribution Width', 'Νάτριο' -> 'Sodium'), you MUST set action="map_to_existing" and provide the exact existing_biomarker_id.
+3. ONLY if the metric is completely missing from the catalog, set action="create_new", provide a standardized English medical name (new_biomarker_name), and a LOINC code if possible.
+4. Do not create duplicates. For example, if 'Platelet Distribution Width' is in the catalog, map 'Εύρος κατανομής PLT' to it.
 """
         metrics_str = "\n".join([f"- {m.name}" + (f" (Code: {m.code})" if m.code else "") for m in raw_metrics])
 
