@@ -1,4 +1,4 @@
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from .client import HealthAssistantBridgeClient
 from .async_client import AsyncHealthAssistantBridgeClient

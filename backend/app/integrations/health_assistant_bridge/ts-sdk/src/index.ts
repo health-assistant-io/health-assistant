@@ -1,4 +1,4 @@
-export const SDK_VERSION = "1.1.0";
+export const SDK_VERSION = "1.2.0";
 
 export interface BridgeStatus {
   status: string;
@@ -48,11 +48,24 @@ export interface ClientRecord {
   performer?: string | null;
 }
 
+export interface ClientExaminationRecord {
+  id?: string | null;
+  date?: string | null;
+  lab_name?: string | null;
+  notes?: string | null;
+  patient_notes?: string | null;
+  category?: string | null;
+  diagnoses?: string[];
+  impressions?: string | null;
+  records?: ClientRecord[] | null;
+}
+
 export interface SyncPayload {
   client_version: string;
   source_system: string;
   cursor?: string | null;
-  records: ClientRecord[];
+  records?: ClientRecord[] | null;
+  examinations?: ClientExaminationRecord[] | null;
 }
 
 export interface SyncResponse {
