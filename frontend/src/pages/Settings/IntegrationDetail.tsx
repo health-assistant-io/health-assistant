@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
 import { DebugConsole } from '../../components/integrations/DebugConsole';
+import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 
 const IntegrationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -263,9 +264,24 @@ const IntegrationDetail: React.FC = () => {
             </div>
           )}
 
+          {details.synced_examinations && details.synced_examinations.length > 0 && (
+            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+              <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+                <FileText className="w-5 h-5 mr-2 text-indigo-500" /> Synced Laboratory Reports
+              </h3>
+              <div className="flex overflow-x-auto space-x-4 pb-4 scrollbar-hide">
+                {details.synced_examinations.map((exam: any) => (
+                  <div key={exam.id} className="flex-shrink-0 w-80">
+                    <ExaminationCard examination={exam} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-              <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Types
+              <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Dictionary
             </h3>
             {details.exposed_items && details.exposed_items.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -277,7 +293,15 @@ const IntegrationDetail: React.FC = () => {
                   >
                     <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600">{item.name}</span>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded border border-gray-100 dark:border-dark-border">{item.category}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded border border-gray-100 dark:border-dark-border">{item.category}</span>
+                        {details.synced_examinations && details.synced_examinations.length > 0 && (
+                           <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded flex items-center">
+                             <FileText className="w-2.5 h-2.5 mr-1" />
+                             Report Sourced
+                           </span>
+                        )}
+                      </div>
                       {item.last_seen && (
                         <span className="text-[10px] text-gray-400 font-medium">Seen: {new Date(item.last_seen).toLocaleDateString()}</span>
                       )}
@@ -367,13 +391,24 @@ const IntegrationDetail: React.FC = () => {
                           }) : 'Unknown'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
-                          {item.slug ? (
-                            <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
-                              {item.metric}
-                            </Link>
-                          ) : (
-                            item.metric
-                          )}
+                          <div className="flex items-center space-x-2">
+                            {item.slug ? (
+                              <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
+                                {item.metric}
+                              </Link>
+                            ) : (
+                              <span>{item.metric}</span>
+                            )}
+                            {item.examination_id && (
+                              <Link 
+                                to={`/examinations/${item.examination_id}`}
+                                title="View source examination"
+                                className="flex items-center justify-center p-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                              >
+                                <FileText className="w-3 h-3" />
+                              </Link>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-dark-text">
                           <span className="font-black text-blue-600 dark:text-blue-400">{item.value}</span>

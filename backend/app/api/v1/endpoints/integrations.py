@@ -193,6 +193,7 @@ async def get_integration_details(
     from app.models.user_integration import UserIntegration, IntegrationSyncLog
     from app.models.fhir.patient import Observation
     from app.models.biomarker_model import BiomarkerDefinition
+    from app.models.examination_model import ExaminationModel
     from sqlalchemy import desc, func
 
     try:
@@ -285,9 +286,20 @@ async def get_integration_details(
             "metric": b_name,
             "slug": b_slug,
             "value": obs.raw_value,
-            "unit": unit
+            "unit": unit,
+            "examination_id": str(obs.examination_id) if obs.examination_id else None
         })
                 
+    # Fetch synced examinations
+    exam_stmt = select(ExaminationModel).where(
+        ExaminationModel.tenant_id == integration.tenant_id,
+        ExaminationModel.patient_id == patient_uuid,
+        ExaminationModel.source_integration_id == integration.id
+    ).order_by(desc(ExaminationModel.examination_date))
+    
+    exam_res = await db.execute(exam_stmt)
+    synced_examinations = [exam.to_dict() for exam in exam_res.scalars().all()]
+
     provider = integration_registry.get_provider(domain)
     custom_actions = []
     if provider and hasattr(provider, "get_custom_actions"):
@@ -314,6 +326,7 @@ async def get_integration_details(
         ],
         "exposed_items": exposed_items,
         "recent_data": recent_data,
+        "synced_examinations": synced_examinations,
         "custom_actions": custom_actions
     }
 
