@@ -52,25 +52,33 @@ async function syncMyData() {
   
   // 4. Push Data Using the Universal Contract
   const response = await client.syncData({
-    client_version: "1.0.0",
+    client_version: "1.2.0",
     source_system: "my_hospital_extension",
     cursor: new Date().toISOString(),
-    records: [
+    examinations: [
       {
-        type: "quantitative",
-        name: sodiumMapping?.new_biomarker_name || "Sodium",
-        biomarker_id: sodiumMapping?.existing_biomarker_id,
-        code: sodiumMapping?.new_biomarker_code || "2951-2",
-        coding_system: sodiumMapping?.new_biomarker_coding_system || "loinc",
-        value: 145.0,
-        unit: "mmol/L",
-        timestamp: "2024-08-10T00:00:00Z"
-      },
-      {
-         type: "categorical",
-         name: "Blood Type",
-         value_string: "A+",
-         timestamp: "2024-06-16T10:00:00Z"
+        id: "unique-report-123", // Essential for deduplication
+        date: "2024-08-10T00:00:00Z",
+        lab_name: "City General Hospital",
+        category: "Biochemistry",
+        records: [
+          {
+            type: "quantitative",
+            name: sodiumMapping?.new_biomarker_name || "Sodium",
+            biomarker_id: sodiumMapping?.existing_biomarker_id,
+            code: sodiumMapping?.new_biomarker_code || "2951-2",
+            coding_system: sodiumMapping?.new_biomarker_coding_system || "loinc",
+            value: 145.0,
+            unit: "mmol/L",
+            timestamp: "2024-08-10T00:00:00Z"
+          },
+          {
+             type: "categorical",
+             name: "Blood Type",
+             value_string: "A+",
+             timestamp: "2024-06-16T10:00:00Z"
+          }
+        ]
       }
     ]
   });
