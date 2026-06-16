@@ -27,6 +27,7 @@ class ObservationCreate(ObservationBase):
     reference_range: Optional[Dict[str, Any]] = None
     interpretation: Optional[str] = None
     biomarker_id: Optional[UUID] = None
+    examination_id: Optional[UUID] = None
     biomarker_slug: Optional[str] = None
     biomarker_info: Optional[str] = None
     biomarker_aliases: Optional[List[str]] = None

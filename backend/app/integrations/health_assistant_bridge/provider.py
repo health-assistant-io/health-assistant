@@ -27,11 +27,23 @@ class ClientRecord(BaseModel):
     interpretation: Optional[str] = None
     performer: Optional[str] = None
 
+class ClientExaminationRecord(BaseModel):
+    id: Optional[str] = None           # External ID (e.g., myhealth reportId)
+    date: Optional[str] = None         # Result Date
+    lab_name: Optional[str] = None     # Map to organization internally
+    notes: Optional[str] = None        # Clinician notes
+    patient_notes: Optional[str] = None
+    category: Optional[str] = None     # e.g., "Blood Test", "LIS Report"
+    diagnoses: Optional[List[str]] = Field(default_factory=list)
+    impressions: Optional[str] = None
+    records: Optional[List[ClientRecord]] = None  # The nested biomarkers
+
 class SyncPayload(BaseModel):
     client_version: str
     source_system: str
     cursor: Optional[str] = None
-    records: List[ClientRecord]
+    records: Optional[List[ClientRecord]] = None
+    examinations: Optional[List[ClientExaminationRecord]] = None
 
 class MapRequestPayload(BaseModel):
     unmapped_metrics: List[MetricMappingRequest]
@@ -99,10 +111,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             
             # Use universal parsing logic
             builder = self.create_observation_builder(integration)
-            observations = self._parse_records(sync_payload.records, builder, str(integration.id), integration.instance_name)
             
             try:
-                inserted_count = await self._process_and_save_observations(integration, observations)
+                inserted_count = await self._process_and_save_sync_data(integration, sync_payload, builder)
                 
                 # Update the cursor if provided by the client
                 if sync_payload.cursor:
@@ -120,7 +131,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         else:
             raise NotImplementedError(f"Path '{path}' with method '{method}' is not supported by the bridge API.")
 
-    def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, integration_id: str, instance_name: str) -> List[ObservationCreate]:
+    def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, integration_id: str, instance_name: str, examination_id: Optional[str] = None) -> List[ObservationCreate]:
         observations = []
         for record in records:
             dt = datetime.datetime.now(datetime.timezone.utc)
@@ -181,6 +192,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "display": record.performer or instance_name or "Health Assistant Bridge",
                 "reference": f"Integration/{integration_id}"
             }]
+
+            if examination_id:
+                from uuid import UUID
+                try:
+                    obs.examination_id = UUID(examination_id) if isinstance(examination_id, str) else examination_id
+                except ValueError:
+                    pass
                 
             observations.append(obs)
             
@@ -226,9 +244,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                         pass
                 raise ValueError(f"Failed to perform AI mapping: {str(e)}")
 
-    async def _process_and_save_observations(self, integration: UserIntegration, observations_data: List[ObservationCreate]) -> int:
-        """Helper to process and save observations to DB."""
-        if not observations_data:
+    async def _process_and_save_sync_data(self, integration: UserIntegration, sync_payload: SyncPayload, builder: ObservationBuilder) -> int:
+        """Helper to process and save observations and examinations to DB."""
+        if not sync_payload.records and not sync_payload.examinations:
             return 0
             
         from app.core.database import AsyncSessionLocal
@@ -236,69 +254,167 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.models.fhir import Observation
         from app.models.biomarker_model import BiomarkerDefinition
         from app.models.telemetry_model import TelemetryDataModel
+        from app.models.examination_model import ExaminationModel
+        from app.models.examination_category import ExaminationCategory
+        from app.models.organization_model import OrganizationModel
         from app.models.user_integration import IntegrationSyncLog
         from app.services.fhir_service import map_observations_to_biomarkers
+        import uuid
 
         count = 0
         start_time = datetime.datetime.now(datetime.timezone.utc)
         
         async with AsyncSessionLocal() as db:
             try:
+                observations_data = []
+
+                # 1. Process Examinations
+                if sync_payload.examinations:
+                    for client_exam in sync_payload.examinations:
+                        # Deduplication check
+                        if client_exam.id:
+                            stmt = select(ExaminationModel).where(
+                                ExaminationModel.tenant_id == integration.tenant_id,
+                                ExaminationModel.patient_id == integration.patient_id,
+                                ExaminationModel.external_id == client_exam.id,
+                                ExaminationModel.source_integration_id == integration.id
+                            )
+                            existing_exam = (await db.execute(stmt)).scalar_one_or_none()
+                            if existing_exam:
+                                # Skip existing examination to ensure idempotency for now
+                                continue
+
+                        exam_id = uuid.uuid4()
+                        exam_date = None
+                        if client_exam.date:
+                            try:
+                                exam_date = datetime.datetime.fromisoformat(client_exam.date.replace('Z', '+00:00')).date()
+                            except ValueError:
+                                pass
+                        
+                        org_id = None
+                        if client_exam.lab_name:
+                            # Fuzzy matching or exact match. For simplicity, match exactly or create.
+                            org_stmt = select(OrganizationModel).where(
+                                OrganizationModel.tenant_id == integration.tenant_id,
+                                OrganizationModel.name == client_exam.lab_name
+                            )
+                            org = (await db.execute(org_stmt)).scalar_one_or_none()
+                            if not org:
+                                org = OrganizationModel(
+                                    tenant_id=integration.tenant_id,
+                                    name=client_exam.lab_name,
+                                )
+                                db.add(org)
+                                await db.flush()
+                            org_id = org.id
+
+                        cat_id = None
+                        if client_exam.category:
+                            cat_stmt = select(ExaminationCategory).where(
+                                ExaminationCategory.tenant_id == integration.tenant_id,
+                                ExaminationCategory.name == client_exam.category
+                            )
+                            cat = (await db.execute(cat_stmt)).scalar_one_or_none()
+                            if not cat:
+                                cat = ExaminationCategory(
+                                    tenant_id=integration.tenant_id,
+                                    name=client_exam.category,
+                                )
+                                db.add(cat)
+                                await db.flush()
+                            cat_id = cat.id
+
+                        exam = ExaminationModel(
+                            id=exam_id,
+                            tenant_id=integration.tenant_id,
+                            patient_id=integration.patient_id,
+                            examination_date=exam_date,
+                            notes=client_exam.notes,
+                            patient_notes=client_exam.patient_notes,
+                            category_id=cat_id,
+                            organization_id=org_id,
+                            source_integration_id=integration.id,
+                            external_id=client_exam.id,
+                            diagnoses=client_exam.diagnoses or [],
+                            impressions=client_exam.impressions,
+                            extraction_status="completed"
+                        )
+                        db.add(exam)
+                        
+                        if client_exam.records:
+                            exam_obs = self._parse_records(
+                                client_exam.records, 
+                                builder, 
+                                str(integration.id), 
+                                integration.instance_name, 
+                                examination_id=str(exam_id)
+                            )
+                            observations_data.extend(exam_obs)
+
+                # 2. Process Flat Records
+                if sync_payload.records:
+                    flat_obs = self._parse_records(sync_payload.records, builder, str(integration.id), integration.instance_name)
+                    observations_data.extend(flat_obs)
+
+                # 3. Handle all parsed observations
                 observations = []
                 for obs_data in observations_data:
                     obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
                     obs = Observation(**obs_dict)
                     observations.append(obs)
                     
-                await map_observations_to_biomarkers(db, observations)
-                
-                # Fetch all definitions used
-                b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
-                b_defs_map = {}
-                if b_ids:
-                    stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
-                    res = await db.execute(stmt)
-                    for b in res.scalars().all():
-                        b_defs_map[b.id] = b
-
-                telemetry_records = []
-                fhir_records = []
-
-                for obs in observations:
-                    is_telemetry = False
-                    if obs.biomarker_id and obs.biomarker_id in b_defs_map:
-                        is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
+                if observations:
+                    await map_observations_to_biomarkers(db, observations)
                     
-                    if is_telemetry:
-                        slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
-                        val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
-                        
-                        hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                        steps = val if slug == "41950-7" or "steps" in slug else None
-                        cal = val if "calories" in slug else None
-                        
-                        data_payload = {}
-                        if not hr and not steps and not cal:
-                            data_payload[slug] = val
-                            data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
+                    # Fetch all definitions used
+                    b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
+                    b_defs_map = {}
+                    if b_ids:
+                        stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
+                        res = await db.execute(stmt)
+                        for b in res.scalars().all():
+                            b_defs_map[b.id] = b
 
-                        telemetry_records.append(TelemetryDataModel(
-                            tenant_id=integration.tenant_id,
-                            device_id=integration.instance_name or integration.provider,
-                            timestamp=obs.effective_datetime,
-                            heart_rate=hr,
-                            steps=steps,
-                            calories=cal,
-                            data=data_payload if data_payload else None
-                        ))
-                    else:
-                        fhir_records.append(obs)
-                
-                if telemetry_records:
-                    db.add_all(telemetry_records)
-                if fhir_records:
-                    db.add_all(fhir_records)
-                count += len(telemetry_records) + len(fhir_records)
+                    telemetry_records = []
+                    fhir_records = []
+
+                    for obs in observations:
+                        is_telemetry = False
+                        if obs.biomarker_id and obs.biomarker_id in b_defs_map:
+                            is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
+                        
+                        if is_telemetry:
+                            slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
+                            val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
+                            
+                            hr = val if slug == "8867-4" or "heart-rate" in slug else None
+                            steps = val if slug == "41950-7" or "steps" in slug else None
+                            cal = val if "calories" in slug else None
+                            
+                            data_payload = {}
+                            if not hr and not steps and not cal:
+                                data_payload[slug] = val
+                                data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
+
+                            telemetry_records.append(TelemetryDataModel(
+                                tenant_id=integration.tenant_id,
+                                device_id=integration.instance_name or integration.provider,
+                                timestamp=obs.effective_datetime,
+                                heart_rate=hr,
+                                steps=steps,
+                                calories=cal,
+                                data=data_payload if data_payload else None
+                            ))
+                        else:
+                            fhir_records.append(obs)
+                    
+                    if telemetry_records:
+                        db.add_all(telemetry_records)
+                    if fhir_records:
+                        db.add_all(fhir_records)
+                        
+                    count += len(telemetry_records) + len(fhir_records)
                 
                 # We do NOT db.add(integration) here because it is already attached 
                 # to the outer session provided by the FastAPI Dependency `Depends(get_db)`.
@@ -318,7 +434,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 await db.commit()
             except Exception as e:
                 await db.rollback()
-                logger.error(f"Error saving observations from bridge: {e}")
+                logger.error(f"Error saving data from bridge: {e}")
                 
                 if integration.is_debug_enabled:
                     try:
