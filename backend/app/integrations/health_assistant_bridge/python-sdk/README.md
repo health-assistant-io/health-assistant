@@ -24,6 +24,7 @@ from health_assistant_bridge import (
     HealthAssistantBridgeClient, 
     SyncPayload, 
     ClientRecord, 
+    ClientExaminationRecord,
     MetricMappingRequest
 )
 
@@ -46,19 +47,26 @@ def sync_data():
     
     # 4. Push Data Using the Universal Contract
     payload = SyncPayload(
-        client_version="1.0.0",
+        client_version="1.2.0",
         source_system="python_scraper",
         cursor=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        records=[
-            ClientRecord(
-                type="quantitative",
-                name="Sodium",
-                biomarker_id="1234-uuid-from-mapping",
-                code="2951-2",
-                value=145.0,
-                unit="mmol/L",
-                timestamp="2024-08-10T00:00:00Z",
-                coding_system="loinc"
+        examinations=[
+            ClientExaminationRecord(
+                id="unique-report-123", # Essential for deduplication
+                date="2024-08-10T00:00:00Z",
+                lab_name="City General Hospital",
+                records=[
+                    ClientRecord(
+                        type="quantitative",
+                        name="Sodium",
+                        biomarker_id="1234-uuid-from-mapping",
+                        code="2951-2",
+                        value=145.0,
+                        unit="mmol/L",
+                        timestamp="2024-08-10T00:00:00Z",
+                        coding_system="loinc"
+                    )
+                ]
             )
         ]
     )
