@@ -40,11 +40,23 @@ class ClientRecord(BaseModel):
     interpretation: Optional[str] = None
     performer: Optional[str] = None
 
+class ClientExaminationRecord(BaseModel):
+    id: Optional[str] = None
+    date: Optional[str] = None
+    lab_name: Optional[str] = None
+    notes: Optional[str] = None
+    patient_notes: Optional[str] = None
+    category: Optional[str] = None
+    diagnoses: Optional[List[str]] = Field(default_factory=list)
+    impressions: Optional[str] = None
+    records: Optional[List[ClientRecord]] = None
+
 class SyncPayload(BaseModel):
     client_version: str
     source_system: str
     cursor: Optional[str] = None
-    records: List[ClientRecord]
+    records: Optional[List[ClientRecord]] = None
+    examinations: Optional[List[ClientExaminationRecord]] = None
 
 class SyncResponse(BaseModel):
     success: bool
