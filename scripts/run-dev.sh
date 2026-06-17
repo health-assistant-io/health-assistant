@@ -151,6 +151,8 @@ if ! "$VENV_PIP" install -q -r requirements.txt; then
     exit 1
 fi
 
+export PYTHONPATH=.:../
+
 # Run database migrations
 echo -e "${YELLOW}Running database migrations...${NC}"
 alembic upgrade head || echo -e "${RED}Migration failed. Proceeding anyway...${NC}"
