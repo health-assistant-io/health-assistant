@@ -1,6 +1,6 @@
 # Integrations SDK & Developer Guide
 
-Health Assistant provides a powerful **Integrations SDK** (`app.integrations.sdk`) designed to make building new third-party integrations simple, secure, and robust.
+Health Assistant provides a powerful **Integrations SDK** (`integrations.sdk`) designed to make building new third-party integrations simple, secure, and robust.
 
 This guide walks you through creating an integration, utilizing SDK tools, and handling both Polling (pull) and Webhook (push) data flows.
 
@@ -35,7 +35,7 @@ Defines the metadata of your integration.
 Defines the dynamic UI needed to set up this integration. Must inherit from `BaseConfigFlow`.
 
 ```python
-from app.integrations.sdk import BaseConfigFlow
+from integrations.sdk import BaseConfigFlow
 
 class NotifyConfigFlow(BaseConfigFlow):
     domain = "notify"
@@ -64,7 +64,7 @@ The core logic. Must inherit from `BaseHealthProvider`.
 
 ```python
 from typing import List, Any
-from app.integrations.sdk import BaseHealthProvider
+from integrations.sdk import BaseHealthProvider
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
 
@@ -173,7 +173,7 @@ self.set_sync_cursor(integration, "last_timestamp", new_timestamp)
 ```
 
 ### 3.3 Managed Exceptions & UI Feedback
-Throw specific exceptions from `app.integrations.sdk.exceptions` to instruct the core engine.
+Throw specific exceptions from `integrations.sdk.exceptions` to instruct the core engine.
 - `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by `fetch_json()` on 401/403 responses.
 - `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted.
 
