@@ -15,8 +15,9 @@ This document covers the high-level architecture and how the system manages inte
    - **System Admins** determine if an integration is globally available to the platform.
    - **Users** connect their individual accounts, provide credentials, and control sync preferences. Users can create **multiple instances** of the same integration (e.g., tracking two separate IoT scales).
 3. **Dynamic Schema Setup (Config Flow)**: Instead of hardcoding forms in React, integrations expose a JSON Schema. The frontend dynamically generates the setup UI.
-4. **Unified Sync Engine**: A background Celery worker automatically runs every 15 minutes, fetching data and mapping it to standard FHIR resources.
-5. **Secure Webhook Routing**: The system provides dedicated, tokenless (UUID-based) endpoints for integrations that push data (e.g., Tasker, Notify App) directly into the unified patient record.
+4. **Dynamic Documentation Trees**: The framework supports both simple (`README.md`) and complex, multi-page documentation structures. Complex integrations can define a `docs/docs-tree.json` file, which the backend parses and serves to the frontend to render interactive, nested navigation menus directly within the application.
+5. **Unified Sync Engine**: A background Celery worker automatically runs every 15 minutes, fetching data and mapping it to standard FHIR resources.
+6. **Secure Webhook Routing**: The system provides dedicated, tokenless (UUID-based) endpoints for integrations that push data (e.g., Tasker, Notify App) directly into the unified patient record.
 
 ---
 
@@ -41,6 +42,9 @@ When a third party pushes data to the unique `/api/v1/integrations/{domain}/webh
 
 ### 6. FHIR Normalization
 Whether data is pulled or pushed, the framework expects the integration to return standardized FHIR `ObservationCreate` objects. The core engine handles saving these observations to the database and mapping them to the correct semantic Clinical Ontology (Biomarkers).
+
+### 7. Interactive Documentation Rendering
+When a user views an integration's details in the UI, the frontend requests `/api/v1/integrations/{domain}/documentation`. The backend checks the integration's root folder for a `docs/docs-tree.json`. If found, it parses the JSON tree and returns it alongside the requested markdown file. The frontend uses this metadata to dynamically render a sidebar navigation menu, allowing users to browse complex SDK references or setup guides without leaving the platform.
 
 ---
 
