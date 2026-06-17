@@ -2,7 +2,7 @@ import secrets
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 import os
-from typing import Optional, Any
+from typing import Optional, Any, List
 from functools import lru_cache
 
 
@@ -63,6 +63,18 @@ class Settings(BaseSettings):
 
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
+
+    # MCP Client integration (see integrations/mcp_client/)
+    INTEGRATION_SECRET_KEY: Optional[str] = None
+    MCP_STDIO_ALLOWED_COMMANDS: str = "npx,uvx,python,python3,node"
+    MCP_MAX_SERVERS_PER_USER: int = 5
+    MCP_MAX_TOTAL_STDIO: int = 20
+    MCP_REQUEST_TIMEOUT: float = 30.0
+    MCP_TOOL_RESULT_MAX_BYTES: int = 65536
+    INTEGRATION_MAX_TOOLS_PER_SESSION: int = 20
+    MCP_CONNECTION_IDLE_TIMEOUT: int = 900
+    MCP_PER_INSTANCE_CONCURRENCY: int = 4
+    MCP_ALLOW_INSECURE_HTTP: bool = False
 
     # File Storage
     UPLOAD_DIR: str = "/var/healthassistant/uploads"

@@ -87,6 +87,10 @@ class IntegrationRegistry:
     def get_provider(self, domain: str) -> Optional[BaseHealthProvider]:
         return self._providers.get(domain)
 
+    def get_all_providers(self) -> List[BaseHealthProvider]:
+        """All loaded provider instances (for generic shutdown / iteration)."""
+        return list(self._providers.values())
+
     def get_config_flow(self, domain: str) -> Optional[BaseConfigFlow]:
         return self._config_flows.get(domain)
 

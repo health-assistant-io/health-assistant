@@ -13,6 +13,7 @@ from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
 from .observation_builder import ObservationBuilder
 from .exceptions import IntegrationAuthError, IntegrationRateLimitError
+from .secrets import encrypt_fields, decrypt_fields, mask_fields
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,37 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         )
 
     async def close(self):
-        """Cleanup resources. Should be called when the provider is no longer needed."""
+        """Cleanup resources. Should be called when the provider is no longer needed.
+
+        Integrations that hold extra resources (e.g. MCP subprocess pools)
+        override this to tear those down in addition to the shared httpx client.
+        """
         await self._http_client.aclose()
+
+    # --- Tool Exposure (for the Chat Assistant) ---
+
+    def supports_tools(self) -> bool:
+        """Whether this integration exposes tools to the chat assistant.
+
+        Override to return ``True`` and implement :meth:`get_tools` to make
+        the integration's capabilities available as LangChain tools in chat.
+        Default: ``False`` (no tools).
+        """
+        return False
+
+    async def get_tools(self, integration: UserIntegration) -> List[Any]:
+        """Return LangChain-compatible tools for this instance.
+
+        Only called by the platform tool aggregator when
+        :meth:`supports_tools` is ``True``. Tools should be standard
+        LangChain ``StructuredTool`` / ``@tool`` objects so the existing
+        ``llm.bind_tools`` + reasoning loop works unchanged.
+
+        Implementations should swallow per-instance errors and return ``[]``
+        on failure so one bad instance doesn't break the whole chat turn.
+        Default: ``[]``.
+        """
+        return []
 
     # --- State / Cursor Management ---
     
@@ -188,5 +218,48 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         raise IntegrationRateLimitError(f"Failed to fetch from {url} after multiple retries.")
 
 class BaseConfigFlow(CoreBaseConfigFlow, ABC):
-    """Enhanced base class for integration configuration flows."""
-    pass
+    """Enhanced base class for integration configuration flows.
+
+    Integrations declare their capabilities by overriding the hooks below;
+    the platform endpoint calls them generically (no per-domain code). All
+    hooks have safe defaults so existing integrations are unaffected.
+    """
+
+    # Per-user instance cap. ``None`` = unlimited. The platform endpoint
+    # enforces this on create (not update) without knowing which domain.
+    max_instances_per_user: Optional[int] = None
+
+    def get_secret_fields(self) -> List[str]:
+        """Field names in ``user_config`` that are secret.
+
+        The platform encrypts these before storage (Fernet) and masks them
+        as ``"***"`` on read. Default: ``[]`` (no secrets, no key required).
+        """
+        return []
+
+    async def prepare_for_storage(self, config: dict) -> dict:
+        """Hook called by the endpoint before persisting ``user_config``.
+
+        Default: encrypts :meth:`get_secret_fields` via the platform Fernet
+        key (``INTEGRATION_SECRET_KEY``). Override to add custom transforms
+        (e.g. strip read-only fields), then call super() to keep encryption.
+        """
+        return encrypt_fields(config, self.get_secret_fields())
+
+    def prepare_for_read(self, config: dict) -> dict:
+        """Hook called by the endpoint before returning config to the UI.
+
+        Default: masks :meth:`get_secret_fields` as ``"***"`` so secrets
+        never leave the server in plaintext. Override to add custom
+        transforms, then call super() to keep masking.
+        """
+        return mask_fields(config, self.get_secret_fields())
+
+    def decrypt_for_use(self, config: dict) -> dict:
+        """Hook called by the integration's own provider when it needs the
+        plaintext config (e.g. to build an MCP client).
+
+        Default: decrypts :meth:`get_secret_fields`. Not called by the
+        platform endpoint — only by the integration itself.
+        """
+        return decrypt_fields(config, self.get_secret_fields())
