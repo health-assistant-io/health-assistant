@@ -469,10 +469,30 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         ]
         
     async def execute_custom_action(self, integration: UserIntegration, action_id: str, **kwargs) -> Dict[str, Any]:
+        from integrations.sdk import kv_block, code_block
         if action_id == "get_api_details":
-             api_url = f"/api/v1/integrations/{self.domain}/api/{integration.id}/status"
-             return {"message": f"Bridge API is ready. Connect your client to: {api_url}"}
-             
+             api_path = f"/api/v1/integrations/{self.domain}/api/{integration.id}"
+             api_url = f"{api_path}"  # relative; the host is the backend base URL
+             return {
+                 "message": "Bridge API is ready. See the Connection Details below.",
+                 "results": [
+                     kv_block("Connection Details", {
+                         "Instance ID": str(integration.id),
+                         "Instance Name": integration.instance_name or "(unnamed)",
+                         "Domain": self.domain,
+                         "API Base Path": api_url,
+                         "Status endpoint": f"{api_url}/status",
+                         "Sync endpoint": f"{api_url}/sync",
+                         "Map endpoint": f"{api_url}/map",
+                     }),
+                     code_block(
+                         "Example: check status",
+                         f"curl http://<backend-host>:8000{api_url}/status",
+                         language="bash",
+                     ),
+                 ],
+             }
+
         if action_id == "reset_cursor":
             self.set_sync_cursor(integration, "last_timestamp", None)
             return {"message": "Sync cursor has been reset. The client will pull all historical data on the next sync."}
