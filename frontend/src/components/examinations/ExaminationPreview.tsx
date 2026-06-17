@@ -38,7 +38,10 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<Record<string, Biomarker>>({});
   
-  const { groupByCategory } = useBiomarkers({ documents: examDocuments });
+  const { groupByCategory } = useBiomarkers({ 
+    documents: examDocuments, 
+    observations: selectedExam?.observations || [] 
+  });
   
   const allBiomarkers = useMemo(() => {
     return Object.values(groupByCategory()).map((group: BiomarkerObservation[]) => group[0]);
@@ -89,9 +92,11 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 title={t('common.details')}
               >
                 <span className="relative">
-                  {selectedExam.doctors?.length > 0 
-                    ? `${t('doctors.dr')} ${selectedExam.doctors[0].name}${selectedExam.doctors.length > 1 ? ' +' : ''}` 
-                    : t('examinations.clinical_examination')
+                  {selectedExam.organization?.name 
+                    ? selectedExam.organization.name
+                    : selectedExam.doctors?.length > 0 
+                      ? `${t('doctors.dr')} ${selectedExam.doctors[0].name}${selectedExam.doctors.length > 1 ? ' +' : ''}` 
+                      : t('examinations.clinical_examination')
                   }
                   <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-blue-600 transition-all duration-300 group-hover:w-full opacity-50"></span>
                 </span>
@@ -264,16 +269,17 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
               </div>
             </div>
             <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl overflow-hidden shadow-sm">
-              <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
-                <thead className="bg-gray-50 dark:bg-dark-bg">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('common.biomarkers')}</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('examinations.table.result')}</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('examinations.table.range')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-                  {augmentedBiomarkers.slice(0, 6).map((b) => (
+              <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border relative">
+                  <thead className="bg-gray-50 dark:bg-dark-bg sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest bg-gray-50 dark:bg-dark-bg">{t('common.biomarkers')}</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest bg-gray-50 dark:bg-dark-bg">{t('examinations.table.result')}</th>
+                      <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest bg-gray-50 dark:bg-dark-bg">{t('examinations.table.range')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
+                    {augmentedBiomarkers.map((b) => (
                     <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors group/row">
                       <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-dark-text flex items-center">
                         <Link to={`/biomarkers/details/${b.definitionId || b.slug}`} className="hover:text-blue-600 transition-colors">
@@ -301,11 +307,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                   ))}
                 </tbody>
               </table>
-              {allBiomarkers.length > 6 && (
-                <div className="px-6 py-2 bg-gray-50/50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border text-center">
-                  <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase">{t('examinations.table.more_in_full', { count: allBiomarkers.length - 6 })}</span>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         )}
