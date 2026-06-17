@@ -49,6 +49,7 @@ interface Props {
   className?: string;
   showTechnicalDetails?: boolean;
   showExternalLink?: boolean;
+  showOpenButton?: boolean;
   variant?: 'default' | 'compact';
   categoryIconOnly?: boolean;
   allowEventInteraction?: boolean;
@@ -64,6 +65,7 @@ export const ExaminationCard: React.FC<Props> = ({
   className = '',
   showTechnicalDetails = true,
   showExternalLink = false,
+  showOpenButton = true,
   variant = 'default',
   categoryIconOnly = false,
   allowEventInteraction = true
@@ -123,16 +125,18 @@ export const ExaminationCard: React.FC<Props> = ({
                )}
            </span>
            <div className="flex items-center space-x-1">
-             <button 
-               onClick={(e) => {
-                 e.stopPropagation();
-                 navigate(`/examinations/${examination.id}`);
-               }}
-               className="text-gray-400 hover:text-blue-500 transition-colors"
-               title={t('common.details')}
-             >
-               <ExternalLink className="w-3 h-3" />
-             </button>
+             {showOpenButton && (
+               <button 
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   navigate(`/examinations/${examination.id}`);
+                 }}
+                 className="text-gray-400 hover:text-blue-500 transition-colors"
+                 title={t('common.details')}
+               >
+                 <ExternalLink className="w-3 h-3" />
+               </button>
+             )}
              {showExternalLink && (
                 <button 
                   onClick={(e) => {
@@ -205,16 +209,18 @@ export const ExaminationCard: React.FC<Props> = ({
             {(examination.diagnoses?.length! > 0 || examination.medications?.length! > 0) && (
               <AIBadge />
             )}
+            {showOpenButton && (
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
                   navigate(`/examinations/${examination.id}`);
                 }}
-                className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-50 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-sm hover:shadow-md"
+                className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-500 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-sm hover:shadow-md"
                 title={t('common.details')}
               >
                 <ExternalLink className="w-3 h-3" />
               </button>
+            )}
             </div>
           </div>
           
