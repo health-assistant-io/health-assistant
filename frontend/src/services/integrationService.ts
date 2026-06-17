@@ -7,7 +7,7 @@ export interface IntegrationManifest {
   integration_type: string[];
   description?: string;
   author?: string;
-  access_type?: 'Local' | 'Cloud' | 'Local & Cloud';
+  access_type?: 'local' | 'cloud' | 'hybrid';
   categories?: string[];
   icon?: string;
   dependencies?: string[];

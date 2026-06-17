@@ -63,9 +63,9 @@ const Integrations: React.FC = () => {
 
   const getAccessIcon = (type?: string) => {
     switch(type) {
-      case 'Local': return <Server className="h-4 w-4 text-gray-500" />;
-      case 'Cloud': return <Cloud className="h-4 w-4 text-blue-500" />;
-      case 'Local & Cloud': return <Globe className="h-4 w-4 text-purple-500" />;
+      case 'local': return <Server className="h-4 w-4 text-gray-500" />;
+      case 'cloud': return <Cloud className="h-4 w-4 text-blue-500" />;
+      case 'hybrid': return <Globe className="h-4 w-4 text-purple-500" />;
       default: return null;
     }
   };

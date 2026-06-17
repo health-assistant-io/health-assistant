@@ -5,7 +5,7 @@
   "integration_type": ["push"],
   "description": "Connect mobile apps and custom clients seamlessly using the official Python or TS SDKs.",
   "author": "Core",
-  "access_type": "Cloud",
+  "access_type": "cloud",
   "categories": ["Mobile", "Services"],
   "icon": "Smartphone",
   "dependencies": [],
