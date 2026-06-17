@@ -267,6 +267,9 @@ async def list_examinations(
             selectinload(ExaminationModel.doctors),
             selectinload(ExaminationModel.documents),
             selectinload(ExaminationModel.category_entity),
+            selectinload(ExaminationModel.organization),
+            selectinload(ExaminationModel.observations),
+            selectinload(ExaminationModel.medications),
         )
     )
 
@@ -306,8 +309,10 @@ async def list_examinations(
             "error_message": exam.error_message,
             "diagnoses": exam.diagnoses,
             "impressions": exam.impressions,
-            "category_details": exam.category_entity,
             "doctors": exam.doctors,
+            "organization": exam.organization,
+            "observation_count": len(exam.observations) if exam.observations else 0,
+            "medication_count": len(exam.medications) if exam.medications else 0,
             "document_statuses": [
                 {
                     "id": doc.id,
