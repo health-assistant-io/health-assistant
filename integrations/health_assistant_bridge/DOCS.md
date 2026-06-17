@@ -15,7 +15,7 @@ In many scenarios, you need to scrape medical data from third-party portals (lik
 To build a client (Browser Extension/App), you need the base URL of the Health Assistant instance and the unique `integration_id` generated during the user's setup.
 
 > **💡 Developer Tip: Official SDKs Available!**
-> You do not need to implement the REST HTTP calls manually. We provide strictly typed, ready-to-use SDKs for this integration located directly inside the Health Assistant repository at `backend/app/integrations/health_assistant_bridge/`:
+> You do not need to implement the REST HTTP calls manually. We provide strictly typed, ready-to-use SDKs for this integration located directly inside the Health Assistant repository at `integrations/health_assistant_bridge/`:
 > - **TypeScript SDK (`ts-sdk/`)**: Ideal for building Browser Extensions, React Native apps, or Node.js scripts.
 > - **Python SDK (`python-sdk/`)**: Includes both synchronous (`requests`) and asynchronous (`httpx`) clients. Ideal for backend scrapers, data science scripts, or chron jobs. Includes an interactive AI mapping example script.
 
