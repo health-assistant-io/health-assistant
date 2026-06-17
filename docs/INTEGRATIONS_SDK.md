@@ -10,7 +10,7 @@ For an overview of the system architecture, see the [Integrations Framework](INT
 
 ## 1. Directory Structure
 
-To create a new integration, create a folder under `integrations/{domain}`. The domain should be a lowercase string (e.g., `fitbit`, `notify`).
+To create a new integration, create a folder under `integrations/{domain}`. The domain should be a lowercase string (e.g., `smartwatch_sync`, `custom_webhook`).
 
 Your integration must include three core files:
 1. `manifest.json`
@@ -54,19 +54,20 @@ Defines the metadata of your integration.
 
 ```json
 {
-  "domain": "notify",
-  "name": "Notify for Xiaomi",
+  "domain": "smartwatch_sync",
+  "name": "Universal Smartwatch Sync",
   "version": "1.0.0",
   "integration_type": ["push"], 
-  "description": "Receive push notifications directly from Xiaomi wearables.",
+  "description": "Receive push notifications directly from compatible smartwatches.",
   "author": "Community",
-  "access_type": "Local & Cloud",
+  "access_type": "hybrid",
   "categories": ["Wearables", "Notifications"],
   "icon": "Watch",
   "dependencies": []
 }
 ```
 *Note: `integration_type` can be `["pull"]` for polling APIs or `["push"]` for inbound webhooks.*
+*Note: `access_type` must be exactly one of: `"local"`, `"cloud"`, or `"hybrid"`.*
 
 ### Step 2: `config_flow.py`
 Defines the dynamic UI needed to set up this integration. Must inherit from `BaseConfigFlow`.
@@ -116,7 +117,7 @@ class NotifyProvider(BaseHealthProvider):
 ## 2. Handling Data (Pull vs. Push)
 
 ### Option A: Polling (Pull Data)
-For REST APIs that require periodic polling (e.g., Fitbit), implement the `pull_data` method. A background Celery worker runs every 15 minutes to call this method.
+For REST APIs that require periodic polling (e.g., Cloud Health API), implement the `pull_data` method. A background Celery worker runs every 15 minutes to call this method.
 
 ```python
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:

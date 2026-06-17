@@ -5,7 +5,7 @@
   "integration_type": ["push"],
   "description": "Receive data from any app or custom script via HTTP POST with customizable parsers.",
   "author": "Core",
-  "access_type": "Local",
+  "access_type": "local",
   "categories": ["Services", "Automation"],
   "icon": "Webhook",
   "dependencies": []

@@ -5,7 +5,7 @@
   "integration_type": ["pull", "push"],
   "description": "Simulates API flows, random errors, and fake biomarker data for core engine testing.",
   "author": "Core",
-  "access_type": "Local",
+  "access_type": "local",
   "categories": ["Development", "Testing"],
   "icon": "Bug",
   "dependencies": []
