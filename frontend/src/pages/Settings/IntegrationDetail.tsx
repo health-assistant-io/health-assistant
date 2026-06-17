@@ -4,7 +4,7 @@ import { integrationService, CustomAction } from '../../services/integrationServ
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp } from 'lucide-react';
+import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp, Server, Cloud, Globe } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
@@ -34,9 +34,12 @@ const IntegrationDetail: React.FC = () => {
   const [sortColumn, setSortColumn] = useState<SortColumn>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
+  const [available, setAvailable] = useState<any[]>([]);
+
   useEffect(() => {
     if (id && currentPatient) {
       loadDetails();
+      integrationService.getAvailable().then(setAvailable).catch(console.error);
     }
   }, [id, currentPatient]);
 
@@ -158,6 +161,17 @@ const IntegrationDetail: React.FC = () => {
   const isConnected = details.status === 'active' || details.status === 'ACTIVE';
   const isError = details.status === 'error' || details.status === 'ERROR';
 
+  const manifest = available.find(a => a.domain === details.domain);
+
+  const getAccessIcon = (type?: string) => {
+    switch(type) {
+      case 'local': return <Server className="h-4 w-4 text-gray-500" />;
+      case 'cloud': return <Cloud className="h-4 w-4 text-blue-500" />;
+      case 'hybrid': return <Globe className="h-4 w-4 text-purple-500" />;
+      default: return null;
+    }
+  };
+
   const renderSortIcon = (column: SortColumn) => {
     if (sortColumn !== column) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 group-hover:opacity-100" />;
     return sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-blue-500" /> : <ArrowDown className="w-3 h-3 ml-1 text-blue-500" />;
@@ -209,25 +223,56 @@ const IntegrationDetail: React.FC = () => {
               <Layers className="w-8 h-8 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-900 dark:text-dark-text capitalize">
-                {details.instance_name || details.domain.replace('_', ' ')}
-              </h1>
-              <div className="flex items-center mt-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-2xl font-black text-gray-900 dark:text-dark-text capitalize">
+                  {details.instance_name || manifest?.name || details.domain.replace('_', ' ')}
+                </h1>
+                {details.instance_name && (
+                   <span className="px-2 py-0.5 mt-1 text-xs uppercase font-bold tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-full whitespace-nowrap">
+                     via {manifest?.name || details.domain}
+                   </span>
+                )}
+                {manifest?.access_type && <div className="mt-1">{getAccessIcon(manifest.access_type)}</div>}
+              </div>
+              
+              {manifest?.description && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2 max-w-3xl">
+                  {manifest.description}
+                </p>
+              )}
+
+              <div className="flex items-center flex-wrap gap-2 mt-2">
+                {manifest?.author === 'Core' ? (
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white bg-blue-600 rounded">
+                    OFFICIAL
+                  </span>
+                ) : manifest?.author ? (
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded">
+                    COMMUNITY
+                  </span>
+                ) : null}
+
+                {manifest?.categories?.map((cat: string) => (
+                  <span key={cat} className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400 rounded border border-indigo-100 dark:border-indigo-800">
+                    {cat}
+                  </span>
+                ))}
+                
                 {isConnected ? (
-                  <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
                     <CheckCircle className="w-3 h-3 mr-1" /> Connected
                   </span>
                 ) : isError ? (
-                  <span className="flex items-center text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                  <span className="flex items-center text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full">
                     <XCircle className="w-3 h-3 mr-1" /> Error Requires Attention
                   </span>
                 ) : (
-                  <span className="flex items-center text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  <span className="flex items-center text-xs font-bold text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
                     <Settings className="w-3 h-3 mr-1" /> Pending Setup
                   </span>
                 )}
                 {details.last_synced_at && (
-                  <span className="ml-3 text-xs text-gray-400 font-medium flex items-center">
+                  <span className="text-xs text-gray-400 font-medium flex items-center ml-1">
                     <Clock className="w-3 h-3 mr-1" /> Last synced: {new Date(details.last_synced_at).toLocaleString()}
                   </span>
                 )}
