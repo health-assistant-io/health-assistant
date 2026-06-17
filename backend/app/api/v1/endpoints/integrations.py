@@ -59,9 +59,10 @@ async def list_active_integrations(
     ]
 
 @router.get("/{domain}/documentation")
-async def get_integration_documentation(domain: str) -> Dict[str, str]:
+async def get_integration_documentation(domain: str, file: str = None) -> Dict[str, Any]:
     """Get the markdown documentation for an integration if it exists."""
     import os
+    import json
     from app.core.integration_registry import integration_registry
     
     # We don't check if it's enabled here, so users can read docs before enabling.
@@ -71,6 +72,40 @@ async def get_integration_documentation(domain: str) -> Dict[str, str]:
         raise HTTPException(status_code=404, detail="Integration not found")
         
     base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "integrations", domain)
+    
+    # 1. Check for structured docs (docs-tree.json)
+    docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
+    if os.path.exists(docs_tree_path):
+        try:
+            with open(docs_tree_path, "r") as f:
+                tree = json.load(f)
+                
+            target_file = file
+            if not target_file:
+                for category in tree:
+                    if category.get("items") and len(category["items"]) > 0:
+                        target_file = category["items"][0].get("file")
+                        break
+                        
+            markdown_content = ""
+            if target_file:
+                # Prevent directory traversal attacks
+                target_file = os.path.basename(target_file)
+                target_file_path = os.path.join(base_path, "docs", target_file)
+                if os.path.exists(target_file_path):
+                    with open(target_file_path, "r") as f:
+                        markdown_content = f.read()
+                else:
+                     markdown_content = f"# Error\n\nCould not find file {target_file} in docs folder."
+                        
+            return {
+                "markdown": markdown_content,
+                "tree": tree
+            }
+        except Exception as e:
+            logger.error(f"Failed to parse docs-tree.json for {domain}: {e}")
+
+    # 2. Check for legacy single-file docs
     doc_paths = [
         os.path.join(base_path, "README.md"),
         os.path.join(base_path, "DOCS.md")
@@ -81,7 +116,7 @@ async def get_integration_documentation(domain: str) -> Dict[str, str]:
             with open(path, "r") as f:
                 return {"markdown": f.read()}
                 
-    # If no file exists, return an empty string or a default message
+    # 3. If no file exists, return an empty string or a default message
     return {"markdown": f"# {domain.capitalize()} Integration\n\nNo documentation provided for this integration."}
 
 @router.get("/{domain}/config-flow", response_model=Dict[str, Any])
