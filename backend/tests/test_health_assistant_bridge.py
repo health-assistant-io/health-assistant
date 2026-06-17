@@ -97,6 +97,46 @@ async def test_handle_api_request_sync(mock_save, provider, integration_mock):
     assert mock_save.called
 
 @pytest.mark.asyncio
+@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
+async def test_handle_api_request_sync_examinations(mock_save, provider, integration_mock):
+    request_mock = AsyncMock()
+    request_mock.json.return_value = {
+        "client_version": "1.2.0",
+        "source_system": "test",
+        "cursor": "2024-06-16T12:00:00Z",
+        "examinations": [
+            {
+                "id": "ext-exam-123",
+                "date": "2024-06-16T10:00:00Z",
+                "lab_name": "Test Lab",
+                "category": "Blood Test",
+                "records": [
+                    {
+                        "type": "quantitative",
+                        "name": "Test Metric 2",
+                        "value": 50.0,
+                        "unit": "mg/dL"
+                    }
+                ]
+            }
+        ]
+    }
+    
+    mock_save.return_value = 1
+    
+    result = await provider.handle_api_request(
+        integration=integration_mock,
+        path="sync",
+        method="POST",
+        request=request_mock
+    )
+    
+    assert result["success"] is True
+    assert result["metrics_synced"] == 1
+    assert integration_mock.user_config["_sync_state"]["last_timestamp"] == "2024-06-16T12:00:00Z"
+    assert mock_save.called
+
+@pytest.mark.asyncio
 async def test_parse_records(provider, integration_mock):
     from app.integrations.health_assistant_bridge.provider import ClientRecord
     

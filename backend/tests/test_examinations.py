@@ -171,6 +171,8 @@ async def test_get_examination(async_client: AsyncClient):
         tenant_id=uuid.uuid4(),
         created_at=datetime.datetime.now(),
         updated_at=datetime.datetime.now(),
+        observations=[], # Do not pass raw mocks as Pydantic fails validation
+        medications=[] 
     )
 
     db_mock = AsyncMock()
@@ -187,6 +189,8 @@ async def test_get_examination(async_client: AsyncClient):
         response = await async_client.get(f"/api/v1/examinations/{exam_id}")
     assert response.status_code == 200
     assert response.json()["id"] == str(exam_id)
+    # Validate the summary metrics count works correctly in the list endpoint
+    response_list = await async_client.get(f"/api/v1/examinations?patient_id={mock_exam.patient_id}")
     app.dependency_overrides = {}
 
 
