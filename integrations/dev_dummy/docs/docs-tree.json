@@ -1,0 +1,15 @@
+[
+  {
+    "category": "Getting Started",
+    "items": [
+      { "id": "overview", "file": "overview.md", "title": "Dummy Integration Overview" },
+      { "id": "testing", "file": "testing.md", "title": "Testing Scenarios" }
+    ]
+  },
+  {
+    "category": "Advanced",
+    "items": [
+      { "id": "troubleshooting", "file": "troubleshooting.md", "title": "Troubleshooting" }
+    ]
+  }
+]
