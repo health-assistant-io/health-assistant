@@ -261,6 +261,14 @@ class AIAssistanceService:
         if patient_id and tenant_id:
             chatbot_tools = ChatbotTools(self.db, tenant_id, UUID(patient_id))
             tools = chatbot_tools.get_tools()
+            try:
+                from app.services.integration_tool_aggregator import aggregate as integration_aggregate
+                integration_tools = await integration_aggregate(
+                    self.db, user_id, tenant_id, UUID(patient_id)
+                )
+                tools = tools + integration_tools
+            except Exception as e:
+                logger.warning(f"Failed to load integration tools for chat (continuing with built-ins): {e}")
 
         system_prompt = f"""You are Health Assistant AI, a professional medical data assistant. 
         Answer the user's questions clearly and professionally using Markdown.
@@ -494,6 +502,14 @@ class AIAssistanceService:
         if patient_id and tenant_id:
             chatbot_tools = ChatbotTools(self.db, tenant_id, UUID(patient_id))
             tools = chatbot_tools.get_tools()
+            try:
+                from app.services.integration_tool_aggregator import aggregate as integration_aggregate
+                integration_tools = await integration_aggregate(
+                    self.db, user_id, tenant_id, UUID(patient_id)
+                )
+                tools = tools + integration_tools
+            except Exception as e:
+                logger.warning(f"Failed to load integration tools for chat (continuing with built-ins): {e}")
 
         llm_with_tools = llm.bind_tools(tools) if tools else llm
 
