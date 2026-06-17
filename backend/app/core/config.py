@@ -9,7 +9,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
-    VERSION: str = "0.1.3"
+    VERSION: str = "0.2.0"
     APP_ENV: str = "development"
     DEBUG: bool = False
 
