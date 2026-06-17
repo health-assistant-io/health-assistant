@@ -20,6 +20,7 @@ const IntegrationDetail: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings'>('overview');
 
   type SortColumn = 'date' | 'sync_time' | 'metric' | 'value';
   type SortDirection = 'asc' | 'desc';
@@ -156,7 +157,7 @@ const IntegrationDetail: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto pb-20">
+    <div className="max-w-6xl mx-auto pb-20">
       <div className="mb-6 flex items-center justify-between">
         <button 
           onClick={() => navigate('/settings/integrations')}
@@ -191,17 +192,10 @@ const IntegrationDetail: React.FC = () => {
             <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
             {isError ? 'Retry Sync' : 'Sync Now'}
           </button>
-          <button 
-            onClick={handleRemove}
-            className="flex items-center px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Remove
-          </button>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm mb-8">
+      <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-2xl flex items-center justify-center border border-gray-100 dark:border-dark-border">
@@ -236,10 +230,30 @@ const IntegrationDetail: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Col: Config & Items */}
-        <div className="lg:col-span-2 space-y-8">
-          
+      <div className="flex space-x-1 bg-gray-50 dark:bg-dark-bg p-1.5 rounded-2xl border border-gray-100 dark:border-dark-border mb-8 overflow-x-auto scrollbar-hide">
+        {[
+          { id: 'overview', label: 'Overview' },
+          { id: 'examinations', label: 'Examinations' },
+          { id: 'biomarkers', label: 'Biomarkers' },
+          { id: 'data', label: 'Raw Data' },
+          { id: 'settings', label: 'Settings' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-6 py-2 text-sm font-bold rounded-xl whitespace-nowrap transition-all ${
+              activeTab === tab.id 
+                ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700 dark:text-dark-muted dark:hover:text-dark-text'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {details.custom_actions && details.custom_actions.length > 0 && (
             <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
@@ -263,59 +277,197 @@ const IntegrationDetail: React.FC = () => {
               </div>
             </div>
           )}
-
-          {details.synced_examinations && details.synced_examinations.length > 0 && (
-            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
-              <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-                <FileText className="w-5 h-5 mr-2 text-indigo-500" /> Synced Laboratory Reports
-              </h3>
-              <div className="flex overflow-x-auto space-x-4 pb-4 scrollbar-hide">
-                {details.synced_examinations.map((exam: any) => (
-                  <div key={exam.id} className="flex-shrink-0 w-80">
-                    <ExaminationCard examination={exam} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          
+          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm h-96 flex flex-col">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-              <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Dictionary
+               <Activity className="w-5 h-5 mr-2 text-gray-400" /> Sync History
             </h3>
-            {details.exposed_items && details.exposed_items.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {details.exposed_items.map((item: any) => (
-                  <Link 
-                    to={`/biomarkers/details/${item.slug}`} 
-                    key={item.id}
-                    className="flex flex-col p-4 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-gray-100 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-900 transition-all group"
-                  >
-                    <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600">{item.name}</span>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded border border-gray-100 dark:border-dark-border">{item.category}</span>
-                        {details.synced_examinations && details.synced_examinations.length > 0 && (
-                           <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded flex items-center">
-                             <FileText className="w-2.5 h-2.5 mr-1" />
-                             Report Sourced
-                           </span>
-                        )}
-                      </div>
-                      {item.last_seen && (
-                        <span className="text-[10px] text-gray-400 font-medium">Seen: {new Date(item.last_seen).toLocaleDateString()}</span>
+            <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1">
+              {details.sync_history && details.sync_history.length > 0 ? (
+                details.sync_history.map((log: any) => (
+                  <div key={log.id} className="flex flex-col p-4 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-100 dark:border-dark-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        {new Date(log.started_at).toLocaleString()}
+                      </span>
+                      {log.status === 'success' ? (
+                        <span className="flex items-center text-[10px] font-bold text-emerald-600">
+                          <CheckCircle className="w-3 h-3 mr-1" /> Success
+                        </span>
+                      ) : (
+                        <span className="flex items-center text-[10px] font-bold text-red-600">
+                          <XCircle className="w-3 h-3 mr-1" /> Failed
+                        </span>
                       )}
                     </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
-                <p className="text-sm font-medium text-gray-400">No data has been synced yet.</p>
-              </div>
-            )}
+                    <div className="flex items-baseline space-x-1">
+                      <span className="text-lg font-black text-gray-700 dark:text-dark-text">{log.records_synced}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">records</span>
+                    </div>
+                    {log.error_message && (
+                      <p className="mt-2 text-xs text-red-500 font-medium">{log.error_message}</p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-gray-400 italic text-center py-4">No sync history available</p>
+              )}
+            </div>
           </div>
+        </div>
+      )}
 
+      {activeTab === 'examinations' && (
+        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+            <FileText className="w-5 h-5 mr-2 text-indigo-500" /> Synced Laboratory Reports
+          </h3>
+          {details.synced_examinations && details.synced_examinations.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+              {details.synced_examinations.map((exam: any) => (
+                <div key={exam.id}>
+                  <ExaminationCard examination={exam} />
+                </div>
+              ))}
+            </div>
+          ) : (
+             <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
+                <FileText className="w-8 h-8 mx-auto text-gray-300 mb-3" />
+                <p className="text-sm font-medium text-gray-500">No examinations or laboratory reports have been synced yet.</p>
+             </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'biomarkers' && (
+        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+            <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Dictionary
+          </h3>
+          {details.exposed_items && details.exposed_items.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+              {details.exposed_items.map((item: any) => (
+                <Link 
+                  to={`/biomarkers/details/${item.slug}`} 
+                  key={item.id}
+                  className="flex flex-col p-4 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-gray-100 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-900 transition-all group"
+                >
+                  <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600">{item.name}</span>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded border border-gray-100 dark:border-dark-border">{item.category}</span>
+                      {details.synced_examinations && details.synced_examinations.length > 0 && (
+                         <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded flex items-center">
+                           <FileText className="w-2.5 h-2.5 mr-1" />
+                           Report Sourced
+                         </span>
+                      )}
+                    </div>
+                    {item.last_seen && (
+                      <span className="text-[10px] text-gray-400 font-medium">Seen: {new Date(item.last_seen).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
+              <Database className="w-8 h-8 mx-auto text-gray-300 mb-3" />
+              <p className="text-sm font-medium text-gray-500">No biomarker data dictionary has been established yet.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'data' && (
+        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+            <Activity className="w-5 h-5 mr-2 text-green-500" /> Recent Raw Measurements
+          </h3>
+          {details.recent_data && details.recent_data.length > 0 ? (
+            <div className="max-h-[800px] overflow-y-auto custom-scrollbar border rounded-xl border-gray-100 dark:border-dark-border">
+              <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
+                <thead className="bg-gray-50 dark:bg-dark-bg sticky top-0 z-10">
+                  <tr>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
+                      onClick={() => handleSort('date')}
+                    >
+                      <div className="flex items-center">Recorded Time {renderSortIcon('date')}</div>
+                    </th>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
+                      onClick={() => handleSort('sync_time')}
+                    >
+                      <div className="flex items-center">Synced Time {renderSortIcon('sync_time')}</div>
+                    </th>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
+                      onClick={() => handleSort('metric')}
+                    >
+                      <div className="flex items-center">Metric {renderSortIcon('metric')}</div>
+                    </th>
+                    <th 
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
+                      onClick={() => handleSort('value')}
+                    >
+                      <div className="flex items-center">Value {renderSortIcon('value')}</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-dark-border bg-white dark:bg-dark-surface">
+                  {sortedData.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-dark-muted">
+                        {new Date(item.date).toLocaleString(undefined, {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400 dark:text-dark-muted italic">
+                        {item.sync_time ? new Date(item.sync_time).toLocaleString(undefined, {
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        }) : 'Unknown'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
+                        <div className="flex items-center space-x-2">
+                          {item.slug ? (
+                            <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
+                              {item.metric}
+                            </Link>
+                          ) : (
+                            <span>{item.metric}</span>
+                          )}
+                          {item.examination_id && (
+                            <Link 
+                              to={`/examinations/${item.examination_id}`}
+                              title="View source examination"
+                              className="flex items-center justify-center p-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                            >
+                              <FileText className="w-3 h-3" />
+                            </Link>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-dark-text">
+                        <span className="font-black text-blue-600 dark:text-blue-400">{item.value}</span>
+                        <span className="ml-1 text-xs text-gray-500 dark:text-dark-muted font-bold">{item.unit}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
+              <Activity className="w-8 h-8 mx-auto text-gray-300 mb-3" />
+              <p className="text-sm font-medium text-gray-500">No recent raw data found.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="space-y-8">
           <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text">
@@ -342,129 +494,23 @@ const IntegrationDetail: React.FC = () => {
             <DebugConsole integrationId={id!} patientId={currentPatient!.id} />
           )}
 
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
-            <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-              <Activity className="w-5 h-5 mr-2 text-green-500" /> Recent Measurements
+          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-red-200 dark:border-red-900/30 shadow-sm">
+            <h3 className="flex items-center text-lg font-bold text-red-600 dark:text-red-400 mb-6">
+              Danger Zone
             </h3>
-            {details.recent_data && details.recent_data.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
-                  <thead>
-                    <tr>
-                      <th 
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
-                        onClick={() => handleSort('date')}
-                      >
-                        <div className="flex items-center">Recorded Time {renderSortIcon('date')}</div>
-                      </th>
-                      <th 
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
-                        onClick={() => handleSort('sync_time')}
-                      >
-                        <div className="flex items-center">Synced Time {renderSortIcon('sync_time')}</div>
-                      </th>
-                      <th 
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
-                        onClick={() => handleSort('metric')}
-                      >
-                        <div className="flex items-center">Metric {renderSortIcon('metric')}</div>
-                      </th>
-                      <th 
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-muted uppercase tracking-wider cursor-pointer group hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors"
-                        onClick={() => handleSort('value')}
-                      >
-                        <div className="flex items-center">Value {renderSortIcon('value')}</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-                    {sortedData.map((item: any) => (
-                      <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-dark-muted">
-                          {new Date(item.date).toLocaleString(undefined, {
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                          })}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-400 dark:text-dark-muted italic">
-                          {item.sync_time ? new Date(item.sync_time).toLocaleString(undefined, {
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                          }) : 'Unknown'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
-                          <div className="flex items-center space-x-2">
-                            {item.slug ? (
-                              <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
-                                {item.metric}
-                              </Link>
-                            ) : (
-                              <span>{item.metric}</span>
-                            )}
-                            {item.examination_id && (
-                              <Link 
-                                to={`/examinations/${item.examination_id}`}
-                                title="View source examination"
-                                className="flex items-center justify-center p-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
-                              >
-                                <FileText className="w-3 h-3" />
-                              </Link>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-dark-text">
-                          <span className="font-black text-blue-600 dark:text-blue-400">{item.value}</span>
-                          <span className="ml-1 text-xs text-gray-500 dark:text-dark-muted font-bold">{item.unit}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
-                <p className="text-sm font-medium text-gray-400">No recent data found.</p>
-              </div>
-            )}
+            <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">
+              Removing this integration will stop all future data syncing. Existing data will remain in your records.
+            </p>
+            <button 
+              onClick={handleRemove}
+              className="flex items-center px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Remove Integration
+            </button>
           </div>
         </div>
-
-        {/* Right Col: Sync History */}
-        <div className="space-y-8">
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-6 border border-gray-100 dark:border-dark-border shadow-sm">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text mb-6 uppercase tracking-widest">Sync History</h3>
-            <div className="space-y-4">
-              {details.sync_history && details.sync_history.length > 0 ? (
-                details.sync_history.map((log: any) => (
-                  <div key={log.id} className="flex flex-col p-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-100 dark:border-dark-border">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        {new Date(log.started_at).toLocaleString()}
-                      </span>
-                      {log.status === 'success' ? (
-                        <span className="flex items-center text-[10px] font-bold text-emerald-600">
-                          <CheckCircle className="w-3 h-3 mr-1" /> Success
-                        </span>
-                      ) : (
-                        <span className="flex items-center text-[10px] font-bold text-red-600">
-                          <XCircle className="w-3 h-3 mr-1" /> Failed
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-baseline space-x-1">
-                      <span className="text-lg font-black text-gray-700 dark:text-dark-text">{log.records_synced}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase">records</span>
-                    </div>
-                    {log.error_message && (
-                      <p className="mt-2 text-xs text-red-500 font-medium">{log.error_message}</p>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-gray-400 italic text-center py-4">No sync history available</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {isEditingConfig && details?.domain && (
         <ConfigFlowModal
