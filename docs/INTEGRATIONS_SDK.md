@@ -10,7 +10,7 @@ For an overview of the system architecture, see the [Integrations Framework](INT
 
 ## 1. Directory Structure
 
-To create a new integration, create a folder under `backend/app/integrations/{domain}`. The domain should be a lowercase string (e.g., `fitbit`, `notify`).
+To create a new integration, create a folder under `integrations/{domain}`. The domain should be a lowercase string (e.g., `fitbit`, `notify`).
 
 Your integration must include three core files:
 1. `manifest.json`

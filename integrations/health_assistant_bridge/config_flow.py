@@ -1,4 +1,4 @@
-from app.integrations.sdk import BaseConfigFlow
+from integrations.sdk import BaseConfigFlow
 
 class HealthAssistantBridgeConfigFlow(BaseConfigFlow):
     domain = "health_assistant_bridge"

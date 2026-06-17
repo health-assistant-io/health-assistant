@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Dict
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
-from app.integrations.sdk.observation_builder import ObservationBuilder
+from integrations.sdk.observation_builder import ObservationBuilder
 
 class BaseWebhookParser(ABC):
     """Base class for all webhook payload parsers."""

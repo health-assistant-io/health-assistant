@@ -42,8 +42,8 @@ services:
   # Backend API
   backend:
     build:
-      context: ../backend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: health-assistant-backend
     environment:
       - APP_ENV=${APP_ENV:-development}
@@ -61,10 +61,12 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_FROM=${SMTP_FROM:-noreply@healthassistant.local}
+      - PYTHONPATH=/app/backend:/app
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ../backend:/app
+      - ../backend:/app/backend
+      - ../integrations:/app/integrations
       - uploads:/app/uploads
     depends_on:
       postgres:
@@ -73,7 +75,7 @@ services:
         condition: service_healthy
     networks:
       - health-assistant-network
-    command: sh -c "alembic upgrade head && python scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "cd backend && alembic upgrade head && python scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   # Frontend
   frontend:
@@ -97,8 +99,8 @@ services:
   # Worker (Celery)
   worker:
     build:
-      context: ../backend
-      dockerfile: Dockerfile.worker
+      context: ..
+      dockerfile: docker/Dockerfile.worker
     container_name: health-assistant-worker
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
@@ -107,6 +109,7 @@ services:
       - OPENAI_API_BASE=${OPENAI_API_BASE}
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OCR_PROVIDER=${OCR_PROVIDER:-openai}
+      - PYTHONPATH=/app/backend:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,23 +117,24 @@ services:
         condition: service_healthy
     networks:
       - health-assistant-network
-    command: celery -A app.workers.celery_app worker --loglevel=info
+    command: sh -c "cd backend && celery -A app.workers.celery_app worker --loglevel=info"
 
   # Flower (Celery monitoring)
   flower:
     build:
-      context: ../backend
-      dockerfile: Dockerfile.worker
+      context: ..
+      dockerfile: docker/Dockerfile.worker
     container_name: health-assistant-flower
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - PYTHONPATH=/app/backend:/app
     depends_on:
       - redis
     networks:
       - health-assistant-network
-    command: celery -A app.workers.celery_app flower --port=5555
+    command: sh -c "cd backend && celery -A app.workers.celery_app flower --port=5555"
 
 volumes:
   postgres_data:

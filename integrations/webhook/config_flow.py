@@ -1,4 +1,4 @@
-from app.integrations.sdk import BaseConfigFlow
+from integrations.sdk import BaseConfigFlow
 import os
 
 class WebhookConfigFlow(BaseConfigFlow):

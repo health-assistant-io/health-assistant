@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from app.integrations.sdk import BaseConfigFlow
+from integrations.sdk import BaseConfigFlow
 
 class DevDummyConfigFlow(BaseConfigFlow):
     domain = "dev_dummy"

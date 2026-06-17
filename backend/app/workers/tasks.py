@@ -486,7 +486,7 @@ async def sync_active_integrations(self):
                         
                     logger.info(f"Syncing integration {integration.provider} for user {integration.user_id}")
                     
-                    from app.integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
+                    from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
                     
                     # Pull data
                     observations_data = await provider.pull_data(integration)

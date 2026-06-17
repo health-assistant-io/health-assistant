@@ -10,7 +10,7 @@ This document covers the high-level architecture and how the system manages inte
 
 ## Architecture Highlights
 
-1. **Pluggable & Modular**: Each integration lives in its own isolated folder under `backend/app/integrations/`. The core platform discovers them dynamically.
+1. **Pluggable & Modular**: Each integration lives in its own isolated folder under `integrations/`. The core platform discovers them dynamically.
 2. **Two-Tiered Enablement**:
    - **System Admins** determine if an integration is globally available to the platform.
    - **Users** connect their individual accounts, provide credentials, and control sync preferences. Users can create **multiple instances** of the same integration (e.g., tracking two separate IoT scales).
@@ -23,7 +23,7 @@ This document covers the high-level architecture and how the system manages inte
 ## How It Works Under the Hood
 
 ### 1. Startup & Discovery
-FastAPI initializes the `IntegrationRegistry` during startup. It scans the `backend/app/integrations/` folders, reads each `manifest.json`, and queries the database (`system_integrations` table) to see which discovered domains are marked `is_enabled=True`. Only enabled integrations have their Python classes loaded into memory.
+FastAPI initializes the `IntegrationRegistry` during startup. It scans the `integrations/` folders, reads each `manifest.json`, and queries the database (`system_integrations` table) to see which discovered domains are marked `is_enabled=True`. Only enabled integrations have their Python classes loaded into memory.
 
 ### 2. User Configuration (Config Flow)
 When a user clicks "Add Integration", the frontend requests `/api/v1/integrations/{domain}/config-flow`. The backend returns the JSON schema defined by the integration, and the frontend renders a dynamic form. 

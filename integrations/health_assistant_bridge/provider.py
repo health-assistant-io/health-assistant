@@ -1,8 +1,8 @@
 import logging
 import datetime
 from typing import List, Any, Dict, Optional, Literal
-from app.integrations.sdk import BaseHealthProvider
-from app.integrations.sdk.observation_builder import ObservationBuilder
+from integrations.sdk import BaseHealthProvider
+from integrations.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
 from app.schemas.ai_nlp import MapResponsePayload, MetricMappingRequest
 from app.models.user_integration import UserIntegration

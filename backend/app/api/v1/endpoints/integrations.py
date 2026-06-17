@@ -515,7 +515,7 @@ async def sync_integration(
     from app.models.user_integration import IntegrationSyncLog
     import datetime
 
-    from app.integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
+    from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
 
     try:
         start_time = datetime.datetime.now(datetime.timezone.utc)

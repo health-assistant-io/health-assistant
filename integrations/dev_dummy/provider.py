@@ -1,10 +1,10 @@
 import random
 from datetime import datetime, timezone, timedelta
 from typing import List, Any, Dict
-from app.integrations.sdk import BaseHealthProvider
+from integrations.sdk import BaseHealthProvider
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
-from app.integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
+from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
 
 class DevDummyProvider(BaseHealthProvider):
     domain = "dev_dummy"
