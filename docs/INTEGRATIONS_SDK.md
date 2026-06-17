@@ -17,7 +17,37 @@ Your integration must include three core files:
 2. `config_flow.py`
 3. `provider.py`
 
-Optionally, for complex integrations with multi-page setup guides or SDK references, you can include a `docs/` folder containing a `docs-tree.json` to define a navigation hierarchy.
+### Documentation Standard
+
+For simple integrations, providing a single `README.md` at the integration root is sufficient.
+
+For complex integrations (like SDK bridges or robust APIs), create a `docs/` folder containing a `docs-tree.json` file. This defines a multi-page documentation structure that the frontend can parse to generate sub-navigation menus.
+
+#### Example `docs-tree.json` Format
+
+The `docs-tree.json` must be an array of categories, where each category contains an array of document items:
+
+```json
+[
+  {
+    "category": "Introduction",
+    "items": [
+      { "id": "overview", "file": "overview.md", "title": "Overview" },
+      { "id": "setup", "file": "setup-guide.md", "title": "Setup & Configuration" }
+    ]
+  },
+  {
+    "category": "Advanced",
+    "items": [
+      { "id": "api-reference", "file": "api.md", "title": "API Reference" }
+    ]
+  }
+]
+```
+- `category`: The header for the menu group.
+- `id`: A unique string ID for the route/page.
+- `file`: The relative path to the Markdown file inside the `docs/` folder.
+- `title`: The display name of the document in the menu.
 
 ### Step 1: `manifest.json`
 Defines the metadata of your integration.
