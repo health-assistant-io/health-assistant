@@ -6,7 +6,7 @@
   "description": "Connect mobile apps and custom clients seamlessly using the official Python or TS SDKs.",
   "author": "Core",
   "access_type": "cloud",
-  "categories": ["Mobile", "Services"],
+  "categories": ["System", "Mobile", "Services"],
   "icon": "Smartphone",
   "dependencies": [],
   "sdks": {

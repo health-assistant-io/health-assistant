@@ -6,7 +6,7 @@
   "description": "Simulates API flows, random errors, and fake biomarker data for core engine testing.",
   "author": "Core",
   "access_type": "local",
-  "categories": ["Development", "Testing"],
+  "categories": ["System", "Development", "Testing"],
   "icon": "Bug",
   "dependencies": []
 }

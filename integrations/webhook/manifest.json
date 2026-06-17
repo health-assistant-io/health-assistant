@@ -6,7 +6,7 @@
   "description": "Receive data from any app or custom script via HTTP POST with customizable parsers.",
   "author": "Core",
   "access_type": "local",
-  "categories": ["Services", "Automation"],
+  "categories": ["System", "Services", "Automation"],
   "icon": "Webhook",
   "dependencies": []
 }
