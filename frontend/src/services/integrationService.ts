@@ -34,6 +34,64 @@ export interface CustomAction {
   style: 'primary' | 'danger' | 'warning' | 'default';
 }
 
+// --- Structured display blocks for custom action results ---
+// See integrations/sdk/display.py for the canonical contract.
+
+export type DisplayBlockType = 'kv' | 'list' | 'table' | 'json' | 'text' | 'code';
+
+export interface KvBlock {
+  type: 'kv';
+  title?: string;
+  items: Record<string, any>;
+}
+
+export interface ListBlock {
+  type: 'list';
+  title?: string;
+  items: string[];
+}
+
+export interface TableBlock {
+  type: 'table';
+  title?: string;
+  columns: string[];
+  rows: any[][];
+}
+
+export interface JsonBlock {
+  type: 'json';
+  title?: string;
+  data: any;
+}
+
+export interface TextBlock {
+  type: 'text';
+  title?: string;
+  content: string;
+}
+
+export interface CodeBlock {
+  type: 'code';
+  title?: string;
+  content: string;
+  language?: string;
+}
+
+export type DisplayBlock =
+  | KvBlock
+  | ListBlock
+  | TableBlock
+  | JsonBlock
+  | TextBlock
+  | CodeBlock
+  | { type: string; [key: string]: any }; // unknown types fall back to JSON
+
+export interface ActionResult {
+  message?: string;
+  results?: DisplayBlock[];
+  [key: string]: any;
+}
+
 export interface IntegrationDocsTreeItem {
   id: string;
   file: string;
