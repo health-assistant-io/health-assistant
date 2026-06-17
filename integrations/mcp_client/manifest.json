@@ -1,0 +1,12 @@
+{
+  "domain": "mcp_client",
+  "name": "MCP Client",
+  "version": "1.0.0",
+  "integration_type": [],
+  "description": "Connect to Model Context Protocol servers (STDIO / HTTP / SSE) and expose their tools to the Health Assistant chat.",
+  "author": "Core",
+  "access_type": "hybrid",
+  "categories": ["AI", "Tools"],
+  "icon": "Cable",
+  "dependencies": []
+}
