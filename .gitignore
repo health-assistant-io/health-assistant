@@ -43,6 +43,7 @@ wheels/
 *~
 .DS_Store
 Thumbs.db
+.opencode
 
 # Logs
 logs/
