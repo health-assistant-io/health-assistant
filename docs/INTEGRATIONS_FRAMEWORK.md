@@ -18,6 +18,8 @@ This document covers the high-level architecture and how the system manages inte
 4. **Dynamic Documentation Trees**: The framework supports both simple (`README.md`) and complex, multi-page documentation structures. Complex integrations can define a `docs/docs-tree.json` file, which the backend parses and serves to the frontend to render interactive, nested navigation menus directly within the application.
 5. **Unified Sync Engine**: A background Celery worker automatically runs every 15 minutes, fetching data and mapping it to standard FHIR resources.
 6. **Secure Webhook Routing**: The system provides dedicated, tokenless (UUID-based) endpoints for integrations that push data (e.g., Tasker, Notify App) directly into the unified patient record.
+7. **Tool Exposure Contract**: Integrations can opt-in to expose LangChain tools to the chat assistant by implementing `supports_tools()` + `get_tools()` on their provider. The platform tool aggregator (`integration_tool_aggregator.py`) is domain-agnostic — any integration that opts in is picked up automatically. See the [SDK guide](INTEGRATIONS_SDK.md) §3.6.
+8. **Secret Encryption**: Integrations declare secret config fields via `get_secret_fields()`; the SDK encrypts them at rest (Fernet) and masks them on read. No per-domain code in the endpoint. See the [SDK guide](INTEGRATIONS_SDK.md) §3.7.
 
 ---
 

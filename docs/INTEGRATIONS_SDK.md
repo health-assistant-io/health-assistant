@@ -77,7 +77,7 @@ from integrations.sdk import BaseConfigFlow
 
 class NotifyConfigFlow(BaseConfigFlow):
     domain = "notify"
-    
+
     async def get_schema(self) -> dict:
         return {
             "step_id": "user_config",
@@ -91,11 +91,29 @@ class NotifyConfigFlow(BaseConfigFlow):
                 }
             }
         }
-        
+
     async def validate_input(self, user_input: dict) -> dict:
         # Perform any validation. Raise ValueError if invalid.
         return user_input
 ```
+
+#### Capability hooks (optional, all have safe defaults)
+
+The SDK base class provides opt-in hooks so integrations can declare capabilities without the platform endpoint knowing about specific domains:
+
+- **`max_instances_per_user: Optional[int]`** — per-user instance cap. `None` = unlimited (default). The endpoint enforces this generically on create.
+- **`get_secret_fields() -> List[str]`** — field names that are secret. The platform encrypts them before storage (Fernet) and masks them as `"***"` on read. Default: `[]` (no secrets, no key required).
+
+```python
+class McpClientConfigFlow(BaseConfigFlow):
+    domain = "mcp_client"
+    max_instances_per_user = 5  # read from settings in practice
+
+    def get_secret_fields(self):
+        return ["env", "headers", "auth_token"]
+```
+
+See §3.7 for secret encryption details and §3.5 (Returning structured results) for display blocks.
 
 ### Step 3: `provider.py`
 The core logic. Must inherit from `BaseHealthProvider`.
@@ -235,14 +253,75 @@ Integrations can expose custom interactive buttons to the frontend UI (e.g., "Re
         return [
             {"id": "reset_cursor", "label": "Reset Sync Cursor", "style": "warning"}
         ]
-        
+
     async def execute_custom_action(self, integration: UserIntegration, action_id: str, **kwargs) -> Dict[str, Any]:
         if action_id == "reset_cursor":
             self.set_sync_cursor(integration, "last_date", None)
             return {"message": "Cursor reset successfully!"} # Returns a Toast to the UI
-            
+
         raise NotImplementedError(f"Action not supported.")
 ```
+
+#### Returning structured results (display blocks)
+
+Custom actions can optionally return a `results` array of typed display blocks. The frontend renders them in a modal (`ActionResultModal`). Backwards compatible: `{"message": "..."}` alone still shows just a toast.
+
+```python
+from integrations.sdk import kv_block, list_block, table_block, code_block, action_result
+
+async def execute_custom_action(self, integration, action_id, **kwargs):
+    if action_id == "list_tools":
+        tools = await self._list_tools(integration)
+        return action_result(
+            message=f"Discovered {len(tools)} tool(s).",
+            results=[
+                kv_block("Summary", {"Total": len(tools), "Transport": "stdio"}),
+                table_block("Tools", ["Name", "Description"],
+                            [[t.name, t.description] for t in tools]),
+            ],
+        )
+```
+
+Available block builders (from `integrations.sdk`): `kv_block`, `list_block`, `table_block`, `json_block`, `text_block`, `code_block`, `action_result`. See `integrations/sdk/display.py` for the full API.
+
+### 3.6 Tool Exposure (for the Chat Assistant)
+
+Integrations can expose tools to the chat assistant by implementing two methods on the provider:
+
+```python
+class MyProvider(BaseHealthProvider):
+    domain = "my_integration"
+
+    def supports_tools(self) -> bool:
+        return True
+
+    async def get_tools(self, integration: UserIntegration) -> List[Any]:
+        # Return LangChain StructuredTool / @tool objects.
+        # Swallow per-instance errors and return [] on failure.
+        return [my_tool_1, my_tool_2]
+```
+
+The platform tool aggregator (`app/services/integration_tool_aggregator.py`) iterates all active integrations, calls `supports_tools()` on each, and merges `get_tools()` results with the built-in `ChatbotTools` before `llm.bind_tools()`. **No platform code references any specific integration domain** — any integration that opts in is picked up automatically.
+
+`INTEGRATION_MAX_TOOLS_PER_SESSION` (default 20) bounds the total number of integration tools per chat turn.
+
+Reference: `integrations/mcp_client/provider.py` is the first integration to use this contract.
+
+### 3.7 Secret Encryption (at rest)
+
+Integrations with secret config fields (API keys, tokens, env vars) declare them via `get_secret_fields()`. The SDK handles the rest:
+
+- **On save:** `submit_config_flow` calls `config_flow.prepare_for_storage()` → encrypts secret fields with Fernet (`INTEGRATION_SECRET_KEY`).
+- **On read:** `get_integration_details` calls `config_flow.prepare_for_read()` → masks secret fields as `"***"`.
+- **On use:** the provider calls `config_flow.decrypt_for_use()` or `decrypt_fields()` to get plaintext.
+
+No per-domain code in the endpoint. Set `INTEGRATION_SECRET_KEY` in `.env` (Fernet key, base64 32 bytes):
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+If the key is missing, saving config with secret fields fails fast with a 400 — no plaintext secrets are ever stored. Integrations with no secret fields are unaffected.
 
 ---
 
