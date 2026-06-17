@@ -8,8 +8,10 @@ import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Tras
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
+import ActionResultModal from '../../components/integrations/ActionResultModal';
 import { DebugConsole } from '../../components/integrations/DebugConsole';
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
+import type { ActionResult } from '../../services/integrationService';
 
 const IntegrationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +23,7 @@ const IntegrationDetail: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
+  const [actionResult, setActionResult] = useState<{ result: ActionResult; label: string } | null>(null);
   
   const tabParam = searchParams.get('tab') as 'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings' | null;
   const activeTab = tabParam || 'overview';
@@ -144,6 +147,11 @@ const IntegrationDetail: React.FC = () => {
       toast.info(`Executing ${action.label}...`);
       const response = await integrationService.executeAction(id, currentPatient.id, action.id);
       toast.success(response.message || "Action completed successfully");
+      // If the action returned structured display blocks, show them in the
+      // result modal. Otherwise the toast above is enough (backwards compat).
+      if (response.results && Array.isArray(response.results) && response.results.length > 0) {
+        setActionResult({ result: response, label: action.label });
+      }
       await loadDetails();
     } catch (error: any) {
       toast.error(error.response?.data?.detail || "Action failed");
@@ -586,6 +594,14 @@ const IntegrationDetail: React.FC = () => {
         <IntegrationDocsModal
           domain={details.domain}
           onClose={() => setShowDocs(false)}
+        />
+      )}
+
+      {actionResult && (
+        <ActionResultModal
+          result={actionResult.result}
+          actionLabel={actionResult.label}
+          onClose={() => setActionResult(null)}
         />
       )}
     </div>
