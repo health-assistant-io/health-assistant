@@ -100,10 +100,15 @@ const Integrations: React.FC = () => {
                       <XCircle className="h-6 w-6 text-gray-500 mr-3" />
                     )}
                     <div>
-                      <div className="flex items-center gap-2">
-                        <Link to={`/settings/integrations/${integration.id}`} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 hover:underline">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Link to={`/settings/integrations/${integration.id}`} className="text-base font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 hover:underline">
                           {integration.instance_name || manifest?.name || integration.domain}
                         </Link>
+                        {integration.instance_name && (
+                           <span className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-full whitespace-nowrap">
+                             via {manifest?.name || integration.domain}
+                           </span>
+                        )}
                         {manifest?.access_type && getAccessIcon(manifest.access_type)}
                       </div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
