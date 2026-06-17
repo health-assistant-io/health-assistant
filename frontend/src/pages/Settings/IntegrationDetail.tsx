@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { integrationService, CustomAction } from '../../services/integrationService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -14,13 +14,20 @@ import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 const IntegrationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { currentPatient } = usePatientStore();
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings'>('overview');
+  
+  const tabParam = searchParams.get('tab') as 'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings' | null;
+  const activeTab = tabParam || 'overview';
+
+  const handleTabChange = (tabId: string) => {
+    setSearchParams({ tab: tabId });
+  };
 
   type SortColumn = 'date' | 'sync_time' | 'metric' | 'value';
   type SortDirection = 'asc' | 'desc';
@@ -240,7 +247,7 @@ const IntegrationDetail: React.FC = () => {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => handleTabChange(tab.id)}
             className={`px-6 py-2 text-sm font-bold rounded-xl whitespace-nowrap transition-all ${
               activeTab === tab.id 
                 ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' 
