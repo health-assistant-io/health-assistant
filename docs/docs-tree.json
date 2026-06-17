@@ -23,8 +23,7 @@
     "category": "AI & Intelligence",
     "icon": "Bot",
     "items": [
-      { "id": "ai-system", "file": "AI_SYSTEM.md", "title": "AI Architecture" },
-      { "id": "ai-provider-implementation", "file": "AI_PROVIDER_IMPLEMENTATION.md", "title": "Provider Implementation" },
+      { "id": "ai-system", "file": "AI_SYSTEM.md", "title": "AI System & Configuration" },
       { "id": "ai-provider-tests", "file": "AI_PROVIDER_TESTS.md", "title": "Testing AI Providers" }
     ]
   },
