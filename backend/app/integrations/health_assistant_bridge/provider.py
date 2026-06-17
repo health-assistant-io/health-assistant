@@ -256,7 +256,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.models.telemetry_model import TelemetryDataModel
         from app.models.examination_model import ExaminationModel
         from app.models.examination_category import ExaminationCategory
-        from app.models.organization_model import OrganizationModel
+        from app.models.fhir.organization import OrganizationModel
         from app.models.user_integration import IntegrationSyncLog
         from app.services.fhir_service import map_observations_to_biomarkers
         import uuid
@@ -312,14 +312,19 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                         cat_id = None
                         if client_exam.category:
                             cat_stmt = select(ExaminationCategory).where(
-                                ExaminationCategory.tenant_id == integration.tenant_id,
                                 ExaminationCategory.name == client_exam.category
                             )
                             cat = (await db.execute(cat_stmt)).scalar_one_or_none()
                             if not cat:
+                                import re
+                                import uuid
+                                base_slug = re.sub(r'[^a-z0-9]+', '-', client_exam.category.lower()).strip('-')
+                                slug = f"{base_slug}-{str(uuid.uuid4())[:8]}"
                                 cat = ExaminationCategory(
                                     tenant_id=integration.tenant_id,
                                     name=client_exam.category,
+                                    slug=slug,
+                                    color="#6366f1"
                                 )
                                 db.add(cat)
                                 await db.flush()
