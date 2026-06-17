@@ -28,6 +28,22 @@ export interface CustomAction {
   style: 'primary' | 'danger' | 'warning' | 'default';
 }
 
+export interface IntegrationDocsTreeItem {
+  id: string;
+  file: string;
+  title: string;
+}
+
+export interface IntegrationDocsTreeCategory {
+  category: string;
+  items: IntegrationDocsTreeItem[];
+}
+
+export interface IntegrationDocumentation {
+  markdown: string;
+  tree?: IntegrationDocsTreeCategory[];
+}
+
 export const integrationService = {
   getAvailable: async (): Promise<IntegrationManifest[]> => {
     const response = await api.get('/integrations/available');
@@ -44,8 +60,9 @@ export const integrationService = {
     return response.data;
   },
 
-  getDocumentation: async (domain: string): Promise<{ markdown: string }> => {
-    const response = await api.get(`/integrations/${domain}/documentation`);
+  getDocumentation: async (domain: string, file?: string): Promise<IntegrationDocumentation> => {
+    const url = file ? `/integrations/${domain}/documentation?file=${encodeURIComponent(file)}` : `/integrations/${domain}/documentation`;
+    const response = await api.get(url);
     return response.data;
   },
 
