@@ -71,7 +71,7 @@ async def get_integration_documentation(domain: str, file: str = None) -> Dict[s
     if not any(m.get("domain") == domain for m in manifests):
         raise HTTPException(status_code=404, detail="Integration not found")
         
-    base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "integrations", domain)
+    base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "integrations", domain))
     
     # 1. Check for structured docs (docs-tree.json)
     docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
