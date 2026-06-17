@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Activity, ExternalLink } from 'lucide-react';
+import { Check, Activity, ExternalLink, Pill, FileText, FlaskConical } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DynamicIcon } from '../ui/DynamicIcon';
 import { AIBadge } from '../ui/AIBadge';
@@ -26,8 +26,13 @@ interface Examination {
     color?: string;
   };
   doctors?: Doctor[];
+  organization?: {
+    id: string;
+    name: string;
+  };
   diagnoses?: string[];
   medications?: any[];
+  observations?: any[];
   extraction_status?: string;
   extraction_progress?: number;
   error_message?: string;
@@ -68,6 +73,30 @@ export const ExaminationCard: React.FC<Props> = ({
 
   const styles = getCategoryStyles(examination);
   const category = getExamCategory(examination);
+
+  const getTitle = () => {
+    if (examination.organization?.name) {
+      return examination.organization.name;
+    }
+    if (examination.doctors?.length! > 0) {
+      return `${t('doctors.dr')} ${examination.doctors![0].name}${examination.doctors!.length > 1 ? ' +' : ''}`;
+    }
+    return t('examinations.clinical_examination');
+  };
+
+  const getCompactTitle = () => {
+    if (examination.organization?.name) {
+      return examination.organization.name;
+    }
+    if (examination.doctors?.length! > 0) {
+      return `${t('doctors.dr')} ${examination.doctors![0].name}`;
+    }
+    return t('examinations.clinical_examination');
+  };
+
+  const hasData = (examination.observations?.length ?? 0) > 0 || 
+                  (examination.medications?.length ?? 0) > 0 || 
+                  (examination.document_statuses?.length ?? 0) > 0;
 
   if (variant === 'compact') {
     return (
@@ -121,10 +150,10 @@ export const ExaminationCard: React.FC<Props> = ({
         
         <div className="flex items-center justify-between">
           <h4 className={CardStyles.title(isSelected)}>
-             {examination.doctors?.length! > 0 ? `${t('doctors.dr')} ${examination.doctors![0].name}` : t('examinations.clinical_examination')}
+             {getCompactTitle()}
           </h4>
           <span className={CardStyles.description}>
-            {stripHtml(examination.notes) || t('examinations.no_notes')}
+            {stripHtml(examination.notes) || (!hasData ? t('examinations.no_notes') : '')}
           </span>
         </div>
       </div>
@@ -190,12 +219,56 @@ export const ExaminationCard: React.FC<Props> = ({
           </div>
           
           <h4 className={CardStyles.title(isSelected)}>
-            {examination.doctors?.length! > 0 ? `${t('doctors.dr')} ${examination.doctors![0].name}${examination.doctors!.length > 1 ? ' +' : ''}` : t('examinations.clinical_examination')}
+            {getTitle()}
           </h4>
           
-          <div className={CardStyles.description}>
-            {stripHtml(examination.notes) || t('examinations.no_notes')}
-          </div>
+          {examination.diagnoses && examination.diagnoses.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1 mb-2">
+              {examination.diagnoses.slice(0, 2).map((diagnosis, idx) => (
+                <span key={idx} className="inline-block px-2 py-0.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-[10px] font-bold rounded-md border border-red-100 dark:border-red-800">
+                  {diagnosis}
+                </span>
+              ))}
+              {examination.diagnoses.length > 2 && (
+                <span className="inline-block px-2 py-0.5 bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-dark-muted text-[10px] font-bold rounded-md border border-gray-100 dark:border-dark-border">
+                  +{examination.diagnoses.length - 2}
+                </span>
+              )}
+            </div>
+          )}
+
+          {examination.notes ? (
+            <div className={CardStyles.description}>
+              {stripHtml(examination.notes)}
+            </div>
+          ) : !hasData && (
+            <div className={CardStyles.description}>
+              {t('examinations.no_notes')}
+            </div>
+          )}
+
+          {hasData && (
+            <div className="mt-3 flex items-center space-x-2">
+              {examination.observations && examination.observations.length > 0 && (
+                <span className="flex items-center text-[10px] font-bold text-gray-500 dark:text-dark-muted bg-gray-50 dark:bg-dark-bg px-2 py-1 rounded-md border border-gray-100 dark:border-dark-border">
+                  <FlaskConical className="w-3 h-3 mr-1 text-blue-500" />
+                  {examination.observations.length} Biomarkers
+                </span>
+              )}
+              {examination.medications && examination.medications.length > 0 && (
+                <span className="flex items-center text-[10px] font-bold text-gray-500 dark:text-dark-muted bg-gray-50 dark:bg-dark-bg px-2 py-1 rounded-md border border-gray-100 dark:border-dark-border">
+                  <Pill className="w-3 h-3 mr-1 text-purple-500" />
+                  {examination.medications.length} Medications
+                </span>
+              )}
+              {examination.document_statuses && examination.document_statuses.length > 0 && (
+                <span className="flex items-center text-[10px] font-bold text-gray-500 dark:text-dark-muted bg-gray-50 dark:bg-dark-bg px-2 py-1 rounded-md border border-gray-100 dark:border-dark-border">
+                  <FileText className="w-3 h-3 mr-1 text-orange-500" />
+                  {examination.document_statuses.length} Files
+                </span>
+              )}
+            </div>
+          )}
   
           {showTechnicalDetails && (
             <>
