@@ -5,6 +5,12 @@ export interface IntegrationManifest {
   name: string;
   version: string;
   integration_type: string[];
+  description?: string;
+  author?: string;
+  access_type?: 'Local' | 'Cloud' | 'Local & Cloud';
+  categories?: string[];
+  icon?: string;
+  dependencies?: string[];
 }
 
 export interface ActiveIntegration {

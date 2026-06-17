@@ -3,5 +3,10 @@
   "name": "Universal Webhook",
   "version": "1.0.0",
   "integration_type": ["push"],
+  "description": "Receive data from any app or custom script via HTTP POST with customizable parsers.",
+  "author": "Core",
+  "access_type": "Local",
+  "categories": ["Services", "Automation"],
+  "icon": "Webhook",
   "dependencies": []
 }

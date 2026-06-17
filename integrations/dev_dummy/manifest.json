@@ -3,5 +3,10 @@
   "name": "Developer Dummy Data",
   "version": "1.0.0",
   "integration_type": ["pull", "push"],
+  "description": "Simulates API flows, random errors, and fake biomarker data for core engine testing.",
+  "author": "Core",
+  "access_type": "Local",
+  "categories": ["Development", "Testing"],
+  "icon": "Bug",
   "dependencies": []
 }
