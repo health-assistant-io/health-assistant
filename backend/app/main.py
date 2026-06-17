@@ -135,7 +135,16 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
-    pass
+    try:
+        from app.core.integration_registry import integration_registry
+        for provider in integration_registry.get_all_providers():
+            try:
+                await provider.close()
+            except Exception as e:
+                logger.warning(f"Failed to close integration {provider.domain}: {e}")
+        logger.info("Integrations closed.")
+    except Exception as e:
+        logger.warning(f"Failed to close integrations on shutdown: {e}")
 
 
 # Create FastAPI app

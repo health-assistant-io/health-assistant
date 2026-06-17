@@ -166,9 +166,35 @@ async def submit_config_flow(
         validated_config = await config_flow.validate_input(payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-        
+
     # Extract instance_name if provided, otherwise default to domain
     instance_name = validated_config.pop("instance_name", domain.capitalize())
+
+    # Generic: let the config flow encrypt any secret fields it declared.
+    # No-op for integrations with no secret fields (no key required).
+    try:
+        validated_config = await config_flow.prepare_for_storage(validated_config)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Generic: enforce per-user instance cap if the config flow declared one.
+    if not integration_id and config_flow.max_instances_per_user is not None:
+        from sqlalchemy import func as _func
+        count_stmt = select(_func.count()).select_from(UserIntegration).where(
+            UserIntegration.user_id == current_user.user_id,
+            UserIntegration.provider == domain,
+        )
+        count_res = await db.execute(count_stmt)
+        existing_count = int(count_res.scalar() or 0)
+        cap = config_flow.max_instances_per_user
+        if existing_count >= cap:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"You already have {existing_count} instance(s) of "
+                    f"{domain} configured. The per-user limit is {cap}."
+                ),
+            )
 
     # Check if this is an update to an existing instance
     if integration_id:
@@ -340,12 +366,19 @@ async def get_integration_details(
     if provider and hasattr(provider, "get_custom_actions"):
         custom_actions = provider.get_custom_actions()
 
+    # Generic: let the config flow mask secret fields before returning to UI.
+    config_flow = integration_registry.get_config_flow(domain)
+    if config_flow:
+        returned_config = config_flow.prepare_for_read(integration.user_config or {})
+    else:
+        returned_config = integration.user_config
+
     return {
         "id": str(integration.id),
         "domain": integration.provider,
         "instance_name": integration.instance_name,
         "status": integration.status.value,
-        "user_config": integration.user_config,
+        "user_config": returned_config,
         "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat() if integration.last_synced_at else None,
         "sync_history": [
