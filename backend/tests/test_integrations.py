@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import uuid
 
 class MockUser:
@@ -101,6 +101,68 @@ async def test_get_config_flow_success(async_client: AsyncClient):
             assert response.json()["step_id"] == "test"
             
             app.dependency_overrides.clear()
+
+@pytest.mark.asyncio
+async def test_get_integration_details(async_client: AsyncClient):
+    from app.core.security import get_current_user
+    from app.main import app
+    from app.core.database import get_db
+
+    patient_uuid = uuid.uuid4()
+    integration_id = uuid.uuid4()
+    
+    mock_integration = MagicMock()
+    mock_integration.id = integration_id
+    mock_integration.provider = "dev_dummy"
+    mock_integration.instance_name = "Test Instance"
+    mock_integration.status.value = "active"
+    mock_integration.user_config = {}
+    mock_integration.is_debug_enabled = False
+    mock_integration.last_synced_at = None
+    
+    # Mock multiple query returns (1. Integration, 2. Logs, 3. Exposed, 4. Recent, 5. Synced Exams)
+    mock_db = AsyncMock()
+    mock_res_integration = MagicMock()
+    mock_res_integration.scalar_one_or_none.return_value = mock_integration
+    
+    mock_res_logs = MagicMock()
+    mock_res_logs.scalars().all.return_value = []
+    
+    mock_res_exposed = MagicMock()
+    mock_res_exposed.all.return_value = []
+    
+    mock_res_recent = MagicMock()
+    mock_res_recent.scalars().all.return_value = []
+    
+    mock_res_exams = MagicMock()
+    mock_res_exams.scalars().all.return_value = []
+    
+    mock_db.execute.side_effect = [
+        mock_res_integration, 
+        mock_res_logs, 
+        mock_res_exposed, 
+        mock_res_recent, 
+        mock_res_exams
+    ]
+
+    async def override_get_db():
+        yield mock_db
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_db] = override_get_db
+
+    with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
+        response = await async_client.get(f"/api/v1/integrations/instance/{integration_id}/details?patient_id={patient_uuid}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(integration_id)
+        assert data["instance_name"] == "Test Instance"
+        assert "synced_examinations" in data
+        assert "recent_data" in data
+        assert "exposed_items" in data
+
+    app.dependency_overrides = {}
 
 @pytest.mark.asyncio
 async def test_execute_custom_action_success(async_client: AsyncClient):
