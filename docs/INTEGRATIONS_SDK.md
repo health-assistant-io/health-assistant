@@ -17,6 +17,8 @@ Your integration must include three core files:
 2. `config_flow.py`
 3. `provider.py`
 
+Optionally, for complex integrations with multi-page setup guides or SDK references, you can include a `docs/` folder containing a `docs-tree.json` to define a navigation hierarchy.
+
 ### Step 1: `manifest.json`
 Defines the metadata of your integration.
 
