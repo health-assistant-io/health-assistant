@@ -172,6 +172,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
           source: {
             documentId: obs.document_id || '',
             filename: 'Laboratory Result',
+            examinationId: obs.examination_id || undefined,
             date: obs.effective_datetime
           },
           definitionId: obs.biomarker_id || null,
@@ -316,7 +317,9 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
     // Deduplicate exact same measurements from the same examination context
     const uniqueMap = new Map<string, BiomarkerObservation>();
     extracted.forEach(b => {
-      const uniqueKey = `${b.slug}-${b.value.raw}-${b.source.documentId}`;
+      // Use examinationId if available, otherwise fallback to date for flat telemetry
+      const contextId = b.source.examinationId || (b.source.date ? b.source.date.split('T')[0] : 'unknown-date');
+      const uniqueKey = `${b.slug}-${b.value.raw}-${contextId}`;
       if (!uniqueMap.has(uniqueKey)) {
         uniqueMap.set(uniqueKey, b);
       }
