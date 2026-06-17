@@ -65,7 +65,7 @@ async def test_handle_api_request_map(mock_handle_map, provider, integration_moc
     assert result == {"mappings": []}
 
 @pytest.mark.asyncio
-@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_observations")
+@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
 async def test_handle_api_request_sync(mock_save, provider, integration_mock):
     request_mock = AsyncMock()
     request_mock.json.return_value = {
