@@ -90,6 +90,8 @@ class ExaminationSummaryResponse(BaseModel):
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []
+    observation_count: Optional[int] = 0
+    medication_count: Optional[int] = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
