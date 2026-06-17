@@ -1,4 +1,4 @@
-# Health Assistant AI System Architecture
+# AI System & Configuration Guide
 
 This document describes the design, configuration, and extensibility of the AI processing system in Health Assistant.
 
@@ -22,18 +22,59 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 
 ## 2. Configuration & Model Resolution
 
-All AI tasks in Health Assistant are database-driven. You can configure which model handles which task in the UI at `/settings/ai-config`.
+Health Assistant uses a strict, database-driven configuration for all AI processors. This ensures consistency and auditability across multitenant deployments.
+
+### Data Models
+- **Providers:** Define the API endpoint and credentials (e.g., OpenAI, custom vLLM server).
+- **Models:** Define the specific model string (e.g., `gpt-4o`, `gemini-1.5-pro`), context window (`max_tokens`), and `temperature`. Multiple models can belong to a single provider.
+- **Task Assignments:** Map specific application tasks (e.g., `ocr`, `nlp`, `medication_interaction`) to a specific Provider + Model combination.
 
 ### Resolution Logic
 When a task (e.g., `ocr`) is executed for a specific `tenant_id`:
-1. **Tenant Assignment**: Check for a specific `AITaskAssignment` for that tenant and task type.
-2. **Global Assignment**: If none, check for a system-wide `AITaskAssignment` (where `tenant_id` is NULL).
-3. **Global Default Fallback**: If no specific assignment exists, look for an assignment with the task type `default`.
-4. **Environment Fallback**: If no database configuration exists, fall back to `.env` settings (`OPENAI_API_KEY`, etc.).
+1. **Tenant Assignment**: Check for a specific task assignment for that tenant and task type.
+2. **Global Assignment**: If none, check for a system-wide task assignment (where `tenant_id` is NULL).
+3. **Global Default Fallback**: Look for an assignment with the task type `default`.
+
+*Note: While database configuration is strongly recommended for production, the processors (OCR and NLP) will safely fall back to environment variables (e.g., `OPENAI_API_KEY`, `OCR_PROVIDER`) if no database assignments are found.*
+
+### UI Management
+Administrators can manage AI settings via the UI at `/settings/ai-config`:
+1. **Add a Provider:** Specify the API Base URL and API Key.
+2. **Add Models:** For each provider, define available models, token limits, and desired temperature (e.g., `0.7` for NLP, `0.0` for structured extraction).
+3. **Assign Tasks:** Map system tasks to the desired model.
 
 ---
 
-## 3. How to Create New AI Functionalities
+## 3. Generic Processors (Dependency Injection)
+
+Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are designed to be provider-agnostic. They receive a pre-configured `BaseChatModel` from the factory.
+
+### Supported Providers (via LangChain)
+- **OpenAI-Compatible APIs:** Native support (Vision + Structured Output + Tool Calling). This includes direct OpenAI usage, or Local LLMs (vLLM, Ollama, etc.) by configuring the `api_base` in the UI.
+- **Anthropic**: Support via `langchain-anthropic` (requires adding dependency).
+
+---
+
+## 4. Agentic Chatbot Architecture
+
+Health Assistant features a deeply integrated Agentic AI Copilot designed to provide interactive clinical insights. 
+
+### Tool-Calling Capabilities
+The `ChatbotTools` class dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id`. These tools allow the LLM to:
+- **Search Available Biomarkers:** Discover metrics, slugs, and data types (Telemetry vs Clinical) using Regex support.
+- **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling.
+- Read raw OCR document extractions.
+- Fetch recent biomarker values and historical trends (for discrete clinical labs).
+- Query active medications and catalogs.
+- Look up specific clinical visit details and notes.
+- Write updates to examination notes.
+
+### Streaming & Context Awareness
+The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline citations linking back to the precise clinical entities.
+
+---
+
+## 5. How to Create New AI Functionalities
 
 ### Step 1: Define the Schema
 All structured AI outputs must be defined as Pydantic models in `backend/app/schemas/ai_nlp.py`.
@@ -72,48 +113,7 @@ async def summarize_radiology(self, document_id: str):
 
 ---
 
-## 4. Generic Processors (Dependency Injection)
-
-Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are designed to be provider-agnostic. They receive a pre-configured `BaseChatModel` from the factory.
-
-### Supported Providers (via LangChain)
-- **OpenAI**: Native support (Vision + Structured Output + Tool Calling).
-- **Anthropic**: Support via `langchain-anthropic` (requires adding dependency).
-- **Local LLMs**: Any provider supporting OpenAI-compatible APIs (vLLM, Ollama, etc.) can be used by setting the `api_base` in the AI Configuration UI.
-
----
-
-## 5. Agentic Chatbot Architecture
-
-Health Assistant features a deeply integrated Agentic AI Copilot designed to provide interactive clinical insights. 
-
-### Tool-Calling Capabilities
-The `ChatbotTools` class (in `backend/app/services/ai_chatbot_tools.py`) dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id`. These tools allow the LLM to:
-- **Search Available Biomarkers:** Discover metrics, slugs, and data types (Telemetry vs Clinical) using Regex support.
-- **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling.
-- Read raw OCR document extractions.
-- Fetch recent biomarker values and historical trends (for discrete clinical labs).
-- Query active medications and catalogs.
-- Look up specific clinical visit details and notes.
-- Write updates to examination notes.
-
-### Streaming & Context Awareness
-The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline `[Ref: type=uuid]` citations linking back to the precise clinical entities.
-
----
-
-## 6. AI Configuration Hierarchy
-
-Health Assistant uses a multi-tiered resolution system for AI settings (like model selection or the reasoning loop limit):
-
-1. **User Scope:** Personal overrides.
-2. **Tenant Scope:** Organization-wide settings stored in `Tenant.settings`.
-3. **System DB Scope:** Global defaults stored in the `system_settings` table, manageable via the Admin UI.
-4. **Environment Fallback:** Hardcoded defaults in `.env` and `config.py`.
-
----
-
-## 7. Background Task Patterns
+## 6. Background Task Patterns
 
 We use an `@async_task` decorator to bridge Celery's synchronous execution with FastAPI's asynchronous logic:
 
