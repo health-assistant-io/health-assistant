@@ -93,15 +93,22 @@ Health Assistant/
 |-----------|---------|--------|
 | `api/v1/endpoints/` | Fast API routing controllers | Complete |
 | `core/` | Configuration, security, DB connections | Complete |
-| `integrations/` | Connectors SDK and External Webhooks | Complete |
 | `models/` | SQLAlchemy mappings & FHIR representations | Complete |
 | `schemas/` | Pydantic types for request/response bodies | Complete |
 | `services/` | Primary business logic / database interactions | Complete |
-| `integrations/` | Connectors SDK and External Webhooks | Moved to root |
 | `processors/` | Abstracted AI pipeline (OCR -> NLP -> Logic) | Complete |
 | `workers/` | Asynchronous Celery task processing | Complete |
 | `tests/` | Backend test suite | Complete |
 | `TODO` | Biomarker-Clinical Event Binding API (from `DEVELOPMENT_PLAN.md`) | TODO |
+
+### Integrations (Root Level)
+
+| Directory | Purpose | Status |
+|-----------|---------|--------|
+| `sdk/` | Base Python classes (`BaseHealthProvider`, `BaseConfigFlow`) | Complete |
+| `webhook/` | Universal Webhook receiver for Tasker, Shortcuts, etc. | Complete |
+| `health_assistant_bridge/`| Official mobile app companion integration + TS/Py SDKs | Complete |
+| `dev_dummy/` | Developer testing integration (OAuth mock, error sim) | Complete |
 
 ### Frontend
 
