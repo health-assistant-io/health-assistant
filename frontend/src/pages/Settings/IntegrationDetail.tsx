@@ -331,11 +331,16 @@ const IntegrationDetail: React.FC = () => {
           </h3>
           {details.synced_examinations && details.synced_examinations.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-              {details.synced_examinations.map((exam: any) => (
-                <div key={exam.id}>
-                  <ExaminationCard examination={exam} />
-                </div>
-              ))}
+                {details.synced_examinations.map((exam: any) => (
+                  <div key={exam.id}>
+                    <ExaminationCard 
+                      examination={exam} 
+                      showOpenButton={false}
+                      onClick={() => navigate(`/examinations/${exam.id}`)}
+                      className="hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+                    />
+                  </div>
+                ))}
             </div>
           ) : (
              <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
