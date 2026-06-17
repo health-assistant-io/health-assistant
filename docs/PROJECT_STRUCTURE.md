@@ -8,50 +8,24 @@ Health Assistant/
 │   ├── alembic/                # Database migrations
 │   ├── app/
 │   │   ├── api/v1/endpoints/  # REST API endpoints
-│   │   │   ├── auth.py        # Authentication
-│   │   │   ├── users.py       # User management
-│   │   │   ├── tenants.py     # Tenant management
-│   │   │   ├── documents.py   # Document handling & processing
-│   │   │   ├── fhir.py        # FHIR resources (Patients, Observations)
-│   │   │   ├── examinations.py# Clinical visits & notes
-│   │   │   ├── clinical_events.py # Longitudinal tracking
-│   │   │   ├── wearable.py    # Wearable data
-│   │   │   ├── alerts.py      # Alert management
-│   │   │   ├── analytics.py   # Analytics & dashboard stats
-│   │   │   └── ai_*.py        # AI configuration & assistance
 │   │   ├── core/              # Core utilities
-│   │   │   ├── config.py      # Application settings
-│   │   │   ├── security.py    # JWT, presigned URLs
-│   │   │   ├── database.py    # SQLAlchemy async
-│   │   │   └── seeds/         # JSON schemas for event metadata
-│   │   ├── integrations/      # Integrations SDK and dummy services
 │   │   ├── models/            # Database models (SQLAlchemy 2.0)
-│   │   │   ├── fhir/          # FHIR models (Patient, Observation, Medication)
-│   │   │   ├── user.py        # Identity & Auth
-│   │   │   ├── tenant.py      # Multi-tenant isolation
-│   │   │   ├── examination_model.py # Clinical Visits
-│   │   │   └── chat_model.py  # Chat Sessions & Messages
 │   │   ├── processors/        # AI/NLP processing pipeline
-│   │   │   ├── ocr/           # OpenAI Vision, Tesseract
-│   │   │   ├── nlp/           # LangChain extractors
-│   │   │   └── importers/     # Data ingestion
 │   │   ├── schemas/           # Pydantic validation schemas
-│   │   │   └── fhir/          # FHIR spec validation
 │   │   ├── services/          # Business logic
-│   │   │   ├── document_service_db.py # Safe document operations
-│   │   │   ├── fhir_service.py # FHIR processing
-│   │   │   ├── ai_assistance_service.py # AI agent processing
-│   │   │   ├── ai_chatbot_tools.py # Langchain tools
-│   │   │   └── integrations/  # Integration syncing services
 │   │   ├── utils/             # Helpers
 │   │   ├── workers/           # Celery background tasks
-│   │   │   ├── celery_app.py  # Redis/Celery configuration
-│   │   │   └── tasks.py       # Async jobs (OCR, triggers)
 │   │   └── main.py            # FastAPI application
 │   ├── scripts/               # DB maintenance & recategorization scripts
 │   ├── tests/                 # Unit tests
 │   ├── requirements.txt       # Python dependencies
 │   └── pyproject.toml         # Project metadata
+│
+├── integrations/              # External Integrations & Connectors (Python & TS SDKs)
+│   ├── sdk/                   # Base provider interfaces
+│   ├── webhook/               # Generic webhook handler
+│   ├── health_assistant_bridge/ # Mobile app bridge
+│   └── ...
 │
 ├── frontend/                  # React 18 / Vite / TypeScript frontend
 │   ├── src/
@@ -123,6 +97,7 @@ Health Assistant/
 | `models/` | SQLAlchemy mappings & FHIR representations | Complete |
 | `schemas/` | Pydantic types for request/response bodies | Complete |
 | `services/` | Primary business logic / database interactions | Complete |
+| `integrations/` | Connectors SDK and External Webhooks | Moved to root |
 | `processors/` | Abstracted AI pipeline (OCR -> NLP -> Logic) | Complete |
 | `workers/` | Asynchronous Celery task processing | Complete |
 | `tests/` | Backend test suite | Complete |

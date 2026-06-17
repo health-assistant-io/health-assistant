@@ -6,7 +6,7 @@ from typing import Dict, Any, Type, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.system_integration import SystemIntegration
-from app.integrations.base import BaseHealthProvider, BaseConfigFlow
+from integrations.base import BaseHealthProvider, BaseConfigFlow
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class IntegrationRegistry:
         self._providers: Dict[str, BaseHealthProvider] = {}
         self._config_flows: Dict[str, BaseConfigFlow] = {}
         self._manifests: Dict[str, dict] = {}
-        self._base_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "integrations")
+        self._base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "..", "integrations")
 
     async def initialize(self, db: AsyncSession):
         logger.info("Initializing Integration Registry...")
@@ -53,8 +53,8 @@ class IntegrationRegistry:
     async def _load_integration(self, domain: str):
         try:
             # Dynamically import the modules
-            provider_module = importlib.import_module(f"app.integrations.{domain}.provider")
-            config_flow_module = importlib.import_module(f"app.integrations.{domain}.config_flow")
+            provider_module = importlib.import_module(f"integrations.{domain}.provider")
+            config_flow_module = importlib.import_module(f"integrations.{domain}.config_flow")
             
             # Find the classes
             provider_class = self._find_class_by_base(provider_module, BaseHealthProvider)

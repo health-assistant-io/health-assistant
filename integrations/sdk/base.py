@@ -5,7 +5,7 @@ import httpx
 import asyncio
 import json
 
-from app.integrations.base import (
+from integrations.base import (
     BaseHealthProvider as CoreBaseHealthProvider,
     BaseConfigFlow as CoreBaseConfigFlow
 )

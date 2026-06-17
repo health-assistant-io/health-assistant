@@ -3,7 +3,7 @@ import datetime
 from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
 
-from app.integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.user_integration import UserIntegration
 from app.schemas.ai_nlp import MapResponsePayload, MappedMetric
 
@@ -43,7 +43,7 @@ async def test_handle_api_request_status(provider, integration_mock):
     assert "last_synced_at" in result
 
 @pytest.mark.asyncio
-@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._handle_map_request")
+@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._handle_map_request")
 async def test_handle_api_request_map(mock_handle_map, provider, integration_mock):
     request_mock = AsyncMock()
     request_mock.json.return_value = {
@@ -65,7 +65,7 @@ async def test_handle_api_request_map(mock_handle_map, provider, integration_moc
     assert result == {"mappings": []}
 
 @pytest.mark.asyncio
-@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
+@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
 async def test_handle_api_request_sync(mock_save, provider, integration_mock):
     request_mock = AsyncMock()
     request_mock.json.return_value = {
@@ -97,7 +97,7 @@ async def test_handle_api_request_sync(mock_save, provider, integration_mock):
     assert mock_save.called
 
 @pytest.mark.asyncio
-@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
+@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
 async def test_handle_api_request_sync_examinations(mock_save, provider, integration_mock):
     request_mock = AsyncMock()
     request_mock.json.return_value = {
@@ -138,7 +138,7 @@ async def test_handle_api_request_sync_examinations(mock_save, provider, integra
 
 @pytest.mark.asyncio
 async def test_parse_records(provider, integration_mock):
-    from app.integrations.health_assistant_bridge.provider import ClientRecord
+    from integrations.health_assistant_bridge.provider import ClientRecord
     
     builder = provider.create_observation_builder(integration_mock)
     
@@ -167,9 +167,9 @@ async def test_parse_records(provider, integration_mock):
     assert obs.performer[0]["reference"] == f"Integration/{integration_mock.id}"
 
 @pytest.mark.asyncio
-@patch("app.integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider")
+@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider")
 async def test_handle_map_request_internal(mock_provider, provider, integration_mock):
-    from app.integrations.health_assistant_bridge.provider import MapRequestPayload
+    from integrations.health_assistant_bridge.provider import MapRequestPayload
     from app.schemas.ai_nlp import MetricMappingRequest
     
     # We will mock the DB call internally

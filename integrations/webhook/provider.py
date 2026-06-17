@@ -1,7 +1,7 @@
 import logging
 import datetime
 from typing import List, Any, Dict
-from app.integrations.sdk import BaseHealthProvider
+from integrations.sdk import BaseHealthProvider
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
 from .parsers import get_parser

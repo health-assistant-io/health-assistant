@@ -2,7 +2,7 @@ from typing import Any, List, Dict
 import datetime
 from .base import BaseWebhookParser
 from app.schemas.fhir.observation import ObservationCreate
-from app.integrations.sdk.observation_builder import ObservationBuilder
+from integrations.sdk.observation_builder import ObservationBuilder
 import logging
 
 logger = logging.getLogger(__name__)
