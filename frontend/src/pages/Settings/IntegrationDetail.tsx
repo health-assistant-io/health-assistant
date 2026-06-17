@@ -223,12 +223,12 @@ const IntegrationDetail: React.FC = () => {
               <Layers className="w-8 h-8 text-blue-600" />
             </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl font-black text-gray-900 dark:text-dark-text capitalize">
                   {details.instance_name || manifest?.name || details.domain.replace('_', ' ')}
                 </h1>
                 {details.instance_name && (
-                   <span className="px-2 py-0.5 mt-1 text-xs uppercase font-bold tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-full whitespace-nowrap">
+                   <span className="px-3 py-1 mt-1 text-xs uppercase font-bold tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-full whitespace-nowrap">
                      via {manifest?.name || details.domain}
                    </span>
                 )}
@@ -236,12 +236,12 @@ const IntegrationDetail: React.FC = () => {
               </div>
               
               {manifest?.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2 max-w-3xl">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 max-w-3xl">
                   {manifest.description}
                 </p>
               )}
 
-              <div className="flex items-center flex-wrap gap-2 mt-2">
+              <div className="flex items-center flex-wrap gap-3 mt-3">
                 {manifest?.author === 'Core' ? (
                   <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white bg-blue-600 rounded">
                     OFFICIAL
