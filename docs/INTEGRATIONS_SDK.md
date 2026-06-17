@@ -58,6 +58,11 @@ Defines the metadata of your integration.
   "name": "Notify for Xiaomi",
   "version": "1.0.0",
   "integration_type": ["push"], 
+  "description": "Receive push notifications directly from Xiaomi wearables.",
+  "author": "Community",
+  "access_type": "Local & Cloud",
+  "categories": ["Wearables", "Notifications"],
+  "icon": "Watch",
   "dependencies": []
 }
 ```

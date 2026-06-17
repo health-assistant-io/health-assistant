@@ -2,9 +2,12 @@
   "domain": "health_assistant_bridge",
   "name": "Health Assistant Bridge",
   "version": "1.0.0",
-  "integration_type": [
-    "push"
-  ],
+  "integration_type": ["push"],
+  "description": "Connect mobile apps and custom clients seamlessly using the official Python or TS SDKs.",
+  "author": "Core",
+  "access_type": "Cloud",
+  "categories": ["Mobile", "Services"],
+  "icon": "Smartphone",
   "dependencies": [],
   "sdks": {
     "python": "1.2.0",
