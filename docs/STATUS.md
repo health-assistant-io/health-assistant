@@ -23,6 +23,7 @@
 - Anomaly detector service (Reference range based)
 - Medication interactor service
 - Centralized semantic versioning manager
+- **Export & Import (backup) system** — FHIR R4B Bundle + BagIt-style ZIP exports at patient/group/system scope; validated imports with SHA256 manifest verification and cross-tenant id remapping (see [EXPORT_IMPORT.md](EXPORT_IMPORT.md)). Admin-only UI at `/settings/export-import` (export form, drag-and-drop restore, live job polling, download).
 
 #### Frontend
 - React 18 app with Vite & TypeScript
@@ -33,6 +34,7 @@
 - Zustand state management
 - Notification Center & PWA Push support
 - Document gallery and clinical timeline
+- **Export & Import UI** (`/settings/export-import`, admin-only) — create exports, restore from ZIP/JSON, live job polling, download
 
 ### ⚠️ In Progress
 - Advanced anomaly detection algorithms (Statistical)
@@ -44,7 +46,7 @@
 ### 📅 Roadmap / Future Tasks
 1. **Real-time Notifications**: Implement WebSocket support for live document processing updates.
 2. **Advanced Analytics**: Multi-axis charts for trend visualization.
-3. **Data Portability**: Comprehensive patient history export (PDF/JSON).
+3. **Data Portability**: Comprehensive patient history export (PDF/JSON). — *Partially delivered: FHIR Bundle + ZIP backup export/import landed (see [EXPORT_IMPORT.md](EXPORT_IMPORT.md)); PDF report export still pending.*
 4. **Testing**: Add E2E tests using Playwright or Cypress.
 5. **Mobile Sync**: Headless mobile sync architecture for wearable data.
 6. **Biomarker Insights**: Deeper clinical insights and correlations (See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)).

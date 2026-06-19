@@ -99,6 +99,7 @@ Health Assistant/
 | `processors/` | Abstracted AI pipeline (OCR -> NLP -> Logic) | Complete |
 | `workers/` | Asynchronous Celery task processing | Complete |
 | `tests/` | Backend test suite | Complete |
+| `services/export_service.py`, `services/import_service.py`, `services/fhir_converter.py`, `api/v1/endpoints/export.py`, `api/v1/endpoints/import_data.py` | Export & Import (backup) — FHIR R4B Bundle + BagIt-style ZIP at patient/group/system scope; see [EXPORT_IMPORT.md](EXPORT_IMPORT.md) | Complete |
 | `TODO` | Biomarker-Clinical Event Binding API (from `DEVELOPMENT_PLAN.md`) | TODO |
 
 ### Integrations (Root Level)

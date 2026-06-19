@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Export & Import (Backup) System**: Comprehensive data export and import at patient/group/system scopes with three formats (FHIR R4B Bundle, full BagIt-style ZIP backup, catalog-only). Includes FHIR validation via `fhir.resources`, SHA256 manifest verification, cross-tenant id remapping, and a Celery-driven async job system. Admin-only UI at `/settings/export-import` with export configuration, drag-and-drop restore, live job polling, and detailed job modals. See [EXPORT_IMPORT.md](docs/EXPORT_IMPORT.md).
+- **FHIR Converter** (`services/fhir_converter.py`): Bidirectional ORM ↔ FHIR R4B conversion for Patient, Observation, MedicationStatement, AllergyIntolerance, DiagnosticReport, Organization, Practitioner.
+- **Modal component** (`components/ui/Modal.tsx`): Reusable accessible modal with Portal, ESC-to-close, overlay click, and scroll lock.
+
+### Changed
+- Replaced the stub `ImportService` (in-memory, non-persisting) with a real DB-backed service that validates FHIR resources and upserts by natural key.
+- `Observation.to_dict()` now includes `subject`, `performer`, `comment`, and `value_codeable_concept` (previously missing FHIR fields).
+- `DiagnosticReport` now has a `to_dict()` method (was missing).
+- Export/import services use the resolved `UPLOAD_DIR` from `document_service_db.py` (with fallback chain) instead of `settings.UPLOAD_DIR` directly.
+
+### Fixed
+- **Enum value mismatch**: `ExportScope` and `ExportType` enums now use `values_callable` so SQLAlchemy sends lowercase values (`patient`) matching the DB enum, not the uppercase names (`PATIENT`).
+
 ## [1.1.0] - 2026-06-14
 
 ### Added

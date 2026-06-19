@@ -700,6 +700,22 @@ GET /api/v1/analytics/reference-ranges
 - `PATCH /api/v1/notifications/{id}/read` - Mark read
 - `POST /api/v1/notifications/triggers` - Create manual trigger
 
+#### Export & Import (Backup)
+
+See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec.
+
+- `POST /api/v1/export` - Create an export job (body: `BackupRequest` with `scope` ∈ {patient, group, system}, `export_type` ∈ {fhir_only, full_backup, catalog_only}, optional `patient_ids`). Enqueues a Celery task; returns `ExportJobResponse`.
+- `GET /api/v1/export/jobs` - List export jobs for the current tenant.
+- `GET /api/v1/export/jobs/{job_id}` - Get export job status.
+- `GET /api/v1/export/jobs/{job_id}/download` - Download the generated file (FHIR Bundle `.fhir.json`, full-backup `.zip`, or catalog `.catalog.json`).
+- `POST /api/v1/import/backup` - Upload a ZIP or bare `bundle.json`/`catalog.json` (multipart `file`). Enqueues a Celery task; returns `ImportJobResponse`.
+- `GET /api/v1/import/jobs/{job_id}` - Get backup-import job status + `restore_result` (created/updated counts, `manifest_verified`, `fhir_validated`).
+- `POST /api/v1/import/fhir` - Synchronous FHIR Bundle import (smaller bundles).
+- `POST /api/v1/import/csv` - CSV import (legacy).
+- `POST /api/v1/import/ocr` - OCR extraction (legacy).
+
+**Role gating**: `patient` scope — any role (`USER` limited to a single own patient); `group` — `MANAGER`+; `system` — `ADMIN`+. `SYSTEM_ADMIN` bypasses all checks.
+
 ### ⚠️ Legacy Note
 
 Some internal service functions might still use fallback logic if specific external dependencies (like local OCR engines or AI providers) are not fully configured in the `.env` file. However, the core database CRUD and multi-tenancy logic are fully implemented.
