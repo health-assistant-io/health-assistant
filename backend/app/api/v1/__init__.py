@@ -9,6 +9,7 @@ from app.api.v1.endpoints.alerts import router as alerts_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.import_data import router as import_router
+from app.api.v1.endpoints.export import router as export_router
 from app.api.v1.endpoints.examinations import router as examinations_router
 from app.api.v1.endpoints.patient_layout import router as patient_layout_router
 from app.api.v1.endpoints.doctors import router as doctors_router
@@ -43,6 +44,7 @@ api_router.include_router(alerts_router)
 api_router.include_router(notifications_router)
 api_router.include_router(analytics_router)
 api_router.include_router(import_router)
+api_router.include_router(export_router)
 api_router.include_router(patient_layout_router)
 api_router.include_router(doctors_router)
 api_router.include_router(organizations_router)
