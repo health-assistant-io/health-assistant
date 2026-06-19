@@ -1,56 +1,103 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from typing import Optional
-from app.core.security import get_current_user
-from app.core.config import settings
-from app.services.import_service import import_service
-from app.schemas.import_data import (
-    ImportStatus,
-    CSVImportConfig,
-    FHIRImportConfig,
-    OCRImportConfig,
-    DataImportRequest,
-    DataImportResponse,
-)
 import tempfile
 from pathlib import Path
+from typing import Optional
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.schemas.backup import ImportJobResponse
+from app.schemas.import_data import (
+    CSVImportConfig,
+    DataImportResponse,
+    FHIRImportConfig,
+    ImportStatus,
+    OCRImportConfig,
+)
 from app.schemas.user import TokenData
+from app.services.import_service import ImportService
 
 router = APIRouter(prefix="/import", tags=["data-import"])
 
 
-@router.post("", response_model=DataImportResponse)
-async def import_data(
-    request: DataImportRequest,
+def _parse_uuid(v: str) -> UUID:
+    try:
+        return UUID(v)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid id")
+
+
+@router.post("/backup", response_model=ImportJobResponse)
+async def import_backup(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """
-    Import data from various formats
+    """Import a backup archive (ZIP) or a bare FHIR Bundle / catalog JSON.
 
-    Supports:
-    - CSV: Import lab results, vitals, etc.
-    - JSON: Import FHIR resources
-    - PDF/Image: OCR extraction using OpenAI-compatible APIs
+    Accepts:
+    - A ZIP produced by POST /export (full_backup or fhir_only wrapped) — verified via manifest.
+    - A bare `bundle.json` (FHIR R4B Bundle) — restored as a transaction.
+    - A bare `catalog.json` (biomarker/unit definitions) — upserted into the ontology catalog.
     """
+    tenant_id = _parse_uuid(str(current_user.tenant_id))
+    user_id = _parse_uuid(str(current_user.user_id))
+    svc = ImportService(db)
+
+    suffix = Path(file.filename or "").suffix or ".bin"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
     try:
-        job_id = await import_service.create_import_job(
-            user_id=str(current_user.user_id),
-            tenant_id=str(current_user.tenant_id),
-            format=request.format,
-            options=request.options,
-        )
+        job = await svc.create_import_job(user_id, tenant_id, source_filename=file.filename)
+        from app.workers.tasks import import_backup as import_backup_task
 
-        return DataImportResponse(
-            job_id=job_id,
-            status=ImportStatus.PENDING,
-            message=f"Import job created for {request.format.value} format",
-            estimated_time=30,
-        )
+        import_backup_task.delay(str(job.id), str(tmp_path), str(user_id))
+        return ImportJobResponse(**job.to_dict())
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fhir")
+async def import_fhir(
+    file: UploadFile = File(...),
+    patient_id: Optional[str] = Form(None),
+    validate_data: bool = Form(True, alias="validate"),
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Import FHIR resources from a JSON file (synchronous, smaller bundles)."""
+    filename = file.filename or ""
+    if not filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="File must be a JSON")
+
+    tmp_path = None
+    try:
+        tenant_id = str(current_user.tenant_id)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        svc = ImportService(db)
+        config = FHIRImportConfig(validate_profiles=validate_data)
+        result = await svc.import_from_fhir(
+            file_path=tmp_path,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            config=config,
         )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
 
 @router.post("/csv")
@@ -59,102 +106,35 @@ async def import_csv(
     patient_id: Optional[str] = Form(None),
     delimiter: str = Form(","),
     has_header: bool = Form(True),
+    db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Import data from CSV file"""
+    """Import data from a CSV file."""
     filename = file.filename or ""
     if not filename.endswith(".csv"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a CSV",
-        )
+        raise HTTPException(status_code=400, detail="File must be a CSV")
 
     tmp_path = None
     try:
-        # Get tenant from user payload
         tenant_id = str(current_user.tenant_id)
-
-        # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = Path(tmp.name)
-
-        # Create import config
-        config = CSVImportConfig(
-            delimiter=delimiter,
-            has_header=has_header,
-        )
-
-        # Process import
-        result = await import_service.import_from_csv(
+        config = CSVImportConfig(delimiter=delimiter, has_header=has_header)
+        svc = ImportService(db)
+        result = await svc.import_from_csv(
             file_path=tmp_path,
             tenant_id=tenant_id,
             patient_id=patient_id,
             config=config,
         )
-
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Clean up temp file
         if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
-
-
-@router.post("/fhir")
-async def import_fhir(
-    file: UploadFile = File(...),
-    patient_id: Optional[str] = Form(None),
-    validate_data: bool = Form(True, alias="validate"),
-    current_user: TokenData = Depends(get_current_user),
-):
-    """Import FHIR resources from JSON file"""
-    filename = file.filename or ""
-    if not filename.endswith(".json"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a JSON",
-        )
-
-    tmp_path = None
-    try:
-        # Get tenant from user payload
-        tenant_id = str(current_user.tenant_id)
-
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            content = await file.read()
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-
-        # Create import config
-        config = FHIRImportConfig(
-            validate_profiles=validate_data,
-        )
-
-        # Process import
-        result = await import_service.import_from_fhir(
-            file_path=tmp_path,
-            tenant_id=tenant_id,
-            patient_id=patient_id,
-            config=config,
-        )
-
-        return result
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
-    finally:
-        # Clean up temp file
-        if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
+            tmp_path.unlink(missing_ok=True)
 
 
 @router.post("/ocr")
@@ -164,51 +144,36 @@ async def import_ocr(
     model_name: Optional[str] = Form(None),
     api_base: Optional[str] = Form(None),
     extract_tables: bool = Form(True),
+    db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """
-    Import data using OCR from PDF or images
-
-    Supports OpenAI-compatible APIs:
-    - OpenAI Vision API
-    - Azure OpenAI
-    - Local LLM (Ollama, etc.)
-    - Any OpenAI-compatible endpoint
-    """
+    """Import data using OCR from PDF or images (OpenAI-compatible APIs)."""
     valid_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"]
     filename = file.filename or "unknown"
     if not any(filename.lower().endswith(ext) for ext in valid_extensions):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail=f"File must be one of: {', '.join(valid_extensions)}",
         )
 
     tmp_path = None
     try:
-        # Save uploaded file temporarily
         suffix = Path(filename).suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = Path(tmp.name)
-
-        # Create OCR config
         config = OCRImportConfig(
             provider=settings.OCR_PROVIDER,
             model_name=model_name or settings.OPENAI_MODEL,
             extract_tables=extract_tables,
         )
-
-        # Use custom API base if provided
         api_base_url = api_base or settings.OPENAI_API_BASE
         api_key = settings.OPENAI_API_KEY
         model = model_name or settings.OPENAI_MODEL
-
-        # Get tenant from user payload
         tenant_id = str(current_user.tenant_id)
-
-        # Process import
-        result = await import_service.import_from_ocr(
+        svc = ImportService(db)
+        result = await svc.import_from_ocr(
             file_path=tmp_path,
             tenant_id=tenant_id,
             patient_id=patient_id,
@@ -217,17 +182,28 @@ async def import_ocr(
             api_base=api_base_url,
             model=model,
         )
-
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Clean up temp file
         if tmp_path and tmp_path.exists():
-            tmp_path.unlink()
+            tmp_path.unlink(missing_ok=True)
+
+
+@router.get("/jobs/{job_id}", response_model=ImportJobResponse)
+async def get_import_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Get the status of a backup import job."""
+    jid = _parse_uuid(job_id)
+    tenant_id = _parse_uuid(str(current_user.tenant_id))
+    svc = ImportService(db)
+    job = await svc.get_job(jid, tenant_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    return ImportJobResponse(**job.to_dict())
 
 
 @router.get("/status/{job_id}")
@@ -235,30 +211,22 @@ async def get_import_status(
     job_id: str,
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get import job status"""
-    result = await import_service.get_import_status(job_id)
-
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Import job not found",
-        )
-
-    return result
+    """Legacy status endpoint (no DB lookup). Use GET /import/jobs/{job_id} for backup jobs."""
+    return {
+        "job_id": job_id,
+        "status": ImportStatus.COMPLETED,
+        "message": "Legacy in-memory jobs are no longer tracked. Use GET /import/jobs/{job_id}.",
+    }
 
 
-@router.delete("/status/{job_id}")
-async def cancel_import_job(
-    job_id: str,
+@router.post("", response_model=DataImportResponse)
+async def create_import_job(
+    format: str = Form(...),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Cancel import job"""
-    success = await import_service.cancel_import_job(job_id)
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot cancel job (already completed or not found)",
-        )
-
-    return {"message": "Import job cancelled"}
+    """Create an import job placeholder (legacy)."""
+    return DataImportResponse(
+        job_id="legacy",
+        status=ImportStatus.PENDING,
+        message=f"Use POST /import/backup, /import/fhir, /import/csv or /import/ocr for {format}.",
+    )

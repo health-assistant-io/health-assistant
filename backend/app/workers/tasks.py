@@ -842,3 +842,57 @@ async def migrate_biomarker_data(
         raise
     finally:
         await engine.dispose()
+
+
+@celery_app.task(bind=True, max_retries=0)
+@async_task
+async def export_backup(self, job_id_str: str):
+    """Run an export/backup job (FHIR-only, full ZIP, or catalog-only)."""
+    from uuid import UUID
+    from app.services.export_service import ExportService
+
+    job_id = UUID(job_id_str)
+    db, engine = get_async_session()
+    try:
+        async with db:
+            svc = ExportService(db)
+            await svc.run_export(job_id)
+        return {"job_id": job_id_str, "status": "completed"}
+    except Exception as e:
+        logger.exception(f"export_backup {job_id_str} failed: {e}")
+        return {"job_id": job_id_str, "status": "failed", "error": str(e)}
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(bind=True, max_retries=0)
+@async_task
+async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: str):
+    """Run a backup/restore import job from a ZIP or bare JSON file."""
+    from uuid import UUID
+    from app.services.import_service import ImportService
+
+    job_id = UUID(job_id_str)
+    owner_id = UUID(owner_id_str)
+    db, engine = get_async_session()
+    try:
+        async with db:
+            svc = ImportService(db)
+            result = await svc.run_import(job_id, archive_path, owner_id)
+        return {
+            "job_id": job_id_str,
+            "status": result.status.value,
+            "processed": result.processed_records,
+            "failed": result.failed_records,
+        }
+    except Exception as e:
+        logger.exception(f"import_backup {job_id_str} failed: {e}")
+        return {"job_id": job_id_str, "status": "failed", "error": str(e)}
+    finally:
+        await engine.dispose()
+        try:
+            from pathlib import Path as _Path
+
+            _Path(archive_path).unlink(missing_ok=True)
+        except Exception:
+            pass
