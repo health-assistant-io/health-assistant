@@ -34,6 +34,7 @@ import AboutPage from './pages/About/AboutPage';
 import Settings from './pages/Settings/Profile';
 import Integrations from './pages/Settings/Integrations';
 import IntegrationDetail from './pages/Settings/IntegrationDetail';
+import ExportImport from './pages/Settings/ExportImport';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import UserManagement from './pages/Admin/UserManagement';
@@ -223,6 +224,9 @@ function App() {
           <Route path="/settings/integrations" element={<Integrations />} />
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
           <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
+          {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
+            <Route path="/settings/export-import" element={<ExportImport />} />
+          )}
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Dashboard />} />
         </Route>

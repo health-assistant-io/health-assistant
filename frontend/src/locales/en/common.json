@@ -1155,5 +1155,9 @@
     "unlink": "Unlink",
     "unlink_confirm_patient": "Are you sure you want to unlink this patient profile from this user?",
     "unlink_confirm_doctor": "Are you sure you want to unlink this professional profile from this user?"
+  },
+  "backup": {
+    "title": "Export & Import",
+    "subtitle": "Back up data as FHIR Bundles or full archives; restore from a backup file"
   }
 }
