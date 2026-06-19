@@ -138,16 +138,21 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
     def to_dict(self):
         return {
             "id": str(self.id),
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "status": self.status,
             "category": self.category,
             "code": self.code,
+            "subject": self.subject,
             "effective_datetime": self.effective_datetime.isoformat()
             if self.effective_datetime
             else None,
             "value_quantity": self.value_quantity,
             "value_string": self.value_string,
+            "value_codeable_concept": self.value_codeableConcept,
             "reference_range": self.reference_range,
             "interpretation": self.interpretation,
+            "comment": self.comment,
+            "performer": self.performer,
             "biomarker_id": str(self.biomarker_id) if self.biomarker_id else None,
             "biomarker_slug": self.biomarker.slug if self.biomarker else None,
             "biomarker_info": self.biomarker.info if self.biomarker else None,
@@ -198,3 +203,21 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
         Index("idx_diagnostic_report_tenant_patient", "tenant_id", "subject"),
         Index("idx_diagnostic_report_tenant_date", "tenant_id", "effective_datetime"),
     )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "status": self.status,
+            "category": self.category,
+            "code": self.code,
+            "subject": self.subject,
+            "effective_datetime": self.effective_datetime.isoformat()
+            if self.effective_datetime
+            else None,
+            "issued": self.issued.isoformat() if self.issued else None,
+            "performer": self.performer,
+            "conclusion": self.conclusion,
+            "conclusion_code": self.conclusion_code,
+            "presented_form": self.presented_form,
+        }

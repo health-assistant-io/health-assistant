@@ -55,6 +55,7 @@ from .body_part import BodyPartModel
 from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
+from .export_import_job import ExportJobModel, ImportJobModel
 
 __all__ = [
     "Base",
@@ -114,4 +115,6 @@ __all__ = [
     "UserIntegration",
     "SystemIntegration",
     "SystemSetting",
+    "ExportJobModel",
+    "ImportJobModel",
 ]

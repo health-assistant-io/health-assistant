@@ -29,6 +29,7 @@ ecdsa==0.19.2
 email-validator==2.3.0
 Faker==40.23.0
 fastapi==0.136.3
+fhir.resources[all]==8.2.0
 fastapi-mail==1.6.4
 fastmcp==3.4.2
 flower==2.0.1
