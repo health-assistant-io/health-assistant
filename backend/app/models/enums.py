@@ -138,3 +138,23 @@ class IntegrationStatus(str, enum.Enum):
     EXPIRED = "EXPIRED"
     ERROR = "ERROR"
 
+
+class ExportScope(str, enum.Enum):
+    PATIENT = "patient"
+    GROUP = "group"
+    SYSTEM = "system"
+
+
+class ExportType(str, enum.Enum):
+    FHIR_ONLY = "fhir_only"
+    FULL_BACKUP = "full_backup"
+    CATALOG_ONLY = "catalog_only"
+
+
+class JobStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    PARTIAL = "PARTIAL"
+
