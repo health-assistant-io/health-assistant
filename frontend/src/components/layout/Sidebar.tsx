@@ -103,6 +103,7 @@ function Sidebar() {
         { path: '/settings/profile', labelKey: 'common.profile' },
         { path: '/settings/integrations', labelKey: 'common.integrations' },
         { path: '/settings/ai-config', labelKey: 'common.personal_ai_keys' },
+        { path: '/settings/export-import', labelKey: 'backup.title', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
         { path: '/notifications', labelKey: 'common.notifications' }
       ]
     },
