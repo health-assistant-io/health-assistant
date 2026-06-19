@@ -16,7 +16,8 @@
       { "id": "tenancy-and-user-management", "file": "TENANCY_AND_USER_MANAGEMENT.md", "title": "User Management" },
       { "id": "ontology-catalog", "file": "ONTOLOGY_CATALOG.md", "title": "Ontology & Catalog" },
       { "id": "notification-system", "file": "NOTIFICATION_SYSTEM.md", "title": "Notification System" },
-      { "id": "telemetry-and-aggregation", "file": "TELEMETRY_AND_AGGREGATION.md", "title": "Telemetry & Aggregation" }
+      { "id": "telemetry-and-aggregation", "file": "TELEMETRY_AND_AGGREGATION.md", "title": "Telemetry & Aggregation" },
+      { "id": "export-import", "file": "EXPORT_IMPORT.md", "title": "Export & Import (Backup)" }
     ]
   },
   {
