@@ -25,7 +25,6 @@ from sqlalchemy import select  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.core.encryption import (  # noqa: E402
-    ENCRYPTED_PREFIX,
     encrypt_secret,
     is_encrypted,
 )

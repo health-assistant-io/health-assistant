@@ -1,10 +1,7 @@
-from pydantic import BaseModel, ConfigDict, Field, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
-
-
-from enum import Enum
 
 
 from app.models.enums import AIScope

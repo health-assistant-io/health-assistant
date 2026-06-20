@@ -5,7 +5,6 @@ from app.core.security import get_current_user
 from app.models.enums import Role
 from app.api.v1.endpoints.utils import check_patient_access
 from app.services.fhir_service import (
-    get_patient,
     list_patients,
     create_patient,
     update_patient,
