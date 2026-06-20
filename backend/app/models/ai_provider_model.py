@@ -103,7 +103,9 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     # Relationship to provider
     provider = relationship("AIProviderModel", back_populates="models")
 
-    __table_args = (Index("idx_ai_models_provider_active", "provider_id", "is_active"),)
+    __table_args__ = (
+        Index("idx_ai_models_provider_active", "provider_id", "is_active"),
+    )
 
     def to_dict(self) -> dict:
         return {
