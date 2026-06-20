@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.services.fhir_helpers import FhirSerializationError
 
 # Configure logging
 setup_logging(log_name="backend", debug=settings.DEBUG)
@@ -164,6 +165,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"message": "Internal server error", "detail": str(exc)},
+    )
+
+
+@app.exception_handler(FhirSerializationError)
+async def fhir_validation_handler(request: Request, exc: FhirSerializationError):
+    return JSONResponse(
+        status_code=400,
+        content={"message": "FHIR validation failed", "detail": str(exc)},
     )
 
 

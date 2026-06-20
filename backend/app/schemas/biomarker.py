@@ -42,6 +42,15 @@ class BiomarkerUpdate(BaseModel):
     is_telemetry: Optional[bool] = None
     preferred_unit_id: Optional[UUID] = None
 
+class BiomarkerRemapRequest(BaseModel):
+    """Relink unmapped observations to a biomarker definition.
+
+    Observations are matched by their stored code.text against ``source_name``
+    (case-insensitive). Scope to a patient when ``patient_id`` is provided.
+    """
+    source_name: str
+    patient_id: Optional[UUID] = None
+
 class BiomarkerResponse(BiomarkerBase):
     id: UUID
     preferred_unit_id: Optional[UUID]

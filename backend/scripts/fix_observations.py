@@ -29,7 +29,8 @@ async def main():
                 exam = exam_query.scalar_one_or_none()
                 if exam and exam.examination_date:
                     # Update observation date
-                    new_date = datetime.combine(exam.examination_date, datetime.min.time())
+                    from datetime import timezone
+                    new_date = datetime.combine(exam.examination_date, datetime.min.time(), tzinfo=timezone.utc)
                     obs.effective_datetime = new_date
                     updated_count += 1
         

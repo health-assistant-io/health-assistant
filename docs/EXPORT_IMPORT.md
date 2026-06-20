@@ -26,7 +26,7 @@ Scopes mirror the FHIR [Bulk Data Access](https://hl7.org/fhir/uv/bulkdata/) lev
 |---|---|---|
 | `fhir_only` | `<job_id>.fhir.json` | A single **FHIR R4B `Bundle`** (`type: transaction`). Portable to any FHIR server. Resources: `Patient`, `Observation`, `MedicationStatement`, `AllergyIntolerance`, `DiagnosticReport`, `Organization`, `Practitioner`, `DocumentReference` (metadata only — no inline binaries). No telemetry, no integrations, no AI config. |
 | `full_backup` | `<job_id>.zip` | A **BagIt-style ZIP** containing the FHIR Bundle plus non-FHIR sidecars, raw document files, and a SHA256 manifest. Re-importing this ZIP restores the tenant/patient. |
-| `catalog_only` | `<job_id>.catalog.json` | Biomarker/unit definitions + clinical-event-type `metadata_schema` definitions. Cross-tenant portable (use to seed a new deployment). |
+| `catalog_only` | `<job_id>.catalog.json` | Biomarker/unit definitions, medication/allergy catalogs + clinical-event-type `metadata_schema` definitions. Cross-tenant portable (use to seed a new deployment). |
 
 ### ZIP layout (`full_backup`)
 
@@ -42,6 +42,8 @@ Scopes mirror the FHIR [Bulk Data Access](https://hl7.org/fhir/uv/bulkdata/) lev
 │   ├── clinical_events.json
 │   ├── clinical_event_types.json
 │   ├── biomarker_definitions.json
+│   ├── medication_catalog.json
+│   ├── allergy_catalog.json
 │   ├── documents.json         # document metadata + _archive_path mapping
 │   ├── telemetry.json         # group/system scope only (see §5)
 │   ├── integrations.json      # user_integrations incl. encrypted user_config + OAuth tokens

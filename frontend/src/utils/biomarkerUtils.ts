@@ -58,8 +58,7 @@ export const getStatusColorClass = (status: string): string => {
 /**
  * Formats medical units to properly display superscripts (e.g., 10^3 -> 10³).
  */
-export const formatUnit = (unit: string): string => {
-  if (!unit) return '';
+export const formatUnit = (unit: string): string => {  if (!unit) return '';
   
   const superscriptMap: Record<string, string> = {
     '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
@@ -71,4 +70,55 @@ export const formatUnit = (unit: string): string => {
   return unit.replace(/\^([0-9+\-=()n]+)/g, (_, p1) => {
     return p1.split('').map((char: string) => superscriptMap[char] || char).join('');
   });
+};
+
+/**
+ * Formats a biomarker numeric value to the configured decimal precision.
+ * Non-numeric / qualitative values are returned unchanged.
+ *
+ * Accepts either a single precision number (uniform) or a magnitude-aware
+ * profile that picks precision based on the absolute value's magnitude.
+ */
+export interface BiomarkerPrecisionProfile {
+  /** precision for |value| >= 30 */
+  default: number;
+  /** precision for 10 <= |value| < 30 */
+  below_30: number;
+  /** precision for 3 <= |value| < 10 */
+  below_10: number;
+  /** precision for 1 <= |value| < 3 */
+  below_3: number;
+  /** precision for |value| < 1 */
+  below_1: number;
+}
+
+export const getPrecisionForValue = (
+  value: number,
+  profile: BiomarkerPrecisionProfile | number
+): number => {
+  if (typeof profile === 'number') {
+    return _clampPrecision(profile);
+  }
+  const abs = Math.abs(value);
+  if (abs < 1) return _clampPrecision(profile.below_1);
+  if (abs < 3) return _clampPrecision(profile.below_3);
+  if (abs < 10) return _clampPrecision(profile.below_10);
+  if (abs < 30) return _clampPrecision(profile.below_30);
+  return _clampPrecision(profile.default);
+};
+
+const _clampPrecision = (p: any): number => {
+  const n = typeof p === 'number' && isFinite(p) ? p : 0;
+  return Math.max(0, Math.min(6, Math.round(n)));
+};
+
+export const formatBiomarkerValue = (
+  value: any,
+  precision: BiomarkerPrecisionProfile | number = 0
+): string => {
+  if (value === null || value === undefined || value === '') return '--';
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  if (!isFinite(num)) return String(value);
+  const p = getPrecisionForValue(num, precision);
+  return num.toFixed(p);
 };

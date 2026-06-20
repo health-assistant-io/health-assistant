@@ -41,9 +41,11 @@ export async function downloadExportFile(jobId: string, filename?: string): Prom
   document.body.removeChild(a);
 }
 
-export async function importBackupFile(file: File): Promise<ImportJob> {
+export async function importBackupFile(file: File, autoMapBiomarkers = true, useAiNormalization = false): Promise<ImportJob> {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('auto_map_biomarkers', String(autoMapBiomarkers));
+  formData.append('use_ai_normalization', String(useAiNormalization));
   const response = await api.post<ImportJob>('/import/backup', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

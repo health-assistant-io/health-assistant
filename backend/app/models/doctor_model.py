@@ -1,8 +1,9 @@
-from sqlalchemy import Column, String, ForeignKey, Table, UUID, Text
+from sqlalchemy import Column, String, ForeignKey, UUID, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
 from app.models.associations import examination_doctors, organization_doctors
+from app.services.fhir_helpers import build_fhir_resource, build_meta
 
 
 class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
@@ -50,3 +51,42 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
             "office_number": self.office_number,
             "office_details": self.office_details,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B Practitioner resource via fhir.resources (validated)."""
+        name = self.name or ""
+        name_parts = name.split(" ", 1)
+        given = [name_parts[0]] if name_parts[0] else []
+        family = name_parts[1] if len(name_parts) > 1 else (name_parts[0] or None)
+
+        telecom = []
+        if self.email:
+            telecom.append({"system": "email", "value": self.email})
+        if self.phone:
+            telecom.append({"system": "phone", "value": self.phone})
+        if self.telecom:
+            telecom = self.telecom
+
+        qualifications = []
+        if self.specialty or self.license_number:
+            q = {}
+            if self.specialty:
+                q["code"] = {"text": self.specialty}
+            if self.license_number:
+                q["identifier"] = [{"value": self.license_number}]
+            qualifications.append(q)
+
+        return build_fhir_resource(
+            "Practitioner",
+            {
+                "resourceType": "Practitioner",
+                "id": str(self.id),
+                "name": [{"family": family, "given": given, "text": name}]
+                if name
+                else None,
+                "qualification": qualifications or None,
+                "telecom": telecom or None,
+                "address": self.address,
+                "meta": build_meta(str(self.id)),
+            },
+        )

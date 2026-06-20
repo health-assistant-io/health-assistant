@@ -16,15 +16,17 @@ class FHIRMapper:
             "resourceType": "DiagnosticReport",
             "tenant_id": tenant_id,
             "status": "final",
-            "category": {
-                "coding": [
-                    {
-                        "system": "http://loinc.org",
-                        "code": "34108-1",
-                        "display": "Outpatient Note",
-                    }
-                ]
-            },
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://loinc.org",
+                            "code": "34108-1",
+                            "display": "Outpatient Note",
+                        }
+                    ]
+                }
+            ],
             "code": {
                 "coding": [
                     {

@@ -10,8 +10,10 @@ import remarkGfm from 'remark-gfm';
 
 import LineChart from '../charts/LineChart';
 import { BiomarkerObservation } from '../../types/biomarker';
-import { getStatusColorClass, isAbnormal, formatUnit } from '../../utils/biomarkerUtils';
+import { getStatusColorClass, isAbnormal, formatUnit, formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import { Perspective } from '../../hooks/useBiomarkers';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
+import { UnmappedBiomarkerMenu } from './UnmappedBiomarkerMenu';
 
 interface BiomarkerListProps {
   biomarkers?: BiomarkerObservation[];
@@ -38,6 +40,7 @@ interface BiomarkerListProps {
   dataMode?: 'raw' | 'normalized';
   onDataModeChange?: (mode: 'raw' | 'normalized') => void;
   hideDataModeToggle?: boolean;
+  onRemapped?: () => void;
 }
 
 /**
@@ -68,9 +71,11 @@ export const BiomarkerList = React.memo(({
   dataMode: dataModeProp,
   onDataModeChange: onDataModeChangeProp,
   hideDataModeToggle = false,
+  onRemapped,
 }: BiomarkerListProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const [selectedInfo, setSelectedInfo] = useState<BiomarkerObservation | null>(null);
   const [internalDataMode, setInternalDataMode] = useState<'raw' | 'normalized'>(initialDataMode);
   
@@ -224,7 +229,8 @@ export const BiomarkerList = React.memo(({
     const isNormal = !isHigh && !isLow;
 
     const valueColorClass = isHigh ? 'text-red-600' : (isLow ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text');
-    const targetId = marker.definitionId || marker.slug;
+    const targetId = marker.definitionId;
+    const isNavigable = !!targetId;
 
     return (
       <div 
@@ -235,14 +241,17 @@ export const BiomarkerList = React.memo(({
           showCharts ? 'min-h-[300px] sm:min-h-[340px]' : 'min-h-fit'
         }`}
       >
-        <div className={`flex justify-between items-start cursor-pointer ${compact ? 'mb-2' : 'mb-4'}`} onClick={() => navigate(`/biomarkers/details/${targetId}`)}>
+        <div className={`flex justify-between items-start ${isNavigable ? 'cursor-pointer' : ''} ${compact ? 'mb-2' : 'mb-4'}`} onClick={() => isNavigable && navigate(`/biomarkers/details/${targetId}`)}>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
-              <h3 className={`${compact ? 'text-base' : 'text-lg sm:text-xl'} font-black text-[#1a2b4b] dark:text-dark-text group-hover:text-blue-600 transition-colors leading-tight mr-2`}>{marker.displayName}</h3>
+              <h3 className={`${compact ? 'text-base' : 'text-lg sm:text-xl'} font-black text-[#1a2b4b] dark:text-dark-text ${isNavigable ? 'group-hover:text-blue-600' : ''} transition-colors leading-tight mr-2`}>{marker.displayName}</h3>
               {marker.isTelemetry && (
                 <div className="flex items-center justify-center p-1 mr-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-md" title="Telemetry/IoT Data">
                   <Activity className="w-3.5 h-3.5" />
                 </div>
+              )}
+              {marker.isUnmapped && (
+                <UnmappedBiomarkerMenu rawName={marker.displayName} onRemapped={onRemapped} />
               )}
               {marker.info && (
                 <button 
@@ -304,7 +313,7 @@ export const BiomarkerList = React.memo(({
         
         <div className={`flex items-baseline justify-between ${compact ? 'mb-0' : 'mb-4'}`}>
           <span className={`${compact ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'} font-black tracking-tight ${valueColorClass}`}>
-            {active.value}
+            {formatBiomarkerValue(active.value, precisionProfile)}
           </span>
           {showCharts && history.length > 1 && (
             <div className={`flex items-center text-[10px] font-bold ${change > 0 ? 'text-red-500' : 'text-green-500'} opacity-80`}>
@@ -383,18 +392,22 @@ export const BiomarkerList = React.memo(({
     const isLow = status.includes('low') || status === 'l';
 
     const valueColorClass = isHigh ? 'text-red-600' : (isLow ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text');
-    const targetId = marker.definitionId || marker.slug;
+    const targetId = marker.definitionId;
+    const isNavigable = !!targetId;
 
     return (
       <div key={marker.id} className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-4 flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-8 hover:shadow-md transition-all group relative">
-        <div className="w-full sm:w-[250px] flex items-center shrink-0 cursor-pointer" onClick={() => navigate(`/biomarkers/details/${targetId}`)}>
+        <div className={`w-full sm:w-[250px] flex items-center shrink-0 ${isNavigable ? 'cursor-pointer' : ''}`} onClick={() => isNavigable && navigate(`/biomarkers/details/${targetId}`)}>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
-              <h3 className="font-bold text-gray-900 dark:text-dark-text truncate hover:text-blue-600 leading-tight mr-2">{marker.displayName}</h3>
+              <h3 className={`font-bold text-gray-900 dark:text-dark-text truncate ${isNavigable ? 'hover:text-blue-600' : ''} leading-tight mr-2`}>{marker.displayName}</h3>
               {marker.isTelemetry && (
                 <div className="flex items-center justify-center p-1 mr-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-md" title="Telemetry/IoT Data">
                   <Activity className="w-3.5 h-3.5" />
                 </div>
+              )}
+              {marker.isUnmapped && (
+                <UnmappedBiomarkerMenu rawName={marker.displayName} onRemapped={onRemapped} />
               )}
               {marker.info && (
                 <button 
@@ -442,8 +455,8 @@ export const BiomarkerList = React.memo(({
 
         <div className="w-full sm:w-32 shrink-0">
           <div className="flex items-baseline space-x-1">
-             <span className={`text-xl font-black ${valueColorClass}`}>{active.value}</span>
-             <span className="text-[10px] font-bold text-gray-400">{formatUnit(active.unit)}</span>
+             <span className={`text-xl font-black ${valueColorClass}`}>{formatBiomarkerValue(active.value, precisionProfile)}</span>
+              <span className="text-[10px] font-bold text-gray-400">{formatUnit(active.unit)}</span>
           </div>
         </div>
 
@@ -553,30 +566,34 @@ export const BiomarkerList = React.memo(({
             </thead>
              <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
                  {markers.map((m: BiomarkerObservation) => {
-                   const active = getActiveData(m);
-                   return (
-                   <tr 
-                     key={m.id} 
-                     className="group hover:bg-gray-50/50 dark:hover:bg-dark-bg transition-colors cursor-pointer" 
-                     onClick={() => navigate(`/biomarkers/details/${m.definitionId || m.slug}`)}
-                   >
-                      <td className="px-8 py-5 whitespace-nowrap">
-                       <div className="flex items-center">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600 transition-colors">{m.displayName}</span>
-                          </div>
-                          {m.isTelemetry && (
-                            <div className="ml-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded p-0.5" title="Telemetry/IoT Data">
-                              <Activity className="w-3 h-3" />
-                            </div>
-                          )}
-                          {m.info && <Info className="w-3.5 h-3.5 ml-2 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setSelectedInfo(m); }} />}
-                       </div>
-                    </td>
+                    const active = getActiveData(m);
+                    const mNavigable = !!m.definitionId;
+                    return (
+                    <tr 
+                      key={m.id} 
+                      className={`group hover:bg-gray-50/50 dark:hover:bg-dark-bg transition-colors ${mNavigable ? 'cursor-pointer' : ''}`} 
+                      onClick={() => mNavigable && navigate(`/biomarkers/details/${m.definitionId}`)}
+                    >
+                       <td className="px-8 py-5 align-middle max-w-[300px]">
+                        <div className="flex items-center gap-2">
+                            <span className={`text-sm font-bold text-gray-900 dark:text-dark-text ${mNavigable ? 'group-hover:text-blue-600' : ''} transition-colors whitespace-normal break-words leading-snug min-w-0 flex-1`}>{m.displayName}</span>
+                            {m.isTelemetry && (
+                              <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded p-0.5 shrink-0" title="Telemetry/IoT Data">
+                                <Activity className="w-3 h-3" />
+                              </div>
+                            )}
+                            {m.isUnmapped && (
+                              <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <UnmappedBiomarkerMenu rawName={m.displayName} onRemapped={onRemapped} />
+                              </div>
+                            )}
+                            {m.info && <Info className="w-3.5 h-3.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => { e.stopPropagation(); setSelectedInfo(m); }} />}
+                        </div>
+                     </td>
                     <td className="px-8 py-5 whitespace-nowrap">
                        <div className="flex items-center space-x-1">
-                          <span className={`text-lg font-black ${isAbnormal(m.interpretation) ? 'text-red-600' : 'text-blue-600 dark:text-blue-400'}`}>{active.value}</span>
-                          <span className="text-[10px] font-bold text-gray-400 lowercase">{formatUnit(active.unit)}</span>
+                          <span className={`text-lg font-black ${isAbnormal(m.interpretation) ? 'text-red-600' : 'text-blue-600 dark:text-blue-400'}`}>{formatBiomarkerValue(active.value, precisionProfile)}</span>
+                           <span className="text-[10px] font-bold text-gray-400 lowercase">{formatUnit(active.unit)}</span>
                        </div>
                     </td>
                     <td className="px-8 py-5 whitespace-nowrap">

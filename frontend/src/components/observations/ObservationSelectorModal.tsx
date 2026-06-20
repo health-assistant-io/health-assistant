@@ -124,7 +124,7 @@ export const ObservationSelectorModal: React.FC<Props> = ({
                       {obs.code?.text || obs.code?.coding?.[0]?.display || obs.biomarker_slug || 'Unknown'}
                     </h4>
                     <p className="text-[10px] text-gray-500 font-bold uppercase mt-0.5">
-                      {new Date(obs.effective_datetime || obs.effectiveDateTime).toLocaleDateString()} • {obs.raw_value || obs.valueQuantity?.value} {obs.normalized_unit || obs.valueQuantity?.unit}
+                      {new Date(obs.effective_datetime).toLocaleDateString()} • {obs.raw_value} {obs.normalized_unit}
                     </p>
                   </div>
                 </div>

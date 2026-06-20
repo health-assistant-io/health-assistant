@@ -106,7 +106,10 @@ function UserDetail() {
         <UserIcon className="w-16 h-16 text-gray-300 mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 dark:text-dark-text">{error || 'User not found'}</h2>
         <button 
-          onClick={() => navigate('/admin/users')}
+          onClick={() => {
+            const basePath = location.pathname.startsWith('/admin/system') ? '/admin/system/users' : '/admin/tenant/users';
+            navigate(basePath);
+          }}
           className="mt-6 flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-xl font-bold"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -123,7 +126,7 @@ function UserDetail() {
         subtitle={`Account ID: ${user.id.substring(0, 8)}...`}
         icon={<UserIcon className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('admin.user_management'), path: '/admin/users' }
+          { label: t('admin.user_management'), path: location.pathname.startsWith('/admin/system') ? '/admin/system/users' : '/admin/tenant/users' }
         ]}
         showBackButton={true}
       />

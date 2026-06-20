@@ -36,6 +36,7 @@ Your sponsorship directly supports the continued development, maintenance, and i
 
 - [Technical Architecture](./docs/ARCHITECTURE.md)
 - [AI System & Extensibility](./docs/AI_SYSTEM.md)
+- [Integrations SDK & Developer Guide](./docs/INTEGRATIONS_SDK.md)
 - [Development Guide](./docs/DEVELOPMENT.md)
 - [CI/CD Deployment & Setup](./docs/CI_CD_SETUP.md)
 - [API Documentation](http://localhost:8000/docs)
@@ -47,7 +48,7 @@ For a detailed breakdown of the codebase, see the [Project Structure](./docs/PRO
 - **Multi-Tenancy & Household-Ready**: Zero-config setup for home users. The first user becomes the System Admin, and households are auto-provisioned upon registration.
 - **Data Sovereignty & No Vendor Lock-in**: Perfect for healthcare startups and clinics. Deploy Health-Assistant on your own HIPAA-compliant infrastructure. You own the code and the data, avoiding the trap of BAA-locked proprietary platforms.
 - **Identity & Record Linking**: Seamlessly link login accounts to clinical Patient or Doctor records, perfect for individual users managing their own family's health.
-- **HL7 FHIR Standard**: Full compliance with Fast Healthcare Interoperability Resources.
+- **HL7 FHIR Standard**: Full compliance with Fast Healthcare Interoperability Resources, including validated-on-write storage (invalid FHIR is rejected at the API) and a dedicated **FHIR Server** integration that connects to external hospital/health-record systems via SMART-on-FHIR.
 - **Examinations Platform**: Native grouping of medical documents, clinical notes (Rich-Text/Markdown), and analytics exclusively by distinct clinical visits.
 - **Clinical Events & Longitudinal Tracking**: Specialized system for tracking clinical events like pregnancies, chronic pain, or surgical recoveries. Features a **Metadata-Driven Architecture** allowing for dynamic, specialty-specific fields and categorized filtering.
 - **Bi-directional Visit Mapping**: Seamlessly link examinations to clinical events with specific clinical reasons. Associations can be managed directly from the Examination preview or detail pages.
@@ -57,7 +58,7 @@ For a detailed breakdown of the codebase, see the [Project Structure](./docs/PRO
 - **Dynamic Category Visualizations**: Auto-tagging mechanism routing processed results directly to specialized Clinical Components (Lab Results, Imaging Gallery, Procedure Reports).
 - **Patient Context Control**: Robust top-level tracking system controlling the flow of views and data filtering across the entire application.
 - **TimescaleDB**: Native time-series support for tracking patient biomarker progression over time.
-- **Pluggable Integration Framework & SDK**: A modular system for connecting third-party platforms (wearables, labs, webhooks) with a schema-driven UI and automated background syncing. Includes a dedicated **Integrations SDK** for developers to rapidly build custom data providers with built-in connection pooling, rate limit handling, and cursor-based delta syncing.
+- **Pluggable Integration Framework & SDK**: A modular system for connecting third-party platforms (wearables, labs, webhooks, and **cloud OAuth sources via SMART-on-FHIR with Dynamic Client Registration**) with a schema-driven UI and automated background syncing. Includes a dedicated **Integrations SDK** for developers to rapidly build custom data providers with built-in connection pooling, rate limit handling, cursor-based delta syncing, and reusable OAuth2+PKCE auth.
 - **Async Processing**: Fast background tasks powered by Redis + Celery.
 
 ## Quick Start

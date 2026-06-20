@@ -1,12 +1,11 @@
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from uuid import UUID
 import logging
-import datetime
 from datetime import date, datetime as dt
 from sqlalchemy import select, func
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
+from app.services.fhir_helpers import FhirSerializationError, _extract_patient_id, _flatten_interpretation, assert_valid_fhir, validate_and_filter_observations
 from app.services.notification_manager import NotificationManager
-from app.models.notification import NotificationType, TriggerType
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 
 logger = logging.getLogger(__name__)
@@ -26,14 +25,16 @@ def _parse_date(d):
 
 def _parse_datetime(d):
     """Internal helper to parse datetime strings from FHIR-like dicts"""
+    from datetime import timezone
     if not d:
         return None
     if isinstance(d, dt):
-        return d
+        return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
     if isinstance(d, date):
-        return dt.combine(d, dt.min.time())
+        return dt.combine(d, dt.min.time(), tzinfo=timezone.utc)
     try:
-        return dt.fromisoformat(d.replace("Z", "+00:00"))
+        parsed = dt.fromisoformat(d.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
     except (ValueError, TypeError):
         return None
 
@@ -53,27 +54,28 @@ async def create_patient(
 
     from app.models.enums import Gender
 
-    # Parse birth_date safely
-    raw_birth_date = patient_data.get("birth_date") or patient_data.get("birthDate")
-    parsed_birth_date = _parse_date(raw_birth_date)
-
-    # Parse gender safely into enum
-    gender_str = patient_data.get("gender", "unknown").upper()
+    # The /fhir/* POST endpoints accept ORM-shape dicts (snake_case). Coerce
+    # types directly — no FHIR conversion is involved (input is already the
+    # target shape). See plan: REST CRUD path is separated from FHIR parsing.
+    gender_str = (patient_data.get("gender") or "unknown").upper()
     try:
         gender_enum = getattr(Gender, gender_str)
     except AttributeError:
         gender_enum = Gender.UNKNOWN
 
+    mrn = (patient_data.get("mrn") or "").strip() or None
+
     new_patient = Patient(
         tenant_id=tenant_id,
         user_id=patient_data.get("user_id"),
-        name=patient_data.get("name", {}),
+        name=patient_data.get("name") or {},
         gender=gender_enum,
-        birth_date=parsed_birth_date,
-        mrn=patient_data.get("mrn"),
+        birth_date=_parse_date(patient_data.get("birth_date")),
+        mrn=mrn,
         address=patient_data.get("address"),
         telecom=patient_data.get("telecom"),
     )
+    assert_valid_fhir(new_patient)
 
     try:
         async with AsyncSessionLocal() as session:
@@ -150,42 +152,31 @@ async def update_patient(
         except ValueError:
             return None
 
-    import datetime
     from app.models.enums import Gender
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Patient).where(Patient.id == patient_id))
         patient = result.scalar_one_or_none()
         if patient:
+            # ORM-shape input — coerce types directly (no FHIR conversion).
             if "name" in patient_data:
-                patient.name = patient_data["name"]
+                patient.name = patient_data["name"] or {}
 
             if "user_id" in patient_data:
                 patient.user_id = patient_data["user_id"]
 
             if "gender" in patient_data:
-                gender_str = patient_data["gender"].upper()
+                gender_str = (patient_data["gender"] or "unknown").upper()
                 try:
                     patient.gender = getattr(Gender, gender_str)
                 except AttributeError:
                     patient.gender = Gender.UNKNOWN
 
-            if "birth_date" in patient_data or "birthDate" in patient_data:
-                raw_birth_date = patient_data.get("birth_date") or patient_data.get(
-                    "birthDate"
-                )
-                if isinstance(raw_birth_date, str):
-                    try:
-                        patient.birth_date = datetime.datetime.strptime(
-                            raw_birth_date, "%Y-%m-%d"
-                        ).date()
-                    except ValueError:
-                        pass
-                else:
-                    patient.birth_date = raw_birth_date
+            if "birth_date" in patient_data:
+                patient.birth_date = _parse_date(patient_data["birth_date"])
 
             if "mrn" in patient_data:
-                patient.mrn = patient_data["mrn"]
+                patient.mrn = (patient_data["mrn"] or "").strip() or None
 
             if "address" in patient_data:
                 patient.address = patient_data["address"]
@@ -193,6 +184,7 @@ async def update_patient(
             if "telecom" in patient_data:
                 patient.telecom = patient_data["telecom"]
 
+            assert_valid_fhir(patient)
             await session.commit()
             await session.refresh(patient)
         return patient
@@ -300,34 +292,26 @@ async def create_observation(
     except ValueError:
         return None
 
-    # Handle both camelCase (FHIR standard) and snake_case (internal)
-    value_quantity = observation_data.get("value_quantity") or observation_data.get("valueQuantity")
-    interpretation = observation_data.get("interpretation")
-    
-    # Map FHIR-style interpretation list to a single string if needed
-    interpretation_str = None
-    if isinstance(interpretation, list) and len(interpretation) > 0:
-        interp_obj = interpretation[0]
-        if isinstance(interp_obj, dict):
-            coding = interp_obj.get("coding", [])
-            if len(coding) > 0:
-                interpretation_str = coding[0].get("display") or coding[0].get("code")
-    elif isinstance(interpretation, str):
-        interpretation_str = interpretation
+    # ORM-shape input (snake_case) — coerce types directly. The /fhir/* POST
+    # endpoints speak ORM-shape; FHIR parsing lives only at the import boundary.
+    value_quantity = observation_data.get("value_quantity")
+    subject = observation_data.get("subject") or {}
 
     new_obs = Observation(
         tenant_id=tenant_id,
         status=observation_data.get("status", "final"),
-        code=observation_data.get("code", {}),
-        subject=observation_data.get("subject", {}),
+        code=observation_data.get("code") or {},
+        subject=subject,
         value_quantity=value_quantity,
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
         biomarker_id=observation_data.get("biomarker_id"),
-        interpretation=interpretation_str,
-        raw_value=observation_data.get("raw_value") or (value_quantity.get("value") if value_quantity else None),
-        document_id=observation_data.get("document_id")
+        interpretation=_flatten_interpretation(observation_data.get("interpretation")),
+        raw_value=observation_data.get("raw_value")
+        or (value_quantity.get("value") if value_quantity else None),
+        document_id=observation_data.get("document_id"),
     )
+    assert_valid_fhir(new_obs)
 
     async with AsyncSessionLocal() as session:
         session.add(new_obs)
@@ -335,17 +319,13 @@ async def create_observation(
         await session.refresh(new_obs)
 
     # Check for biomarker thresholds (Biomarker Alert)
-    # This would normally query the BiomarkerDefinition for thresholds
-    # For now, let's trigger a generic event that the NotificationManager can catch
     patient_id = None
-    subject = observation_data.get("subject", {})
-    if subject and "reference" in subject:
-        ref = subject["reference"]
-        if "Patient/" in ref:
-            try:
-                patient_id = UUID(ref.split("/")[-1])
-            except ValueError:
-                pass
+    patient_id_str = observation_data.get("patient_id") or _extract_patient_id(subject)
+    if patient_id_str:
+        try:
+            patient_id = UUID(str(patient_id_str))
+        except (ValueError, TypeError):
+            pass
 
     if patient_id:
         await NotificationManager.trigger_event(
@@ -479,11 +459,12 @@ async def create_diagnostic_report(
     new_report = DiagnosticReport(
         tenant_id=tenant_id,
         status=report_data.get("status", "final"),
-        code=report_data.get("code", {}),
-        subject=report_data.get("subject", {}),
+        code=report_data.get("code") or {},
+        subject=report_data.get("subject") or {},
         conclusion=report_data.get("conclusion"),
         effective_datetime=_parse_datetime(report_data.get("effective_datetime")),
     )
+    assert_valid_fhir(new_report)
 
     async with AsyncSessionLocal() as session:
         session.add(new_report)
@@ -524,37 +505,34 @@ async def create_medication(
     except ValueError:
         return None
 
-    # Extract patient_id from subject if possible for the new model
-    patient_id = None
-    subject = medication_data.get("subject", {})
-    if subject and "reference" in subject:
-        ref = subject["reference"]
-        if "Patient/" in ref:
-            try:
-                patient_id = UUID(ref.split("/")[-1])
-            except ValueError:
-                pass
+    # ORM-shape input (snake_case) — coerce types directly. The /fhir/* POST
+    # endpoints speak ORM-shape; FHIR parsing lives only at the import boundary.
+    subject = medication_data.get("subject") or {}
 
-    if not patient_id and "patient_id" in medication_data:
+    patient_id = None
+    patient_id_str = medication_data.get("patient_id") or _extract_patient_id(subject)
+    if patient_id_str:
         try:
-            patient_id = UUID(str(medication_data["patient_id"]))
-        except ValueError:
+            patient_id = UUID(str(patient_id_str))
+        except (ValueError, TypeError):
             pass
 
     if not patient_id:
         logger.error("Cannot create medication: No patient_id found")
         return None
 
+    status_str = (medication_data.get("status") or "ACTIVE").upper()
     new_med = Medication(
         tenant_id=tenant_id,
         patient_id=patient_id,
-        code=medication_data.get("code", {}),
-        status=medication_data.get("status", "ACTIVE"),
+        code=medication_data.get("code") or {},
+        status=status_str,
         subject=subject,
         start_date=_parse_date(medication_data.get("start_date")),
         end_date=_parse_date(medication_data.get("end_date")),
-        frequency=medication_data.get("timing") or medication_data.get("frequency"),
+        frequency=medication_data.get("frequency"),
     )
+    assert_valid_fhir(new_med)
 
     async with AsyncSessionLocal() as session:
         session.add(new_med)
@@ -562,7 +540,7 @@ async def create_medication(
         await session.refresh(new_med)
 
     # Automatically create medication reminders if timing is specified
-    # FHIR Timing structure: https://www.hl7.org/fhir/datatypes.html#Timing
+    # (domain logic — reads the raw timing input, not the converted value)
     timing = medication_data.get("timing", {})
     repeat = timing.get("repeat", {})
 
@@ -662,16 +640,26 @@ async def list_medications(
         }
 
 
-async def map_observations_to_biomarkers(db, observations):
+async def map_observations_to_biomarkers(db, observations, auto_create_missing: bool = True):
     """
     Map raw FHIR observations from integrations to BiomarkerDefinitions.
-    Creates new definitions if they do not exist.
+    Creates new definitions if they do not exist, unless auto_create_missing is False.
     """
     from app.models.biomarker_model import BiomarkerDefinition
     import re
     import logging
 
     logger = logging.getLogger(__name__)
+
+    # Write-time FHIR gate: drop resources that cannot be projected to valid
+    # FHIR before biomarker mapping/persistence. This single chokepoint covers
+    # every integration route (background sync, manual sync, webhook, bridge,
+    # and the FHIR-server provider's pull_now path) since they all funnel here.
+    dropped = validate_and_filter_observations(observations, logger)
+    if dropped:
+        logger.info(
+            "Dropped %d invalid observation(s) before biomarker mapping", dropped
+        )
 
     for obs in observations:
         if not obs.biomarker_id and obs.code:
@@ -702,7 +690,7 @@ async def map_observations_to_biomarkers(db, observations):
                 )
                 bdef = res.scalars().first()
 
-            if not bdef and text:
+            if not bdef and text and auto_create_missing:
                 slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
                 res = await db.execute(
                     select(BiomarkerDefinition).where(BiomarkerDefinition.slug == slug)

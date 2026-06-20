@@ -22,8 +22,8 @@ from app.models.document_model import DocumentModel
 from app.models.enums import ExportScope, ExportType, JobStatus
 from app.models.examination_model import ExaminationModel
 from app.models.export_import_job import ExportJobModel
-from app.models.fhir.allergy import AllergyIntolerance
-from app.models.fhir.medication import Medication
+from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.models.fhir.medication import Medication, MedicationCatalog
 from app.models.fhir.organization import OrganizationModel
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.notification import NotificationTrigger
@@ -37,15 +37,21 @@ from app.schemas.backup import (
 )
 from app.services.fhir_converter import (
     build_bundle,
-    build_meta,
-    orm_to_fhir,
     scope_to_smart,
     validate_bundle,
 )
+from app.services.fhir_helpers import FhirSerializationError, build_meta
 
 logger = logging.getLogger(__name__)
 
 EXPORT_DIR_NAME = "exports"
+
+
+class ExportError(Exception):
+    """Raised when an export cannot produce a valid/complete result (e.g. one or
+    more resources fail FHIR validation). Carries a human-readable report so the
+    job failure surfaces exactly what to fix — backups must never silently drop
+    data (fail-loud policy)."""
 
 
 def _uuid(v: Any) -> Optional[UUID]:
@@ -354,6 +360,54 @@ class ExportService:
             ],
         }
 
+    async def gather_medication_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
+        res = await self.db.execute(
+            select(MedicationCatalog).where(
+                or_(
+                    MedicationCatalog.tenant_id == tenant_id,
+                    MedicationCatalog.tenant_id.is_(None),
+                )
+            )
+        )
+        return {
+            "medications": [
+                {
+                    "id": str(m.id),
+                    "name": m.name,
+                    "description": m.description,
+                    "indications": m.indications,
+                    "side_effects": m.side_effects or [],
+                    "contraindications": m.contraindications,
+                    "dosage_info": m.dosage_info,
+                    "tenant_id": str(m.tenant_id) if m.tenant_id else None,
+                }
+                for m in res.scalars().all()
+            ]
+        }
+
+    async def gather_allergy_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
+        res = await self.db.execute(
+            select(AllergyCatalog).where(
+                or_(
+                    AllergyCatalog.tenant_id == tenant_id,
+                    AllergyCatalog.tenant_id.is_(None),
+                )
+            )
+        )
+        return {
+            "allergies": [
+                {
+                    "id": str(a.id),
+                    "name": a.name,
+                    "category": a.category.value if a.category else None,
+                    "description": a.description,
+                    "typical_reactions": a.typical_reactions or [],
+                    "tenant_id": str(a.tenant_id) if a.tenant_id else None,
+                }
+                for a in res.scalars().all()
+            ]
+        }
+
     async def gather_ai_config(self, tenant_id: UUID) -> Dict[str, Any]:
         providers_res = await self.db.execute(
             select(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
@@ -395,40 +449,40 @@ class ExportService:
         counts: Dict[str, int] = {}
         entries: List[Tuple[str, Dict[str, Any], str]] = []
 
-        for p in patients:
-            fhir = orm_to_fhir("Patient", p.to_dict())
-            entries.append((f"urn:uuid:{p.id}", fhir, "POST"))
-            counts["Patient"] = counts.get("Patient", 0) + 1
+        # Each ORM object serializes itself via to_fhir_dict() (which validates
+        # through fhir.resources). Fail-loud policy: a resource that fails FHIR
+        # validation is NOT silently dropped from the backup — we collect every
+        # failure and raise ExportError so the job fails fast with a report of
+        # exactly what to fix. (Backups must never quietly omit data.)
+        resource_groups = [
+            ("Patient", patients),
+            ("Observation", observations),
+            ("MedicationStatement", medications),
+            ("AllergyIntolerance", allergies),
+            ("DiagnosticReport", diagnostic_reports),
+            ("Organization", organizations),
+            ("Practitioner", practitioners),
+        ]
+        failures: List[str] = []
+        for resource_type, items in resource_groups:
+            for obj in items:
+                try:
+                    fhir = obj.to_fhir_dict()
+                except FhirSerializationError as e:
+                    failures.append(
+                        f"{resource_type} {getattr(obj, 'id', '?')}: {e}"
+                    )
+                    continue
+                entries.append((f"urn:uuid:{obj.id}", fhir, "POST"))
+                counts[resource_type] = counts.get(resource_type, 0) + 1
 
-        for o in observations:
-            fhir = orm_to_fhir("Observation", o.to_dict())
-            entries.append((f"urn:uuid:{o.id}", fhir, "POST"))
-            counts["Observation"] = counts.get("Observation", 0) + 1
-
-        for m in medications:
-            fhir = orm_to_fhir("MedicationStatement", m.to_dict())
-            entries.append((f"urn:uuid:{m.id}", fhir, "POST"))
-            counts["MedicationStatement"] = counts.get("MedicationStatement", 0) + 1
-
-        for a in allergies:
-            fhir = orm_to_fhir("AllergyIntolerance", a.to_dict())
-            entries.append((f"urn:uuid:{a.id}", fhir, "POST"))
-            counts["AllergyIntolerance"] = counts.get("AllergyIntolerance", 0) + 1
-
-        for d in diagnostic_reports:
-            fhir = orm_to_fhir("DiagnosticReport", d.to_dict())
-            entries.append((f"urn:uuid:{d.id}", fhir, "POST"))
-            counts["DiagnosticReport"] = counts.get("DiagnosticReport", 0) + 1
-
-        for org in organizations:
-            fhir = orm_to_fhir("Organization", org.to_dict())
-            entries.append((f"urn:uuid:{org.id}", fhir, "POST"))
-            counts["Organization"] = counts.get("Organization", 0) + 1
-
-        for prac in practitioners:
-            fhir = orm_to_fhir("Practitioner", prac.to_dict())
-            entries.append((f"urn:uuid:{prac.id}", fhir, "POST"))
-            counts["Practitioner"] = counts.get("Practitioner", 0) + 1
+        if failures:
+            preview = "; ".join(failures[:10])
+            more = f" (+{len(failures) - 10} more)" if len(failures) > 10 else ""
+            raise ExportError(
+                f"Export aborted: {len(failures)} resource(s) failed FHIR "
+                f"validation — fix the source data/mapping and re-run: {preview}{more}"
+            )
 
         if documents:
             for doc in documents:
@@ -472,6 +526,8 @@ class ExportService:
         clinical_events: List[ClinicalEvent],
         clinical_event_types: Dict[str, Any],
         biomarker_catalog: Dict[str, Any],
+        medication_catalog: Dict[str, Any],
+        allergy_catalog: Dict[str, Any],
         documents: List[DocumentModel],
         telemetry: Optional[List[TelemetryDataModel]] = None,
         integrations: Optional[List[UserIntegration]] = None,
@@ -493,6 +549,12 @@ class ExportService:
 
         sidecars["biomarker_definitions.json"] = biomarker_catalog
         counts["biomarker_definitions"] = len(biomarker_catalog.get("biomarkers", []))
+
+        sidecars["medication_catalog.json"] = medication_catalog
+        counts["medication_catalog"] = len(medication_catalog.get("medications", []))
+
+        sidecars["allergy_catalog.json"] = allergy_catalog
+        counts["allergy_catalog"] = len(allergy_catalog.get("allergies", []))
 
         doc_meta = []
         for d in documents:
@@ -609,6 +671,8 @@ class ExportService:
             "units": len(catalog.get("units", [])),
             "biomarkers": len(catalog.get("biomarkers", [])),
             "clinical_event_types": len(catalog.get("clinical_event_types", {}).get("types", [])),
+            "medication_catalog": len(catalog.get("medication_catalog", {}).get("medications", [])),
+            "allergy_catalog": len(catalog.get("allergy_catalog", {}).get("allergies", [])),
         }
         return str(file_path), len(payload_bytes), manifest
 
@@ -728,6 +792,10 @@ class ExportService:
                 catalog["clinical_event_types"] = await self.gather_clinical_event_types(
                     tenant_id
                 )
+                catalog["medication_catalog"] = await self.gather_medication_catalog(
+                    tenant_id
+                )
+                catalog["allergy_catalog"] = await self.gather_allergy_catalog(tenant_id)
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
                 file_path, size, manifest = self.write_catalog_file(
                     catalog, tenant_id, job_id, manifest
@@ -778,6 +846,8 @@ class ExportService:
             clinical_events = await self.gather_clinical_events(tenant_id, patient_ids)
             clinical_event_types = await self.gather_clinical_event_types(tenant_id)
             biomarker_catalog = await self.gather_biomarker_catalog(tenant_id)
+            medication_catalog = await self.gather_medication_catalog(tenant_id)
+            allergy_catalog = await self.gather_allergy_catalog(tenant_id)
             await self.update_job_progress(job_id, 70)
 
             telemetry = None
@@ -800,6 +870,8 @@ class ExportService:
                 clinical_events,
                 clinical_event_types,
                 biomarker_catalog,
+                medication_catalog,
+                allergy_catalog,
                 documents,
                 telemetry=telemetry,
                 integrations=integrations,

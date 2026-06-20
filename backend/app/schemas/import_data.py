@@ -72,6 +72,8 @@ class FHIRImportConfig(BaseModel):
     resource_type: Optional[str] = None
     bundle_type: str = "collection"
     validate_profiles: bool = True
+    auto_map_biomarkers: bool = True
+    use_ai_normalization: bool = False
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -23,8 +23,8 @@ class ObservationCreate(ObservationBase):
     )
     value_string: Optional[str] = None
     effective_datetime: Optional[datetime] = None
-    category: Optional[Dict[str, Any]] = None
-    reference_range: Optional[Dict[str, Any]] = None
+    category: Optional[List[Dict[str, Any]]] = None
+    reference_range: Optional[List[Dict[str, Any]]] = None
     interpretation: Optional[str] = None
     biomarker_id: Optional[UUID] = None
     examination_id: Optional[UUID] = None
@@ -50,8 +50,8 @@ class ObservationUpdate(BaseModel):
     value_quantity: Optional[Dict[str, Any]] = None
     value_string: Optional[str] = None
     effective_datetime: Optional[datetime] = None
-    category: Optional[Dict[str, Any]] = None
-    reference_range: Optional[Dict[str, Any]] = None
+    category: Optional[List[Dict[str, Any]]] = None
+    reference_range: Optional[List[Dict[str, Any]]] = None
     interpretation: Optional[str] = None
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None
@@ -63,8 +63,8 @@ class ObservationResponse(ObservationBase):
     value_quantity: Optional[Dict[str, Any]] = None
     value_string: Optional[str] = None
     effective_datetime: Optional[datetime] = None
-    category: Optional[Dict[str, Any]] = None
-    reference_range: Optional[Dict[str, Any]] = None
+    category: Optional[List[Dict[str, Any]]] = None
+    reference_range: Optional[List[Dict[str, Any]]] = None
     interpretation: Optional[str] = None
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None

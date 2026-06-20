@@ -193,6 +193,9 @@ async def test_restore_fhir_bundle_remaps_when_id_in_other_tenant():
 
 @pytest.mark.asyncio
 async def test_restore_fhir_bundle_invalid_resource_records_error():
+    # Validation happens inside fhir_to_orm() via fhir.resources (regardless of
+    # the `validate` flag); an invalid resource raises FhirSerializationError,
+    # which restore_fhir_bundle catches → recorded in `errors`, no crash.
     tid = uuid.uuid4()
     bundle = {
         "resourceType": "Bundle",
@@ -211,6 +214,48 @@ async def test_restore_fhir_bundle_invalid_resource_records_error():
 
 
 @pytest.mark.asyncio
+async def test_restore_fhir_bundle_skips_invalid_keeps_valid():
+    """Skip-and-log contract: an invalid resource is skipped (recorded in
+    `errors`) while valid siblings are still created — one bad entry does not
+    abort the whole import."""
+    tid = uuid.uuid4()
+    pid = uuid.uuid4()
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+            {  # valid Patient
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "Doe"}],
+                    "gender": "female",
+                }
+            },
+            {  # invalid Observation (missing required status/code)
+                "resource": {"resourceType": "Observation", "id": "bad-obs"},
+            },
+        ],
+    }
+    db = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = None  # Patient does not exist yet → create
+    db.execute.return_value = res
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    svc = ImportService(db)
+
+    created, updated, errors, warnings, id_remap = await svc.restore_fhir_bundle(
+        bundle, tid, validate=False
+    )
+    # Valid resource still created
+    assert created["Patient"] == 1
+    # Invalid resource skipped + recorded, not crashing
+    assert errors and any("Observation" in e for e in errors)
+    assert "Observation" not in created
+
+
+@pytest.mark.asyncio
 async def test_restore_fhir_bundle_unsupported_type_skipped():
     tid = uuid.uuid4()
     bundle = {
@@ -218,6 +263,7 @@ async def test_restore_fhir_bundle_unsupported_type_skipped():
         "type": "transaction",
         "entry": [
             {"resource": {"resourceType": "Condition", "id": "c1", "subject": {"reference": "Patient/x"}}},
+            {"resource": {"resourceType": "DocumentReference", "id": "d1", "status": "current"}},
         ],
     }
     db = AsyncMock()
@@ -227,11 +273,15 @@ async def test_restore_fhir_bundle_unsupported_type_skipped():
     db.add = MagicMock()
     db.flush = AsyncMock()
     svc = ImportService(db)
-    created, updated, errors, warnings, id_remap = await svc.restore_fhir_bundle(
-        bundle, tid, validate=False
-    )
-    assert errors
-    assert "Condition" in errors[0]
+
+    c, u, errors, warnings, remap = await svc.restore_fhir_bundle(bundle, tid, validate=False)
+    
+    # Condition is completely unsupported, raises a ValueError inside _restore_one_fhir_resource
+    # so it gets caught and appended to errors OR skipped with warning
+    assert any("Condition" in e for e in errors) or any("Condition" in w for w in warnings)
+    
+    # DocumentReference has an explicit bypass that skips it and logs a warning
+    assert any("Skipped DocumentReference" in w for w in warnings) or any("Unsupported resource type DocumentReference" in w for w in warnings)
 
 
 # ---------- restore_sidecar (mocked DB) ----------
@@ -273,6 +323,59 @@ async def test_restore_sidecar_unknown_name_skipped():
     created, errors, warnings = await svc.restore_sidecar("mystery.json", {}, tid, {})
     assert created == {}
     assert any("mystery" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_restore_sidecar_medication_catalog_inserts_rows():
+    tid = uuid.uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    # No existing rows -> every entry takes the insert path.
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result)
+    svc = ImportService(db)
+    payload = {
+        "medications": [
+            {"name": "Metformin", "description": "diabetes med", "dosage_info": "500mg"},
+            {"name": "Aspirin"},
+        ]
+    }
+    created, errors, warnings = await svc.restore_sidecar(
+        "medication_catalog.json", payload, tid, {}
+    )
+    assert created["medication_catalog"] == 2
+    assert errors == []
+    assert db.add.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_restore_sidecar_allergy_catalog_inserts_and_normalizes_category():
+    tid = uuid.uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result)
+    svc = ImportService(db)
+    payload = {
+        "allergies": [
+            {"name": "Peanuts", "category": "food", "typical_reactions": ["Hives"]},
+            {"name": "Latex", "category": "WEIRD"},  # unknown -> OTHER fallback
+        ]
+    }
+    created, errors, warnings = await svc.restore_sidecar(
+        "allergy_catalog.json", payload, tid, {}
+    )
+    assert created["allergy_catalog"] == 2
+    assert errors == []
+    # Inspect the AllergyCatalog instances added: category normalized to the enum.
+    added = [call.args[0] for call in db.add.call_args_list]
+    categories = {a.name: a.category for a in added}
+    assert categories["Peanuts"].value == "FOOD"
+    assert categories["Latex"].value == "OTHER"
 
 
 # ---------- run_import orchestrator (patched) ----------

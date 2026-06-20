@@ -8,7 +8,7 @@ interface Patient {
     given: string[];
   };
   gender: string;
-  birthDate: string;
+  birth_date?: string;
   mrn?: string;
   dashboard_layout?: any;
 }

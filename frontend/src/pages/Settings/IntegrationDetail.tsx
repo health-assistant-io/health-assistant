@@ -4,7 +4,7 @@ import { integrationService, CustomAction } from '../../services/integrationServ
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp, Server, Cloud, Globe } from 'lucide-react';
+import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp, Server, Cloud, Globe, Upload, Ban } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
@@ -58,6 +58,17 @@ const IntegrationDetail: React.FC = () => {
       navigate('/settings/integrations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAuthorize = async () => {
+    if (!currentPatient || !id || !details?.domain) return;
+    try {
+      const { authorize_url } = await integrationService.oauthStart(details.domain, id, currentPatient.id);
+      window.location.href = authorize_url;
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail || 'Authorization failed to start.';
+      toast.error(detail);
     }
   };
 
@@ -185,6 +196,24 @@ const IntegrationDetail: React.FC = () => {
     return sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-blue-500" /> : <ArrowDown className="w-3 h-3 ml-1 text-blue-500" />;
   };
 
+  const renderDirectionBadge = (direction?: string) => {
+    if (!direction) return null;
+    const map: Record<string, { icon: any; label: string; cls: string }> = {
+      both: { icon: ArrowUpDown, label: 'Two-way', cls: 'text-purple-600 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-400' },
+      pull_only: { icon: ArrowDown, label: 'Pull only', cls: 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' },
+      push_only: { icon: ArrowUp, label: 'Push only', cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' },
+      none: { icon: Ban, label: 'Manual only', cls: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400' },
+    };
+    const cfg = map[direction];
+    if (!cfg) return null;
+    const Icon = cfg.icon;
+    return (
+      <span className={`flex items-center text-xs font-bold px-2 py-0.5 rounded-full`}>
+        <Icon className="w-3 h-3 mr-1" /> {cfg.label}
+      </span>
+    );
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-20">
       <div className="mb-6 flex items-center justify-between">
@@ -279,6 +308,7 @@ const IntegrationDetail: React.FC = () => {
                     <Settings className="w-3 h-3 mr-1" /> Pending Setup
                   </span>
                 )}
+                {renderDirectionBadge(details.sync_direction)}
                 {details.last_synced_at && (
                   <span className="text-xs text-gray-400 font-medium flex items-center ml-1">
                     <Clock className="w-3 h-3 mr-1" /> Last synced: {new Date(details.last_synced_at).toLocaleString()}
@@ -314,6 +344,27 @@ const IntegrationDetail: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {details.status === 'PENDING' && (
+            <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] p-8 border border-blue-200 dark:border-blue-800 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center">
+                  <Cloud className="w-6 h-6 mr-3 text-blue-600" />
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">Authorization required</h3>
+                    <p className="text-sm text-gray-600 dark:text-dark-muted">
+                      This integration needs you to sign in to the external service to complete the connection.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleAuthorize}
+                  className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all"
+                >
+                  Authorize
+                </button>
+              </div>
+            </div>
+          )}
           {details.custom_actions && details.custom_actions.length > 0 && (
             <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
@@ -334,6 +385,37 @@ const IntegrationDetail: React.FC = () => {
                     {action.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {details.push_status && (
+            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+              <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
+                <Upload className="w-5 h-5 mr-2 text-emerald-500" /> Last Push
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                {[
+                  { label: 'Pushed', value: details.push_status.pushed, color: 'text-emerald-600' },
+                  { label: 'Created', value: details.push_status.created, color: 'text-blue-600' },
+                  { label: 'Updated', value: details.push_status.updated, color: 'text-indigo-600' },
+                  { label: 'Skipped (412)', value: details.push_status.skipped, color: 'text-gray-500' },
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-gray-50 dark:bg-dark-bg rounded-xl p-4 border border-gray-100 dark:border-dark-border text-center">
+                    <div className={`text-2xl font-black ${stat.color}`}>{stat.value ?? 0}</div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-bold ${details.push_status.errors > 0 ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'}`}>
+                  {details.push_status.errors > 0 ? `${details.push_status.errors} error(s)` : 'No errors'}
+                </span>
+                {details.push_status.at && (
+                  <span className="text-gray-400 font-medium flex items-center">
+                    <Clock className="w-3 h-3 mr-1" /> {new Date(details.push_status.at).toLocaleString()}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -413,7 +495,7 @@ const IntegrationDetail: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
               {details.exposed_items.map((item: any) => (
                 <Link 
-                  to={`/biomarkers/details/${item.slug}`} 
+                  to={`/biomarkers/details/${item.id}`} 
                   key={item.id}
                   className="flex flex-col p-4 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-gray-100 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-900 transition-all group"
                 >
@@ -495,8 +577,8 @@ const IntegrationDetail: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
                         <div className="flex items-center space-x-2">
-                          {item.slug ? (
-                            <Link to={`/biomarkers/details/${item.slug}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
+                          {item.biomarker_id ? (
+                            <Link to={`/biomarkers/details/${item.biomarker_id}`} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline transition-colors">
                               {item.metric}
                             </Link>
                           ) : (

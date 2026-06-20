@@ -160,6 +160,36 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """
         raise NotImplementedError(f"API requests are not supported by this integration.")
 
+    # --- OAuth round-trip (opt-in; only when the config flow sets is_oauth=True) ---
+
+    async def begin_oauth(
+        self,
+        integration: UserIntegration,
+        redirect_uri: str,
+        *,
+        extra_state: Optional[dict] = None,
+    ):
+        """Start the OAuth Authorization Code flow for this instance.
+
+        Override for OAuth integrations. Returns ``(authorize_url, state)``. The
+        platform stores ``extra_state`` (e.g. ``integration_id``/``user_id``)
+        alongside any provider-specific PKCE/endpoint data under ``state`` (short
+        TTL), then redirects the user to ``authorize_url``. Default raises
+        ``NotImplementedError`` — non-OAuth integrations are unaffected.
+        """
+        raise NotImplementedError(f"{self.domain} does not implement OAuth.")
+
+    async def complete_oauth(
+        self, integration: UserIntegration, pending: dict, code: str
+    ) -> dict:
+        """Finish the OAuth flow: exchange ``code`` for tokens and persist them.
+
+        ``pending`` is the already-consumed state payload (the platform consumes
+        it once and passes it through). Override for OAuth integrations. Default
+        raises ``NotImplementedError``.
+        """
+        raise NotImplementedError(f"{self.domain} does not implement OAuth.")
+
     async def fetch_json(
         self, 
         integration: UserIntegration,
@@ -228,6 +258,13 @@ class BaseConfigFlow(CoreBaseConfigFlow, ABC):
     # Per-user instance cap. ``None`` = unlimited. The platform endpoint
     # enforces this on create (not update) without knowing which domain.
     max_instances_per_user: Optional[int] = None
+
+    # Whether this integration connects via an OAuth round-trip (e.g. SMART-on-FHIR,
+    # Fitbit, Withings). When ``True`` the platform exposes the
+    # ``/{domain}/oauth/start`` + ``/{domain}/oauth/callback`` routes for this
+    # domain and the UI shows an "Authorize" button on the instance. Default
+    # ``False`` keeps existing (non-OAuth) integrations untouched.
+    is_oauth: bool = False
 
     def get_secret_fields(self) -> List[str]:
         """Field names in ``user_config`` that are secret.

@@ -256,6 +256,7 @@ function BiomarkerTrends() {
   const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
   const [isLoading, setIsLoading] = useState(true);
   const loadingRef = useRef(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
 
   const { getTabs, getGroupedData, totalCount, getAbnormal } = useBiomarkers({ trendsData });
@@ -309,7 +310,7 @@ function BiomarkerTrends() {
       }
     };
     loadData();
-  }, [currentPatient?.id, dateRange]);
+  }, [currentPatient?.id, dateRange, reloadNonce]);
 
   const tabs = useMemo(() => getTabs(activePerspective), [getTabs, activePerspective, trendsData]);
   const groupedMarkers = useMemo(() => 
@@ -434,6 +435,7 @@ function BiomarkerTrends() {
         showSpikes={showSpikes}
         showReferenceRanges={showReferenceRanges}
         initialDataMode="normalized"
+        onRemapped={() => setReloadNonce(n => n + 1)}
       />
     </div>
   );

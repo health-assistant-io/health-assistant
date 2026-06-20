@@ -1,8 +1,9 @@
-from sqlalchemy import Column, String, Boolean, ForeignKey, Table, Index, Enum as SQLEnum
+from sqlalchemy import Column, String, Boolean, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
 from app.models.enums import OrganizationType
+from app.services.fhir_helpers import _as_list, build_fhir_resource, build_meta
 
 
 class OrganizationModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
@@ -60,5 +61,26 @@ class OrganizationModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
             "part_of_id": str(self.part_of_id) if self.part_of_id else None,
             "contact": self.contact,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B Organization resource via fhir.resources (validated)."""
+        return build_fhir_resource(
+            "Organization",
+            {
+                "resourceType": "Organization",
+                "id": str(self.id),
+                "active": self.active,
+                "type": _as_list(self.type),
+                "name": self.name,
+                "alias": self.alias,
+                "telecom": self.telecom,
+                "address": self.address,
+                "partOf": {"reference": f"Organization/{self.part_of_id}"}
+                if self.part_of_id
+                else None,
+                "contact": self.contact,
+                "meta": build_meta(str(self.id)),
+            },
+        )
 
     __table_args__ = (Index("idx_organization_tenant_name", "tenant_id", "name"),)

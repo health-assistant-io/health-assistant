@@ -162,7 +162,9 @@ class CSVImporter:
         
         for fmt in formats:
             try:
-                return datetime.strptime(value.strip(), fmt)
+                from datetime import timezone
+                dt = datetime.strptime(value.strip(), fmt)
+                return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
             except ValueError:
                 continue
         

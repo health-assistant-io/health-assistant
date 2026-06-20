@@ -1,0 +1,8 @@
+hapi:
+  fhir:
+    server_address: "http://localhost:${HAPI_PORT:8080}/fhir"
+    tester:
+      home:
+        name: Local Tester
+        server_address: "http://localhost:${HAPI_PORT:8080}/fhir"
+        fhir_version: R4

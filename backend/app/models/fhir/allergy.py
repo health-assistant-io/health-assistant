@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Enum, Text, ForeignKey, Date
+from sqlalchemy import Column, String, DateTime, Enum, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from app.models.base import (
     Base,
@@ -9,6 +9,7 @@ from app.models.base import (
     TimestampMixin,
 )
 from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus
+from app.services.fhir_helpers import build_fhir_resource, build_meta
 
 
 class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
@@ -94,3 +95,75 @@ class AllergyIntolerance(
             "note": self.note,
             "reactions": self.reactions or [],
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B AllergyIntolerance resource via fhir.resources (validated)."""
+        clinical = (self.clinical_status.value if self.clinical_status else "").lower()
+        verification = (self.verification_status or "confirmed").lower()
+        category = (self.category.value if self.category else "").lower() or None
+        criticality = (self.criticality.value if self.criticality else "").lower() or None
+
+        clinical_status = (
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+                        "code": clinical,
+                    }
+                ]
+            }
+            if clinical
+            else None
+        )
+        verification_status = (
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+                        "code": verification,
+                    }
+                ]
+            }
+            if verification
+            else None
+        )
+
+        code = self.code or {}
+        allergy_code = {"text": code.get("text")} if isinstance(code, dict) else None
+        if isinstance(code, dict) and code.get("coding"):
+            allergy_code = {"text": code.get("text"), "coding": code.get("coding")}
+
+        reactions = []
+        for r in self.reactions or []:
+            reaction = {}
+            if r.get("manifestation"):
+                reaction["manifestation"] = [{"text": r["manifestation"]}]
+            if r.get("severity"):
+                reaction["severity"] = str(r["severity"]).lower()
+            if r.get("date"):
+                reaction["onset"] = r["date"]
+            if reaction:
+                reactions.append(reaction)
+
+        return build_fhir_resource(
+            "AllergyIntolerance",
+            {
+                "resourceType": "AllergyIntolerance",
+                "id": str(self.id),
+                "clinicalStatus": clinical_status,
+                "verificationStatus": verification_status,
+                "category": [category] if category else None,
+                "criticality": criticality,
+                "code": allergy_code,
+                "patient": {"reference": f"Patient/{self.patient_id}"}
+                if self.patient_id
+                else None,
+                "onsetDateTime": self.onset_date.isoformat() if self.onset_date else None,
+                "lastOccurrence": self.last_occurrence.isoformat()
+                if self.last_occurrence
+                else None,
+                "note": [{"text": self.note}] if self.note else None,
+                "reaction": reactions or None,
+                "meta": build_meta(str(self.id)),
+            },
+        )

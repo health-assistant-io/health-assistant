@@ -132,6 +132,15 @@ class CodingSystem(str, enum.Enum):
     SNOMED = "snomed"
     CUSTOM = "custom"
 
+    @property
+    def fhir_system(self) -> str:
+        """The canonical FHIR ``system`` URL for this coding system."""
+        if self == CodingSystem.LOINC:
+            return "http://loinc.org"
+        elif self == CodingSystem.SNOMED:
+            return "http://snomed.info/sct"
+        return "urn:uuid:health-assistant:custom-biomarker"
+
 class IntegrationStatus(str, enum.Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"

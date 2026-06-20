@@ -234,7 +234,10 @@ function UserManagement() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
-                        onClick={() => navigate(`/admin/users/${user.id}`)}
+                        onClick={() => {
+                          const basePath = location.pathname.startsWith('/admin/system') ? '/admin/system/users' : '/admin/tenant/users';
+                          navigate(`${basePath}/${user.id}`);
+                        }}
                         className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all"
                         title={t('common.view_details')}
                       >

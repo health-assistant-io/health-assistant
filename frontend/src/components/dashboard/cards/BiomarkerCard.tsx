@@ -9,7 +9,7 @@ import {
   Box
 } from 'lucide-react';
 import LineChart from '../../charts/LineChart';
-import { getFinalStatus, isAbnormal, formatUnit } from '../../../utils/biomarkerUtils';
+import { getFinalStatus, isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
 import { BiomarkerObservation, DataSourceType } from '../../../types/biomarker';
 import { CardWrapper } from '../shared/CardWrapper';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
@@ -17,6 +17,7 @@ import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { IconMap } from '../shared/icons';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
+import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 
 import { format, parseISO } from 'date-fns';
 
@@ -26,6 +27,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
   const { config, isEditMode, availableBiomarkers, data, onUpdateConfig, children } = props;
   const [selectedInfo, setSelectedInfo] = React.useState<any>(null);
   const [showIconPicker, setShowIconPicker] = React.useState(false);
+  const precisionProfile = useBiomarkerPrecisionProfile();
   
   const Icon = IconMap[config.icon] || Activity;
   
@@ -214,7 +216,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline space-x-1.5">
             <span className={`text-4xl font-black tracking-tighter ${status.toLowerCase().includes('high') ? 'text-red-600' : (status.toLowerCase().includes('low') ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text')}`}>
-              {latestValue}
+              {formatBiomarkerValue(latestValue, precisionProfile)}
             </span>
             <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
               {formatUnit(unit)}

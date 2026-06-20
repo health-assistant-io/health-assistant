@@ -1,0 +1,12 @@
+{
+  "domain": "fhir_server",
+  "name": "FHIR Server (Hospital Sync)",
+  "version": "0.2.0",
+  "integration_type": ["pull", "push"],
+  "description": "Two-way FHIR R4 sync with an external server (hospital, personal health record) via SMART-on-FHIR. Pull remote Observations into the Biomarker Engine and push local Observations out. Direction is configurable; Pull/Push/Check Connection action buttons give manual control.",
+  "author": "Core",
+  "access_type": "cloud",
+  "categories": ["FHIR", "Hospital", "Health Records"],
+  "icon": "Hospital",
+  "dependencies": []
+}

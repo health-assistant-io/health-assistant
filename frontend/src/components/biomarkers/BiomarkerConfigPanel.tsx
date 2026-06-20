@@ -5,6 +5,7 @@ import { UnitSelector } from '../ui/UnitSelector';
 import biomarkerService from '../../services/biomarkerService';
 import { Biomarker, Unit } from '../../types/biomarker';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
 
 import { useUIStore } from '../../store/slices/uiSlice';
 
@@ -65,6 +66,7 @@ export const BiomarkerConfigPanel: React.FC<BiomarkerConfigPanelProps> = ({
         reference_range_max: formData.reference_range_max === '' ? null : parseFloat(formData.reference_range_max),
         is_telemetry: formData.is_telemetry
       });
+      refreshBiomarkerDefinitions();
       
       if (onSuccess) {
         onSuccess(updated);

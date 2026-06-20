@@ -175,7 +175,7 @@ async def update_examination(
         new_date = update_data["examination_date"]
         # Convert date to datetime for FHIR models that use DateTime
         if new_date:
-            new_datetime = datetime.datetime.combine(new_date, datetime.time.min)
+            new_datetime = datetime.datetime.combine(new_date, datetime.time.min, tzinfo=datetime.timezone.utc)
 
             # Update Observations
             await db.execute(

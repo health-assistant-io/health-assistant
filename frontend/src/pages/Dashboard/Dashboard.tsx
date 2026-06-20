@@ -244,11 +244,11 @@ function Dashboard() {
       if (cached) {
          setDashboardData({
            summary: {
-             totalDocuments: cached.summary.total_documents ?? cached.summary.totalDocuments,
-             totalObservations: cached.summary.total_observations ?? cached.summary.totalObservations,
-             lastUpload: cached.summary.last_upload ?? cached.summary.lastUpload
+             totalDocuments: cached.summary.total_documents,
+             totalObservations: cached.summary.total_observations,
+             lastUpload: cached.summary.last_upload
            },
-           recentDocuments: cached.recent_documents || cached.recentDocuments,
+           recentDocuments: cached.recent_documents || [],
            alerts: cached.alerts,
            latestExamination: cached.latest_examination,
            latestImaging: cached.latest_imaging || [],
@@ -275,11 +275,11 @@ function Dashboard() {
       const dashboardData = data as any;
       setDashboardData({
         summary: {
-          totalDocuments: dashboardData.summary.total_documents ?? dashboardData.summary.totalDocuments,
-          totalObservations: dashboardData.summary.total_observations ?? dashboardData.summary.totalObservations,
-          lastUpload: dashboardData.summary.last_upload ?? dashboardData.summary.lastUpload
+          totalDocuments: dashboardData.summary.total_documents,
+          totalObservations: dashboardData.summary.total_observations,
+          lastUpload: dashboardData.summary.last_upload
         },
-        recentDocuments: dashboardData.recent_documents || dashboardData.recentDocuments,
+        recentDocuments: dashboardData.recent_documents || [],
         alerts: dashboardData.alerts,
         latestExamination: dashboardData.latest_examination,
         latestImaging: dashboardData.latest_imaging || [],

@@ -10,6 +10,56 @@ docker-compose up -d
 ```
 
 
+## Dev infrastructure (host-based development)
+
+When you run the app on the host (via `./scripts/run-dev.sh`) rather than in
+Docker, use these lightweight stacks instead of the full `docker-compose.yml`:
+
+### Database + Redis — `docker-compose.dev-db.yml`
+
+```bash
+docker compose -f docker/docker-compose.dev-db.yml up -d
+```
+
+- **Postgres (TimescaleDB)** on host port **5433** (pinned to match `backend/.env`;
+  avoids clashing with a host Postgres on 5432). The init scripts create both
+  `health_assistant` and `health_assistant_test` (the latter is needed by pytest).
+- **Redis** on host port **6379** (Celery broker + Stage 2 OAuth state store).
+
+If you already run Redis on the host (port 6379 busy), start Postgres only:
+
+```bash
+docker compose -f docker/docker-compose.dev-db.yml up -d postgres-dev1
+```
+
+First run creates the test DB automatically. For an existing volume, create it
+once manually:
+
+```bash
+docker compose -f docker/docker-compose.dev-db.yml exec -T postgres-dev1 \
+  psql -U admin -d health_assistant <<'SQL'
+SELECT 'CREATE DATABASE health_assistant_test OWNER admin'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'health_assistant_test')\gexec
+SQL
+```
+
+### Local FHIR server (Stage 2 testing) — `docker-compose.fhir.yml`
+
+```bash
+docker compose -f docker/docker-compose.fhir.yml up -d
+# FHIR base URL -> http://localhost:${HAPI_PORT:-8080}/fhir
+# (8095 in the default docker/.env)
+```
+
+A local **HAPI FHIR R4** server for offline testing of the FHIR pull path
+(`fhir_search` + `fhir_observation_to_create`) against real FHIR search,
+pagination, and `OperationOutcome`. It does **not** serve SMART-on-FHIR OAuth —
+for the full connect round-trip use the hosted SMART Health IT sandbox
+(`https://r4.smarthealthit.org`); see `integrations/fhir_server/README.md`.
+
+Verify it's up: `curl http://localhost:${HAPI_PORT:-8080}/fhir/metadata | head`
+
+
 ## Dockerfile (Backend)
 
 ```dockerfile

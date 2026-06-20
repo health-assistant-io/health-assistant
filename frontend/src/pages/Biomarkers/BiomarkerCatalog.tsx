@@ -14,6 +14,7 @@ import { Biomarker, Unit } from '../../types/biomarker';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { formatUnit } from '../../utils/biomarkerUtils';
 import { filterBiomarkers } from '../../utils/searchUtils';
+import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
@@ -60,6 +61,9 @@ const BiomarkerCatalog: React.FC = () => {
       ]);
       setBiomarkers(bioData);
       setUnits(unitsData);
+      // Keep the enrichment cache in sync — definitions may have changed
+      // (create/edit/delete) since the last load.
+      refreshBiomarkerDefinitions();
     } catch (error) {
       console.error("Failed to load data", error);
     } finally {

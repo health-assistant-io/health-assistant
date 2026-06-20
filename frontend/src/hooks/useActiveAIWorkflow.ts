@@ -18,6 +18,7 @@ const WORKFLOW_MAPPING: Record<string, string[]> = {
   'medication_audit': ['medication_interaction'],
   'biomarker_definition': ['define_biomarker'],
   'medication_definition': ['define_medication'],
+  'fhir_import_normalization': ['nlp'],
 };
 
 export function useActiveAIWorkflow(workflowOrTaskType?: string): ActiveAITask[] {

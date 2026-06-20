@@ -577,10 +577,35 @@ GET /api/v1/analytics/trends
 ```
 
 **Query Parameters:**
-- `biomarker_codes`: Comma-separated LOINC codes
+- `biomarker_codes`: Comma-separated slugs, LOINC codes, or display names. When provided, the filter is expanded against the definition catalog (names, aliases, codes) so both mapped and unmapped observations are included.
 - `period`: Time period (e.g., 'last-30-days', 'last-12-months', 'all-time')
 - `aggregation`: Optional resolution bucket for telemetry data (e.g., '15 minutes', '1 day', '1 week')
 - `patient_id`: Optional override for admin context
+
+#### Remap Observations to Definition
+
+```http
+POST /api/v1/biomarkers/{biomarker_id}/remap
+```
+
+Relinks unmapped observations (those with `biomarker_id = NULL`) to a biomarker definition. Matches observations whose stored `code.text` equals `source_name` (case-insensitive). Used by the frontend's "Create biomarker" / "Map to existing" popup on unmapped biomarkers.
+
+**Request Body:**
+```json
+{
+  "source_name": "WBC",
+  "patient_id": "uuid-of-patient (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "biomarker_id": "3e9e3f7e-42f1-439f-a73c-64fd6234aed5",
+  "observations_remapped": 3
+}
+```
 
 #### Get Analytics Summary
 

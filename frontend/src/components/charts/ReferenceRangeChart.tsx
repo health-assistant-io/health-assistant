@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
+import { formatBiomarkerValue } from '../../utils/biomarkerUtils';
 
 interface ReferenceRangeChartProps {
   data: Array<{ name: string; value: number }>;
@@ -19,6 +21,8 @@ const ReferenceRangeChart: React.FC<ReferenceRangeChartProps> = ({
   xAxisKey = 'name',
   height = 300,
 }) => {
+  const precisionProfile = useBiomarkerPrecisionProfile();
+
   const formattedData = useMemo(() => {
     return data.map((item) => ({
       name: item.name,
@@ -38,6 +42,7 @@ const ReferenceRangeChart: React.FC<ReferenceRangeChartProps> = ({
             border: '1px solid #e5e7eb',
             borderRadius: '0.5rem',
           }}
+          formatter={(value: any) => [formatBiomarkerValue(value, precisionProfile), dataKey]}
         />
         <Line
           type="monotone"

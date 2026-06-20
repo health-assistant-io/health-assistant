@@ -176,13 +176,17 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
   };
 
   const renderLabRow = (lab: any, idx: number) => {
-    const targetId = lab.biomarker_id || lab.slug;
+    const targetId = lab.biomarker_id;
     return (
       <tr key={idx} className="border-b border-gray-50 dark:border-dark-border hover:bg-gray-50/50 dark:hover:bg-dark-bg/50 transition-colors group/row">
         <td className="py-3 px-4 font-bold text-gray-900 dark:text-dark-text flex items-center">
-          <Link to={`/biomarkers/details/${targetId}`} className="hover:text-blue-600 transition-colors">
-            {lab.name}
-          </Link>
+          {targetId ? (
+            <Link to={`/biomarkers/details/${targetId}`} className="hover:text-blue-600 transition-colors">
+              {lab.name}
+            </Link>
+          ) : (
+            <span>{lab.name}</span>
+          )}
 
           {lab.info && (
             <button 

@@ -79,7 +79,7 @@ function Patients() {
         firstName: patient.name?.given?.[0] || '',
         lastName: patient.name?.family || '',
         gender: patient.gender || 'unknown',
-        birthDate: (patient as any).birth_date || patient.birthDate || '',
+        birthDate: patient.birth_date || '',
         mrn: patient.mrn || ''
       });
     } else {
@@ -245,10 +245,10 @@ function Patients() {
                     <div className="flex items-center text-sm text-gray-500 dark:text-dark-muted">
                       <Calendar className="w-4 h-4 mr-2 text-gray-400" />
                       <span>
-                        {t('patients.born')}: {patient.birthDate || (patient as any).birth_date || 'Unknown'} 
-                        { (patient.birthDate || (patient as any).birth_date) && (
+                        {t('patients.born')}: {patient.birth_date || 'Unknown'} 
+                        { patient.birth_date && (
                           <span className="ml-1 text-gray-400 font-medium">
-                            ({formatAge(patient.birthDate || (patient as any).birth_date)})
+                            ({formatAge(patient.birth_date)})
                           </span>
                         )}
                       </span>

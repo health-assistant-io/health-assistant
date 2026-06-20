@@ -90,7 +90,7 @@ function PatientDetail() {
       firstName: patient.name?.given?.[0] || '',
       lastName: patient.name?.family || '',
       gender: patient.gender || 'unknown',
-      birthDate: (patient as any).birthDate || (patient as any).birth_date || '',
+      birthDate: patient.birth_date || '',
       mrn: patient.mrn || ''
     });
     setError(null);
@@ -165,7 +165,7 @@ function PatientDetail() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`${patient.name.given.join(' ')} ${patient.name.family}`}
+        title={`${patient.name?.given?.join(' ') ?? ''} ${patient.name?.family ?? ''}`.trim()}
         subtitle={
           <div className="flex items-center">
             <Fingerprint className="w-3 h-3 mr-1" />
@@ -379,11 +379,11 @@ function PatientDetail() {
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('patients.dob')}</p>
                 <div className="flex flex-col">
                   <span className="text-sm font-black text-gray-700 dark:text-dark-text leading-none">
-                    {patient.birthDate || (patient as any).birth_date || '—'}
+                    {patient.birth_date || '—'}
                   </span>
-                  {(patient.birthDate || (patient as any).birth_date) && (
+                  {patient.birth_date && (
                     <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mt-1 tracking-wider">
-                      {formatAge(patient.birthDate || (patient as any).birth_date)}
+                      {formatAge(patient.birth_date)}
                     </span>
                   )}
                 </div>

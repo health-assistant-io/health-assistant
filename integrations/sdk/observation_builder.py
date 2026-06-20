@@ -64,11 +64,7 @@ class ObservationBuilder:
             raise ValueError("Biomarker code and display name are required")
 
         # Map enum to proper FHIR system URL
-        system_url = "http://loinc.org"
-        if self._coding_system == CodingSystem.SNOMED:
-            system_url = "http://snomed.info/sct"
-        elif self._coding_system == CodingSystem.CUSTOM:
-            system_url = "http://healthassistant.local/custom"
+        system_url = self._coding_system.fhir_system
 
         coding = [
             {
@@ -78,12 +74,14 @@ class ObservationBuilder:
             }
         ]
 
-        value_quantity = {
-            "value": self._value,
-            "unit": self._unit,
-            "system": "http://unitsofmeasure.org",
-            "code": self._unit_code or self._unit
-        }
+        unit = self._unit or None
+        unit_code = self._unit_code or unit
+        value_quantity: dict = {"value": self._value}
+        if unit:
+            value_quantity["unit"] = unit
+        value_quantity["system"] = "http://unitsofmeasure.org"
+        if unit_code:
+            value_quantity["code"] = unit_code
 
         # Calculate a mock relative score if reference range is present
         relative_score = None

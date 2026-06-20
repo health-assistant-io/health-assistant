@@ -323,6 +323,82 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 If the key is missing, saving config with secret fields fails fast with a 400 — no plaintext secrets are ever stored. Integrations with no secret fields are unaffected.
 
+### 3.8 OAuth / SMART-on-FHIR (Cloud Integrations)
+
+For integrations that connect via an OAuth2 Authorization Code flow (FHIR servers,
+Fitbit, Withings, Apple Health cloud, etc.), the SDK ships a reusable auth module
+in `integrations/sdk/auth.py`. It provides:
+
+- **PKCE** (`generate_pkce`, `generate_state`) — stdlib-based, no extra deps.
+- **SMART discovery** (`discover_smart`) — reads `/.well-known/smart-configuration`.
+- **Dynamic Client Registration** (`register_client`, RFC 7591) — the user enters
+  *only the server URL*; the SDK auto-registers a public client (no `client_id`
+  pasted by the user).
+- **Token exchange + refresh** (`exchange_code`, `refresh_token`).
+- **`OAuthTokenStore`** — persists tokens in `user_config["_oauth"]` with
+  `access_token` / `refresh_token` / `client_secret` Fernet-encrypted; stores
+  connection metadata (`token_endpoint`, `client_id`, `fhir_base_url`) so refresh
+  works later; `refresh_if_needed()`.
+- **`OAuthStateStore`** — Redis-backed short-lived `state` + PKCE verifier
+  (reuses `app/core/redis.py`), one-shot consume (CSRF).
+- **`SmartOAuth`** — composes discovery → DCR → authorize → exchange, with
+  refresh-on-use (`get_live_token`).
+
+The connect flow is **decoupled from the config modal** — config creates a
+`PENDING` instance, then a separate Authorize action runs the OAuth round-trip:
+
+1. Config flow sets `is_oauth = True`. `submit_config_flow` then creates the
+   instance with status `PENDING` (not `ACTIVE`) **only when its `auth_mode` is
+   `smart`** — a tokenless instance (`auth_mode == "none"`) skips OAuth and goes
+   straight to `ACTIVE`. `auth_mode` is a per-instance config field the
+   integration declares (e.g. `smart` for hospitals/SMART sandbox, `none` for a
+   local/open FHIR server like vanilla HAPI, which has no SMART module).
+2. The provider implements `begin_oauth(integration, redirect_uri, extra_state=)`
+   and `complete_oauth(integration, pending, code)` (default raise
+   `NotImplementedError`). For SMART, delegate to `SmartOAuth`.
+3. The platform exposes two generic routes (no per-domain code):
+   - `POST /{domain}/oauth/start` → discover + DCR + authorize URL; stores
+     `state` → `{integration_id, user_id, …PKCE…}` in Redis.
+   - `GET /{domain}/oauth/callback?state=&code=` (unauthenticated, secured by the
+     one-shot `state`) → exchange + encrypt tokens → flip status `ACTIVE` → 302
+     to the SPA `/integrations/{domain}/connected` landing.
+4. The frontend shows an "Authorize" banner on `PENDING` instances and a toast
+   landing page on return.
+
+For **inbound FHIR data** (pull), use `sdk/fhir.py` — `fhir_search(http_client,
+base_url, resource_type, params, *, access_token=None)` (tokenless when
+`access_token` is `None`) and `fhir_observation_to_create(fhir_obs, tenant_id=,
+patient_id=)` → `ObservationCreate` attached to the local patient. The provider
+owns the token lifecycle for SMART (`SmartOAuth.get_live_token` +
+`force_refresh` on a 401 race); see `integrations/fhir_server/provider.py`.
+
+```python
+from integrations.sdk import BaseHealthProvider, SmartOAuth
+
+class MyProvider(BaseHealthProvider):
+    domain = "my_oauth_integration"
+
+    async def setup(self, config):
+        self._smart = SmartOAuth(self._http_client)
+
+    async def begin_oauth(self, integration, redirect_uri, *, extra_state=None):
+        return await self._smart.begin_connect(
+            integration.user_config["server_url"], redirect_uri,
+            "Health Assistant", extra_state=extra_state,
+        )
+
+    async def complete_oauth(self, integration, pending, code):
+        return await self._smart.complete_connect(integration, pending, code)
+```
+
+On use, refresh-on-access: `await provider.get_live_token(integration)` returns a
+valid token, refreshing first if expired (raises `IntegrationAuthError` if the
+refresh token is gone). Reference implementation:
+`integrations/fhir_server/provider.py` (SMART standalone launch, pull-only in
+Stage 2).
+
+Requires: `INTEGRATION_SECRET_KEY` (Fernet) + Redis (`REDIS_URL`) configured.
+
 ---
 
 ## 4. Building FHIR Observations

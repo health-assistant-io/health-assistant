@@ -567,7 +567,7 @@ export const ClinicalEventModal: React.FC<Props> = ({ isOpen, onClose, patientId
                                 {obs.code?.text || obs.code?.coding?.[0]?.display || obs.biomarker_slug || 'Unknown'}
                               </span>
                               <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-[9px] font-bold text-blue-600 dark:text-blue-400 rounded-md uppercase border border-blue-100/50 dark:border-blue-800/30">
-                                {obs.raw_value || obs.valueQuantity?.value} {obs.normalized_unit || obs.valueQuantity?.unit}
+                                {obs.raw_value} {obs.normalized_unit}
                               </span>
                             </div>
                             <button 

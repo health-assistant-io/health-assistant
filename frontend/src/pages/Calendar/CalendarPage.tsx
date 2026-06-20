@@ -86,7 +86,7 @@ const CalendarPage: React.FC = () => {
                 examDocuments={selectedEventDocs}
                 hideHeader={true}
                 onDocumentClick={(doc) => navigate(`/documents/${doc.id}`)}
-                onInfoClick={(b) => navigate(`/biomarkers/details/${b.definitionId || b.slug}`)}
+                onInfoClick={(b) => b.definitionId && navigate(`/biomarkers/details/${b.definitionId}`)}
               />
             )}
           </div>
@@ -121,7 +121,7 @@ const CalendarPage: React.FC = () => {
     <div className="w-full max-w-full px-2 sm:px-4 lg:px-6 space-y-6 h-[calc(100vh-180px)] flex flex-col overflow-hidden">
       <PageHeader
         title={t('common.calendar')}
-        subtitle={t('calendar.full_schedule_for', { name: `${currentPatient.name.given.join(' ')} ${currentPatient.name.family}` })}
+        subtitle={t('calendar.full_schedule_for', { name: `${currentPatient.name?.given?.join(' ') ?? ''} ${currentPatient.name?.family ?? ''}`.trim() })}
         icon={<Calendar className="w-8 h-8" />}
       />
 

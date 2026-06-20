@@ -771,7 +771,7 @@ async def migrate_biomarker_data(
                                         status="final",
                                         code={
                                             "coding": [{
-                                                "system": db_biomarker.coding_system.value if db_biomarker.coding_system else "http://loinc.org",
+                                                "system": db_biomarker.coding_system.fhir_system if db_biomarker.coding_system else "http://loinc.org",
                                                 "code": db_biomarker.code or db_biomarker.slug,
                                                 "display": db_biomarker.name
                                             }],
@@ -867,18 +867,24 @@ async def export_backup(self, job_id_str: str):
 
 @celery_app.task(bind=True, max_retries=0)
 @async_task
-async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: str):
+async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: str, config_json: str = "{}"):
     """Run a backup/restore import job from a ZIP or bare JSON file."""
     from uuid import UUID
     from app.services.import_service import ImportService
+    from app.schemas.import_data import FHIRImportConfig
+    import json
 
     job_id = UUID(job_id_str)
     owner_id = UUID(owner_id_str)
+    
+    config_dict = json.loads(config_json)
+    config = FHIRImportConfig(**config_dict) if config_dict else None
+    
     db, engine = get_async_session()
     try:
         async with db:
             svc = ImportService(db)
-            result = await svc.run_import(job_id, archive_path, owner_id)
+            result = await svc.run_import(job_id, archive_path, owner_id, config=config)
         return {
             "job_id": job_id_str,
             "status": result.status.value,

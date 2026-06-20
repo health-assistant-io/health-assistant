@@ -22,9 +22,40 @@ from app.schemas.ai_nlp import (
     ExaminationMetadataExtract,
 )
 from app.services.ai_provider_service import AIProviderService
+from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
 from app.workers.task_logger import TaskLogger, TaskProgressTracker
 
 logger = logging.getLogger(__name__)
+
+# Maps BiomarkerDefinition.category (internal taxonomy) to the canonical FHIR
+# observation-category code (http://terminology.hl7.org/CodeSystem/observation-category).
+# FHIR Observation.category is 0..* (a list of CodeableConcept); OCR-sourced
+# observations are stamped with the mapped category so they carry proper FHIR
+# semantics and round-trip cleanly through export/import. Unknown/missing -> laboratory.
+_BIOMARKER_TO_FHIR_CATEGORY = {
+    "blood_laboratory": "laboratory",
+    "urine": "laboratory",
+    "vital_signs": "vital-signs",
+    "imaging": "imaging",
+    "ophthalmology": "exam",
+}
+_OBS_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/observation-category"
+
+
+def _fhir_observation_category(bio_category: Optional[str]) -> List[Dict[str, Any]]:
+    """Build a canonical FHIR ``category`` list from a biomarker category."""
+    code = _BIOMARKER_TO_FHIR_CATEGORY.get((bio_category or "").strip(), "laboratory")
+    return [
+        {
+            "coding": [
+                {
+                    "system": _OBS_CATEGORY_SYSTEM,
+                    "code": code,
+                    "display": code.replace("-", " ").title(),
+                }
+            ]
+        }
+    ]
 
 
 class MedicalProcessingService:
@@ -440,7 +471,9 @@ class MedicalProcessingService:
 
         # Examination date is guaranteed to be set at the start of the pipeline
         eff_date = datetime.datetime.combine(
-            exam.examination_date or datetime.date.today(), datetime.time.min
+            exam.examination_date or datetime.date.today(), 
+            datetime.time.min, 
+            tzinfo=datetime.timezone.utc
         )
 
         # Save Biomarkers
@@ -561,27 +594,39 @@ class MedicalProcessingService:
         coding = []
         if target_bio:
             coding.append({
-                "system": "http://loinc.org" if target_bio.coding_system == CodingSystem.LOINC else "http://snomed.info/sct" if target_bio.coding_system == CodingSystem.SNOMED else "urn:uuid:health-assistant:custom-biomarker",
+                "system": target_bio.coding_system.fhir_system if target_bio.coding_system else CodingSystem.CUSTOM.fhir_system,
                 "code": target_bio.code or target_bio.slug,
                 "display": target_bio.name
             })
             
-        self.db.add(
-            Observation(
-                examination_id=exam.id,
-                document_id=document_id,
-                tenant_id=exam.tenant_id,
-                status="final",
-                code={"coding": coding, "text": b.name},
-                subject={"reference": patient_ref},
-                effective_datetime=effective_date,
-                value_quantity={"value": val_float, "unit": unit_symbol},
-                biomarker_id=biomarker_id,
-                raw_value=val_float,
-                raw_unit_id=raw_unit_id,
-                normalized_value=normalized_val,
-                lab_reference_range=lab_ref_range,
-                method=b.method,
-                interpretation=b.interpretation_flag,
-            )
+        obs = Observation(
+            examination_id=exam.id,
+            document_id=document_id,
+            tenant_id=exam.tenant_id,
+            status="final",
+            code={"coding": coding, "text": b.name},
+            subject={"reference": patient_ref},
+            effective_datetime=effective_date,
+            value_quantity={"value": val_float, "unit": unit_symbol},
+            biomarker_id=biomarker_id,
+            raw_value=val_float,
+            raw_unit_id=raw_unit_id,
+            normalized_value=normalized_val,
+            lab_reference_range=lab_ref_range,
+            method=b.method,
+            interpretation=b.interpretation_flag,
+            category=_fhir_observation_category(
+                target_bio.category if target_bio else None
+            ),
         )
+        # Write-time FHIR gate: never persist an Observation that cannot be
+        # projected to valid FHIR. Skip-and-log so one bad row can't abort the
+        # whole document extraction.
+        try:
+            assert_valid_fhir(obs)
+        except FhirSerializationError as e:
+            logger.warning(
+                "Skipping invalid OCR observation for %s: %s", b.name, e
+            )
+            return
+        self.db.add(obs)

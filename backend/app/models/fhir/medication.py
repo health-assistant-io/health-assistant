@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Enum, Text, ForeignKey, Date
+from sqlalchemy import Column, String, Enum, Text, ForeignKey, Date
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from app.models.base import (
     Base,
@@ -9,6 +9,7 @@ from app.models.base import (
     TimestampMixin,
 )
 from app.models.enums import MedicationStatus
+from app.services.fhir_helpers import _enum_value, _normalize_timing, build_fhir_resource, build_meta
 
 
 class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
@@ -91,7 +92,7 @@ class Medication(
             "id": str(self.id),
             "patient_id": str(self.patient_id),
             "tenant_id": str(self.tenant_id),
-            "status": self.status.value,
+            "status": _enum_value(self.status),
             "code": self.code,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
@@ -100,3 +101,45 @@ class Medication(
             "reason": self.reason,
             "note": self.note,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B MedicationStatement resource via fhir.resources (validated)."""
+        status = _enum_value(self.status, "active").lower()
+        code = self.code or {}
+        med_cc = {"text": code.get("text")} if isinstance(code, dict) else None
+        if isinstance(code, dict) and code.get("coding"):
+            med_cc = {"text": code.get("text"), "coding": code.get("coding")}
+
+        dosage = []
+        dose_entry = {}
+        if self.dosage:
+            dose_entry["text"] = self.dosage
+        if self.frequency:
+            dose_entry["timing"] = _normalize_timing(self.frequency)
+        if dose_entry:
+            dosage.append(dose_entry)
+
+        effective = {}
+        if self.start_date or self.end_date:
+            effective = {
+                "start": self.start_date.isoformat() if self.start_date else None,
+                "end": self.end_date.isoformat() if self.end_date else None,
+            }
+
+        return build_fhir_resource(
+            "MedicationStatement",
+            {
+                "resourceType": "MedicationStatement",
+                "id": str(self.id),
+                "status": status,
+                "medicationCodeableConcept": med_cc,
+                "subject": {"reference": f"Patient/{self.patient_id}"}
+                if self.patient_id
+                else None,
+                "effectivePeriod": effective or None,
+                "dosage": dosage or None,
+                "reasonCode": [{"text": self.reason}] if self.reason else None,
+                "note": [{"text": self.note}] if self.note else None,
+                "meta": build_meta(str(self.id)),
+            },
+        )
