@@ -169,3 +169,70 @@ body {
     background: #475569;
   }
 }
+
+/* HITL task card — responsive to its OWN width (the chat drawer is resizable,
+   so viewport breakpoints are unreliable). Inline-size containment lets the
+   card reflow based on the actual chat surface width: narrow = stacked
+   full-width actions + hidden hint; wider = inline right-aligned actions. */
+.hitl-card {
+  container-type: inline-size;
+}
+
+/* Header: default (narrow) is a COLUMN — title row gets the full card width and
+   the status pill sits on its own line beneath it, so the title can never be
+   squeezed by the pill. (Using flex-direction rather than wrap so the title's
+   flex-shrink can't crush it.) */
+.hitl-card .hitl-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.375rem;
+}
+.hitl-card .hitl-title-row {
+  min-width: 0;
+}
+.hitl-card .hitl-status {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.hitl-card .hitl-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.hitl-card .hitl-actions > * {
+  width: 100%;
+  justify-content: center;
+}
+.hitl-card .hitl-hint {
+  display: none;
+}
+
+@container (min-width: 380px) {
+  .hitl-card .hitl-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .hitl-card .hitl-actions > * {
+    width: auto;
+    justify-content: flex-start;
+  }
+  .hitl-card .hitl-hint {
+    display: block;
+  }
+}
+
+@container (min-width: 480px) {
+  /* Wide enough: header back to a single row, status pill on the right. */
+  .hitl-card .hitl-header {
+    flex-direction: row;
+    align-items: center;
+  }
+  .hitl-card .hitl-title-row {
+    flex: 1 1 auto;
+  }
+  .hitl-card .hitl-status {
+    align-self: auto;
+  }
+}

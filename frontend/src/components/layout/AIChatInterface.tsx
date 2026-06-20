@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageSquare, Sparkles, BarChart2, Send, Loader2, Bot, User, Database, ChevronRight, History, Plus, Maximize2, Minimize2 } from 'lucide-react';
+import { X, MessageSquare, Sparkles, BarChart2, Send, Loader2, Bot, User, Database, ChevronRight, History, Plus, Maximize2, Minimize2, Wrench } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { streamAIAssistance, AIStreamMessage, listChatSessions, getChatSessionMessages, deleteChatSession, ChatSession } from '../../services/aiAssistanceService';
+import { streamAIAssistance, resumeHitlSession, AIStreamMessage, listChatSessions, getChatSessionMessages, deleteChatSession, ChatSession } from '../../services/aiAssistanceService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { format } from 'date-fns';
@@ -10,12 +10,14 @@ import { useNavigate } from 'react-router-dom';
 import { CLINICAL_WORKFLOWS, ClinicalAction } from '../../config/clinicalWorkflows';
 import { useTranslation } from 'react-i18next';
 
-import { ToolCallInfo, Message } from '../../types/ai';
-import { DataMiniPage } from '../ai/DataMiniPage';
+import { ToolCallInfo, Message, TaskInfo } from '../../types/ai';
 import { CitationButton } from '../ai/CitationButton';
 import { ChatInspector } from '../ai/ChatInspector';
 import { ChatHistoryOverlay } from '../ai/ChatHistoryOverlay';
 import { ChatLedgerOverlay } from '../ai/ChatLedgerOverlay';
+import { AIToolsModal } from '../ai/AIToolsModal';
+import { HitlTaskCard } from '../ai/hitl/HitlTaskCard';
+import { TERMINAL_HITL_STATUSES } from '../ai/hitl/registry';
 import { AIBadge } from '../ui/AIBadge';
 
 interface Props {
@@ -32,6 +34,7 @@ export interface AIChatHandlers {
   startNewChat: () => void;
   toggleHistory: () => void;
   toggleLedger: () => void;
+  toggleToolsModal: () => void;
 }
 
 export const AIChatInterface: React.FC<Props> = ({ 
@@ -60,6 +63,10 @@ export const AIChatInterface: React.FC<Props> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
+  // Tracks assistant message indices we've already auto-resumed, so the
+  // continuation fires at most once per resolved task cluster. Storing ids
+  // rather than a flag on the Message prevents double-fire on re-renders.
+  const resumedMessageIds = useRef<Set<string>>(new Set());
 
   // Auto-resize textarea logic
   useEffect(() => {
@@ -75,6 +82,7 @@ export const AIChatInterface: React.FC<Props> = ({
   const [inspectingTool, setInspectingTool] = useState<ToolCallInfo | null>(null);
   const [inspectorViewMode, setInspectorViewMode] = useState<'raw' | 'table'>('table');
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
@@ -84,7 +92,8 @@ export const AIChatInterface: React.FC<Props> = ({
   React.useImperativeHandle(interfaceRef, () => ({
     startNewChat,
     toggleHistory: () => setIsHistoryOpen(prev => !prev),
-    toggleLedger: () => setIsLedgerOpen(prev => !prev)
+    toggleLedger: () => setIsLedgerOpen(prev => !prev),
+    toggleToolsModal: () => setIsToolsModalOpen(prev => !prev)
   }));
   
   const currentPatient = usePatientStore(state => state.currentPatient);
@@ -187,6 +196,7 @@ export const AIChatInterface: React.FC<Props> = ({
     setCurrentSessionId(null);
     setIsHistoryOpen(false);
     setIsLedgerOpen(false);
+    resumedMessageIds.current.clear();
     if (isFullScreen) {
       navigate('/ai-assistant');
     }
@@ -206,11 +216,14 @@ export const AIChatInterface: React.FC<Props> = ({
           result: tc.result,
           status: 'finished'
         })),
-        citations: m.citations
+        citations: m.citations,
+        tasks: m.tasks,
+        _loadedFromHistory: true
       })));
       setCurrentSessionId(sessionId);
       setIsHistoryOpen(false);
       setIsLedgerOpen(false);
+      resumedMessageIds.current.clear();
       
       // Update URL if we are in full screen mode and it's not already in URL
       if (isFullScreen && initialSessionId !== sessionId) {
@@ -251,6 +264,7 @@ export const AIChatInterface: React.FC<Props> = ({
     let accumulatedContent = '';
     let accumulatedToolCalls: ToolCallInfo[] = [];
     let accumulatedCitations: string[] = [];
+    let accumulatedTasks: TaskInfo[] = [];
     
     const placeholderMessage: Message = { role: 'assistant', content: '', toolCalls: [], citations: [], isExecuting: false };
     setMessages(prev => [...prev, placeholderMessage]);
@@ -305,6 +319,16 @@ export const AIChatInterface: React.FC<Props> = ({
              }
           }
 
+          if (msg.task) {
+            // Replace any existing task with the same proposal_id, else append
+            const idx = accumulatedTasks.findIndex(t => t.proposal_id === msg.task!.proposal_id);
+            if (idx === -1) {
+              accumulatedTasks.push(msg.task);
+            } else {
+              accumulatedTasks[idx] = msg.task;
+            }
+          }
+
           setMessages(prev => {
             const updated = [...prev];
             const lastIdx = updated.length - 1;
@@ -315,6 +339,7 @@ export const AIChatInterface: React.FC<Props> = ({
                 content: accumulatedContent,
                 toolCalls: [...accumulatedToolCalls],
                 citations: [...accumulatedCitations],
+                tasks: accumulatedTasks.length ? [...accumulatedTasks] : updated[lastIdx].tasks,
                 isExecuting: msg.toolCall ? msg.toolCall.status !== 'finished' : updated[lastIdx].isExecuting
               };
             }
@@ -334,6 +359,133 @@ export const AIChatInterface: React.FC<Props> = ({
               role: 'assistant', 
               content: t('ai_chat.status.error')
             };
+            return updated;
+          });
+          setLoading(false);
+          loadingRef.current = false;
+        }
+      );
+    } catch (err) {
+      setLoading(false);
+      loadingRef.current = false;
+    }
+  };
+
+  /**
+   * Trigger a HITL continuation turn after the user has resolved all pending
+   * task cards on an assistant message. Streams a new assistant message that
+   * reacts to the outcomes (acknowledge, propose follow-ups, etc).
+   *
+   * Guardrails:
+   *   - `loadingRef` gate prevents races with a concurrently-running user turn.
+   *   - `resumedMessageIds` Set ensures we fire at most once per message,
+   *     even if onResolved fires multiple times in the same tick.
+   *   - We do NOT auto-resume across a session reload — only live resolutions
+   *     (onResolved is only callable from interactive proposed cards; resolved
+   *     cards collapse to a buttonless summary so this is naturally enforced).
+   */
+  const triggerResume = async (messageIndex: number, messageKey: string) => {
+    const sessionId = currentSessionIdRef.current;
+    if (!sessionId) return;
+    // Race guard: don't fire a resume while another stream is running.
+    if (loadingRef.current) {
+      // Mark as resumed anyway so we don't retry when the in-flight stream ends.
+      resumedMessageIds.current.add(messageKey);
+      return;
+    }
+    resumedMessageIds.current.add(messageKey);
+
+    setLoading(true);
+    loadingRef.current = true;
+
+    // Placeholder for the continuation assistant message.
+    const placeholderMessage: Message = {
+      role: 'assistant',
+      content: '',
+      toolCalls: [],
+      citations: [],
+      tasks: [],
+      isExecuting: false,
+    };
+    setMessages(prev => [...prev, placeholderMessage]);
+
+    let accumulatedContent = '';
+    let accumulatedToolCalls: ToolCallInfo[] = [];
+    let accumulatedCitations: string[] = [];
+    let accumulatedTasks: TaskInfo[] = [];
+
+    try {
+      await resumeHitlSession(
+        sessionId,
+        {},
+        (msg: AIStreamMessage) => {
+          if (msg.content) {
+            accumulatedContent += msg.content;
+          }
+          if (msg.toolCall) {
+            const { name, status, args, result } = msg.toolCall;
+            if (name) {
+              const existingIdx = accumulatedToolCalls.findIndex(tc => tc.name === name);
+              if (existingIdx === -1) {
+                accumulatedToolCalls.push({ name, status, args, result });
+              } else {
+                accumulatedToolCalls[existingIdx].status = status;
+                if (args) accumulatedToolCalls[existingIdx].args = args;
+                if (result) accumulatedToolCalls[existingIdx].result = result;
+              }
+            }
+          }
+          if (msg.citation) {
+            if (!accumulatedCitations.includes(msg.citation)) {
+              accumulatedCitations.push(msg.citation);
+            }
+          }
+          if (msg.task) {
+            const idx = accumulatedTasks.findIndex(t => t.proposal_id === msg.task!.proposal_id);
+            if (idx === -1) {
+              accumulatedTasks.push(msg.task);
+            } else {
+              accumulatedTasks[idx] = msg.task;
+            }
+          }
+          if (msg.error) {
+            // Surface server-side guard violations (e.g. pending tasks).
+            accumulatedContent = msg.error;
+          }
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: accumulatedContent,
+                toolCalls: [...accumulatedToolCalls],
+                citations: [...accumulatedCitations],
+                tasks: accumulatedTasks.length ? [...accumulatedTasks] : updated[lastIdx].tasks,
+                isExecuting: msg.toolCall ? msg.toolCall.status !== 'finished' : updated[lastIdx].isExecuting
+              };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setLoading(false);
+          loadingRef.current = false;
+        },
+        (err) => {
+          console.error('HITL resume streaming error:', err);
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0) {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                role: 'assistant',
+                content: t('ai_chat.hitl.resume_error', {
+                  defaultValue: 'I could not continue after your review. Please try sending a message.'
+                }),
+              };
+            }
             return updated;
           });
           setLoading(false);
@@ -431,6 +583,18 @@ export const AIChatInterface: React.FC<Props> = ({
                  >
                     <Plus className="w-4 h-4 md:w-5 md:h-5" />
                  </button>
+                 <button 
+                   onClick={() => setIsToolsModalOpen(true)}
+                   className={`p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all ${
+                     isFullScreen 
+                       ? 'text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:text-dark-muted dark:hover:text-dark-text dark:hover:bg-dark-bg' 
+                       : 'text-white/70 hover:text-white hover:bg-white/10'
+                   }`}
+                   title="View Agent Capabilities"
+                 >
+                    <Wrench className="w-4 h-4 md:w-5 md:h-5" />
+                 </button>
+
                  <button 
                    onClick={() => setIsLedgerOpen(!isLedgerOpen)}
                    className={`relative p-1.5 md:p-2 rounded-lg md:rounded-xl transition-all ${
@@ -566,14 +730,22 @@ export const AIChatInterface: React.FC<Props> = ({
             {activeTab === 'chat' && (
               <div className={`space-y-6 md:space-y-8 py-6 md:py-10 pb-10 max-w-5xl mx-auto w-full px-4 md:px-6`}>
                   {messages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`flex items-start space-x-2 md:space-x-4 max-w-[95%] md:max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                          <div className={`p-2 md:p-2.5 rounded-xl md:rounded-2xl flex-shrink-0 shadow-sm ${
-                            msg.role === 'user' 
-                              ? 'bg-indigo-600 text-white' 
+                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} min-w-0`}>
+                      <div className={`min-w-0 ${
+                        isFullScreen
+                          ? `flex items-start space-x-2 md:space-x-4 max-w-[95%] md:max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`
+                          : 'flex flex-col w-full'
+                      }`}>
+                          <div className={`flex-shrink-0 shadow-sm ${
+                            isFullScreen ? 'p-2 md:p-2.5 rounded-xl md:rounded-2xl' : `p-1.5 rounded-lg mb-1.5 ${msg.role === 'user' ? 'self-end' : 'self-start'}`
+                          } ${
+                            msg.role === 'user'
+                              ? 'bg-indigo-600 text-white'
                               : (isFullScreen ? 'bg-white dark:bg-dark-surface text-indigo-600 dark:text-indigo-400 border border-gray-100 dark:border-dark-border' : 'bg-gray-100 dark:bg-dark-bg text-indigo-600')
                           }`}>
-                            {msg.role === 'user' ? <User className="w-4 h-4 md:w-5 md:h-5" /> : <Bot className="w-4 h-4 md:w-5 md:h-5" />}
+                            {msg.role === 'user'
+                              ? <User className={isFullScreen ? 'w-4 h-4 md:w-5 md:h-5' : 'w-3.5 h-3.5'} />
+                              : <Bot className={isFullScreen ? 'w-4 h-4 md:w-5 md:h-5' : 'w-3.5 h-3.5'} />}
                           </div>
                           <div className={`p-4 md:p-6 rounded-2xl md:rounded-3xl text-sm md:text-[15px] leading-relaxed shadow-lg ${
                             msg.role === 'user'
@@ -583,7 +755,7 @@ export const AIChatInterface: React.FC<Props> = ({
                                   : 'bg-white dark:bg-dark-bg/50 text-gray-800 dark:text-dark-text border border-gray-100 dark:border-dark-border rounded-tl-none prose dark:prose-invert max-w-none')
                           }`}>
                             {msg.content ? (
-                              <div className="overflow-x-auto no-scrollbar">
+                              <div className="overflow-x-auto custom-scrollbar pb-1">
                                 <ReactMarkdown 
                                   remarkPlugins={[remarkGfm]}
                                   components={{
@@ -704,6 +876,84 @@ export const AIChatInterface: React.FC<Props> = ({
                                 })}
                               </div>
                             )}
+
+                            {msg.role === 'assistant' && msg.tasks && msg.tasks.length > 0 && (
+                              <div className="not-prose min-w-0">
+                                {msg.tasks.map(task => (
+                                  <HitlTaskCard
+                                    key={task.proposal_id}
+                                    task={task}
+                                    sessionId={currentSessionId}
+                                    onResolved={(updated) => {
+                                      const messageKey = `msg-${i}`;
+                                      // Compute the post-update task list synchronously
+                                      // so we can decide whether to trigger a resume.
+                                      const currentTasks = msg.tasks || [];
+                                      const nextTasks = currentTasks.map(t =>
+                                        t.proposal_id === task.proposal_id ? updated : t
+                                      );
+                                      const allTerminal =
+                                        nextTasks.length > 0 &&
+                                        nextTasks.every(t =>
+                                          TERMINAL_HITL_STATUSES.has(t.status)
+                                        );
+                                      setMessages(prev => prev.map((m, idx) => {
+                                        if (idx !== i || !m.tasks) return m;
+                                        return {
+                                          ...m,
+                                          tasks: m.tasks.map(t => t.proposal_id === task.proposal_id ? updated : t),
+                                        };
+                                      }));
+                                      // Auto-resume fires exactly once per message
+                                      // when the last pending task transitions to
+                                      // a terminal state.
+                                      if (
+                                        allTerminal &&
+                                        !resumedMessageIds.current.has(messageKey) &&
+                                        !msg._loadedFromHistory
+                                      ) {
+                                        triggerResume(i, messageKey);
+                                      }
+                                    }}
+                                  />
+                                ))}
+                                {(() => {
+                                  // "Continue" button for partial resolutions:
+                                  // shown when at least one task is resolved AND
+                                  // at least one is still pending. When ALL are
+                                  // resolved, auto-resume handles it (no button).
+                                  const tasks = msg.tasks || [];
+                                  const hasTerminal = tasks.some(t => TERMINAL_HITL_STATUSES.has(t.status));
+                                  const pendingCount = tasks.filter(t => !TERMINAL_HITL_STATUSES.has(t.status)).length;
+                                  const isPartial = hasTerminal && pendingCount > 0;
+                                  const alreadyResumed = resumedMessageIds.current.has(`msg-${i}`);
+                                  if (!isPartial || alreadyResumed || msg._loadedFromHistory) return null;
+                                  return (
+                                    <div className="mt-3 flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => triggerResume(i, `msg-${i}`)}
+                                        disabled={loading}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <span>
+                                          {t('ai_chat.hitl.continue_partial', {
+                                            defaultValue: 'Continue',
+                                            count: pendingCount,
+                                          })}
+                                        </span>
+                                        {pendingCount > 0 && (
+                                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/20 text-[9px] font-black">
+                                            {pendingCount}
+                                          </span>
+                                        )}
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            )}
                           </div>
                       </div>
                     </div>
@@ -821,6 +1071,13 @@ export const AIChatInterface: React.FC<Props> = ({
           messages={messages}
           onInspectTool={setInspectingTool}
           isFullScreen={isFullScreen}
+        />
+
+        <AIToolsModal
+          isOpen={isToolsModalOpen}
+          onClose={() => setIsToolsModalOpen(false)}
+          patientId={currentPatient?.id || ''}
+          examinationId={currentExaminationId || undefined}
         />
       </div>
 

@@ -10,8 +10,10 @@ from app.models.fhir.patient import Patient
 from app.models.examination_model import ExaminationModel
 from app.models.document_model import DocumentModel
 from app.models.clinical_event import ClinicalEvent
-from app.models.fhir.medication import MedicationCatalog
-from app.models.biomarker_model import BiomarkerDefinition
+from app.services.catalog_search_service import (
+    search_medications,
+    search_biomarkers,
+)
 
 router = APIRouter()
 
@@ -115,21 +117,8 @@ async def global_search(
             "subtitle": "Clinical Event"
         })
 
-    # 5. Search Medication Catalog
-    medications_result = await db.execute(
-        select(MedicationCatalog).where(
-            or_(
-                MedicationCatalog.tenant_id == tenant_id,
-                MedicationCatalog.tenant_id == None
-            ),
-            or_(
-                MedicationCatalog.name.ilike(search_pattern),
-                MedicationCatalog.description.ilike(search_pattern),
-                MedicationCatalog.indications.ilike(search_pattern)
-            )
-        ).limit(5)
-    )
-    medications = medications_result.scalars().all()
+    # 5. Search Medication Catalog (trigram + substring via service)
+    medications = await search_medications(db, tenant_id, q, limit=5)
 
     for m in medications:
         results.append({
@@ -139,22 +128,8 @@ async def global_search(
             "subtitle": "Medication Catalog"
         })
 
-    # 6. Search Biomarkers
-    biomarkers_result = await db.execute(
-        select(BiomarkerDefinition).where(
-            or_(
-                BiomarkerDefinition.tenant_id == tenant_id,
-                BiomarkerDefinition.tenant_id == None
-            ),
-            or_(
-                BiomarkerDefinition.name.ilike(search_pattern),
-                BiomarkerDefinition.slug.ilike(search_pattern),
-                BiomarkerDefinition.code.ilike(search_pattern),
-                cast(BiomarkerDefinition.aliases, String).ilike(search_pattern)
-            )
-        ).limit(5)
-    )
-    biomarkers = biomarkers_result.scalars().all()
+    # 6. Search Biomarkers (trigram + substring via service)
+    biomarkers = await search_biomarkers(db, tenant_id, q, limit=5)
 
     for b in biomarkers:
         results.append({

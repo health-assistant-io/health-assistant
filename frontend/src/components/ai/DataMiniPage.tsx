@@ -365,14 +365,21 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
 
             {!isObservation && !isBiomarkerDef && !isMedication && !isExamination && !isEvent && !isDocument && !isTelemetryData && (
               <div className="space-y-1">
-                {Object.entries(item).filter(([k]) => k !== 'id' && !k.startsWith('_')).slice(0, 4).map(([key, val]) => (
+                {Object.entries(item).filter(([k]) => !k.startsWith('_')).slice(0, 5).map(([key, val]) => (
                   <div key={key} className="flex justify-between items-center py-1 border-b border-gray-50 dark:border-white/5 last:border-0">
                     <span className="text-[9px] uppercase font-bold text-gray-400 dark:text-dark-muted tracking-tight">{key.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] font-medium text-gray-700 dark:text-dark-text truncate max-w-[120px]">
+                    <span className="text-[10px] font-medium text-gray-700 dark:text-dark-text truncate max-w-[120px]" title={String(val)}>
                       {typeof val === 'object' ? '...' : String(val)}
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {id && (
+              <div className="mt-2 pt-1.5 border-t border-gray-50 dark:border-white/5 flex items-center justify-between opacity-50 hover:opacity-100 transition-opacity">
+                <span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">ID</span>
+                <span className="text-[8px] font-mono text-gray-500 truncate max-w-[150px] select-all" title={id}>{id}</span>
               </div>
             )}
           </div>

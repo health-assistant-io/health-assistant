@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AIChatInterface, type AIChatHandlers } from '../../components/layout/AIChatInterface';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
-import { Sparkles, MessageSquare, BarChart2, History, Plus, Database, Minimize2 } from 'lucide-react';
+import { Sparkles, MessageSquare, BarChart2, History, Plus, Database, Minimize2, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { AIBadge } from '../../components/ui/AIBadge';
@@ -68,6 +68,13 @@ const AIChatPage: React.FC = () => {
               title={t('ai_chat.tooltips.new_chat')}
             >
               <Plus className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => interfaceRef.current?.toggleToolsModal()}
+              className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
+              title="View Agent Capabilities"
+            >
+              <Wrench className="w-5 h-5" />
             </button>
             <button 
               onClick={() => interfaceRef.current?.toggleLedger()}

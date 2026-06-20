@@ -209,22 +209,26 @@ function DoctorDetail() {
                       </div>
                     </div>
                   )}
-                  {doctor.address && (doctor.address.line || doctor.address.city) && (
-                    <div className="flex items-center space-x-3 text-gray-600 dark:text-dark-muted">
-                      <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
-                        <MapPin className="w-4 h-4 text-indigo-600" />
+                  {(() => {
+                    const addr = doctor.address?.[0];
+                    if (!addr || (!addr.line && !addr.city)) return null;
+                    return (
+                      <div className="flex items-center space-x-3 text-gray-600 dark:text-dark-muted">
+                        <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                          <MapPin className="w-4 h-4 text-indigo-600" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Location</p>
+                          <p className="font-bold">
+                            {addr.line?.[0]}
+                            {addr.line?.[0] && (addr.city || addr.postalCode) && ', '}
+                            {addr.city} {addr.postalCode}
+                            {addr.country && ` (${addr.country})`}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Location</p>
-                        <p className="font-bold">
-                          {doctor.address.line?.[0]}
-                          {doctor.address.line?.[0] && (doctor.address.city || doctor.address.postalCode) && ', '}
-                          {doctor.address.city} {doctor.address.postalCode}
-                          {doctor.address.country && ` (${doctor.address.country})`}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   {doctor.license_number && (
                     <div className="flex items-center space-x-3 text-gray-600 dark:text-dark-muted">
                       <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">

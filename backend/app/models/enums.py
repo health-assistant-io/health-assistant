@@ -41,6 +41,21 @@ class NotificationStatus(str, enum.Enum):
     DISMISSED = "DISMISSED"
     FAILED = "FAILED"
 
+class HitlTaskStatus(str, enum.Enum):
+    """Status of a human-in-the-loop task card proposed by the AI assistant.
+    Values are lowercase to match the JSONB payload contract consumed by the
+    frontend (registry.tsx HITL_STATUS_META keys)."""
+    PROPOSED = "proposed"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    DISMISSED = "dismissed"
+
+    @classmethod
+    def terminal(cls):
+        """Return the set of statuses that block a resume continuation turn
+        (i.e. the user has finished acting on the proposal)."""
+        return frozenset({cls.CONFIRMED, cls.DISMISSED, cls.FAILED})
+
 class TriggerType(str, enum.Enum):
     TIME = "TIME"
     RECURRING = "RECURRING"

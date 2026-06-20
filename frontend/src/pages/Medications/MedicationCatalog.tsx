@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Pill, Search, Plus, ChevronRight, Info, Users, X, Save, AlertCircle } from 'lucide-react';
+import { Pill, Plus, ChevronRight, Info, Users, AlertCircle } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { searchMedicationCatalog, MedicationCatalogEntry, addCustomMedication } from '../../services/medicationService';
-import { AIAssistButton } from '../../components/ui/AIAssistButton';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import {
+  MedicationDefinitionForm,
+  MedicationDefinitionFormPayload,
+} from '../../components/patients/MedicationDefinitionForm';
 
 function MedicationCatalog() {
   const { t } = useTranslation();
@@ -17,19 +20,10 @@ function MedicationCatalog() {
   const searchTerm = useUIStore(state => state.pageSearchTerm);
   const setSearchTerm = useUIStore(state => state.setPageSearchTerm);
   const setIsPageSearchSupported = useUIStore(state => state.setIsPageSearchSupported);
-  
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    indications: '',
-    dosage_info: '',
-    contraindications: '',
-    side_effects: ''
-  });
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const fetchMedications = async () => {
     setLoading(true);
@@ -59,39 +53,20 @@ function MedicationCatalog() {
   }, [setIsPageSearchSupported, setSearchTerm]);
 
   const handleOpenModal = () => {
-    setFormData({
-      name: '',
-      description: '',
-      indications: '',
-      dosage_info: '',
-      contraindications: '',
-      side_effects: ''
-    });
-    setError(null);
+    setModalError(null);
     setIsModalOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      setError(t('medications.name_required'));
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
+  const handleSubmit = async (payload: MedicationDefinitionFormPayload) => {
     try {
-      const payload = {
-        ...formData,
-        side_effects: formData.side_effects.split(',').map(s => s.trim()).filter(s => s !== '')
-      };
-      const result = await addCustomMedication(payload);
+      setModalError(null);
+      await addCustomMedication(payload);
       setIsModalOpen(false);
       fetchMedications();
     } catch (err: any) {
-      setError(err.response?.data?.detail || t('medications.failed_add'));
-    } finally {
-      setSubmitting(false);
+      const msg = err.response?.data?.detail || t('medications.failed_add');
+      setModalError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      throw err; // keep the form's loading state reset
     }
   };
 
@@ -191,135 +166,20 @@ function MedicationCatalog() {
         </div>
       )}
 
-      {/* New Medication Modal */}
+      {/* New Medication Modal — hosts the headless MedicationDefinitionForm. */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-dark-surface rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-white dark:bg-dark-surface sticky top-0 z-10">
-              <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text">
-                {t('medications.add_custom_title')}
-              </h2>
-              <div className="flex items-center space-x-2">
-                <AIAssistButton 
-                  taskType="define_medication"
-                  context={{}}
-                  onSuggestedData={(data) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      name: data.name || prev.name,
-                      description: data.description || prev.description,
-                      indications: data.indications || prev.indications,
-                      dosage_info: data.dosage_info || prev.dosage_info,
-                      contraindications: data.contraindications || prev.contraindications,
-                      side_effects: data.side_effects ? data.side_effects.join(', ') : prev.side_effects
-                    }));
-                  }}
-                />
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors">
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
+          <div className="bg-white dark:bg-dark-surface rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            {modalError && (
+              <div className="mx-6 mt-4 p-3 bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-sm rounded-xl flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span className="break-words">{modalError}</span>
               </div>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.name')} *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Amoxicillin"
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.description')}</label>
-                <textarea
-                  placeholder={t('medications.description_placeholder')}
-                  rows={3}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text resize-none"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.indications')}</label>
-                <input
-                  type="text"
-                  placeholder={t('medications.indications_placeholder')}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.indications}
-                  onChange={(e) => setFormData({ ...formData, indications: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.dosage_info')}</label>
-                <input
-                  type="text"
-                  placeholder={t('medications.dosage_placeholder')}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.dosage_info}
-                  onChange={(e) => setFormData({ ...formData, dosage_info: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.contraindications')}</label>
-                <input
-                  type="text"
-                  placeholder={t('medications.contraindications_placeholder')}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.contraindications}
-                  onChange={(e) => setFormData({ ...formData, contraindications: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('medications.side_effects')}</label>
-                <input
-                  type="text"
-                  placeholder={t('medications.side_effects_placeholder')}
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.side_effects}
-                  onChange={(e) => setFormData({ ...formData, side_effects: e.target.value })}
-                />
-              </div>
-
-              <div className="pt-4 flex space-x-3 bg-white dark:bg-dark-surface sticky bottom-0">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-colors font-bold text-gray-700 dark:text-dark-muted"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-blue-200/50 dark:shadow-none disabled:opacity-50 active:scale-95"
-                >
-                  {submitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>{t('medications.create_medication')}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+            )}
+            <MedicationDefinitionForm
+              onSubmit={handleSubmit}
+              onCancel={() => setIsModalOpen(false)}
+            />
           </div>
         </div>
       )}

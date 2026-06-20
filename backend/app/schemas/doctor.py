@@ -25,7 +25,10 @@ class DoctorBase(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     telecom: Optional[List[ContactPoint]] = None
-    address: Optional[Address] = None
+    # FHIR Practitioner.address is 0..* (a list). Stored as a JSONB list; a
+    # non-list value (e.g. a stray single dict) is a format error and will
+    # raise a Pydantic validation error here rather than being silently coerced.
+    address: Optional[List[Address]] = None
     office_number: Optional[str] = None
     office_details: Optional[str] = None
 
@@ -41,7 +44,7 @@ class DoctorUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     telecom: Optional[List[ContactPoint]] = None
-    address: Optional[Address] = None
+    address: Optional[List[Address]] = None
     office_number: Optional[str] = None
     office_details: Optional[str] = None
 
