@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, ConfigDict, field_validator, model_validator
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -8,6 +8,23 @@ from enum import Enum
 
 
 from app.models.enums import AIScope
+
+
+def _mask_api_key_for_response(value: Optional[str]) -> Optional[str]:
+    """Audit B1: never return a plaintext api_key in any response shape.
+
+    Accepts either the encrypted at-rest form or legacy plaintext and
+    returns a ``***<last4>`` mask. Returns None if the input is None/empty.
+    """
+    if value is None or value == "":
+        return None
+    from app.core.encryption import mask_secret
+
+    return mask_secret(value)
+
+
+def _compute_has_api_key(value: Optional[str]) -> bool:
+    return bool(value) and value != ""
 
 
 class AIProviderCreate(BaseModel):
@@ -58,26 +75,43 @@ class AIProviderUpdate(BaseModel):
 
 
 class AIProviderResponse(BaseModel):
-    """Schema for AI provider response"""
+    """Schema for AI provider response.
+
+    Audit B1: ``api_key`` is now MASKED in every response (``***<last4>``)
+    regardless of whether the stored form is encrypted or legacy plaintext.
+    The previous plaintext leak allowed any authenticated user to read
+    other tenants' provider keys by UUID. The companion ``has_api_key``
+    field lets the UI indicate a key is configured without exposing it.
+    """
 
     id: UUID
     name: str
     scope: AIScope
     provider_type: str
     api_base: str
-    api_key: Optional[str]
+    api_key: Optional[str] = None
+    has_api_key: bool = False
     is_active: bool
-    settings: Optional[Dict[str, Any]]
+    settings: Optional[Dict[str, Any]] = None
     is_local: bool = False
     company_name: Optional[str] = None
     company_website: Optional[str] = None
     company_country: Optional[str] = None
-    tenant_id: Optional[UUID]
-    user_id: Optional[UUID]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    tenant_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _mask_api_key(self) -> "AIProviderResponse":
+        # Mask on read so no caller can accidentally bypass it. has_api_key
+        # is computed from the ORIGINAL value before masking.
+        original = self.api_key
+        self.has_api_key = _compute_has_api_key(original)
+        self.api_key = _mask_api_key_for_response(original)
+        return self
 
 
 class AIModelCreate(BaseModel):
@@ -194,25 +228,33 @@ class AITaskAssignmentUpdate(BaseModel):
 
 
 class AIProviderWithModelsResponse(BaseModel):
-    """Schema for provider with models"""
+    """Schema for provider with models (audit B1: api_key is masked)."""
 
     id: UUID
     name: str
     provider_type: str
     api_base: str
-    api_key: Optional[str]
+    api_key: Optional[str] = None
+    has_api_key: bool = False
     is_active: bool
-    settings: Optional[Dict[str, Any]]
+    settings: Optional[Dict[str, Any]] = None
     is_local: bool = False
     company_name: Optional[str] = None
     company_website: Optional[str] = None
     company_country: Optional[str] = None
-    tenant_id: Optional[UUID]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    tenant_id: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     models: List[AIModelResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _mask_api_key(self) -> "AIProviderWithModelsResponse":
+        original = self.api_key
+        self.has_api_key = _compute_has_api_key(original)
+        self.api_key = _mask_api_key_for_response(original)
+        return self
 
 
 class TaskTypeAssignment(BaseModel):
