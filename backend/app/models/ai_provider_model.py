@@ -60,6 +60,13 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     )
 
     def to_dict(self) -> dict:
+        """Return a dict with the api_key ENCRYPTED (audit B1).
+
+        Callers that need the plaintext key must use
+        :meth:`get_api_key_plaintext` (defined on the service). The
+        ``api_key`` field here keeps the at-rest encrypted form so that
+        accidental serialization paths (logs, dumps) never leak the key.
+        """
         return {
             "id": str(self.id),
             "name": self.name,
@@ -78,6 +85,24 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
             "created_at": str(self.created_at) if self.created_at else None,
             "updated_at": str(self.updated_at) if self.updated_at else None,
         }
+
+    def get_api_key_plaintext(self) -> Optional[str]:
+        """Return the decrypted api_key, or None if not set.
+
+        Audit B1: this is the only sanctioned way to read the plaintext key
+        for use with the LLM client. Handles both the encrypted form and
+        legacy plaintext rows (returns the value verbatim if it doesn't
+        start with the encrypted prefix).
+        """
+        from app.core.encryption import decrypt_secret
+
+        try:
+            return decrypt_secret(self.api_key)
+        except ValueError:
+            # Key rotated or corrupted — surface None so the caller can
+            # prompt the user to re-enter the key. Do not raise from a
+            # model method to avoid breaking list endpoints.
+            return None
 
 
 class AIModel(Base, UUIDMixin, TimestampMixin):

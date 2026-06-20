@@ -91,8 +91,13 @@ class AIProviderService:
         return result.scalars().unique().all()
 
     async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
-        """Create a new provider"""
-        provider = AIProviderModel(**provider_data.model_dump())
+        """Create a new provider (audit B1: api_key encrypted at rest)."""
+        from app.core.encryption import encrypt_secret
+
+        payload = provider_data.model_dump()
+        if payload.get("api_key"):
+            payload["api_key"] = encrypt_secret(payload["api_key"])
+        provider = AIProviderModel(**payload)
         self.db.add(provider)
         await self.db.commit()
         await self.db.refresh(provider)
@@ -101,8 +106,32 @@ class AIProviderService:
     async def update_provider(
         self, provider_id: UUID, provider_data: AIProviderUpdate
     ) -> Optional[AIProviderModel]:
-        """Update a provider"""
+        """Update a provider.
+
+        Audit B1: encrypt any newly-provided api_key before persistence.
+        ``api_key`` semantics on update:
+
+          - absent from the patch (``exclude_unset``) → preserve existing key
+          - ``None`` or ``""`` → explicitly clear (set to NULL)
+          - ``"***xxxx"`` (masked form returned by the response schema) →
+            preserve existing key (the UI re-sent the masked value rather
+            than the real key)
+          - any other string → encrypt and store
+        """
+        from app.core.encryption import encrypt_secret, looks_masked
+
         update_dict = provider_data.model_dump(exclude_unset=True)
+
+        if "api_key" in update_dict:
+            incoming = update_dict["api_key"]
+            if looks_masked(incoming):
+                # UI re-sent the masked form — preserve the existing key.
+                update_dict.pop("api_key")
+            elif incoming is None or incoming == "":
+                # Explicit clear — pass through to the UPDATE as NULL.
+                update_dict["api_key"] = None
+            else:
+                update_dict["api_key"] = encrypt_secret(incoming)
 
         if not update_dict:
             return await self.get_provider(provider_id)
@@ -132,7 +161,7 @@ class AIProviderService:
         if provider.provider_type == "openai":
             import httpx
 
-            headers = {"Authorization": f"Bearer {provider.api_key}"}
+            headers = {"Authorization": f"Bearer {provider.get_api_key_plaintext()}"}
             url = f"{provider.api_base.rstrip('/')}/models"
 
             async with httpx.AsyncClient() as client:
@@ -553,7 +582,7 @@ class AIProviderService:
 
             if provider:
                 return ChatOpenAI(
-                    api_key=provider.api_key,
+                    api_key=provider.get_api_key_plaintext(),
                     base_url=provider.api_base or "https://api.openai.com/v1",
                     model=model.model_name if model else "gpt-4o-mini",
                     temperature=model.temperature if model else 0.7,
@@ -602,7 +631,7 @@ class AIProviderService:
                 llm = None
                 if provider.provider_type == "openai":
                     llm = ChatOpenAI(
-                        api_key=provider.api_key,
+                        api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model=model.model_name if model else "gpt-4o",
                         temperature=model.temperature if model else 0.0,
@@ -611,7 +640,7 @@ class AIProviderService:
 
                 return get_ocr_processor(
                     provider=provider.provider_type,
-                    api_key=provider.api_key,
+                    api_key=provider.get_api_key_plaintext(),
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o",
                     max_tokens=model.max_tokens if model else 65536,
@@ -659,7 +688,7 @@ class AIProviderService:
                 llm = None
                 if provider.provider_type == "openai":
                     llm = ChatOpenAI(
-                        api_key=provider.api_key,
+                        api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model=model.model_name if model else "gpt-4o-mini",
                         temperature=model.temperature if model else 0.7,
@@ -668,7 +697,7 @@ class AIProviderService:
 
                 return get_nlp_extractor(
                     provider=provider.provider_type,
-                    api_key=provider.api_key,
+                    api_key=provider.get_api_key_plaintext(),
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o-mini",
                     temperature=model.temperature if model else 0.7,
