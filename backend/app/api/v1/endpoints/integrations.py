@@ -736,6 +736,8 @@ async def sync_integration(
         start_time = datetime.datetime.now(datetime.timezone.utc)
         observations_data = await provider.pull_data(integration)
         count = 0
+        dropped_invalid = 0
+        pulled_count = len(observations_data) if observations_data else 0
         if observations_data:
             from app.models.fhir import Observation
 
@@ -747,7 +749,12 @@ async def sync_integration(
                 observations.append(obs)
 
             from app.services.fhir_service import map_observations_to_biomarkers
-            await map_observations_to_biomarkers(db, observations)
+            map_result = await map_observations_to_biomarkers(db, observations)
+            dropped_invalid = (
+                map_result.get("dropped_invalid", 0)
+                if isinstance(map_result, dict)
+                else 0
+            )
 
             # Audit A4: route telemetry-class observations to the
             # TimescaleDB hypertable via the shared helper.
@@ -763,27 +770,47 @@ async def sync_integration(
                 integration_id=integration.id,
             )
             count = len(telemetry_records) + len(fhir_records)
-                
+
         await provider.push_data(integration, {"status": "manual_sync"})
-        
+
         integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-        
+
+        # If validation dropped observations, mark the sync as partial so the
+        # UI can surface it; otherwise success. (Audit A4 follow-up: silent
+        # drops were the original bug — user saw "Sync completed successfully"
+        # while every observation was rejected.)
+        sync_status = "success" if dropped_invalid == 0 else "partial"
+        message = (
+            "Sync completed successfully"
+            if dropped_invalid == 0
+            else f"Sync completed with {dropped_invalid} invalid observation(s) dropped"
+        )
+
         # Log the sync
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
-            status="success",
+            status=sync_status,
             records_synced=count,
             started_at=start_time,
-            completed_at=integration.last_synced_at
+            completed_at=integration.last_synced_at,
+            error_message=(
+                f"{dropped_invalid} of {pulled_count} pulled observations "
+                "failed FHIR validation and were dropped"
+                if dropped_invalid
+                else None
+            ),
         )
         db.add(sync_log)
-        
+
         await db.commit()
         return {
-            "message": "Sync completed successfully", 
+            "message": message,
             "metrics_synced": count,
-            "last_synced_at": integration.last_synced_at
+            "pulled": pulled_count,
+            "dropped_invalid": dropped_invalid,
+            "status": sync_status,
+            "last_synced_at": integration.last_synced_at,
         }
     except IntegrationAuthError as e:
         await db.rollback()
