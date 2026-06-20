@@ -43,17 +43,22 @@ def _ensure_json(val: Any) -> Any:
 async def list_allergy_catalog(
     search: Optional[str] = None, tenant_id: Optional[UUID] = None
 ) -> List[AllergyCatalog]:
+    from app.services.catalog_search_service import search_allergies
+
+    # Delegate to the unified catalog search service (trigram + ilike fallback,
+    # tenant-scoped, ranked). This service manages its own session; we accept
+    # the previous signature (no db arg) for back-compat.
+    if tenant_id is None:
+        # No tenant context: fall back to a plain unranked listing of globals.
+        async with AsyncSessionLocal() as db:
+            query = select(AllergyCatalog).where(AllergyCatalog.tenant_id == None)
+            if search:
+                query = query.where(AllergyCatalog.name.ilike(f"%{search}%"))
+            result = await db.execute(query.order_by(AllergyCatalog.name.asc()))
+            return result.scalars().all()
+
     async with AsyncSessionLocal() as db:
-        # Search global defaults (tenant_id is NULL) OR tenant-specific additions
-        query = select(AllergyCatalog).where(
-            or_(AllergyCatalog.tenant_id == None, AllergyCatalog.tenant_id == tenant_id)
-        )
-
-        if search:
-            query = query.where(AllergyCatalog.name.ilike(f"%{search}%"))
-
-        result = await db.execute(query.order_by(AllergyCatalog.name.asc()))
-        return result.scalars().all()
+        return await search_allergies(db, tenant_id, search)
 
 
 async def get_active_allergies_by_tenant(tenant_id: UUID) -> List[Dict[str, Any]]:

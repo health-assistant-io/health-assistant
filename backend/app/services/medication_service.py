@@ -20,17 +20,12 @@ from app.schemas.ai_nlp import UnknownMedicationExtract
 async def get_medication_catalog(
     db: AsyncSession, tenant_id: UUID, search: Optional[str] = None
 ) -> List[MedicationCatalog]:
-    query = select(MedicationCatalog).where(
-        or_(
-            MedicationCatalog.tenant_id == None,
-            MedicationCatalog.tenant_id == tenant_id,
-        )
-    )
-    if search:
-        query = query.where(MedicationCatalog.name.ilike(f"%{search}%"))
+    # Delegate to the unified catalog search service: trigram similarity on
+    # name + indications/description substring fallback, tenant-scoped, with
+    # similarity ranking. (Previously: name.ilike only, unranked.)
+    from app.services.catalog_search_service import search_medications
 
-    result = await db.execute(query.order_by(MedicationCatalog.name.asc()))
-    return list(result.scalars().all())
+    return await search_medications(db, tenant_id, search)
 
 
 async def get_catalog_medication(

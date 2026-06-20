@@ -44,5 +44,7 @@ class ChatMessage(Base, UUIDMixin, TimestampMixin):
     content = Column(JSONB, nullable=False)  # Supports text and future image blocks
     tool_calls = Column(JSONB, nullable=True)
     citations = Column(JSONB, nullable=True)
+    # Human-in-the-loop task cards proposed by the assistant (see HITL_TASK protocol)
+    tasks = Column(JSONB, nullable=True)
 
     session = relationship("ChatSession", back_populates="messages")

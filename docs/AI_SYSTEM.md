@@ -61,16 +61,45 @@ Health Assistant features a deeply integrated Agentic AI Copilot designed to pro
 
 ### Tool-Calling Capabilities
 The `ChatbotTools` class dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id`. These tools allow the LLM to:
-- **Search Available Biomarkers:** Discover metrics, slugs, and data types (Telemetry vs Clinical) using Regex support.
-- **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling.
+- **Search Available Biomarkers:** Discover metrics, IDs, and data types (Telemetry vs Clinical) using trigram similarity search.
+- **Search Medications:** Discover drugs in the medication catalog using trigram similarity search.
+- **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling using UUIDs.
 - Read raw OCR document extractions.
-- Fetch recent biomarker values and historical trends (for discrete clinical labs).
+- Fetch recent biomarker values and historical trends (for discrete clinical labs using UUIDs).
 - Query active medications and catalogs.
 - Look up specific clinical visit details and notes.
 - Write updates to examination notes.
+- **Propose clinical write actions** (human-in-the-loop): render review cards for creating clinical events, adding biomarker results to an examination, adding medications, etc. The user must explicitly confirm; the AI never writes directly (see §4.1 below).
 
 ### Streaming & Context Awareness
 The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline citations linking back to the precise clinical entities.
+
+### 4.1 Human-in-the-Loop (HITL) Proposals
+
+Beyond the single direct write tool (`update_examination_notes`), the chatbot can **propose** write actions via the `propose_*` tool family. **The AI never writes clinical data.** A `propose_*` tool only builds a draft and returns a `{"__hitl__": true, "task": {...}}` marker; the streaming layer detects it, **proactively saves** the task immediately (surviving stream interruptions), and emits a `[HITL_TASK]` SSE event; the frontend renders a **review card** (compact summary) which opens a **modal** with the full prefilled form; the human edits and explicitly **Approves**, which commits through the **canonical, tenant-scoped, RBAC-enforced REST endpoint** (identical to a manual create). A dedicated `/resolve` endpoint then records the outcome (`confirmed` / `dismissed`) into the chat audit log — it performs no writes.
+
+**Auto-resume continuation:** after the user resolves task card(s), the agent automatically gets a **continuation turn** via `POST /sessions/{id}/resume`. The backend reads the resolved outcomes from `tasks` JSONB (never trusted from the client), builds a structured `[HITL RESOLUTION FEEDBACK]` message with per-task status/result/error, and streams a new response. The agent acknowledges what was saved, can chain dependent proposals (e.g. define biomarker → add it to exam), and respects dismissed items. Guardrails: fires at most once per message (`resumedMessageIds` ref), race-gated against concurrent user messages, suppressed on session reloads.
+
+**Continue button (partial resume):** if the user answers some cards but leaves others pending, a "Continue (N unanswered)" button appears. Clicking it triggers the resume with partial answers — the LLM is told which items were skipped and instructed not to auto-repropose them. When ALL cards are resolved, auto-resume fires immediately (no button needed).
+
+**Parallel proposals:** the agent may emit multiple independent `propose_*` calls in a single turn (e.g. "add medications X, Y, Z" → three parallel review cards). Dependent actions (one requires another to be committed first) are split across turns — the auto-resume handles the chaining naturally.
+
+**Current task types:**
+
+| Task type | Tool | Status |
+|---|---|---|
+| `create_clinical_event` | `propose_create_clinical_event` | ✅ shipped |
+| `add_biomarker_to_examination` | `propose_add_biomarker_to_examination` | ✅ shipped |
+| `add_medication` (+ schedule) | `propose_add_medication` | ✅ shipped |
+| `create_biomarker_definition` | `propose_create_biomarker_definition` | ✅ shipped |
+| `create_medication_definition` | `propose_create_medication_definition` | ✅ shipped |
+| `create_examination` | — | ⏸ deferred (exams are upload-driven; low chat value) |
+
+Task statuses use the `HitlTaskStatus(str, Enum)` enum (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod. The frontend mirrors this via `TERMINAL_HITL_STATUSES` in `registry.tsx`.
+
+Adding a task type touches **none** of the protocol, DB, or endpoints — only one `propose_*` tool, one frontend handler, one registry line, and (usually) one extracted headless form. Full recipe + the `[HITL_TASK]`/`__hitl__`/resume contract: see the **`hitl-task-cards`** skill.
+
+**Security model:** AI proposes, human discharges; untrusted prefill is re-validated client- *and* server-side; `/resolve` is idempotent (409 on re-resolve) and verifies session ownership; `/resume` reads outcomes from the DB (never trusts the client) and verifies ownership; the full proposed-vs-committed diff is audited in the `ChatMessage.tasks` JSONB column; resume summaries trim large payloads to short identifying fields only (no PHI leakage).
 
 ---
 

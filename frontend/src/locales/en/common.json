@@ -787,7 +787,45 @@
       "new_chat": "New Chat",
       "ledger": "Evidence Ledger",
       "full_screen": "Full Screen Chat",
-      "minimize": "Minimize to Drawer"
+      "minimize": "Minimize to Drawer",
+      "resize": "Drag to resize"
+    },
+    "hitl": {
+      "proposal_label": "AI Proposal",
+      "default_title": "Review proposed action",
+      "confirm_create": "Confirm & Create",
+      "review_and_edit": "Review & Edit",
+      "reject": "Reject",
+      "review_hint": "Review the AI-prepared draft and edit before saving.",
+      "unknown_title": "Unsupported action",
+      "unknown_desc": "An action of type \"{{type}}\" was proposed but is not supported in this view.",
+      "error_generic": "Failed to save. Please review and try again.",
+      "error_no_patient": "A patient context is required to create this event.",
+      "add_biomarker": {
+        "confirm": "Confirm & Add",
+        "error_no_examination": "An active examination is required to add a biomarker.",
+        "adding_to": "Adding to:"
+      },
+      "add_medication": {
+        "confirm": "Confirm & Add Medication",
+        "error_no_patient": "A patient context is required to add a medication."
+      },
+      "create_biomarker": {
+        "confirm": "Confirm & Create Definition"
+      },
+      "create_medication": {
+        "confirm": "Confirm & Create Definition"
+      },
+      "status": {
+        "proposed": "Awaiting review",
+        "confirmed": "Confirmed",
+        "failed": "Failed",
+        "dismissed": "Dismissed"
+      },
+      "resume_status": "Continuing after your review...",
+      "resume_error": "I could not continue after your review. Please try sending a message.",
+      "continue_partial_one": "Continue (1 unanswered)",
+      "continue_partial_other": "Continue ({{count}} unanswered)"
     },
     "status": {
       "error": "I'm sorry, I encountered an error while responding.",

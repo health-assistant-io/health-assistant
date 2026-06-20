@@ -1,4 +1,5 @@
 import api from '../api/axios';
+import { TaskInfo } from '../types/ai';
 
 export interface AIAssistanceRequest {
   task_type: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination' | 'suggest_category_icon' | 'generate_category_icon';
@@ -32,6 +33,7 @@ export interface ChatMessage {
   content: { text: string };
   tool_calls?: any[];
   citations?: string[];
+  tasks?: TaskInfo[];
   created_at: string;
 }
 
@@ -56,6 +58,136 @@ export const deleteChatSession = async (sessionId: string): Promise<void> => {
   await api.delete(`/ai-assistance/sessions/${sessionId}`);
 };
 
+export interface HitlResolution {
+  status: 'confirmed' | 'dismissed';
+  final_payload?: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+}
+
+export const resolveHitlTask = async (
+  sessionId: string,
+  proposalId: string,
+  resolution: HitlResolution
+): Promise<{ success: boolean; task: TaskInfo }> => {
+  const response = await api.post(
+    `/ai-assistance/sessions/${sessionId}/tasks/${proposalId}/resolve`,
+    resolution
+  );
+  return response.data;
+};
+
+/**
+ * Trigger an agent continuation turn after the user has resolved one or more
+ * HITL task cards in the session. Returns an SSE stream parsed identically to
+ * `streamAIAssistance`. The `messageId` selector is optional — when omitted
+ * the server resumes from the most recent task-bearing message.
+ *
+ * Security note: outcomes are read from the session's tasks JSONB on the
+ * server; this call only carries selectors.
+ */
+export const resumeHitlSession = async (
+  sessionId: string,
+  params: { messageId?: string } | undefined,
+  onMessage: (msg: AIStreamMessage) => void,
+  onComplete: () => void,
+  onError: (error: any) => void
+) => {
+  const token = localStorage.getItem('accessToken');
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(params && params.messageId ? { message_id: params.messageId } : {})
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('No reader available');
+
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          const content = line.trim().replace('data: ', '');
+          try {
+            const data = JSON.parse(content);
+            if (data.error) {
+              onMessage({ error: data.error });
+              return;
+            }
+            const rawContent = data.content;
+            if (rawContent) {
+              if (rawContent.startsWith('[SESSION_ID]')) {
+                onMessage({ sessionId: rawContent.replace('[SESSION_ID] ', '').trim() });
+              } else if (rawContent.startsWith('[TOOL_CALL_START]')) {
+                onMessage({ toolCall: { name: rawContent.replace('[TOOL_CALL_START] ', '').trim(), status: 'starting' } });
+              } else if (rawContent.startsWith('[TOOL_CALL_EXEC]')) {
+                onMessage({ toolCall: { name: rawContent.replace('[TOOL_CALL_EXEC] ', '').trim(), status: 'executing' } });
+              } else if (rawContent.startsWith('[TOOL_CALL_RESULT]')) {
+                const payload = rawContent.replace('[TOOL_CALL_RESULT] ', '').trim();
+                try {
+                  const payloadData = JSON.parse(payload);
+                  onMessage({
+                    toolCall: {
+                      name: payloadData.name,
+                      status: 'finished',
+                      args: typeof payloadData.args === 'string' ? payloadData.args : JSON.stringify(payloadData.args),
+                      result: payloadData.result
+                    }
+                  });
+                } catch {
+                  const parts = payload.split('|');
+                  onMessage({ toolCall: { name: parts[0], status: 'finished', args: parts[1], result: parts.slice(2).join('|') } });
+                }
+              } else if (rawContent === '[TOOL_CALL_FINISHED]') {
+                onMessage({ toolCall: { name: '', status: 'finished' } });
+              } else if (rawContent.startsWith('[CITATION]')) {
+                onMessage({ citation: rawContent.replace('[CITATION] ', '') });
+              } else if (rawContent.startsWith('[HITL_TASK]')) {
+                const payloadStr = rawContent.replace('[HITL_TASK] ', '').trim();
+                try {
+                  const task = JSON.parse(payloadStr) as TaskInfo;
+                  if (task && task.proposal_id && task.task_type) {
+                    onMessage({ task });
+                  } else {
+                    console.warn('Malformed HITL_TASK payload (missing proposal_id/task_type)', task);
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse [HITL_TASK] payload', e);
+                }
+              } else {
+                onMessage({ content: rawContent });
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to parse SSE chunk', e);
+          }
+        }
+      }
+    }
+    onComplete();
+  } catch (error) {
+    onError(error);
+  }
+};
+
 export interface AIStreamMessage {
   content?: string;
   sessionId?: string;
@@ -66,6 +198,7 @@ export interface AIStreamMessage {
     result?: string;
   };
   citation?: string;
+  task?: TaskInfo;
   error?: string;
 }
 
@@ -153,6 +286,18 @@ export const streamAIAssistance = async (
                 onMessage({ toolCall: { name: '', status: 'finished' } });
               } else if (rawContent.startsWith('[CITATION]')) {
                 onMessage({ citation: rawContent.replace('[CITATION] ', '') });
+              } else if (rawContent.startsWith('[HITL_TASK]')) {
+                const payloadStr = rawContent.replace('[HITL_TASK] ', '').trim();
+                try {
+                  const task = JSON.parse(payloadStr) as TaskInfo;
+                  if (task && task.proposal_id && task.task_type) {
+                    onMessage({ task });
+                  } else {
+                    console.warn('Malformed HITL_TASK payload (missing proposal_id/task_type)', task);
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse [HITL_TASK] payload', e);
+                }
               } else {
                 onMessage({ content: rawContent });
               }
@@ -167,4 +312,20 @@ export const streamAIAssistance = async (
   } catch (error) {
     onError(error);
   }
+};
+
+export interface AIToolInfo {
+  name: string;
+  description: string;
+  source: string;
+  schema?: Record<string, any>;
+}
+
+export const getAvailableTools = async (patientId: string, examinationId?: string): Promise<AIToolInfo[]> => {
+  const params = new URLSearchParams();
+  params.append('patient_id', patientId);
+  if (examinationId) params.append('examination_id', examinationId);
+  
+  const response = await api.get<AIToolInfo[]>(`/ai-assistance/tools?${params.toString()}`);
+  return response.data;
 };

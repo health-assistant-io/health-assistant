@@ -445,6 +445,7 @@ async def get_biomarker_trends(
     if biomarker_codes:
         codes = [c.strip() for c in biomarker_codes.split(",")]
         from sqlalchemy import or_
+        import uuid
 
         # Resolve the requested codes/slugs against the definition catalog so we
         # can expand the filter to include the matched definitions' names,
@@ -453,22 +454,39 @@ async def get_biomarker_trends(
         # lab label (e.g. "WBC", "Leukocytes") rather than the canonical slug.
         # Without this, the detail page shows "No historical data" even though
         # the unfiltered trends page resolves the same data via fallback.
-        expanded_terms = list(codes)
+        uuid_codes = []
+        text_codes = []
+        for c in codes:
+            try:
+                uuid.UUID(c)
+                uuid_codes.append(c)
+            except ValueError:
+                text_codes.append(c)
+
+        expanded_terms = list(text_codes)
         matched_def_ids = []
-        def_filter = or_(
-            *[BiomarkerDefinition.slug.ilike(f"%{c}%") for c in codes],
-            *[BiomarkerDefinition.name.ilike(f"%{c}%") for c in codes],
-            *[BiomarkerDefinition.code.ilike(f"%{c}%") for c in codes],
-        )
-        def_res = await db.execute(
-            select(BiomarkerDefinition).where(def_filter)
-        )
-        for b in def_res.scalars().all():
-            matched_def_ids.append(b.id)
-            if b.name:
-                expanded_terms.append(b.name)
-            if b.aliases:
-                expanded_terms.extend(a for a in b.aliases if a)
+        
+        def_filters = []
+        if text_codes:
+            def_filters.append(or_(
+                *[BiomarkerDefinition.slug.ilike(f"%{c}%") for c in text_codes],
+                *[BiomarkerDefinition.name.ilike(f"%{c}%") for c in text_codes],
+                *[BiomarkerDefinition.code.ilike(f"%{c}%") for c in text_codes],
+            ))
+        if uuid_codes:
+            def_filters.append(BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes]))
+            
+        if def_filters:
+            def_filter = or_(*def_filters)
+            def_res = await db.execute(
+                select(BiomarkerDefinition).where(def_filter)
+            )
+            for b in def_res.scalars().all():
+                matched_def_ids.append(b.id)
+                if b.name:
+                    expanded_terms.append(b.name)
+                if b.aliases:
+                    expanded_terms.extend(a for a in b.aliases if a)
 
         # Deduplicate while preserving order
         seen = set()
@@ -486,7 +504,7 @@ async def get_biomarker_trends(
                 Observation.code["text"].as_string().ilike(f"%{term}%")
             )
         # Match by slug via the join (mapped observations)
-        for code in codes:
+        for code in text_codes:
             filter_clauses.append(BiomarkerDefinition.slug.ilike(f"%{code}%"))
         # Match by biomarker_id directly (mapped observations)
         if matched_def_ids:
@@ -842,7 +860,24 @@ async def get_biomarker_trends(
 
     if biomarker_codes:
         codes = [c.strip() for c in biomarker_codes.split(",")]
-        telemetry_to_query = [s for s in telemetry_slugs if any(c.lower() in s.lower() for c in codes)]
+        import uuid
+        uuid_codes = []
+        text_codes = []
+        for c in codes:
+            try:
+                uuid.UUID(c)
+                uuid_codes.append(c)
+            except ValueError:
+                text_codes.append(c)
+
+        if uuid_codes:
+            # Resolve UUIDs to slugs for telemetry querying
+            def_res = await db.execute(
+                select(BiomarkerDefinition.slug).where(BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes]))
+            )
+            text_codes.extend([s for s in def_res.scalars().all() if s])
+
+        telemetry_to_query = [s for s in telemetry_slugs if any(c.lower() in s.lower() for c in text_codes)]
     else:
         telemetry_to_query = telemetry_slugs
 

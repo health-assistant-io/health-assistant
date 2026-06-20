@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 
+from app.models.enums import HitlTaskStatus
+
 
 class AIAssistanceRequest(BaseModel):
     task_type: str = Field(
@@ -24,6 +26,7 @@ class ChatMessageSchema(BaseModel):
     content: Dict[str, Any]
     tool_calls: Optional[List[Dict[str, Any]]] = None
     citations: Optional[List[str]] = None
+    tasks: Optional[List[Dict[str, Any]]] = None
     created_at: Any
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
@@ -48,3 +51,36 @@ class AIAssistanceResponse(BaseModel):
     session_id: Optional[UUID] = None
     success: bool = True
     error: Optional[str] = None
+
+
+class HitlResolutionRequest(BaseModel):
+    """Body for confirming or dismissing a human-in-the-loop task card."""
+    status: HitlTaskStatus = Field(
+        ..., description="Whether the user confirmed or dismissed the proposal."
+    )
+    final_payload: Optional[Dict[str, Any]] = Field(
+        None, description="The final (possibly user-edited) payload actually committed"
+    )
+    result: Optional[Dict[str, Any]] = Field(
+        None, description="Outcome of the commit (e.g., created resource id)"
+    )
+    error: Optional[str] = Field(
+        None, description="Error message if the commit failed (status should still be 'confirmed' attempt)"
+    )
+
+
+class HitlResumeRequest(BaseModel):
+    """Body for triggering a HITL continuation turn after the user has resolved
+    one or more proposed task cards. Selectors only — outcomes are read from
+    the session's tasks JSONB on the server (never trusted from the client)."""
+    message_id: Optional[UUID] = Field(
+        None,
+        description="Specific assistant message whose tasks should be summarized. "
+        "If omitted, the most recent task-bearing message is used.",
+    )
+
+class AIAssistanceToolSchema(BaseModel):
+    name: str
+    description: str
+    source: str = "built-in"
+    schema_dict: Optional[Dict[str, Any]] = Field(None, alias="schema")

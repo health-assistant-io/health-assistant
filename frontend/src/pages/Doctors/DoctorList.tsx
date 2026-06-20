@@ -79,6 +79,7 @@ function DoctorList() {
 
   const handleOpenModal = (doctor: Doctor | null = null) => {
     if (doctor) {
+      const addr = doctor.address?.[0];
       setEditingDoctor(doctor);
       setFormData({
         name: doctor.name,
@@ -89,11 +90,11 @@ function DoctorList() {
         office_number: doctor.office_number || '',
         office_details: doctor.office_details || '',
         address: {
-          line: doctor.address?.line || [''],
-          city: doctor.address?.city || '',
-          state: doctor.address?.state || '',
-          postalCode: doctor.address?.postalCode || '',
-          country: doctor.address?.country || ''
+          line: addr?.line || [''],
+          city: addr?.city || '',
+          state: addr?.state || '',
+          postalCode: addr?.postalCode || '',
+          country: addr?.country || ''
         },
         telecom: doctor.telecom || []
       });
@@ -156,10 +157,12 @@ function DoctorList() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Practitioner.address is FHIR 0..* — send the single edited address as a list.
+      const payload = { ...formData, address: [formData.address] };
       if (editingDoctor) {
-        await updateDoctor(editingDoctor.id, formData);
+        await updateDoctor(editingDoctor.id, payload);
       } else {
-        await createDoctor(formData);
+        await createDoctor(payload);
       }
       fetchDoctors();
       handleCloseModal();
