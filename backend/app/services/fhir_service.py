@@ -756,10 +756,17 @@ async def list_medications(
         }
 
 
-async def map_observations_to_biomarkers(db, observations, auto_create_missing: bool = True):
-    """
-    Map raw FHIR observations from integrations to BiomarkerDefinitions.
-    Creates new definitions if they do not exist, unless auto_create_missing is False.
+async def map_observations_to_biomarkers(
+    db, observations, auto_create_missing: bool = True
+) -> Dict[str, Any]:
+    """Map raw FHIR observations from integrations to BiomarkerDefinitions.
+
+    Creates new definitions if they do not exist, unless auto_create_missing
+    is False.
+
+    Returns a dict ``{"mapped": <int>, "dropped_invalid": <int>}`` so callers
+    (sync endpoints, background task) can surface partial-success to the
+    user instead of silently reporting zero results as "success".
     """
     from app.models.biomarker_model import BiomarkerDefinition
     import re
@@ -830,3 +837,5 @@ async def map_observations_to_biomarkers(db, observations, auto_create_missing: 
 
             if bdef:
                 obs.biomarker_id = bdef.id
+
+    return {"mapped": len(observations), "dropped_invalid": dropped}

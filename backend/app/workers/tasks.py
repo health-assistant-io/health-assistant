@@ -492,6 +492,7 @@ async def sync_active_integrations(self):
                     observations_data = await provider.pull_data(integration)
 
                     observations = []
+                    dropped_invalid = 0
                     if observations_data:
                         logger.info(f"Pulled {len(observations_data)} observations from {integration.provider}")
 
@@ -504,7 +505,12 @@ async def sync_active_integrations(self):
                             observations.append(obs)
 
                         from app.services.fhir_service import map_observations_to_biomarkers
-                        await map_observations_to_biomarkers(db, observations)
+                        map_result = await map_observations_to_biomarkers(db, observations)
+                        dropped_invalid = (
+                            map_result.get("dropped_invalid", 0)
+                            if isinstance(map_result, dict)
+                            else 0
+                        )
 
                     # Audit A4: route telemetry-class observations to the
                     # TimescaleDB hypertable. Previously the background task
@@ -535,15 +541,26 @@ async def sync_active_integrations(self):
                     # Update sync time
                     integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
 
+                    # If validation dropped observations, surface it in the
+                    # sync log so the UI/admin can see partial-success.
+                    sync_status = "success" if dropped_invalid == 0 else "partial"
+                    error_msg = (
+                        f"{dropped_invalid} of {len(observations_data) if observations_data else 0} "
+                        "pulled observations failed FHIR validation and were dropped"
+                        if dropped_invalid
+                        else None
+                    )
+
                     # Log sync
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
                         integration_id=integration.id,
                         tenant_id=integration.tenant_id,
-                        status="success",
+                        status=sync_status,
                         records_synced=telemetry_count + fhir_count,
                         started_at=start_time,
-                        completed_at=integration.last_synced_at
+                        completed_at=integration.last_synced_at,
+                        error_message=error_msg,
                     )
                     db.add(sync_log)
                     

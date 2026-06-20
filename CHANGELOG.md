@@ -28,6 +28,9 @@
 - **PWA runtime caches no longer hardcoded to `http://localhost:8000`.** Switched to same-origin + pathname predicate callbacks so caching works in any deployment. ([audit A12](dev/audits/AUDIT-2026-06-21.md))
 - **GraphQL client auth header is now per-request.** New `graphqlRequest()` wrapper reads the live token on every call. Previously the header was captured at module-load and never refreshed, so every call 401'd after the first token rotation. ([audit A13](dev/audits/AUDIT-2026-06-21.md))
 
+### Fixed (FHIR conformance — runtime)
+- **SDK-built Observations no longer silently dropped by FHIR validation.** `ObservationBuilder.build()` stripped tzinfo "for asyncpg compat" (asyncpg handles tz-aware natively), so `isoformat()` produced e.g. `'2026-06-20T22:39:56.471381'` which failed the FHIR R4 regex. Every pulled observation from `dev_dummy` (and any future SDK provider) was being dropped by `assert_valid_fhir`. The builder now keeps tzinfo; new `fhir_isoformat()` helper on the ORM side defends against naive datetimes anywhere else. The dropped-count now also surfaces to the integration UI: the manual-sync response and `IntegrationSyncLog` carry `dropped_invalid` / `status="partial"` instead of reporting a silent "success" with zero metrics. ([audit D9, D2](dev/audits/AUDIT-2026-06-21.md))
+
 ### Operational notes for deploy
 1. **Set `INTEGRATION_SECRET_KEY`** (Fernet key) in `.env`. Generate one with:
    ```bash

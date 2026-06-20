@@ -204,6 +204,8 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B Observation resource via fhir.resources (validated)."""
+        from app.services.fhir_helpers import fhir_isoformat
+
         interpretation = self.interpretation
         if isinstance(interpretation, str) and interpretation:
             interpretation = [{"text": interpretation}]
@@ -216,9 +218,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
                 "category": self.category,
                 "code": self.code,
                 "subject": self.subject,
-                "effectiveDateTime": self.effective_datetime.isoformat()
-                if self.effective_datetime
-                else None,
+                "effectiveDateTime": fhir_isoformat(self.effective_datetime),
                 "valueQuantity": _clean_quantity(self.value_quantity),
                 "valueString": self.value_string,
                 "valueCodeableConcept": self.value_codeableConcept,
@@ -280,6 +280,8 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B DiagnosticReport resource via fhir.resources (validated)."""
+        from app.services.fhir_helpers import fhir_isoformat
+
         return build_fhir_resource(
             "DiagnosticReport",
             {
@@ -289,10 +291,8 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
                 "category": _as_list(self.category),
                 "code": self.code,
                 "subject": self.subject,
-                "effectiveDateTime": self.effective_datetime.isoformat()
-                if self.effective_datetime
-                else None,
-                "issued": self.issued.isoformat() if self.issued else None,
+                "effectiveDateTime": fhir_isoformat(self.effective_datetime),
+                "issued": fhir_isoformat(self.issued),
                 "performer": self.performer,
                 "conclusion": self.conclusion,
                 "conclusionCode": _as_list(self.conclusion_code),
