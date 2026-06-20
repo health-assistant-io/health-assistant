@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 import datetime
 from app.workers.tasks import ocr_document, cumulative_extraction
-
 async def _ocr_document_async(document_id: str, file_path: str, tenant_id: str):
     return await ocr_document.__wrapped__.__wrapped__(None, document_id, file_path, tenant_id)
 
@@ -183,3 +182,62 @@ async def test_cumulative_extraction_async():
         # Check that it combined text
         args, kwargs = mock_nlp.parse_document_pass_1.call_args
         assert "Doc Text" in args[0]
+
+
+@pytest.mark.asyncio
+async def test_create_observation_persists_orm_shape_input():
+    """The /fhir/* POST endpoints accept ORM-shape dicts (snake_case) — this is
+    the app's CRUD contract (frontend speaks ORM-shape). Verifies create_observation
+    persists value_quantity / effective_datetime and flattens a FHIR interpretation
+    list to the single string the Observation.interpretation column stores.
+    """
+    from app.services import fhir_service
+
+    class FakeSession:
+        def __init__(self):
+            self.add = MagicMock()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def commit(self):
+            pass
+
+        async def refresh(self, obj):
+            pass
+
+    fake_session = FakeSession()
+    patient_uuid = str(uuid4())
+
+    with (
+        patch.object(fhir_service, "AsyncSessionLocal", return_value=fake_session),
+        patch.object(
+            fhir_service.NotificationManager, "trigger_event", AsyncMock()
+        ),
+    ):
+        obs = await fhir_service.create_observation(
+            {
+                "code": {
+                    "coding": [{"system": "http://loinc.org", "code": "2345-7"}],
+                    "text": "Glucose",
+                },
+                "subject": {"reference": f"Patient/{patient_uuid}"},
+                "value_quantity": {"value": 110, "unit": "mg/dL"},  # ORM-shape
+                "effective_datetime": "2026-06-19T08:00:00Z",  # ORM-shape
+                "interpretation": [{"coding": [{"display": "High"}]}],  # FHIR list
+            },
+            tenant_id=str(uuid4()),
+        )
+
+    assert obs is not None
+    assert obs.effective_datetime is not None
+    assert obs.effective_datetime.year == 2026
+    assert obs.effective_datetime.day == 19
+    assert obs.value_quantity == {"value": 110, "unit": "mg/dL"}
+    # raw_value falls back to value_quantity.value
+    assert obs.raw_value == 110
+    # FHIR interpretation list is flattened to a single display string
+    assert obs.interpretation == "High"

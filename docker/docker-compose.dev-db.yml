@@ -1,0 +1,55 @@
+# Dev infrastructure only (app runs on the host, not in Docker).
+# Brings up Postgres (TimescaleDB) + Redis so local `./scripts/run-dev.sh` works.
+#
+#   docker compose -f docker/docker-compose.dev-db.yml up -d
+#
+# Host ports are read from docker/.env via POSTGRES_PORT and REDIS_PORT defaults.
+# The init scripts create both the app DB and `health_assistant_test` (for pytest).
+services:
+  # PostgreSQL with TimescaleDB
+  postgres-dev1:
+    image: timescale/timescaledb:latest-pg14
+    container_name: health_assistant-postgres-dev1
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-health_assistant}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+    volumes:
+      - postgres_data-dev1:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./init-test-db.sh:/docker-entrypoint-initdb.d/02-init-test-db.sh
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-health_assistant}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - health_assistant-network
+
+  # Redis — task queue (Celery) + integration OAuth state store (Stage 2)
+  redis-dev1:
+    image: redis:7-alpine
+    container_name: health_assistant-redis-dev1
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data-dev1:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - health_assistant-network
+
+volumes:
+  postgres_data-dev1:
+  redis_data-dev1:
+
+networks:
+  health_assistant-network:
+    driver: bridge

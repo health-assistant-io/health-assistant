@@ -19,7 +19,7 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    ```
 4. **Start the database:**
    ```bash
-   docker compose -f docker/docker-compose.db.yml up -d
+   docker compose -f docker/docker-compose.dev-db.yml up -d
    ```
 5. **Start the development application:**
    Run the unified development script:

@@ -3,18 +3,34 @@
 ## [Unreleased]
 
 ### Added
+- **Write-time FHIR validation (FHIR architecture Stage 1.1)**: every `fhir_service.create_*` / `update_*` now calls `assert_valid_fhir()` before persisting, so invalid FHIR can never be stored — the root-cause fix for the shape-drift bug class. A dedicated handler maps `FhirSerializationError` → HTTP 400 (more specific than the global 500). See `dev/fhir-architecture-roadmap.md`.
+- **Integrations SDK OAuth2 + SMART auth module** (`integrations/sdk/auth.py`): reusable Authorization Code + PKCE primitives, SMART discovery (`.well-known/smart-configuration`), **Dynamic Client Registration** (users enter only the server URL), encrypted `OAuthTokenStore`, Redis-backed `OAuthStateStore`, and a composed `SmartOAuth` (incl. `force_refresh` for refresh-on-401). Foundation for all cloud integrations (FHIR, Fitbit, Withings, …). 23 unit tests. See [INTEGRATIONS_SDK.md §3.8](docs/INTEGRATIONS_SDK.md).
+- **Integrations SDK HTTP + FHIR helpers** (`integrations/sdk/http.py`, `integrations/sdk/fhir.py`): token-aware `http_request` (Bearer inject, retry/backoff, SDK exception mapping) + `paginate_bundle` (follows `link[rel=next]`); and `fhir_search`, `fhir_observation_to_create`, `parse_operation_outcome`. Reused by Stage 2 (client) and the future Stage 3 (facade). 19 unit tests.
+- **FHIR Server integration** (`integrations/fhir_server/`): SMART Patient/Standalone Launch connect + **bounded FHIR search pull**. Each sync runs `Observation?patient=<remote>&_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated` (+ optional `category`), maps each FHIR Observation to the local patient via `ObservationCreate`, and feeds the Biomarker Engine. Push is deferred to Stage 2b.
+- **Platform OAuth round-trip**: `POST /{domain}/oauth/start` + `GET /{domain}/oauth/callback` (generic; secured by a one-shot Redis `state`). New `BaseConfigFlow.is_oauth` flag and `BaseHealthProvider.begin_oauth` / `complete_oauth` hooks (opt-in; existing integrations untouched).
+- **Enable/disable integration script** (`backend/scripts/enable_integration.py`): headless toggle for a system integration domain (dev/CI equivalent of the admin UI).
+- **FHIR Server auth modes**: per-instance `auth_mode` (`smart` | `none`). `smart` runs the full SMART round-trip (hospitals/sandbox); `none` is **tokenless** — for local/open FHIR servers (e.g. a vanilla HAPI FHIR, which has no SMART module and 404s on `/.well-known/smart-configuration`); the instance goes straight to `ACTIVE`. `fhir_search` is decoupled from `SmartOAuth` (takes an optional `access_token`).
+- **Docker dev stacks**: `docker/docker-compose.dev-db.yml` (Postgres+TimescaleDB on 5433 + Redis on 6379, ports pinned to match `backend/.env`) and `docker/docker-compose.fhir.yml` (local HAPI FHIR R4 on `${HAPI_PORT:-8080}` for offline Stage 2 testing). `docker/init-test-db.sh` auto-creates `health_assistant_test`. See [docker/README.md](docker/README.md).
+- **FHIR seed script** (`backend/scripts/seed_fhir_server.py`): POSTs a Patient + LOINC-coded lab/vital sample Observations (glucose, lipids, CBC, BP, HR, SpO₂, …) with reference ranges, spread over N months, to a FHIR server for testing the pull path.
 - **Export & Import (Backup) System**: Comprehensive data export and import at patient/group/system scopes with three formats (FHIR R4B Bundle, full BagIt-style ZIP backup, catalog-only). Includes FHIR validation via `fhir.resources`, SHA256 manifest verification, cross-tenant id remapping, and a Celery-driven async job system. Admin-only UI at `/settings/export-import` with export configuration, drag-and-drop restore, live job polling, and detailed job modals. See [EXPORT_IMPORT.md](docs/EXPORT_IMPORT.md).
 - **FHIR Converter** (`services/fhir_converter.py`): Bidirectional ORM ↔ FHIR R4B conversion for Patient, Observation, MedicationStatement, AllergyIntolerance, DiagnosticReport, Organization, Practitioner.
 - **Modal component** (`components/ui/Modal.tsx`): Reusable accessible modal with Portal, ESC-to-close, overlay click, and scroll lock.
 
 ### Changed
+- `Patient.to_dict()` returns the primary name as a single `HumanName` object (frontend contract); `Patient.to_fhir_dict()` emits `List[HumanName]` (FHIR). Storage shape (dict|list) is normalized on read via `_primary_human_name` / `_coerce_human_name_list`.
+- `Observation.to_fhir_dict()` cleans `valueQuantity` (`_clean_quantity`): drops empty-string `unit`/`code`/`system` and keeps the `system`+`code` pair intact.
+- `Medication.to_dict()` / `to_fhir_dict()` use `_enum_value` for `status` (tolerates enum-or-string pre-flush state).
 - Replaced the stub `ImportService` (in-memory, non-persisting) with a real DB-backed service that validates FHIR resources and upserts by natural key.
 - `Observation.to_dict()` now includes `subject`, `performer`, `comment`, and `value_codeable_concept` (previously missing FHIR fields).
 - `DiagnosticReport` now has a `to_dict()` method (was missing).
 - Export/import services use the resolved `UPLOAD_DIR` from `document_service_db.py` (with fallback chain) instead of `settings.UPLOAD_DIR` directly.
 
 ### Fixed
+- **FHIR export abort on `name`/`valueQuantity.code`**: legacy shape drift in stored JSONB. Export is fail-loud by design (`ExportError`); the serializers now normalize via `_coerce_human_name_list` / `_clean_quantity`.
+- **`UniqueViolationError` on `Patient.mrn`**: empty-string `mrn` collided under the UNIQUE constraint (Postgres treats `''` as equal, unlike `NULL`). `create_patient`/`update_patient`/`import_service` now normalize `mrn` → `NULL` for empty/whitespace.
+- **Frontend blank page** (`patient.name.given is undefined`): 3 non-defensive name-access sites (`PatientDetail`, `MedicationList`, `CalendarPage`) hardened with optional chaining.
 - **Enum value mismatch**: `ExportScope` and `ExportType` enums now use `values_callable` so SQLAlchemy sends lowercase values (`patient`) matching the DB enum, not the uppercase names (`PATIENT`).
+- **FHIR Observation.category dropped on pull**: FHIR `category` is `0..*` (a list) but `ObservationCreate.category` stores a single dict; `fhir_observation_to_create` now coerces via `_first_codeable_concept`. Previously every categorized observation failed validation and was silently skipped (0 pulled from a real server).
 
 ## [1.1.0] - 2026-06-14
 

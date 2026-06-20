@@ -166,5 +166,12 @@ export const integrationService = {
   toggleDebugMode: async (integrationId: string, patientId: string): Promise<any> => {
     const response = await api.post(`/integrations/instance/${integrationId}/toggle-debug?patient_id=${patientId}`);
     return response.data;
+  },
+
+  oauthStart: async (domain: string, integrationId: string, patientId: string): Promise<{ authorize_url: string; state: string }> => {
+    const response = await api.post(
+      `/integrations/${domain}/oauth/start?integration_id=${integrationId}&patient_id=${patientId}`
+    );
+    return response.data;
   }
 };

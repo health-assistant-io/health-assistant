@@ -1,0 +1,40 @@
+# Local HAPI FHIR R4 server for offline Stage 2 testing.
+#
+#   docker compose -f docker/docker-compose.fhir.yml up -d
+#   # FHIR base URL -> http://localhost:8080/fhir
+#
+# What this is good for:
+#   - Testing the FHIR *pull* path: seed Observations, then exercise
+#     `fhir_search` + `fhir_observation_to_create` against real FHIR search
+#     (pagination, OperationOutcome, referenceRange, coding).
+#   - Future Stage 3 facade conformance checks.
+#
+# What it does NOT do out of the box:
+#   - SMART-on-FHIR OAuth / Dynamic Client Registration. HAPI's vanilla image has
+#     no SMART module configured. For the full connect round-trip (discover → DCR
+#     → authorize → callback), use the hosted SMART Health IT sandbox:
+#     https://r4.smarthealthit.org  (see integrations/fhir_server/README.md).
+services:
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: health_assistant-hapi-fhir
+    restart: unless-stopped
+    ports:
+      - "${HAPI_PORT:-8080}:${HAPI_PORT:-8080}"
+    volumes:
+      - ./application.yaml:/data/hapi/application.yaml
+      - hapi_data:/data/hapi
+    environment:
+      SPRING_CONFIG_ADDITIONAL_LOCATION: 'file:///data/hapi/application.yaml'
+      HAPI_FHIR_VERSION: "R4"
+      HAPI_PORT: "${HAPI_PORT:-8080}"
+      SERVER_PORT: "${HAPI_PORT:-8080}"
+    networks:
+      - health_assistant-network
+
+volumes:
+  hapi_data:
+
+networks:
+  health_assistant-network:
+    driver: bridge

@@ -102,3 +102,11 @@ When external data enters the system (via OCR Document Extraction, API integrati
 2. **Fallback 1 (By Name):** If no code exists, the system performs a case-insensitive search against the biomarker's display name (`BiomarkerDefinition.name.ilike(incoming_text)`).
 3. **Fallback 2 (By Slug/Aliases):** If the name fails, it slugifies the incoming text (e.g., "Heart Rate" -> "heart-rate") and attempts a match against `BiomarkerDefinition.slug`. (Aliases are also checked in analytical queries).
 4. **Auto-Creation (Safety Net):** If no matches are found, the system will dynamically insert a new custom `BiomarkerDefinition` into the catalog using the provided name and a generated slug, ensuring no clinical data is ever dropped due to a catalog miss.
+
+### Retroactive Remapping
+
+When observations exist without a `biomarker_id` link (e.g., imported before a definition existed), they appear in biomarker lists with raw, unformatted names and a ⚡ "unmapped" indicator. Users can resolve these inline via a popup that offers:
+- **Create biomarker**: creates a new definition from the raw name and auto-relinks.
+- **Map to existing**: searches the catalog and relinks to a chosen definition.
+
+Both call `POST /api/v1/biomarkers/{biomarker_id}/remap` with a `source_name` (matched against `code.text`) and optional `patient_id` scope. On the analytics side, the trends query (`GET /analytics/trends`) also expands `biomarker_codes` filters against definition names/aliases so unmapped observations appear in the detail page even before remapping.

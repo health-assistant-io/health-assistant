@@ -1,5 +1,6 @@
 from typing import Any, List, Dict
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
@@ -13,10 +14,17 @@ from app.models.system_integration import SystemIntegration
 from app.models.fhir.patient import Patient
 from app.models.enums import IntegrationStatus
 from app.core.integration_registry import integration_registry
+from integrations.sdk.auth import OAuthStateStore
+from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _frontend_origin() -> str:
+    """The SPA origin for OAuth callback redirects. Defaults to dev port 3000."""
+    return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 @router.get("/available", response_model=List[Dict[str, Any]])
 async def list_available_integrations(db: AsyncSession = Depends(get_db)) -> Any:
@@ -229,12 +237,19 @@ async def submit_config_flow(
         if not patient:
             raise HTTPException(status_code=400, detail="Invalid Patient record.")
             
+        # OAuth integrations start PENDING only when THIS instance actually
+        # needs the OAuth round-trip (auth_mode == "smart"). Tokenless instances
+        # (auth_mode == "none", e.g. a local HAPI FHIR) go straight to ACTIVE.
+        needs_oauth = (
+            config_flow.is_oauth
+            and validated_config.get("auth_mode", "smart") == "smart"
+        )
         new_integration = UserIntegration(
             user_id=current_user.user_id,
             patient_id=patient.id,
             provider=domain,
             instance_name=instance_name,
-            status=IntegrationStatus.ACTIVE,
+            status=IntegrationStatus.PENDING if needs_oauth else IntegrationStatus.ACTIVE,
             user_config=validated_config,
             tenant_id=current_user.tenant_id
         )
@@ -242,6 +257,131 @@ async def submit_config_flow(
         
     await db.commit()
     return {"message": "Integration configured successfully."}
+
+
+# ---------------- OAuth round-trip (opt-in via config_flow.is_oauth) ----------------
+
+
+async def _load_enabled_oauth(domain: str, db: AsyncSession):
+    """Resolve the enabled system integration + provider + config_flow for an OAuth domain."""
+    stmt = select(SystemIntegration).where(
+        SystemIntegration.domain == domain, SystemIntegration.is_enabled == True
+    )
+    result = await db.execute(stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Integration is not enabled by system admin.")
+    provider = integration_registry.get_provider(domain)
+    config_flow = integration_registry.get_config_flow(domain)
+    if not provider or not config_flow:
+        raise HTTPException(status_code=404, detail="Integration not loaded.")
+    if not getattr(config_flow, "is_oauth", False):
+        raise HTTPException(status_code=400, detail=f"{domain} is not an OAuth integration.")
+    return provider, config_flow
+
+
+@router.post("/{domain}/oauth/start")
+async def oauth_start(
+    domain: str,
+    integration_id: str,
+    patient_id: str,
+    request: Request,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Begin the OAuth Authorization Code flow: discover + DCR + authorize URL.
+
+    The caller (frontend) redirects the user's browser to the returned
+    ``authorize_url``. The PKCE verifier + SMART endpoints + ``integration_id``/
+    ``user_id`` are stored under an opaque ``state`` in Redis (short TTL).
+    """
+    provider, _ = await _load_enabled_oauth(domain, db)
+
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID format")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.patient_id == patient_id,
+    )
+    existing = (await db.execute(stmt)).scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Integration instance not found")
+
+    redirect_uri = f"{str(request.base_url).rstrip('/')}/api/v1/integrations/{domain}/oauth/callback"
+    try:
+        authorize_url, state = await provider.begin_oauth(
+            existing,
+            redirect_uri,
+            extra_state={
+                "integration_id": str(existing.id),
+                "user_id": str(current_user.user_id),
+                "tenant_id": str(current_user.tenant_id),
+            },
+        )
+    except (IntegrationAuthError, IntegrationDataError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"authorize_url": authorize_url, "state": state}
+
+
+@router.get("/{domain}/oauth/callback")
+async def oauth_callback(
+    domain: str,
+    state: str,
+    code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """OAuth callback (browser redirect, unauthenticated — secured by `state`).
+
+    Consumes the one-shot ``state`` (which carries ``integration_id``), exchanges
+    the code for tokens via the provider, persists them encrypted, flips the
+    instance to ACTIVE, then 302-redirects to the SPA ``/connected`` landing.
+    """
+    provider, _ = await _load_enabled_oauth(domain, db)
+
+    pending = await OAuthStateStore().consume(state)
+    if not pending:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+
+    integration_id = pending.get("integration_id")
+    user_id = pending.get("user_id")
+    if not integration_id or not user_id:
+        raise HTTPException(status_code=400, detail="Malformed OAuth state payload.")
+
+    try:
+        integration_uuid = UUID(integration_id)
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Malformed identifiers in OAuth state.")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid, UserIntegration.user_id == user_uuid
+    )
+    integration = (await db.execute(stmt)).scalar_one_or_none()
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration instance not found.")
+
+    try:
+        await provider.complete_oauth(integration, pending, code)
+    except (IntegrationAuthError, IntegrationDataError) as e:
+        redirect = (
+            f"{_frontend_origin()}/integrations/{domain}/connected"
+            f"?integration_id={integration_id}&status=error"
+        )
+        return Response(status_code=302, headers={"Location": redirect})
+
+    integration.status = IntegrationStatus.ACTIVE
+    await db.commit()
+
+    redirect = (
+        f"{_frontend_origin()}/integrations/{domain}/connected"
+        f"?integration_id={integration_id}&status=connected"
+    )
+    return Response(status_code=302, headers={"Location": redirect})
+
 
 @router.get("/instance/{integration_id}/details")
 async def get_integration_details(
@@ -346,6 +486,7 @@ async def get_integration_details(
             "sync_time": obs.created_at.isoformat() if hasattr(obs, 'created_at') and obs.created_at else None,
             "metric": b_name,
             "slug": b_slug,
+            "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
             "value": obs.raw_value,
             "unit": unit,
             "examination_id": str(obs.examination_id) if obs.examination_id else None
@@ -373,6 +514,10 @@ async def get_integration_details(
     else:
         returned_config = integration.user_config
 
+    # Surface the last push result + sync direction for the FHIR server (and any
+    # other integration that writes them). Lives under _sync_state cursors.
+    sync_state = (integration.user_config or {}).get("_sync_state") or {}
+
     return {
         "id": str(integration.id),
         "domain": integration.provider,
@@ -381,6 +526,8 @@ async def get_integration_details(
         "user_config": returned_config,
         "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat() if integration.last_synced_at else None,
+        "sync_direction": (integration.user_config or {}).get("sync_direction"),
+        "push_status": sync_state.get("last_push_result"),
         "sync_history": [
             {
                 "id": str(log.id),

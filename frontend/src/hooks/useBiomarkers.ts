@@ -1,10 +1,55 @@
-import { useMemo, useCallback } from 'react';
-import { BiomarkerObservation } from '../types/biomarker';
+import { useMemo, useCallback, useState, useEffect } from 'react';
+import { BiomarkerObservation, Biomarker } from '../types/biomarker';
 import { CATEGORY_MAPPING } from '../constants/categories';
 import { getFinalStatus, isAbnormal } from '../utils/biomarkerUtils';
 import { matchBiomarker } from '../utils/searchUtils';
+import biomarkerService from '../services/biomarkerService';
 
 export type Perspective = 'clinical' | 'technical' | 'examination';
+
+// ---------------- Definition catalog cache ----------------
+// Module-level so all useBiomarkers callers share ONE fetch per session.
+// The catalog is small and already Workbox-cached (StaleWhileRevalidate).
+interface DefinitionMaps {
+  byId: Map<string, Biomarker>;
+  bySlug: Map<string, Biomarker>;
+}
+let definitionMapsCache: DefinitionMaps | null = null;
+let definitionMapsPromise: Promise<DefinitionMaps | null> | null = null;
+
+async function loadDefinitionMaps(): Promise<DefinitionMaps | null> {
+  if (definitionMapsCache) return definitionMapsCache;
+  if (!definitionMapsPromise) {
+    definitionMapsPromise = biomarkerService
+      .getAllBiomarkers()
+      .then((defs) => {
+        const byId = new Map<string, Biomarker>();
+        const bySlug = new Map<string, Biomarker>();
+        (defs || []).forEach((d) => {
+          if (d?.id) byId.set(d.id, d);
+          if (d?.slug) bySlug.set(d.slug, d);
+        });
+        definitionMapsCache = { byId, bySlug };
+        return definitionMapsCache;
+      })
+      .catch((e) => {
+        console.warn('Failed to load biomarker definitions for enrichment', e);
+        definitionMapsPromise = null;
+        return null;
+      });
+  }
+  return definitionMapsPromise;
+}
+
+/**
+ * Invalidate the definition catalog cache so the next useBiomarkers call
+ * refetches. Call this after any mutation that adds/edits/removes a biomarker
+ * definition (create, remap, delete, catalog import).
+ */
+export function refreshBiomarkerDefinitions(): void {
+  definitionMapsCache = null;
+  definitionMapsPromise = null;
+}
 
 export const formatGroupName = (name: string) => {
   return CATEGORY_MAPPING[name] || name.split(/[_-]/).map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
@@ -21,7 +66,45 @@ const generateSafeSlug = (name: string) => {
 };
 
 export function useBiomarkers({ documents = [], trendsData, observations = [] }: UseBiomarkersProps) {
-  
+  // Load the definition catalog once (session-wide cache) so we can enrich
+  // every BiomarkerObservation with the canonical definition name + UUID.
+  const [definitions, setDefinitions] = useState<DefinitionMaps | null>(definitionMapsCache);
+  useEffect(() => {
+    if (!definitions) {
+      loadDefinitionMaps().then(setDefinitions);
+    }
+  }, [definitions]);
+
+  // Enrich a built observation against the definition catalog.
+  // The definition is the single source of truth for identity (UUID) and
+  // display name; raw observation text is only a fallback for unmapped data.
+  const enrich = useCallback(
+    (obs: BiomarkerObservation): BiomarkerObservation => {
+      if (!definitions) return obs;
+      // 1. definitionId present → resolve canonical name by id
+      if (obs.definitionId) {
+        const def = definitions.byId.get(obs.definitionId);
+        if (def) {
+          return { ...obs, displayName: def.name, isUnmapped: false };
+        }
+        // Backend says it's mapped but our cache is stale — trust the backend
+        // rather than falsely flagging it unmapped (which could lead to
+        // duplicate definition creation via the "Create" menu).
+        return { ...obs, isUnmapped: false };
+      }
+      // 2. slug present → resolve UUID + name by slug
+      if (obs.slug) {
+        const def = definitions.bySlug.get(obs.slug);
+        if (def) {
+          return { ...obs, definitionId: def.id, displayName: def.name, isUnmapped: false };
+        }
+      }
+      // 3. unmapped — keep raw display name for clinical context, flag it
+      return { ...obs, isUnmapped: true };
+    },
+    [definitions]
+  );
+
   // Robust helper to extract min/max from various possible data structures
   const extractRange = (data: any) => {
     if (!data) return { min: null, max: null };
@@ -130,13 +213,13 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
         observation.interpretation = getFinalStatus(observation);
         extracted.push(observation);
       });
-      return extracted;
+      return extracted.map(enrich);
     }
 
     // 2. Process from explicit observations (New standard)
     if (observations && observations.length > 0) {
       observations.forEach((obs, index) => {
-        const name = obs.code?.text || 'Unknown';
+        const name = obs.code?.text || obs.code?.coding?.[0]?.display || obs.code?.coding?.[0]?.code || 'Unknown';
         const slug = obs.biomarker_slug || generateSafeSlug(name);
         
         // Use robust extractor for raw range
@@ -155,8 +238,8 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
           slug: slug,
           method: obs.method || null,
           value: {
-            raw: obs.raw_value ?? obs.value_quantity?.value ?? 0,
-            normalized: obs.normalized_value ?? obs.value_quantity?.value ?? 0
+            raw: obs.raw_value ?? obs.value_quantity?.value ?? obs.value_string ?? obs.value_codeable_concept?.text ?? obs.value_codeable_concept?.coding?.[0]?.display ?? 0,
+            normalized: obs.normalized_value ?? obs.value_quantity?.value ?? obs.value_string ?? obs.value_codeable_concept?.text ?? obs.value_codeable_concept?.coding?.[0]?.display ?? 0
           },
           unit: {
             rawSymbol: obs.value_quantity?.unit || '',
@@ -184,7 +267,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
         observation.interpretation = getFinalStatus(observation);
         extracted.push(observation);
       });
-      return extracted;
+      return extracted.map(enrich);
     }
 
     // 3. Process from documents (Visit/Document view)
@@ -325,8 +408,8 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
       }
     });
 
-    return Array.from(uniqueMap.values());
-  }, [documents, trendsData, observations]);
+    return Array.from(uniqueMap.values()).map(enrich);
+  }, [documents, trendsData, observations, enrich]);
 
   const getGroupedData = useCallback((perspective: Perspective, activeTab: string = 'All', searchTerm: string = '', showAlertsOnly: boolean = false) => {
     const filtered = biomarkers.filter(b => {

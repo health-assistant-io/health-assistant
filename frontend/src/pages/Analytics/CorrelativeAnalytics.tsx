@@ -327,7 +327,7 @@ const CorrelativeAnalytics: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button 
                           onClick={() => {
-                            const targetId = marker?.definitionId || marker?.slug;
+                            const targetId = marker?.definitionId;
                             if (targetId) window.open(`/biomarkers/details/${targetId}`, '_blank');
                           }}
                           className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"

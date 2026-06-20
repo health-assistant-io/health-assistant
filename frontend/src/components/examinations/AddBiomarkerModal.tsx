@@ -94,7 +94,7 @@ export const AddBiomarkerModal: React.FC<Props> = ({
           }],
           text: selectedBiomarker.name
         },
-        valueQuantity: {
+        value_quantity: {
           value: parseFloat(formData.value),
           unit: formData.unit || selectedBiomarker.preferred_unit_symbol,
           system: 'http://unitsofmeasure.org',

@@ -18,6 +18,8 @@ import {
   Brush
 } from 'recharts';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
+import { formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import { RefreshCw, ZoomIn } from 'lucide-react';
 
 interface LineChartProps {
@@ -62,6 +64,7 @@ const LineChart = React.memo(({
   unit = '',
 }: LineChartProps) => {
   const theme = useSettingsStore(state => state.theme);
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const isDark = theme === 'dark';
 
   const chartRef = React.useRef<HTMLDivElement>(null);
@@ -336,7 +339,7 @@ const LineChart = React.memo(({
                     return (
                       <div className="bg-black/80 backdrop-blur-sm px-2 py-1.5 rounded-lg border border-white/10 shadow-xl flex flex-col items-center">
                         <div className="flex items-baseline space-x-1">
-                          <p className="text-[10px] font-black text-white">{dataObj[dataKey]}</p>
+                          <p className="text-[10px] font-black text-white">{formatBiomarkerValue(dataObj[dataKey], precisionProfile)}</p>
                           {unit && <p className="text-[8px] font-bold text-gray-400 uppercase">{unit}</p>}
                         </div>
                         {(dataObj.tooltipLabel || dataObj.name) && (
@@ -349,13 +352,13 @@ const LineChart = React.memo(({
                       <div className={`p-3 rounded-xl shadow-xl flex flex-col space-y-1 ${isDark ? 'bg-dark-surface border border-dark-border text-dark-text' : 'bg-white border border-gray-100 text-gray-900'}`}>
                         <p className="text-xs font-bold text-gray-500 mb-1">{dataObj.tooltipLabel || dataObj.name}</p>
                         <div className="flex items-baseline space-x-1.5">
-                          <p className="text-lg font-black" style={{ color: color }}>{dataObj[dataKey]}</p>
+                          <p className="text-lg font-black" style={{ color: color }}>{formatBiomarkerValue(dataObj[dataKey], precisionProfile)}</p>
                           {unit && <p className="text-xs font-bold text-gray-400">{unit}</p>}
                         </div>
                         {showSpikes && dataObj.min_value !== undefined && dataObj.max_value !== undefined && (
                           <div className="flex justify-between items-center text-[10px] font-medium text-gray-500 mt-2 pt-2 border-t border-gray-100 dark:border-dark-border">
-                            <span>Min: <strong>{dataObj.min_value}</strong></span>
-                            <span>Max: <strong>{dataObj.max_value}</strong></span>
+                            <span>Min: <strong>{formatBiomarkerValue(dataObj.min_value, precisionProfile)}</strong></span>
+                            <span>Max: <strong>{formatBiomarkerValue(dataObj.max_value, precisionProfile)}</strong></span>
                           </div>
                         )}
                       </div>

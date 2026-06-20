@@ -93,5 +93,6 @@ export interface BiomarkerObservation {
   info: string | null | undefined;
   aliases?: string[];
   isTelemetry?: boolean;
+  isUnmapped?: boolean;
   _rawJson?: any; 
 }

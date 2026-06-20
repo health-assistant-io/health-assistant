@@ -446,20 +446,53 @@ async def get_biomarker_trends(
         codes = [c.strip() for c in biomarker_codes.split(",")]
         from sqlalchemy import or_
 
-        # Join with BiomarkerDefinition to filter by slug as well
+        # Resolve the requested codes/slugs against the definition catalog so we
+        # can expand the filter to include the matched definitions' names,
+        # aliases, and LOINC codes. This is essential for catching UNMAPPED
+        # observations (biomarker_id is NULL) whose stored code.text is the raw
+        # lab label (e.g. "WBC", "Leukocytes") rather than the canonical slug.
+        # Without this, the detail page shows "No historical data" even though
+        # the unfiltered trends page resolves the same data via fallback.
+        expanded_terms = list(codes)
+        matched_def_ids = []
+        def_filter = or_(
+            *[BiomarkerDefinition.slug.ilike(f"%{c}%") for c in codes],
+            *[BiomarkerDefinition.name.ilike(f"%{c}%") for c in codes],
+            *[BiomarkerDefinition.code.ilike(f"%{c}%") for c in codes],
+        )
+        def_res = await db.execute(
+            select(BiomarkerDefinition).where(def_filter)
+        )
+        for b in def_res.scalars().all():
+            matched_def_ids.append(b.id)
+            if b.name:
+                expanded_terms.append(b.name)
+            if b.aliases:
+                expanded_terms.extend(a for a in b.aliases if a)
+
+        # Deduplicate while preserving order
+        seen = set()
+        expanded_terms = [t for t in expanded_terms if not (t.lower() in seen or seen.add(t.lower()))]
+
+        # Join with BiomarkerDefinition to filter by slug (mapped observations)
         query = query.outerjoin(
             BiomarkerDefinition, Observation.biomarker_id == BiomarkerDefinition.id
         )
 
-        query = query.where(
-            or_(
-                *[
-                    Observation.code["text"].as_string().ilike(f"%{code}%")
-                    for code in codes
-                ],
-                *[BiomarkerDefinition.slug.ilike(f"%{code}%") for code in codes],
+        filter_clauses = []
+        # Match by expanded text terms (raw codes + definition names/aliases)
+        for term in expanded_terms:
+            filter_clauses.append(
+                Observation.code["text"].as_string().ilike(f"%{term}%")
             )
-        )
+        # Match by slug via the join (mapped observations)
+        for code in codes:
+            filter_clauses.append(BiomarkerDefinition.slug.ilike(f"%{code}%"))
+        # Match by biomarker_id directly (mapped observations)
+        if matched_def_ids:
+            filter_clauses.append(Observation.biomarker_id.in_(matched_def_ids))
+
+        query = query.where(or_(*filter_clauses))
 
     if start_date:
         query = query.where(Observation.effective_datetime >= start_date)
@@ -601,6 +634,13 @@ async def get_biomarker_trends(
                     # Update key to the official slug
                     key = b_def.slug
 
+        # Prefer the canonical biomarker definition name (clean, standardized)
+        # over the raw observation code.text, which may be unformatted lab/OCR
+        # output (e.g. "GLUCOSE (FASTING)"). Keeps the list consistent with the
+        # biomarker detail page, which shows the definition name.
+        if b_def and b_def.name:
+            name = b_def.name
+
         if key not in trends:
             trends[key] = []
 
@@ -693,7 +733,8 @@ async def get_biomarker_trends(
                 exam_id = info["exam_id"]
                 exam_name = info["exam_name"]
                 if exam_date:
-                    obs_date = datetime.combine(exam_date, datetime.min.time())
+                    from datetime import timezone
+                    obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=timezone.utc)
             elif exam_id:
                 # If we have direct exam_id, we might still want the name from the map if it's there
                 # Or we could fetch it, but for now we try to find it in the map
@@ -1085,7 +1126,8 @@ async def get_category_analytics(
                     ):
                         exam_date = exams_map[doc_obj.examination_id]
                         if exam_date:
-                            obs_date = datetime.combine(exam_date, datetime.min.time())
+                            from datetime import timezone
+                            obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=timezone.utc)
 
                 trends[key].append(
                     {

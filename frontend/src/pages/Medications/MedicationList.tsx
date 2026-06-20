@@ -94,7 +94,7 @@ function MedicationList() {
     <div className="max-w-7xl mx-auto space-y-8 pb-20">
       <PageHeader
         title={t('common.medications')}
-        subtitle={t('medications.patient_medications_for', { name: `${currentPatient.name.given.join(' ')} ${currentPatient.name.family}` })}
+        subtitle={t('medications.patient_medications_for', { name: `${currentPatient.name?.given?.join(' ') ?? ''} ${currentPatient.name?.family ?? ''}`.trim() })}
         icon={<Pill className="w-8 h-8" />}
         breadcrumbs={[]}
       />

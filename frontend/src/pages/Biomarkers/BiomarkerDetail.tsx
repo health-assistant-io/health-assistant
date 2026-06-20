@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock, Save } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal } from '../../utils/biomarkerUtils';
+import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { InfoTooltip } from '../../components/ui/InfoTooltip';
@@ -18,6 +18,8 @@ import { TimePeriod, TIME_RANGES, AGGREGATION_OPTIONS, DEFAULT_AGGREGATIONS, Agg
 import { UnitSelector } from '../../components/ui/UnitSelector';
 import { BiomarkerConfigPanel } from '../../components/biomarkers/BiomarkerConfigPanel';
 import { MigrationProgressIndicator } from '../../components/biomarkers/MigrationProgressIndicator';
+import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import LineChart from '../../components/charts/LineChart';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import ReactMarkdown from 'react-markdown';
@@ -30,6 +32,7 @@ const BiomarkerDetail: React.FC = () => {
   const navigate = useNavigate();
   const { currentPatient } = usePatientStore();
   const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   
   const decodedId = decodeURIComponent(biomarkerId || '');
 
@@ -195,6 +198,7 @@ const BiomarkerDetail: React.FC = () => {
         setIsDeleting(true);
         try {
           await biomarkerService.deleteBiomarker(biomarker.id);
+          refreshBiomarkerDefinitions();
           navigate('/biomarkers/catalog');
         } catch (error) {
           console.error("Failed to delete biomarker", error);
@@ -212,6 +216,7 @@ const BiomarkerDetail: React.FC = () => {
       const updated = await biomarkerService.updateBiomarker(biomarker.id, { 
         info: infoContent
       });
+      refreshBiomarkerDefinitions();
       setBiomarker(updated);
       setIsEditingInfo(false);
     } catch (error) {
@@ -388,7 +393,7 @@ const BiomarkerDetail: React.FC = () => {
             <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
               <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.latest_result')}</p>
               <div className="flex items-baseline space-x-1">
-                <span className="text-xl font-black text-gray-900 dark:text-dark-text">{trends.length > 0 ? trends[trends.length - 1].value : '--'}</span>
+                <span className="text-xl font-black text-gray-900 dark:text-dark-text">{trends.length > 0 ? formatBiomarkerValue(trends[trends.length - 1].value, precisionProfile) : '--'}</span>
                 <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
               </div>
             </div>
@@ -674,7 +679,7 @@ const BiomarkerDetail: React.FC = () => {
                             </td>
                             <td className="px-8 py-5 whitespace-nowrap">
                               <span className="text-sm font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg">
-                                {t.value}
+                                {formatBiomarkerValue(t.value, precisionProfile)}
                               </span>
                             </td>
                             <td className="px-8 py-5 whitespace-nowrap text-xs text-gray-500 dark:text-dark-muted font-bold">
@@ -791,7 +796,7 @@ const BiomarkerDetail: React.FC = () => {
               <div>
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.latest_result')}</p>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-4xl font-black text-gray-900 dark:text-dark-text tracking-tighter">{trends.length > 0 ? trends[trends.length - 1].value : '--'}</span>
+                  <span className="text-4xl font-black text-gray-900 dark:text-dark-text tracking-tighter">{trends.length > 0 ? formatBiomarkerValue(trends[trends.length - 1].value, precisionProfile) : '--'}</span>
                   <span className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
                 </div>
               </div>

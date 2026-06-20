@@ -366,7 +366,7 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
                         examDocuments={selectedEventDocs}
                         hideHeader={true}
                         onDocumentClick={(doc) => navigate(`/documents/${doc.id}`)}
-                        onInfoClick={(b) => navigate(`/biomarkers/details/${b.definitionId || b.slug}`)}
+                        onInfoClick={(b) => b.definitionId && navigate(`/biomarkers/details/${b.definitionId}`)}
                       />
                     )}
                   </div>

@@ -200,8 +200,24 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
           navigate(`/examinations/${args.examination_id}`);
         } else if (toolCall.name === 'get_biomarker_details' && args.biomarker_id) {
           navigate(`/biomarkers/details/${args.biomarker_id}`);
-        } else if (toolCall.name === 'get_aggregated_biomarker_trends' && args.biomarker_slug) {
-          navigate(`/biomarkers/details/${args.biomarker_slug}`);
+        } else if (toolCall.name === 'get_aggregated_biomarker_trends') {
+          // Prefer the biomarker UUID from the tool result; fall back to slug only if absent
+          let bioId: string | undefined = args.biomarker_id;
+          if (!bioId && toolCall.result) {
+            try {
+              const results = JSON.parse(toolCall.result);
+              const items = Array.isArray(results) ? results : [results];
+              const found = items.find((it: any) => it && (it.biomarker_id || it.id));
+              bioId = found?.biomarker_id || found?.id;
+            } catch (e) {}
+          }
+          if (bioId) {
+            navigate(`/biomarkers/details/${bioId}`);
+          } else if (args.biomarker_slug) {
+            navigate(`/biomarkers/details/${args.biomarker_slug}`);
+          } else {
+            navigate('/biomarkers');
+          }
         } else if (toolCall.name.includes('biomarker')) {
           navigate('/biomarkers');
         } else if (toolCall.name.includes('medication')) {
@@ -243,7 +259,19 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
         const args = typeof toolCall.args === 'string' ? JSON.parse(toolCall.args) : toolCall.args;
         if (toolCall.name === 'get_examination_details' && args.examination_id) return `/examinations/${args.examination_id}`;
         if (toolCall.name === 'get_biomarker_details' && args.biomarker_id) return `/biomarkers/details/${args.biomarker_id}`;
-        if (toolCall.name === 'get_aggregated_biomarker_trends' && args.biomarker_slug) return `/biomarkers/details/${args.biomarker_slug}`;
+        if (toolCall.name === 'get_aggregated_biomarker_trends') {
+          let bioId: string | undefined = args.biomarker_id;
+          if (!bioId && toolCall.result) {
+            try {
+              const results = JSON.parse(toolCall.result);
+              const items = Array.isArray(results) ? results : [results];
+              const found = items.find((it: any) => it && (it.biomarker_id || it.id));
+              bioId = found?.biomarker_id || found?.id;
+            } catch (e) {}
+          }
+          if (bioId) return `/biomarkers/details/${bioId}`;
+          if (args.biomarker_slug) return `/biomarkers/details/${args.biomarker_slug}`;
+        }
         if (toolCall.name.includes('biomarker')) return '/biomarkers';
         if (toolCall.name.includes('medication')) return '/medications';
       } catch (e) {}

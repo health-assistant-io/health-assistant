@@ -67,13 +67,6 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
 
         file_handler.namer = namer
 
-        # Force a rollover on startup so each run starts with a fresh file
-        if current_log.exists() and current_log.stat().st_size > 0:
-            try:
-                file_handler.doRollover()
-            except Exception:
-                pass
-
         file_handler.setFormatter(logging.Formatter(log_format))
         root_logger.addHandler(file_handler)
     except Exception as e:

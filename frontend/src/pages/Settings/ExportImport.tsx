@@ -19,6 +19,7 @@ import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { Modal } from '../../components/ui/Modal';
+import { AIBadge } from '../../components/ui/AIBadge';
 import {
   createExportJob,
   listExportJobs,
@@ -77,6 +78,9 @@ const ExportImport: React.FC = () => {
 
   const [selectedExportJob, setSelectedExportJob] = useState<ExportJob | null>(null);
   const [selectedImportJob, setSelectedImportJob] = useState<ImportJob | null>(null);
+
+  const [autoMapBiomarkers, setAutoMapBiomarkers] = useState(true);
+  const [useAiNormalization, setUseAiNormalization] = useState(false);
 
   const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
@@ -281,7 +285,7 @@ const ExportImport: React.FC = () => {
     setImportMessage(null);
     setIsImporting(true);
     try {
-      const job = await importBackupFile(file);
+      const job = await importBackupFile(file, autoMapBiomarkers, useAiNormalization);
       setImportJobs((prev) => [job, ...prev]);
       pollImportJob(job.id);
       setImportMessage({
@@ -715,6 +719,51 @@ const ExportImport: React.FC = () => {
                     undecryptable.
                   </p>
                 )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <label className="flex items-start space-x-3 px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoMapBiomarkers}
+                  onChange={(e) => setAutoMapBiomarkers(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 text-blue-600 focus:ring-blue-500"
+                />
+                <div className="text-sm text-gray-900 dark:text-dark-text">
+                  <span className="font-bold block mb-0.5">Auto-map Biomarkers</span>
+                  <span className="text-xs text-gray-500 dark:text-dark-muted">Automatically link imported FHIR observations to your system catalog.</span>
+                </div>
+              </label>
+              
+              <div className={`flex items-start space-x-3 px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border ${!autoMapBiomarkers ? 'opacity-50' : ''}`}>
+                <label className="flex items-start cursor-pointer mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={useAiNormalization}
+                    onChange={(e) => setUseAiNormalization(e.target.checked)}
+                    disabled={!autoMapBiomarkers}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500 disabled:opacity-50 cursor-pointer"
+                  />
+                </label>
+                <div className="text-sm text-gray-900 dark:text-dark-text flex-1">
+                  <div className="flex items-center space-x-2 mb-0.5">
+                    <label 
+                      className="font-bold cursor-pointer" 
+                      onClick={() => {
+                         if (autoMapBiomarkers) {
+                           setUseAiNormalization(!useAiNormalization);
+                         }
+                      }}
+                    >
+                      Use AI Normalization
+                    </label>
+                    <div className="inline-flex">
+                      <AIBadge workflow="fhir_import_normalization" />
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-dark-muted block">Use AI to generate standard LOINC codes and names for unknown imported data.</span>
+                </div>
               </div>
             </div>
 

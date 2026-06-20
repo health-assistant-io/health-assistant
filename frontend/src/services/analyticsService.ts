@@ -7,12 +7,12 @@ export async function getDashboardData(
   patientId?: string,
   period: string = 'last-30-days'
 ): Promise<{
-  recentDocuments: Array<{
+  recent_documents: Array<{
     id: string;
     filename: string;
     created_at: string;
   }>;
-  upcomingAppointments: Array<{
+  upcoming_appointments: Array<{
     id: string;
     title: string;
     date: string;
@@ -23,9 +23,9 @@ export async function getDashboardData(
     timestamp: string;
   }>;
   summary: {
-    totalDocuments: number;
-    totalObservations: number;
-    lastUpload: string;
+    total_documents: number;
+    total_observations: number;
+    last_upload: string;
   };
   latest_examination?: {
     id: string;
@@ -51,10 +51,10 @@ export async function getDashboardData(
 }> {
   try {
     const response = await api.get<{
-      recentDocuments: Array<{ id: string; filename: string; created_at: string }>;
-      upcomingAppointments: Array<{ id: string; title: string; date: string }>;
+      recent_documents: Array<{ id: string; filename: string; created_at: string }>;
+      upcoming_appointments: Array<{ id: string; title: string; date: string }>;
       alerts: Array<{ type: string; message: string; timestamp: string }>;
-      summary: { totalDocuments: number; totalObservations: number; lastUpload: string };
+      summary: { total_documents: number; total_observations: number; last_upload: string };
       latest_examination?: any;
       latest_imaging?: any[];
       latest_labs?: any[];
@@ -165,18 +165,18 @@ export async function getAnalyticsSummary(
   patientId?: string,
   period: string = 'last-year'
 ): Promise<{
-  totalDocuments: number;
-  totalObservations: number;
-  totalMedications: number;
-  activeAlerts: number;
-  lastUpload: string;
+  total_documents: number;
+  total_observations: number;
+  total_medications: number;
+  active_alerts: number;
+  last_upload: string;
 }> {
   const response = await api.get<{
-    totalDocuments: number;
-    totalObservations: number;
-    totalMedications: number;
-    activeAlerts: number;
-    lastUpload: string;
+    total_documents: number;
+    total_observations: number;
+    total_medications: number;
+    active_alerts: number;
+    last_upload: string;
   }>(
     '/analytics/summary',
     {

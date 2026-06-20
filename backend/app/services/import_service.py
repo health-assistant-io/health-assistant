@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
@@ -28,8 +28,8 @@ from app.models.enums import (
 )
 from app.models.examination_model import ExaminationModel
 from app.models.export_import_job import ImportJobModel
-from app.models.fhir.allergy import AllergyIntolerance
-from app.models.fhir.medication import Medication
+from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.models.fhir.medication import Medication, MedicationCatalog
 from app.models.fhir.organization import OrganizationModel
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.notification import NotificationTrigger
@@ -39,7 +39,6 @@ from app.schemas.backup import BackupManifest, RestoreResult
 from app.services.fhir_converter import (
     fhir_to_orm,
     validate_bundle,
-    validate_resource,
 )
 from app.schemas.import_data import (
     CSVImportConfig,
@@ -75,18 +74,21 @@ def _parse_dt(v: Any) -> Optional[datetime]:
         return None
 
 
-def _parse_date(v: Any):
+def _parse_date(v: Any) -> Optional[date]:
     if not v:
         return None
+    if isinstance(v, date):
+        return v if not isinstance(v, datetime) else v.date()
     try:
-        return str(v)[:10]
-    except Exception:
+        return date.fromisoformat(str(v)[:10])
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
 class ImportService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._job_id: Optional[UUID] = None
 
     # ---------------- job lifecycle ----------------
 
@@ -106,15 +108,37 @@ class ImportService:
         return job
 
     async def _update_progress(
-        self, job_id: UUID, progress: int, status: Optional[JobStatus] = None
+        self,
+        job_id: UUID,
+        progress: int,
+        status: Optional[JobStatus] = None,
+        message: Optional[str] = None,
     ) -> None:
-        values: Dict[str, Any] = {"progress": progress}
+        values: Dict[str, Any] = {"progress": min(progress, 99)}
         if status:
             values["status"] = status
         await self.db.execute(
             sa_update(ImportJobModel).where(ImportJobModel.id == job_id).values(**values)
         )
         await self.db.commit()
+
+        # Publish to Redis for live WebSocket updates (best-effort).
+        try:
+            from app.core.redis import publish_message
+
+            job = await self.get_job(job_id)
+            tenant_id = job.tenant_id if job else None
+            if tenant_id:
+                payload = {
+                    "type": "import_progress",
+                    "job_id": str(job_id),
+                    "status": status.value if status and hasattr(status, "value") else None,
+                    "progress": min(progress, 99),
+                    "message": message,
+                }
+                await publish_message(f"tenant:{tenant_id}:tasks", json.dumps(payload))
+        except Exception:
+            pass
 
     async def _complete_job(
         self, job_id: UUID, result: RestoreResult
@@ -197,12 +221,14 @@ class ImportService:
         bundle: Dict[str, Any],
         tenant_id: UUID,
         validate: bool = True,
+        config: Optional[FHIRImportConfig] = None,
     ) -> Tuple[Dict[str, int], Dict[str, int], List[str], List[str], Dict[str, str]]:
         created: Dict[str, int] = {}
         updated: Dict[str, int] = {}
         errors: List[str] = []
         warnings: List[str] = []
         id_remap: Dict[str, str] = {}
+        imported_obs_ids: List[UUID] = []
 
         if validate:
             ok, verrors = validate_bundle(bundle)
@@ -223,26 +249,178 @@ class ImportService:
             if not rt:
                 errors.append("Entry missing resource.resourceType; skipped")
                 continue
+                
+            if rt == "DocumentReference":
+                # We skip DocumentReference because Health Assistant exports it for FHIR
+                # completeness, but actually restores documents via the nonfhir/documents.json sidecar.
+                warnings.append(f"Skipped {rt} (handled via documents.json sidecar if present).")
+                continue
 
-            if validate:
-                ok, verrors = validate_resource(resource)
-                if not ok:
-                    errors.append(f"Invalid {rt}: {verrors[0][:200]}")
-                    continue
-
+            # Per-resource validation happens inside fhir_to_orm() (via
+            # fhir.resources); an invalid resource raises FhirSerializationError
+            # which is caught below → skipped + logged (skip-and-log policy).
             try:
-                stats_delta = await self._restore_one_fhir_resource(
+                stats_delta, obs_id = await self._restore_one_fhir_resource(
                     rt, resource, tenant_id, id_remap
                 )
                 if stats_delta == "created":
                     created[rt] = created.get(rt, 0) + 1
                 elif stats_delta == "updated":
                     updated[rt] = updated.get(rt, 0) + 1
+                elif stats_delta == "skipped":
+                    w = f"Skipped unsupported FHIR resource type: {rt}"
+                    if w not in warnings:
+                        warnings.append(w)
+                if obs_id and rt == "Observation":
+                    imported_obs_ids.append(obs_id)
             except Exception as e:
                 logger.exception(f"Failed to restore {rt}")
                 errors.append(f"{rt}: {e}")
 
-        return created, updated, errors, warnings, id_remap
+        # Deduplicate DocumentReference warnings
+        doc_ref_warning = "Skipped DocumentReference (handled via documents.json sidecar if present)."
+        doc_ref_count = warnings.count(doc_ref_warning)
+        if doc_ref_count > 1:
+            warnings = [w for w in warnings if w != doc_ref_warning]
+            warnings.append(doc_ref_warning)
+
+        # Run biomarker mapping for newly imported observations
+        if imported_obs_ids:
+            if self._job_id:
+                await self._update_progress(
+                    self._job_id, 52, message=f"Mapping {len(imported_obs_ids)} biomarker observation(s)"
+                )
+            try:
+                from sqlalchemy import select
+                from app.services.fhir_service import map_observations_to_biomarkers
+                
+                # We need to load the observations from DB
+                res = await self.db.execute(
+                    select(Observation).where(Observation.id.in_(imported_obs_ids))
+                )
+                obs_to_map = res.scalars().all()
+                
+                if obs_to_map:
+                    # By default we map to existing definitions.
+                    # We can use use_ai_normalization from config to determine if we should send unknowns to LLM
+                    auto_map = getattr(config, 'auto_map_biomarkers', True) if config else True
+                    use_ai = getattr(config, 'use_ai_normalization', False) if config else False
+                    
+                    if auto_map:
+                        # map_observations_to_biomarkers does basic string/code mapping
+                        # If use_ai is enabled, DO NOT auto-create missing entries yet so the AI can handle them
+                        await map_observations_to_biomarkers(self.db, obs_to_map, auto_create_missing=not use_ai)
+                        
+                        if use_ai:
+                            unmapped = [o for o in obs_to_map if not o.biomarker_id]
+                            if unmapped:
+                                from app.services.medical_processing_service import MedicalProcessingService
+                                from app.services.ai_provider_service import AIProviderService
+                                from app.schemas.ai_nlp import UnknownBiomarkerExtract
+
+                                logger.info(
+                                    "AI normalization: resolving %d unmapped observation(s) via NLP task",
+                                    len(unmapped),
+                                )
+                                if self._job_id:
+                                    await self._update_progress(
+                                        self._job_id, 55, message="AI normalization: generating biomarker definitions"
+                                    )
+
+                                ai_service = AIProviderService(self.db)
+                                nlp_extractor = await ai_service.get_nlp_extractor(tenant_id)
+                                med_service = MedicalProcessingService(self.db)
+
+                                unknown_bios: List[Any] = []
+                                seen_names: set = set()
+                                for o in unmapped:
+                                    text = o.code.get("text") or next(
+                                        (c.get("display") or c.get("code") for c in o.code.get("coding", [])),
+                                        "Unknown",
+                                    )
+                                    name_key = text.lower().strip()
+                                    if not name_key or name_key == "unknown" or name_key in seen_names:
+                                        continue
+                                    seen_names.add(name_key)
+                                    try:
+                                        value = float(
+                                            o.raw_value
+                                            or (o.value_quantity.get("value") if o.value_quantity else 0)
+                                        )
+                                    except (TypeError, ValueError):
+                                        value = 0.0
+                                    unit_symbol = o.value_quantity.get("unit") if o.value_quantity else None
+                                    unknown_bios.append(
+                                        UnknownBiomarkerExtract(
+                                            raw_name=text,
+                                            value=value,
+                                            unit_symbol=unit_symbol or "",
+                                        )
+                                    )
+
+                                if unknown_bios:
+                                    slug_map: Dict[str, str] = {}
+                                    await med_service._process_unknown_biomarkers(
+                                        unknown_bios, nlp_extractor, tenant_id, slug_map
+                                    )
+                                    await self.db.flush()
+                                    logger.info(
+                                        "AI normalization: created %d definition(s) (%d new slugs)",
+                                        len(unknown_bios),
+                                        len(slug_map),
+                                    )
+
+                                    await map_observations_to_biomarkers(self.db, unmapped)
+
+                    # Telemetry fan-out for newly mapped observations
+                    from app.models.biomarker_model import BiomarkerDefinition
+                    from app.models.telemetry_model import TelemetryDataModel
+                    
+                    # Ensure we have the biomarkers loaded
+                    mapped_obs = [o for o in obs_to_map if o.biomarker_id]
+                    if mapped_obs:
+                        b_ids = {o.biomarker_id for o in mapped_obs}
+                        b_res = await self.db.execute(
+                            select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
+                        )
+                        b_dict = {b.id: b for b in b_res.scalars().all()}
+                        
+                        telemetry_records = []
+                        for o in mapped_obs:
+                            b_def = b_dict.get(o.biomarker_id)
+                            if b_def and b_def.is_telemetry:
+                                slug = b_def.slug.lower() if b_def.slug else ""
+                                val = getattr(o, "normalized_value", None) or getattr(o, "raw_value", None) or (o.value_quantity.get("value") if o.value_quantity else None)
+                                if val is not None:
+                                    hr = val if slug == "8867-4" or "heart-rate" in slug else None
+                                    steps = val if slug == "41950-7" or "steps" in slug else None
+                                    cal = val if "calories" in slug else None
+                                    
+                                    data_payload = {}
+                                    if not hr and not steps and not cal:
+                                        data_payload[slug] = val
+                                        if getattr(o, "value_quantity", None):
+                                            data_payload[f"{slug}_unit"] = o.value_quantity.get("unit", "")
+
+                                    telemetry_records.append(TelemetryDataModel(
+                                        tenant_id=o.tenant_id,
+                                        device_id="fhir_import",
+                                        timestamp=o.effective_datetime,
+                                        heart_rate=hr,
+                                        steps=steps,
+                                        calories=cal,
+                                        data=data_payload if data_payload else None
+                                    ))
+                        
+                        if telemetry_records:
+                            self.db.add_all(telemetry_records)
+                            await self.db.flush()
+
+            except Exception as e:
+                logger.exception("Failed to map biomarkers for imported observations")
+                warnings.append(f"Failed to map biomarkers for imported observations: {e}")
+
+        return created, updated, list(set(errors)), warnings, id_remap
 
     async def _restore_one_fhir_resource(
         self,
@@ -250,31 +428,40 @@ class ImportService:
         fhir_dict: Dict[str, Any],
         tenant_id: UUID,
         id_remap: Dict[str, str],
-    ) -> str:
+    ) -> Tuple[str, Optional[UUID]]:
         old_id = fhir_dict.get("id")
         old_id_str = str(old_id) if old_id else None
 
         remapped = self._apply_remap(fhir_dict, id_remap)
+        
+        # Check if we actually support this resource type before attempting to convert it
+        # This prevents the ValueError from fhir_converter.py from bubbling up as an error
+        from app.services.fhir_converter import _TO_ORM
+        if rt not in _TO_ORM:
+            logger.warning(f"Unsupported resource type {rt}")
+            return "skipped", None
+            
         orm_dict = fhir_to_orm(rt, remapped)
         orm_dict["tenant_id"] = tenant_id
 
         if rt == "Patient":
-            return await self._upsert_patient(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_patient(orm_dict, old_id_str, tenant_id, id_remap), None
         if rt == "Observation":
             return await self._upsert_observation(orm_dict, old_id_str, tenant_id, id_remap)
         if rt == "MedicationStatement":
-            return await self._upsert_medication(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_medication(orm_dict, old_id_str, tenant_id, id_remap), None
         if rt == "AllergyIntolerance":
-            return await self._upsert_allergy(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_allergy(orm_dict, old_id_str, tenant_id, id_remap), None
         if rt == "DiagnosticReport":
-            return await self._upsert_diagnostic_report(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_diagnostic_report(orm_dict, old_id_str, tenant_id, id_remap), None
         if rt == "Organization":
-            return await self._upsert_organization(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_organization(orm_dict, old_id_str, tenant_id, id_remap), None
         if rt == "Practitioner":
-            return await self._upsert_practitioner(orm_dict, old_id_str, tenant_id, id_remap)
+            return await self._upsert_practitioner(orm_dict, old_id_str, tenant_id, id_remap), None
+            
         warnings = f"Unsupported resource type {rt}"
         logger.warning(warnings)
-        raise ValueError(warnings)
+        return "skipped", None
 
     @staticmethod
     def _apply_remap(fhir_dict: Dict[str, Any], id_remap: Dict[str, str]) -> Dict[str, Any]:
@@ -282,21 +469,31 @@ class ImportService:
             return dict(fhir_dict)
         d = json.loads(json.dumps(fhir_dict, default=str))
 
-        def _remap_ref(obj: Any) -> Any:
+        def _remap_ref(obj: Any, field_hint: str) -> Any:
             if isinstance(obj, dict):
                 ref = obj.get("reference")
-                if isinstance(ref, str) and "/" in ref:
-                    prefix, rid = ref.split("/", 1)
-                    if rid in id_remap:
-                        return {"reference": f"{prefix}/{id_remap[rid]}"}
-                return {k: _remap_ref(v) for k, v in obj.items()}
+                if isinstance(ref, str):
+                    if "/" in ref:
+                        prefix, rid = ref.split("/", 1)
+                        if rid in id_remap:
+                            return {"reference": f"{prefix}/{id_remap[rid]}"}
+                    elif ref.startswith("urn:uuid:"):
+                        rid = ref.replace("urn:uuid:", "")
+                        if rid in id_remap:
+                            prefix = "Patient"
+                            if field_hint == "performer":
+                                prefix = "Practitioner"
+                            elif field_hint == "partOf":
+                                prefix = "Organization"
+                            return {"reference": f"{prefix}/{id_remap[rid]}"}
+                return {k: _remap_ref(v, field_hint) for k, v in obj.items()}
             if isinstance(obj, list):
-                return [_remap_ref(x) for x in obj]
+                return [_remap_ref(x, field_hint) for x in obj]
             return obj
 
         for field in ("subject", "patient", "partOf", "performer", "context"):
             if field in d:
-                d[field] = _remap_ref(d[field])
+                d[field] = _remap_ref(d[field], field)
         return d
 
     async def _resolve_id(
@@ -320,6 +517,7 @@ class ImportService:
         self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
     ) -> str:
         existing_id, new_id, action = await self._resolve_id(Patient, old_id_str, tenant_id)
+        mrn = (orm.get("mrn") or "").strip() or None
         if existing_id:
             await self.db.execute(
                 sa_update(Patient).where(Patient.id == existing_id).values(
@@ -330,7 +528,7 @@ class ImportService:
                     birth_date=_parse_date(orm.get("birth_date")),
                     address=orm.get("address"),
                     telecom=orm.get("telecom"),
-                    mrn=orm.get("mrn"),
+                    mrn=mrn,
                 )
             )
             id_remap[old_id_str] = str(existing_id)
@@ -345,7 +543,7 @@ class ImportService:
             birth_date=_parse_date(orm.get("birth_date")),
             address=orm.get("address"),
             telecom=orm.get("telecom"),
-            mrn=orm.get("mrn"),
+            mrn=mrn,
         )
         self.db.add(patient)
         await self.db.flush()
@@ -355,8 +553,34 @@ class ImportService:
 
     async def _upsert_observation(
         self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
-    ) -> str:
+    ) -> Tuple[str, Optional[UUID]]:
         existing_id, new_id, action = await self._resolve_id(Observation, old_id_str, tenant_id)
+        
+        # Semantic Deduplication
+        if not existing_id:
+            from sqlalchemy import select, and_
+            # Check for identical observation
+            code_text = orm.get("code", {}).get("text")
+            subject_ref = orm.get("subject", {}).get("reference")
+            effective_dt = _parse_dt(orm.get("effective_datetime"))
+            
+            if code_text and subject_ref and effective_dt:
+                stmt = select(Observation).where(
+                    and_(
+                        Observation.tenant_id == tenant_id,
+                        Observation.subject["reference"].astext == subject_ref,
+                        Observation.effective_datetime == effective_dt
+                    )
+                )
+                res = await self.db.execute(stmt)
+                for existing_obs in res.scalars().all():
+                    existing_code = existing_obs.code.get("text")
+                    if existing_code == code_text:
+                        # Found a match, merge instead of create
+                        existing_id = existing_obs.id
+                        action = "updated"
+                        break
+
         if existing_id:
             await self.db.execute(
                 sa_update(Observation).where(Observation.id == existing_id).values(
@@ -372,7 +596,7 @@ class ImportService:
             )
             if old_id_str:
                 id_remap[old_id_str] = str(existing_id)
-            return "updated"
+            return "updated", existing_id
         obs = Observation(
             id=new_id,
             tenant_id=tenant_id,
@@ -389,7 +613,7 @@ class ImportService:
         await self.db.flush()
         if old_id_str:
             id_remap[old_id_str] = str(new_id)
-        return "created"
+        return "created", new_id
 
     async def _upsert_medication(
         self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
@@ -619,6 +843,10 @@ class ImportService:
             created["clinical_events"] = await self._restore_clinical_events(payload, tenant_id, id_remap)
         elif name == "biomarker_definitions.json":
             created["biomarker_definitions"] = await self._restore_biomarker_catalog(payload, tenant_id)
+        elif name == "medication_catalog.json":
+            created["medication_catalog"] = await self._restore_medication_catalog(payload, tenant_id)
+        elif name == "allergy_catalog.json":
+            created["allergy_catalog"] = await self._restore_allergy_catalog(payload, tenant_id)
         elif name == "clinical_event_types.json":
             created["clinical_event_types"] = await self._restore_clinical_event_types(payload, tenant_id)
         elif name == "ai_config.json":
@@ -908,6 +1136,92 @@ class ImportService:
         await self.db.flush()
         return count
 
+    async def _restore_medication_catalog(
+        self, payload: Dict[str, Any], tenant_id: UUID
+    ) -> int:
+        """Upsert MedicationCatalog entries by name (idempotent with seeds)."""
+        count = 0
+        for m in payload.get("medications", []):
+            name = m.get("name")
+            if not name:
+                continue
+            try:
+                res = await self.db.execute(
+                    select(MedicationCatalog).where(
+                        MedicationCatalog.name.ilike(name)
+                    )
+                )
+                existing = res.scalar_one_or_none()
+                if existing:
+                    existing.description = m.get("description", existing.description)
+                    existing.indications = m.get("indications", existing.indications)
+                    existing.side_effects = m.get("side_effects", existing.side_effects)
+                    existing.contraindications = m.get(
+                        "contraindications", existing.contraindications
+                    )
+                    existing.dosage_info = m.get("dosage_info", existing.dosage_info)
+                else:
+                    self.db.add(
+                        MedicationCatalog(
+                            tenant_id=tenant_id,
+                            name=name,
+                            description=m.get("description"),
+                            indications=m.get("indications"),
+                            side_effects=m.get("side_effects"),
+                            contraindications=m.get("contraindications"),
+                            dosage_info=m.get("dosage_info"),
+                        )
+                    )
+                count += 1
+            except Exception as e:
+                logger.warning(f"medication catalog row skipped: {e}")
+        await self.db.flush()
+        return count
+
+    async def _restore_allergy_catalog(
+        self, payload: Dict[str, Any], tenant_id: UUID
+    ) -> int:
+        """Upsert AllergyCatalog entries by name (idempotent with seeds)."""
+        count = 0
+        for a in payload.get("allergies", []):
+            name = a.get("name")
+            if not name:
+                continue
+            try:
+                category_raw = (a.get("category") or "").strip().upper()
+                try:
+                    category = AllergyCategory(category_raw) if category_raw else None
+                except ValueError:
+                    category = AllergyCategory.OTHER if category_raw else None
+                res = await self.db.execute(
+                    select(AllergyCatalog).where(
+                        AllergyCatalog.name.ilike(name)
+                    )
+                )
+                existing = res.scalar_one_or_none()
+                if existing:
+                    if category is not None:
+                        existing.category = category
+                    existing.description = a.get("description", existing.description)
+                    existing.typical_reactions = a.get(
+                        "typical_reactions", existing.typical_reactions
+                    )
+                else:
+                    self.db.add(
+                        AllergyCatalog(
+                            tenant_id=tenant_id,
+                            name=name,
+                            category=category or AllergyCategory.OTHER,
+                            description=a.get("description"),
+                            typical_reactions=a.get("typical_reactions"),
+                        )
+                    )
+                count += 1
+            except Exception as e:
+                logger.warning(f"allergy catalog row skipped: {e}")
+        await self.db.flush()
+        return count
+
     # ---------------- document restore ----------------
 
     async def restore_documents(
@@ -960,7 +1274,7 @@ class ImportService:
 
     # ---------------- orchestrator ----------------
 
-    async def run_import(self, job_id: UUID, archive_path: str, owner_id: UUID) -> RestoreResult:
+    async def run_import(self, job_id: UUID, archive_path: str, owner_id: UUID, config: Optional[FHIRImportConfig] = None) -> RestoreResult:
         job = await self.get_job(job_id)
         if not job:
             raise ValueError(f"Import job {job_id} not found")
@@ -969,16 +1283,17 @@ class ImportService:
             raise ValueError("Import job has no tenant_id")
 
         result = RestoreResult(job_id=str(job_id), status=JobStatus.PROCESSING)
+        self._job_id = job_id
         try:
             await self._update_progress(job_id, 5, JobStatus.PROCESSING)
 
             if zipfile.is_zipfile(archive_path):
                 created, updated, errors, warnings, manifest_verified, fhir_validated = (
-                    await self._restore_from_zip(archive_path, tenant_id, owner_id, job_id)
+                    await self._restore_from_zip(archive_path, tenant_id, owner_id, job_id, config)
                 )
             else:
                 created, updated, errors, warnings, manifest_verified, fhir_validated = (
-                    await self._restore_from_bare_json(archive_path, tenant_id, job_id)
+                    await self._restore_from_bare_json(archive_path, tenant_id, job_id, config)
                 )
 
             result.created_resources = created
@@ -1002,7 +1317,7 @@ class ImportService:
             raise
 
     async def _restore_from_zip(
-        self, archive_path: str, tenant_id: UUID, owner_id: UUID, job_id: UUID
+        self, archive_path: str, tenant_id: UUID, owner_id: UUID, job_id: UUID, config: Optional[FHIRImportConfig] = None
     ) -> Tuple[Dict[str, int], Dict[str, int], List[str], List[str], bool, bool]:
         created: Dict[str, int] = {}
         updated: Dict[str, int] = {}
@@ -1034,7 +1349,7 @@ class ImportService:
                 if not ok:
                     errors.extend(verrors)
                 c, u, e, w, id_remap = await self.restore_fhir_bundle(
-                    bundle, tenant_id, validate=False
+                    bundle, tenant_id, validate=False, config=config
                 )
                 created.update(c)
                 updated.update(u)
@@ -1073,7 +1388,7 @@ class ImportService:
         return created, updated, errors, warnings, manifest_verified, fhir_validated
 
     async def _restore_from_bare_json(
-        self, path: str, tenant_id: UUID, job_id: UUID
+        self, path: str, tenant_id: UUID, job_id: UUID, config: Optional[FHIRImportConfig] = None
     ) -> Tuple[Dict[str, int], Dict[str, int], List[str], List[str], bool, bool]:
         created: Dict[str, int] = {}
         updated: Dict[str, int] = {}
@@ -1086,7 +1401,7 @@ class ImportService:
             ok, verrors = validate_bundle(data)
             if not ok:
                 errors.extend(verrors)
-            c, u, e, w, _ = await self.restore_fhir_bundle(data, tenant_id, validate=False)
+            c, u, e, w, _ = await self.restore_fhir_bundle(data, tenant_id, validate=False, config=config)
             created.update(c)
             updated.update(u)
             errors.extend(e)
@@ -1191,7 +1506,7 @@ class ImportService:
                 r = entry.get("resource") or {}
                 if r.get("resourceType") in ("Observation", "DiagnosticReport", "MedicationStatement"):
                     r.setdefault("subject", {})["reference"] = f"Patient/{patient_id}"
-        c, u, e, w, _ = await self.restore_fhir_bundle(data, tid, validate=True)
+        c, u, e, w, _ = await self.restore_fhir_bundle(data, tid, validate=True, config=config)
         await self.db.commit()
         total = sum(c.values()) + sum(u.values())
         return ImportResult(

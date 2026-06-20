@@ -23,6 +23,14 @@ def _make_patient(pid, tenant_id):
         "birth_date": "1990-01-01",
         "mrn": "MRN1",
     }
+    p.to_fhir_dict.return_value = {
+        "resourceType": "Patient",
+        "id": str(pid),
+        "name": [{"family": "Doe", "given": ["J"]}],
+        "gender": "female",
+        "birthDate": "1990-01-01",
+        "meta": {"versionId": "1"},
+    }
     return p
 
 
@@ -38,6 +46,16 @@ def _make_observation(oid, tenant_id, pid):
         "effective_datetime": "2026-06-18T10:00:00+00:00",
         "value_quantity": {"value": 72, "unit": "bpm"},
     }
+    o.to_fhir_dict.return_value = {
+        "resourceType": "Observation",
+        "id": str(oid),
+        "status": "final",
+        "code": {"coding": [{"system": "http://loinc.org", "code": "8867-4"}], "text": "HR"},
+        "subject": {"reference": f"Patient/{pid}"},
+        "effectiveDateTime": "2026-06-18T10:00:00+00:00",
+        "valueQuantity": {"value": 72, "unit": "bpm"},
+        "meta": {"versionId": "1"},
+    }
     return o
 
 
@@ -51,6 +69,16 @@ def _make_medication(mid, tenant_id, pid):
         "code": {"text": "Aspirin"},
         "start_date": "2026-01-01",
         "dosage": "100mg",
+    }
+    m.to_fhir_dict.return_value = {
+        "resourceType": "MedicationStatement",
+        "id": str(mid),
+        "status": "active",
+        "medicationCodeableConcept": {"text": "Aspirin"},
+        "subject": {"reference": f"Patient/{pid}"},
+        "effectivePeriod": {"start": "2026-01-01"},
+        "dosage": [{"text": "100mg"}],
+        "meta": {"versionId": "1"},
     }
     return m
 
@@ -117,6 +145,46 @@ def test_build_fhir_bundle_counts_and_validates():
     assert set(rts) == {"Patient", "Observation", "MedicationStatement"}
 
 
+def test_build_fhir_bundle_fails_loud_on_invalid_resource():
+    """Fail-loud policy: a resource whose to_fhir_dict() raises
+    FhirSerializationError fails the whole export (raises ExportError naming the
+    bad resource) — backups must never silently drop data."""
+    from app.services.export_service import ExportError
+    from app.services.fhir_helpers import FhirSerializationError
+
+    tid = uuid.uuid4()
+    pid = uuid.uuid4()
+    good_patient = _make_patient(pid, tid)
+
+    bad_observation = MagicMock()
+    bad_observation.id = uuid.uuid4()
+    # Simulate a resource that cannot be serialized to valid FHIR
+    bad_observation.to_fhir_dict.side_effect = FhirSerializationError("boom")
+
+    good_med = _make_medication(uuid.uuid4(), tid, pid)
+
+    svc = ExportService.__new__(ExportService)
+    with pytest.raises(ExportError) as exc_info:
+        svc.build_fhir_bundle(
+            tid,
+            [str(pid)],
+            [good_patient],
+            [bad_observation],
+            [good_med],
+            [],
+            [],
+            [],
+            [],
+            documents=[],
+        )
+
+    # The error report names the failing resource and the underlying cause
+    msg = str(exc_info.value)
+    assert "Observation" in msg
+    assert "boom" in msg
+    assert "failed FHIR validation" in msg
+
+
 def test_build_nonfhir_sidecars_patient_scope_excludes_telemetry_with_note():
     tid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
@@ -129,6 +197,8 @@ def test_build_nonfhir_sidecars_patient_scope_excludes_telemetry_with_note():
         clinical_events=[],
         clinical_event_types={"types": [], "categories": []},
         biomarker_catalog={"units": [], "biomarkers": []},
+        medication_catalog={"medications": []},
+        allergy_catalog={"allergies": []},
         documents=[],
         telemetry=None,
         integrations=[],
@@ -139,6 +209,8 @@ def test_build_nonfhir_sidecars_patient_scope_excludes_telemetry_with_note():
     assert any("Telemetry excluded" in n for n in notes)
     assert "examinations.json" in sidecars
     assert "documents.json" in sidecars
+    assert "medication_catalog.json" in sidecars
+    assert "allergy_catalog.json" in sidecars
 
 
 def test_build_nonfhir_sidecars_system_scope_includes_telemetry():
@@ -155,6 +227,8 @@ def test_build_nonfhir_sidecars_system_scope_includes_telemetry():
         clinical_events=[],
         clinical_event_types={"types": [], "categories": []},
         biomarker_catalog={"units": [], "biomarkers": []},
+        medication_catalog={"medications": [{"name": "Metformin"}, {"name": "Aspirin"}]},
+        allergy_catalog={"allergies": [{"name": "Peanuts"}]},
         documents=[],
         telemetry=[t],
         integrations=[],
@@ -164,6 +238,10 @@ def test_build_nonfhir_sidecars_system_scope_includes_telemetry():
     assert "telemetry.json" in sidecars
     assert counts["telemetry"] == 1
     assert notes == []
+    assert counts["medication_catalog"] == 2
+    assert counts["allergy_catalog"] == 1
+    assert sidecars["medication_catalog.json"]["medications"][0]["name"] == "Metformin"
+    assert sidecars["allergy_catalog.json"]["allergies"][0]["name"] == "Peanuts"
 
 
 def test_integration_to_export_dict_keeps_user_config_and_tokens():
@@ -406,6 +484,8 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "gather_clinical_events", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_clinical_event_types", AsyncMock(return_value={"types": [], "categories": []}))
     monkeypatch.setattr(svc, "gather_biomarker_catalog", AsyncMock(return_value={"units": [], "biomarkers": []}))
+    monkeypatch.setattr(svc, "gather_medication_catalog", AsyncMock(return_value={"medications": []}))
+    monkeypatch.setattr(svc, "gather_allergy_catalog", AsyncMock(return_value={"allergies": []}))
     monkeypatch.setattr(svc, "gather_telemetry", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_integrations", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_notification_triggers", AsyncMock(return_value=[]))
@@ -446,12 +526,16 @@ async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "fail_job", AsyncMock())
     monkeypatch.setattr(svc, "gather_biomarker_catalog", AsyncMock(return_value={"units": [{"symbol": "mg/dL"}], "biomarkers": [{"slug": "glucose"}]}))
     monkeypatch.setattr(svc, "gather_clinical_event_types", AsyncMock(return_value={"types": [{"slug": "p"}], "categories": []}))
+    monkeypatch.setattr(svc, "gather_medication_catalog", AsyncMock(return_value={"medications": [{"name": "Metformin"}]}))
+    monkeypatch.setattr(svc, "gather_allergy_catalog", AsyncMock(return_value={"allergies": [{"name": "Peanuts"}]}))
 
     await svc.run_export(jid)
 
     assert job.status == JobStatus.COMPLETED
     assert completed["path"].endswith(".catalog.json")
     assert completed["counts"]["biomarkers"] == 1
+    assert completed["counts"]["medication_catalog"] == 1
+    assert completed["counts"]["allergy_catalog"] == 1
 
 
 @pytest.mark.asyncio

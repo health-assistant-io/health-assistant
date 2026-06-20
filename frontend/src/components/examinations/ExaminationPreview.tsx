@@ -282,9 +282,13 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                     {augmentedBiomarkers.map((b) => (
                     <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors group/row">
                       <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-dark-text flex items-center">
-                        <Link to={`/biomarkers/details/${b.definitionId || b.slug}`} className="hover:text-blue-600 transition-colors">
-                          {b.displayName}
-                        </Link>
+                        {b.definitionId ? (
+                          <Link to={`/biomarkers/details/${b.definitionId}`} className="hover:text-blue-600 transition-colors">
+                            {b.displayName}
+                          </Link>
+                        ) : (
+                          <span>{b.displayName}</span>
+                        )}
                         {b.info && (
                           <button 
                             onClick={() => onInfoClick(b)}

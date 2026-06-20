@@ -11,6 +11,8 @@ import {
   ReferenceArea
 } from 'recharts';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
+import { formatBiomarkerValue } from '../../utils/biomarkerUtils';
 
 interface DataPoint {
   date: string;
@@ -38,6 +40,7 @@ const CorrelationChart: React.FC<CorrelationChartProps> = ({
   height = 400,
   showReferenceArea = true,
 }) => {
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const theme = useSettingsStore(state => state.theme);
   const isDark = theme === 'dark';
 
@@ -90,7 +93,7 @@ const CorrelationChart: React.FC<CorrelationChartProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-black text-gray-900 dark:text-white">
-                    {entry.payload[`${entry.name}_raw`]}
+                    {formatBiomarkerValue(entry.payload[`${entry.name}_raw`], precisionProfile)}
                   </span>
                   <span className="text-[10px] font-bold text-gray-400 ml-1 uppercase">
                     {entry.payload[`${entry.name}_unit`]}

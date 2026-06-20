@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update as sa_update
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -11,10 +11,12 @@ from app.models.biomarker_model import (
     BiomarkerGroupMember,
     Unit,
 )
+from app.models.fhir.patient import Observation
 from app.schemas.biomarker import (
     BiomarkerCreate,
     BiomarkerUpdate,
     BiomarkerResponse,
+    BiomarkerRemapRequest,
     UnitResponse,
     UnitCreate,
 )
@@ -379,6 +381,58 @@ async def retry_biomarker_migration(
         "is_telemetry": db_biomarker.is_telemetry,
         "meta_data": db_biomarker.meta_data,
         "preferred_unit_symbol": symbol,
+    }
+
+@router.post("/{biomarker_id}/remap")
+async def remap_observations(
+    biomarker_id: UUID,
+    payload: BiomarkerRemapRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Relink unmapped observations to a biomarker definition.
+
+    Matches observations whose stored ``code.text`` equals ``source_name``
+    (case-insensitive) and which currently have no (or stale) ``biomarker_id``.
+    Optionally scoped to a single patient. This lets users take raw, unmapped
+    lab results visible in a biomarker list and attach them to an existing or
+    newly-created definition so they chart under the canonical identity.
+    """
+    # Verify the target definition exists
+    target_res = await db.execute(
+        select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+    )
+    if not target_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Target biomarker definition not found")
+
+    # Build the match conditions: same tenant, code.text matches source_name,
+    # biomarker_id is null (genuinely unmapped), optional patient scope.
+    conditions = [
+        Observation.tenant_id == current_user.tenant_id,
+        Observation.biomarker_id.is_(None),
+        Observation.code["text"].astext.ilike(payload.source_name),
+    ]
+    if payload.patient_id:
+        conditions.append(
+            Observation.subject["reference"].astext == f"Patient/{payload.patient_id}"
+        )
+
+    result = await db.execute(
+        sa_update(Observation)
+        .where(*conditions)
+        .values(biomarker_id=biomarker_id)
+    )
+    updated = result.rowcount or 0
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "status": "success",
+        "biomarker_id": str(biomarker_id),
+        "observations_remapped": updated,
     }
 
 @router.patch("/{biomarker_id}", response_model=BiomarkerResponse)

@@ -456,7 +456,7 @@ const ClinicalEventDetail: React.FC = () => {
                   <div 
                     key={idx} 
                     onClick={() => {
-                      const targetId = link.biomarker_id || link.biomarker_slug;
+                      const targetId = link.biomarker_id;
                       if (targetId) navigate(`/biomarkers/details/${targetId}`);
                     }}
                     className="p-4 bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border group hover:border-blue-200 dark:hover:border-blue-900/30 cursor-pointer hover:shadow-md hover:bg-white dark:hover:bg-dark-surface transition-all"
@@ -466,12 +466,12 @@ const ClinicalEventDetail: React.FC = () => {
                          {link.code?.text || link.code?.coding?.[0]?.display || link.biomarker_slug || 'Unknown'}
                        </h4>
                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                         {link.raw_value || link.valueQuantity?.value} {link.normalized_unit || link.valueQuantity?.unit}
-                       </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                       <span className="text-[9px] text-gray-400 font-bold uppercase">
-                         {new Date(link.effective_datetime || link.effectiveDateTime).toLocaleDateString()}
+                          {link.raw_value} {link.normalized_unit}
+                        </span>
+                     </div>
+                     <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase">
+                          {new Date(link.effective_datetime).toLocaleDateString()}
                        </span>
                     </div>
                     {link.notes && (

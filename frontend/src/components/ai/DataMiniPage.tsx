@@ -50,7 +50,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
       {items.map((item, idx) => {
         // Extract common fields
         const name = item.code?.text || item.code?.coding?.[0]?.display || item.displayName || item.name || item.drug_name || item.category || 'Unknown Record';
-        const date = item.effective_datetime || item.effectiveDateTime || item.startDate || item.examination_date || item.source?.date || item.created_at;
+        const date = item.effective_datetime || item.examination_date || item.source?.date || item.created_at;
         
         let id = item.id;
         // Ensure id is just the UUID even if a full FHIR URL was provided
@@ -65,8 +65,8 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
           return val;
         };
 
-        const displayValue = extractValue(item.value_quantity?.value ?? item.valueQuantity?.value ?? item.value?.raw ?? item.value ?? item.value_string ?? item.valueString);
-        const displayUnit = item.value_quantity?.unit ?? item.valueQuantity?.unit ?? item.raw_unit?.symbol ?? item.unit?.rawSymbol ?? item.unit ?? '';
+        const displayValue = extractValue(item.value_quantity?.value ?? item.value?.raw ?? item.value ?? item.value_string);
+        const displayUnit = item.value_quantity?.unit ?? item.raw_unit?.symbol ?? item.unit?.rawSymbol ?? item.unit ?? '';
         
         let rangeText = 'N/A';
         if (item.lab_reference_range) {

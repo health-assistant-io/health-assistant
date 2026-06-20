@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
+import { formatBiomarkerValue } from '../../utils/biomarkerUtils';
 
 interface BarChartProps {
   data: Array<{ name: string; value: number }>;
@@ -16,6 +18,8 @@ const BarChart: React.FC<BarChartProps> = ({
   color = '#3b82f6',
   height = 300,
 }) => {
+  const precisionProfile = useBiomarkerPrecisionProfile();
+
   const formattedData = useMemo(() => {
     return data.map((item) => ({
       name: item.name,
@@ -35,6 +39,7 @@ const BarChart: React.FC<BarChartProps> = ({
             border: '1px solid #e5e7eb',
             borderRadius: '0.5rem',
           }}
+          formatter={(value: any) => [formatBiomarkerValue(value, precisionProfile), dataKey]}
         />
         <Legend />
         <Bar dataKey={dataKey} fill={color} radius={[4, 4, 0, 0]} />

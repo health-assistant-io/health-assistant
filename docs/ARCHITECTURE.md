@@ -88,11 +88,37 @@ Health Assistant uses a unified, provider-agnostic AI architecture. For a deep d
 6. **Deterministic Normalization**: `MedicalProcessingService` performs unit conversions and calculates `relative_score`.
 7. **Persistence**: Saves FHIR Observations with live progress tracking.
 
+## Data Serialization & FHIR Interoperability
+
+Internal models are **FHIR-enhanced relational rows**: FHIR-shaped JSONB columns (`code`, `subject`, `value_quantity`) *plus* app-specific relational columns (`biomarker_id`, `normalized_value`, `tenant_id`). Because the Biomarker Engine needs the relational columns, the app does not store pure FHIR resources. Each model therefore exposes **two serialization paths**:
+
+- **`to_dict()`** — ORM shape (snake_case + app fields). What the REST API returns, the frontend consumes, and the AI tools read. Not valid FHIR JSON.
+- **`to_fhir_dict()`** — FHIR R4B shape (camelCase, valid FHIR JSON). Built and validated by the **`fhir.resources`** library (`Model(**fields).model_dump(by_alias=True, exclude_none=True, mode="json")`). Used by the export/import feature.
+
+**`fhir.resources` is the single source of truth for FHIR shape** at the two interop boundaries (`app/services/fhir_helpers.py` → `build_fhir_resource` / `parse_fhir_resource`):
+- **Export** (`to_fhir_dict()`): ORM → construct `fhir.resources` model → canonical dump. Construction-time validation guarantees spec-compliant output. The export loop applies a **fail-loud** policy — a resource that fails validation throws an `ExportError` and aborts the backup so data is never silently dropped. (However, strict write-time validation prevents invalid data from entering the database to begin with).
+- **Import** (`fhir_converter.fhir_to_orm()`): canonical FHIR → `fhir.resources.model_validate()` (validates + types) → ORM-shape dict. Invalid resources raise `FhirSerializationError` and are skipped + logged.
+
+The REST CRUD path (`/fhir/*` endpoints + `fhir_service.create_*`) **does not** use `fhir.resources` for parsing — the frontend speaks ORM-shape (snake_case), so `create_*` just coerces types (str→UUID/date, interpretation-list→string). It **does** validate on write: every `create_*`/`update_*`, as well as integration and OCR writes, calls `assert_valid_fhir()` (→ `to_fhir_dict()`) before persisting, so invalid FHIR can never be stored; `FhirSerializationError` maps to HTTP 400 or skip-and-log depending on the path. FHIR parsing of canonical input lives at the import boundary.
+
+Low-level primitives (`_clean`, `_as_list`, `build_meta`, `_normalize_timing`, `_extract_patient_id`, `_flatten_interpretation`) live in `app/services/fhir_helpers.py`. `validate_bundle()` (Bundle-level) remains in `fhir_converter.py`.
+
+Telemetry (`TelemetryDataModel`) is intentionally excluded from FHIR exports by design (see `TELEMETRY_AND_AGGREGATION.md`).
+
+### FHIR Server Integration (Stage 2)
+
+Beyond export/import (file-based), Health Assistant can connect to a **live external FHIR server** as an integration under the SDK — the reference provider is `integrations/fhir_server/`. It pulls a patient's `Observation`s into the Biomarker Engine:
+
+- **Auth modes** (`auth_mode` config): `smart` (SMART-on-FHIR standalone launch + Dynamic Client Registration, for hospitals/`r4.smarthealthit.org`) or `none` (tokenless, for a local/open server like vanilla HAPI FHIR). `smart` instances start `PENDING` until the OAuth callback; `none` go straight to `ACTIVE`.
+- **Pull** (`provider.pull_data`): bounded FHIR search `Observation?_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated[&patient][&category]` → each FHIR Observation is mapped to an `ObservationCreate` on the **local** patient (`sdk/fhir.fhir_observation_to_create`) → the existing biomarker-mapping waterfall resolves `biomarker_id` and routes telemetry.
+- The SDK auth/HTTP/FHIR helpers (`integrations/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the future Stage 3 facade (Health Assistant as a FHIR server). Push is deferred to Stage 2b.
+
 ## Frontend Architecture
 
 ### Centralized Data Extractor (`useBiomarkers`)
 A robust custom hook serves as the single source of truth for all biomarker rendering:
 - **Universal Parsing**: Handles known, unknown, and legacy biomarker data formats seamlessly.
+- **Definition Enrichment**: Fetches the biomarker definition catalog once per session and enriches every observation with the canonical definition name + UUID, so `BiomarkerDefinition` is the authority for both identity and display (not the raw observation text). Unmapped observations (no definition) are flagged and show a popup to create or map them.
 - **Multi-Perspective Views**: Provides dynamic grouping logic for three perspectives:
     - **By System**: Clinical panels (e.g., Heart Health, Liver Function).
     - **By Technical**: Technical source (e.g., Blood Lab, Imaging, Vitals).

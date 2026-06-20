@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.backup import ImportJobResponse
+from app.schemas.backup import ImportJobResponse, ImportJobListResponse
 from app.schemas.import_data import (
     CSVImportConfig,
     DataImportResponse,
@@ -33,6 +33,8 @@ def _parse_uuid(v: str) -> UUID:
 @router.post("/backup", response_model=ImportJobResponse)
 async def import_backup(
     file: UploadFile = File(...),
+    auto_map_biomarkers: bool = Form(True),
+    use_ai_normalization: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -54,10 +56,16 @@ async def import_backup(
         tmp_path = Path(tmp.name)
 
     try:
-        job = await svc.create_import_job(user_id, tenant_id, source_filename=file.filename)
+        job = await svc.create_import_job(user_id, tenant_id, file.filename)
         from app.workers.tasks import import_backup as import_backup_task
+        
+        import json
+        config_dict = {
+            "auto_map_biomarkers": auto_map_biomarkers,
+            "use_ai_normalization": use_ai_normalization
+        }
 
-        import_backup_task.delay(str(job.id), str(tmp_path), str(user_id))
+        import_backup_task.delay(str(job.id), str(tmp_path), str(user_id), json.dumps(config_dict))
         return ImportJobResponse(**job.to_dict())
     except Exception as e:
         tmp_path.unlink(missing_ok=True)
@@ -69,6 +77,8 @@ async def import_fhir(
     file: UploadFile = File(...),
     patient_id: Optional[str] = Form(None),
     validate_data: bool = Form(True, alias="validate"),
+    auto_map_biomarkers: bool = Form(True),
+    use_ai_normalization: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -85,12 +95,13 @@ async def import_fhir(
             tmp.write(content)
             tmp_path = Path(tmp.name)
         svc = ImportService(db)
-        config = FHIRImportConfig(validate_profiles=validate_data)
+        config = FHIRImportConfig(
+            validate_profiles=validate_data,
+            auto_map_biomarkers=auto_map_biomarkers,
+            use_ai_normalization=use_ai_normalization
+        )
         result = await svc.import_from_fhir(
-            file_path=tmp_path,
-            tenant_id=tenant_id,
-            patient_id=patient_id,
-            config=config,
+            tmp_path, tenant_id, patient_id=patient_id, config=config
         )
         return result
     except Exception as e:
@@ -189,6 +200,31 @@ async def import_ocr(
         if tmp_path and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
 
+
+@router.get("/jobs", response_model=ImportJobListResponse)
+async def list_import_jobs(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """List import jobs for the current tenant."""
+    tenant_id = _parse_uuid(str(current_user.tenant_id))
+    
+    from sqlalchemy import select
+    from app.models.export_import_job import ImportJobModel
+    
+    res = await db.execute(
+        select(ImportJobModel)
+        .where(ImportJobModel.tenant_id == tenant_id)
+        .order_by(ImportJobModel.created_at.desc())
+        .limit(limit)
+    )
+    jobs = res.scalars().all()
+    
+    return ImportJobListResponse(
+        items=[ImportJobResponse(**j.to_dict()) for j in jobs], 
+        total=len(jobs)
+    )
 
 @router.get("/jobs/{job_id}", response_model=ImportJobResponse)
 async def get_import_job(

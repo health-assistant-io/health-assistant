@@ -102,8 +102,7 @@ function Header() {
               if (latest) {
                 // Update if there are meaningful differences
                 if (latest.mrn !== current.mrn || 
-                    latest.birthDate !== current.birthDate || 
-                    (latest as any).birth_date !== (current as any).birth_date ||
+                    latest.birth_date !== current.birth_date ||
                     JSON.stringify(latest.name) !== JSON.stringify(current.name)) {
                   setCurrentPatient(latest);
                 }

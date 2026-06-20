@@ -32,8 +32,12 @@ import Organizations from './pages/Organizations/OrganizationList';
 import OrganizationDetail from './pages/Organizations/OrganizationDetail';
 import AboutPage from './pages/About/AboutPage';
 import Settings from './pages/Settings/Profile';
+import AppearanceSettings from './pages/Settings/AppearanceSettings';
+import TenantSettingsPage from './pages/Admin/TenantSettings';
+import SystemSettingsPage from './pages/Admin/SystemSettings';
 import Integrations from './pages/Settings/Integrations';
 import IntegrationDetail from './pages/Settings/IntegrationDetail';
+import OAuthConnected from './pages/Settings/OAuthConnected';
 import ExportImport from './pages/Settings/ExportImport';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -56,6 +60,7 @@ function App() {
   const { isAuthenticated, isLoading } = useProtectedRoute();
   const { user, updateUser, logout } = useAuthStore();
   const theme = useSettingsStore(state => state.theme);
+  const loadSettings = useSettingsStore(state => state.loadSettings);
   const [checkingToken, setCheckingToken] = useState(false);
 
   // Sync effect
@@ -147,6 +152,12 @@ function App() {
     }
   }, [isAuthenticated, user, updateUser]);
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadSettings();
+    }
+  }, [isAuthenticated, loadSettings]);
+
   if (isLoading || checkingToken) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
@@ -200,19 +211,23 @@ function App() {
           {/* System Administration (System Admin Only) */}
           {user?.role === 'SYSTEM_ADMIN' && (
             <>
-              <Route path="/admin/tenants" element={<TenantManagement />} />
+              <Route path="/admin/system/tenants" element={<TenantManagement />} />
+              <Route path="/admin/system/users" element={<UserManagement />} />
+              <Route path="/admin/system/users/:userId" element={<UserDetail />} />
               <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
               <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
               <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
+              <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
             </>
           )}
 
           {/* Tenant Management (Admin & System Admin) */}
           {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
             <>
-              <Route path="/admin/users" element={<UserManagement />} />
-              <Route path="/admin/users/:userId" element={<UserDetail />} />
+              <Route path="/admin/tenant/users" element={<UserManagement />} />
+              <Route path="/admin/tenant/users/:userId" element={<UserDetail />} />
               <Route path="/admin/tenant/ai-config" element={<AIConfig scope="tenant" />} />
+              <Route path="/admin/tenant/settings" element={<TenantSettingsPage />} />
             </>
           )}
 
@@ -221,8 +236,10 @@ function App() {
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/profile" element={<Settings />} />
+          <Route path="/settings/appearance" element={<AppearanceSettings />} />
           <Route path="/settings/integrations" element={<Integrations />} />
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
+          <Route path="/integrations/:domain/connected" element={<OAuthConnected />} />
           <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
           {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
             <Route path="/settings/export-import" element={<ExportImport />} />

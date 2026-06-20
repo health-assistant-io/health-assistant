@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin
 from app.models.enums import Gender
+from app.services.fhir_helpers import _as_list, _clean_quantity, _coerce_human_name_list, _primary_human_name, build_fhir_resource, build_meta
 
 
 class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
@@ -62,7 +63,7 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
             "id": str(self.id),
             "tenant_id": str(self.tenant_id),
             "user_id": str(self.user_id) if self.user_id else None,
-            "name": self.name,
+            "name": _primary_human_name(self.name),
             "gender": self.gender.value if self.gender else None,
             "birth_date": self.birth_date.isoformat() if self.birth_date else None,
             "birthDate": self.birth_date.isoformat() if self.birth_date else None,
@@ -77,6 +78,32 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
             "emergency_contact": self.emergency_contact,
             "dashboard_layout": self.dashboard_layout,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B Patient resource via fhir.resources (validated)."""
+        identifiers = []
+        if self.mrn:
+            identifiers.append(
+                {"system": "urn:healthassistant:mrn", "value": str(self.mrn)}
+            )
+        return build_fhir_resource(
+            "Patient",
+            {
+                "resourceType": "Patient",
+                "id": str(self.id),
+                "identifier": identifiers or None,
+                "name": _coerce_human_name_list(self.name),
+                "gender": self.gender.value.lower() if self.gender else None,
+                "birthDate": self.birth_date.isoformat() if self.birth_date else None,
+                "deceasedBoolean": self.deceased_boolean,
+                "deceasedDateTime": self.deceased_datetime.isoformat()
+                if self.deceased_datetime
+                else None,
+                "address": self.address,
+                "telecom": self.telecom,
+                "meta": build_meta(str(self.id)),
+            },
+        )
 
 
 class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
@@ -175,6 +202,35 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
             "document_id": self.document_id,
         }
 
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B Observation resource via fhir.resources (validated)."""
+        interpretation = self.interpretation
+        if isinstance(interpretation, str) and interpretation:
+            interpretation = [{"text": interpretation}]
+        return build_fhir_resource(
+            "Observation",
+            {
+                "resourceType": "Observation",
+                "id": str(self.id),
+                "status": (self.status or "final").lower(),
+                "category": self.category,
+                "code": self.code,
+                "subject": self.subject,
+                "effectiveDateTime": self.effective_datetime.isoformat()
+                if self.effective_datetime
+                else None,
+                "valueQuantity": _clean_quantity(self.value_quantity),
+                "valueString": self.value_string,
+                "valueCodeableConcept": self.value_codeableConcept,
+                "referenceRange": self.reference_range,
+                "interpretation": interpretation,
+                "note": [{"text": self.comment}] if self.comment else None,
+                "performer": self.performer,
+                "method": {"text": self.method} if self.method else None,
+                "meta": build_meta(str(self.id)),
+            },
+        )
+
     # Indexes for common queries
     __table_args__ = (
         Index("idx_observation_tenant_patient", "tenant_id", "subject"),
@@ -221,3 +277,26 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
             "conclusion_code": self.conclusion_code,
             "presented_form": self.presented_form,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Serialize to a FHIR R4B DiagnosticReport resource via fhir.resources (validated)."""
+        return build_fhir_resource(
+            "DiagnosticReport",
+            {
+                "resourceType": "DiagnosticReport",
+                "id": str(self.id),
+                "status": (self.status or "final").lower(),
+                "category": _as_list(self.category),
+                "code": self.code,
+                "subject": self.subject,
+                "effectiveDateTime": self.effective_datetime.isoformat()
+                if self.effective_datetime
+                else None,
+                "issued": self.issued.isoformat() if self.issued else None,
+                "performer": self.performer,
+                "conclusion": self.conclusion,
+                "conclusionCode": _as_list(self.conclusion_code),
+                "presentedForm": _as_list(self.presented_form),
+                "meta": build_meta(str(self.id)),
+            },
+        )
