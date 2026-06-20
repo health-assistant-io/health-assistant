@@ -72,7 +72,7 @@ __all__ = [
     "DoctorModel",
     "OrganizationModel",
     "organization_doctors",
-    "WearableDataModel",
+    "TelemetryDataModel",
     "AlertModel",
     "AuditLog",
     "TaskLog",
