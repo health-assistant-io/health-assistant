@@ -25,6 +25,7 @@
 - Centralized semantic versioning manager
 - **Export & Import (backup) system** — FHIR R4B Bundle + BagIt-style ZIP exports at patient/group/system scope; validated imports with SHA256 manifest verification and cross-tenant id remapping (see [EXPORT_IMPORT.md](EXPORT_IMPORT.md)). Admin-only UI at `/settings/export-import` (export form, drag-and-drop restore, live job polling, download).
 - **Agentic AI Copilot + human-in-the-loop (HITL) proposals** — the chat assistant proposes clinical write actions (create a clinical event, add a biomarker to an examination, add a medication, define a new biomarker/medication in the catalog); the user reviews/edits and explicitly confirms before anything is saved (the AI never writes directly). After resolution, the agent gets an **auto-resume continuation turn** with structured outcomes fed back. **Parallel proposals** (multiple independent actions per turn) and a **Continue button** for partial resumes are supported. See [AI_SYSTEM.md §4.1](AI_SYSTEM.md) and the `hitl-task-cards` skill.
+- **0.3.0 security & critical-fix pass** (see [AUDIT-2026-06-21.md](../dev/audits/AUDIT-2026-06-21.md) and [CHANGELOG.md](../CHANGELOG.md)): AI provider `api_key` encrypted at rest + masked in responses; scope checks on `/ai-config/providers/*` and `/models/*`; telemetry endpoints tenant-scoped; global exception handler no longer leaks `str(exc)` (now uses a `correlation_id`); `fetch-external-models` SSRF guard; `list_observations` actually applies its filters; `/fhir/Observation/history` no longer raises `TypeError`; `sync_active_integrations` correctly routes telemetry to TimescaleDB; `AIModel.__table_args__` typo fixed + migration `f1a2b3c4d5e6`; dead `processors/fhir_mapper.py` deleted; `from app.models import *` works again; telemetry service stubs replaced with real implementations.
 
 #### Frontend
 - React 18 app with Vite & TypeScript
@@ -36,6 +37,7 @@
 - Notification Center & PWA Push support
 - Document gallery and clinical timeline
 - **Export & Import UI** (`/settings/export-import`, admin-only) — create exports, restore from ZIP/JSON, live job polling, download
+- **0.3.0 PWA + GraphQL fixes**: manifest shortcut `/examinations/new` → `/examinations/upload`; PWA runtime caches now use same-origin predicates (no longer hardcoded to `localhost:8000`); GraphQL client auth header is now per-request via `graphqlRequest()` (no longer captured at module-load).
 
 ### ⚠️ In Progress
 - Advanced anomaly detection algorithms (Statistical)

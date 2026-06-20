@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.3.0-alpha] - 2026-06-21
+
+**Critical & high-severity audit fixes. Breaking changes — see `dev/audits/AUDIT-2026-06-21.md` for the full baseline.**
+
+### Security
+- **AI provider `api_key` is now encrypted at rest** (Fernet, via `INTEGRATION_SECRET_KEY`) and **masked in every API response** (`***<last4>`, plus a new `has_api_key` boolean). Plaintext keys persisted before this release must be migrated with `PYTHONPATH=. python scripts/encrypt_existing_api_keys.py` (supports `--dry-run`, idempotent). The factory layer reads plaintext only via the new `AIProviderModel.get_api_key_plaintext()` accessor at LLM-instantiation time. ([audit B1](dev/audits/AUDIT-2026-06-21.md))
+- **Scope checks on `/ai-config/providers/{id}`, `/providers/{id}/with-models`, `/providers/{id}/models`, `/models/{id}`, `/providers/{id}/fetch-external-models`** — previously any authenticated user could read any provider (including its key) by UUID. New `verify_provider_access` / `verify_model_access` helpers enforce USER/TENANT/SYSTEM scope on all 7 entry points. ([audit B2](dev/audits/AUDIT-2026-06-21.md))
+- **`fetch-external-models` SSRF guard**: in production (`DEBUG=False`) the `api_base` must be `http(s)://` and not point at a loopback / private / link-local address. ([audit B9](dev/audits/AUDIT-2026-06-21.md))
+- **Telemetry endpoints are now tenant-scoped**. `/telemetry/data`, `/telemetry/data/summary`, and `/telemetry/anomalies` previously accepted only `device_id`; a user who guessed another tenant's `device_id` could read its data. All three endpoints now require and filter on the caller's `tenant_id`. ([audit B3](dev/audits/AUDIT-2026-06-21.md))
+- **Global exception handler no longer leaks `str(exc)` in production**. 500 responses now include a `correlation_id`; the full detail is logged server-side with the same id. `DEBUG=True` preserves the verbose detail for developer convenience. ([audit B4](dev/audits/AUDIT-2026-06-21.md))
+
+### Fixed (critical)
+- **`list_observations` now applies its filters.** The function accepted `patient_id`/`code`/`start_date`/`end_date` but silently ignored them, returning every observation in the tenant. Cross-patient data exposure. Results are also ordered by `effective_datetime DESC`. ([audit A1](dev/audits/AUDIT-2026-06-21.md))
+- **`/fhir/Observation/history` no longer raises `TypeError`.** It was calling `get_observation(patient_id, code, period)` — wrong arity. New `get_observation_history` service fn + reordered routes so `/Observation/history` is matched before `/Observation/{observation_id}`. ([audit A2](dev/audits/AUDIT-2026-06-21.md))
+- **`sync_active_integrations` (background Celery task) now routes telemetry to TimescaleDB.** Every pulled observation previously landed in `fhir_observations` regardless of `BiomarkerDefinition.is_telemetry`, breaking the AI telemetry tools. New shared helper `app.services.integration_sync_service.apply_telemetry_split` — also wired into the manual-sync endpoint for DRY. ([audit A4](dev/audits/AUDIT-2026-06-21.md))
+- **`/telemetry/anomalies` no longer raises `TypeError`.** Was calling the synchronous `AnomalyDetector.detect_biomarker_anomalies(device_id, metric, period)` with the wrong arity and an `await`. New wrapper `get_telemetry_anomalies` fetches history and feeds the detector correctly. ([audit A6](dev/audits/AUDIT-2026-06-21.md))
+
+### Fixed (high)
+- **`AIModel.__table_args__` typo corrected** (was missing trailing `__`, silently dropped the `idx_ai_models_provider_active` composite index). Migration `f1a2b3c4d5e6` creates the index on existing databases. ([audit A3](dev/audits/AUDIT-2026-06-21.md))
+- **Dead `processors/fhir_mapper.py` deleted** — broken import (`from app.models.fhir.observation import Observation` — module doesn't exist). Would have raised `ModuleNotFoundError` if imported. ([audit A5](dev/audits/AUDIT-2026-06-21.md))
+- **`from app.models import *` works again** — removed the stale `WearableDataModel` alias (renamed to `TelemetryDataModel`); `TelemetryDataModel` is now exported in `__all__`. ([audit A7](dev/audits/AUDIT-2026-06-21.md))
+- **`telemetry_service.get_telemetry_data` and `get_telemetry_summary` are no longer stubs.** Real tenant-scoped `SELECT` + aggregate queries against the `telemetry_data` hypertable. ([audit F8](dev/audits/AUDIT-2026-06-21.md))
+
+### Frontend
+- **PWA manifest shortcut `/examinations/new` → `/examinations/upload`** (the actual route). ([audit A11](dev/audits/AUDIT-2026-06-21.md))
+- **PWA runtime caches no longer hardcoded to `http://localhost:8000`.** Switched to same-origin + pathname predicate callbacks so caching works in any deployment. ([audit A12](dev/audits/AUDIT-2026-06-21.md))
+- **GraphQL client auth header is now per-request.** New `graphqlRequest()` wrapper reads the live token on every call. Previously the header was captured at module-load and never refreshed, so every call 401'd after the first token rotation. ([audit A13](dev/audits/AUDIT-2026-06-21.md))
+
+### Operational notes for deploy
+1. **Set `INTEGRATION_SECRET_KEY`** (Fernet key) in `.env`. Generate one with:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+2. **Run the api_key backfill** after deploying:
+   ```bash
+   cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py --dry-run
+   cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
+   ```
+3. **Run migration `f1a2b3c4d5e6`** (`alembic upgrade head`) — creates the previously-dropped `idx_ai_models_provider_active` index.
+4. **Frontend follow-up recommended**: `ProviderManager.tsx` should surface the new `has_api_key` field for cleaner edit UX (currently the masked value pre-fills the edit input — functional, but not ideal).
+
+### Tests
+- **87 new tests** covering every fixed item (16 backend test files + 1 frontend test file). See `dev/audits/AUDIT-2026-06-21.md` "Branch progress" section for the file/coverage matrix.
+
+---
+
 ## [Unreleased]
 
 ### Added
