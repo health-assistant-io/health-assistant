@@ -12,6 +12,7 @@ from app.services.fhir_service import (
     delete_patient,
     update_patient_layout,
     get_observation,
+    get_observation_history,
     list_observations,
     create_observation,
     delete_observation,
@@ -126,6 +127,58 @@ async def create_patient_endpoint(
     return patient
 
 
+@router.get("/Observation")
+async def list_observations_endpoint(
+    patient_id: str = Query(None),
+    code: str = Query(None),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List observations (with filtering and pagination)"""
+    if patient_id:
+        await check_patient_access(patient_id, current_user, db)
+    elif current_user.role == Role.USER.value:
+        return {"items": [], "total": 0}
+
+    observations = await list_observations(
+        current_user.tenant_id, patient_id, code, start_date, end_date
+    )
+    return observations
+
+
+@router.get("/Observation/history")
+async def get_observation_history_endpoint(
+    patient_id: str,
+    code: str,
+    period: str = Query("last-6-months"),
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get observation history for a patient+code pair (audit A2, B5).
+
+    A2: previously called ``get_observation(patient_id, code, period)`` but
+    ``get_observation`` takes only ``(observation_id)`` — every call raised
+    TypeError. Now calls the new ``get_observation_history`` service fn.
+
+    B5: the service filters by ``current_user.tenant_id`` so cross-tenant
+    reads are impossible even with a guessed patient_id.
+
+    NOTE: this route MUST be declared before ``/Observation/{observation_id}``
+    or FastAPI will match ``history`` as the path parameter and route the
+    request to ``get_observation_endpoint``.
+    """
+    await check_patient_access(patient_id, current_user, db)
+    history = await get_observation_history(
+        tenant_id=current_user.tenant_id,
+        patient_id=patient_id,
+        code=code,
+        period=period,
+    )
+    return {"items": history, "total": len(history)}
+
+
 @router.get("/Observation/{observation_id}")
 async def get_observation_endpoint(
     observation_id: str, current_user: TokenData = Depends(get_current_user)
@@ -176,27 +229,6 @@ async def delete_observation_endpoint(
     return {"message": "Observation deleted successfully"}
 
 
-@router.get("/Observation")
-async def list_observations_endpoint(
-    patient_id: str = Query(None),
-    code: str = Query(None),
-    start_date: str = Query(None),
-    end_date: str = Query(None),
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """List observations (with filtering and pagination)"""
-    if patient_id:
-        await check_patient_access(patient_id, current_user, db)
-    elif current_user.role == Role.USER.value:
-        return {"items": [], "total": 0}
-
-    observations = await list_observations(
-        current_user.tenant_id, patient_id, code, start_date, end_date
-    )
-    return observations
-
-
 @router.post("/Observation")
 async def create_observation_endpoint(
     observation_data: dict, 
@@ -223,20 +255,6 @@ async def create_observation_endpoint(
 
     observation = await create_observation(observation_data, current_user.tenant_id)
     return observation
-
-
-@router.get("/Observation/history")
-async def get_observation_history_endpoint(
-    patient_id: str,
-    code: str,
-    period: str = Query("last-6-months"),
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get observation history for a patient"""
-    await check_patient_access(patient_id, current_user, db)
-    history = await get_observation(patient_id, code, period)
-    return history
 
 
 @router.get("/DiagnosticReport/{report_id}")
