@@ -42,8 +42,16 @@ Because the system allows multiple instances of the same integration (e.g., conf
 ### 5. Webhooks (Push)
 When a third party pushes data to the unique `/api/v1/integrations/{domain}/webhook/{integration_id}` URL, the framework intercepts it, loads the specific `UserIntegration` matching that UUID, and hands the payload off to the provider's `handle_webhook()` method. This ensures secure, tokenless routing to the exact integration instance.
 
-### 6. FHIR Normalization
+### 6. FHIR Normalization & Telemetry Split
 Whether data is pulled or pushed, the framework expects the integration to return standardized FHIR `ObservationCreate` objects. The core engine handles saving these observations to the database and mapping them to the correct semantic Clinical Ontology (Biomarkers).
+
+**Frequency-based routing (FHIR vs TimescaleDB):** observations linked to a `BiomarkerDefinition` flagged `is_telemetry=True` are routed to the `telemetry_data` TimescaleDB hypertable (heart rate, steps, CGM, etc.); everything else lands in the standard `fhir_observations` table. As of v0.3.0 this routing is centralized in `app.services.integration_sync_service.apply_telemetry_split`, which is called by:
+
+- The background `sync_active_integrations` Celery task (runs every 60s)
+- The manual sync endpoint `POST /api/v1/integrations/{id}/sync`
+- (Webhook + bridge provider still inline the same logic; future cleanup will route them through the helper too.)
+
+The helper stamps the `performer` reference (`Integration/<id>`) on FHIR rows that don't already have one, and routes the long-tail of telemetry slugs (anything without a dedicated `heart_rate`/`steps`/`calories` column) into the row's JSONB `data` payload alongside its unit.
 
 ### 7. Interactive Documentation Rendering
 When a user views an integration's details in the UI, the frontend requests `/api/v1/integrations/{domain}/documentation`. The backend checks the integration's root folder for a `docs/docs-tree.json`. If found, it parses the JSON tree and returns it alongside the requested markdown file. The frontend uses this metadata to dynamically render a sidebar navigation menu, allowing users to browse complex SDK references or setup guides without leaving the platform.

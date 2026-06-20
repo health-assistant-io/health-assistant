@@ -144,7 +144,7 @@ curl http://localhost:8000/health
 # Expected: {"status":"healthy","database":"connected","redis":"connected"}
 
 curl http://localhost:8000/
-# Expected: {"name":"Health Assistant","version":"0.2.1-rc.2","docs":"/docs"}
+# Expected: {"name":"Health Assistant","version":"0.3.0-alpha","docs":"/docs"}
 ```
 
 ### Test Frontend
@@ -164,6 +164,8 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 ### Security Checklist
 
 - [ ] Change `SECRET_KEY` to a secure random value
+- [ ] **Set `INTEGRATION_SECRET_KEY`** (Fernet key — encrypts integration secrets AND AI provider `api_key` at rest; without it, AI keys are stored in plaintext with a warning)
+- [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
 - [ ] Set `DEBUG=false`
 - [ ] Set `APP_ENV=production`
 - [ ] Use HTTPS/TLS
@@ -178,6 +180,14 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
+### Generate INTEGRATION_SECRET_KEY (Fernet)
+
+Required for encrypting secrets at rest (integration OAuth tokens, MCP secrets, and — as of v0.3.0 — AI provider `api_key`):
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
 ### Production Environment Modifications
 
 When deploying to production, modify the variables within your `backend/.env` file to ensure the system is secure:
@@ -185,6 +195,7 @@ When deploying to production, modify the variables within your `backend/.env` fi
 - Update `APP_ENV` to `production`
 - Update `DEBUG` to `false`
 - Update `SECRET_KEY` with the securely generated token from the step above.
+- Set `INTEGRATION_SECRET_KEY` with the Fernet key generated above.
 - Update `DATABASE_URL` and `REDIS_URL` to point to your production instances rather than `localhost`.
 
 ### Reverse Proxy (Nginx)

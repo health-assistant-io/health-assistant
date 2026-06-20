@@ -43,6 +43,22 @@ Administrators can manage AI settings via the UI at `/settings/ai-config`:
 2. **Add Models:** For each provider, define available models, token limits, and desired temperature (e.g., `0.7` for NLP, `0.0` for structured extraction).
 3. **Assign Tasks:** Map system tasks to the desired model.
 
+### API Key Security (v0.3.0+)
+The `api_key` field has special handling that other provider fields do not:
+
+- **At rest:** values are encrypted with Fernet via `INTEGRATION_SECRET_KEY` (the same key used by integrations/MCP secrets). Encrypted values are stored with an `enc::` prefix so legacy plaintext rows continue to work during migration. Set `INTEGRATION_SECRET_KEY` in production — if unset, keys are stored in plaintext with a loud warning.
+- **On response:** every `AIProviderResponse` / `AIProviderWithModelsResponse` masks the key to `***<last4>` via a `model_validator(mode="after")`. The companion boolean `has_api_key` indicates whether a key is configured. The plaintext is never serialized over the API.
+- **On write:** `AIProviderService.create_provider` encrypts any provided key. `update_provider` treats the following as "no change" to preserve the existing key: `api_key` absent (via `exclude_unset`), `api_key=None` (explicit clear), `api_key=""` (explicit clear), `api_key="***xxxx"` (the masked form the UI re-sent). Any other string is encrypted and stored.
+- **At use:** the LLM factory reads plaintext via `AIProviderModel.get_api_key_plaintext()` — the only sanctioned accessor. `AIProviderModel.to_dict()` returns the encrypted form so accidental serialization paths (logs, audit trails) never leak it.
+
+**Backfill existing plaintext rows** after deploying v0.3.0:
+```bash
+cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py --dry-run
+cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
+```
+
+**Scope checks:** every `/ai-config/providers/*` and `/ai-config/models/*` endpoint enforces USER/TENANT/SYSTEM scope via `verify_provider_access` / `verify_model_access`. `fetch-external-models` additionally rejects `api_base` values that point at loopback / private / link-local addresses in production (`DEBUG=False`).
+
 ---
 
 ## 3. Generic Processors (Dependency Injection)
