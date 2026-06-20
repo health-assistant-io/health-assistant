@@ -1,8 +1,8 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from uuid import UUID
 import logging
 from datetime import date, datetime as dt
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
 from app.services.fhir_helpers import FhirSerializationError, _extract_patient_id, _flatten_interpretation, assert_valid_fhir, validate_and_filter_observations
 from app.services.notification_manager import NotificationManager
@@ -392,7 +392,15 @@ async def list_observations(
     limit: int = 100,
     offset: int = 0,
 ) -> Dict[str, Any]:
-    """List observations (with filtering and pagination)"""
+    """List observations (with filtering and pagination).
+
+    Audit A1: previously this function accepted ``patient_id``/``code``/
+    ``start_date``/``end_date`` but silently ignored them — the query only
+    filtered by ``tenant_id``, returning every observation in the tenant
+    regardless of which patient/code/date the caller asked for. This caused
+    cross-patient data exposure even when the endpoint had already verified
+    patient access. All filters are now applied.
+    """
     if not DATABASE_AVAILABLE:
         return {"items": [], "total": 0}
 
@@ -402,20 +410,56 @@ async def list_observations(
     except ValueError:
         return {"items": [], "total": 0}
 
-    async with AsyncSessionLocal() as session:
-        query = select(Observation).where(Observation.tenant_id == tenant_id)
+    # Build predicate list — always tenant-scoped, plus optional filters.
+    predicates = [Observation.tenant_id == tenant_id]
 
-        # Add filtering here if needed (subject reference parsing might be complex)
-
-        # Total count - simpler query
-        count_query = select(func.count(Observation.id)).where(
-            Observation.tenant_id == tenant_id
+    subject_ref_patient_id: Optional[UUID] = None
+    if patient_id is not None:
+        try:
+            subject_ref_patient_id = (
+                UUID(patient_id) if isinstance(patient_id, str) else patient_id
+            )
+        except ValueError:
+            return {"items": [], "total": 0}
+        # The FHIR ``subject`` JSONB looks like {"reference": "Patient/<uuid>"}.
+        # Match it via the text cast so we use the index-friendly path.
+        predicates.append(
+            Observation.subject["reference"].astext
+            == f"Patient/{subject_ref_patient_id}"
         )
+
+    if code:
+        # The FHIR ``code`` JSONB contains a coding list:
+        # {"coding": [{"system": "http://loinc.org", "code": "8867-4"}], ...}.
+        # Match by JSON path. ``code`` here is the LOINC/OID code string.
+        predicates.append(
+            Observation.code["coding"][0]["code"].astext == str(code)
+        )
+
+    if start_date:
+        start_dt = _parse_date(start_date)
+        if start_dt is not None:
+            predicates.append(Observation.effective_datetime >= start_dt)
+
+    if end_date:
+        end_dt = _parse_date(end_date)
+        if end_dt is not None:
+            predicates.append(Observation.effective_datetime <= end_dt)
+
+    combined = and_(*predicates)
+
+    async with AsyncSessionLocal() as session:
+        count_query = select(func.count(Observation.id)).where(combined)
         total = await session.execute(count_query)
         total_count = total.scalar() or 0
 
-        # Pagination
-        query = query.limit(limit).offset(offset)
+        query = (
+            select(Observation)
+            .where(combined)
+            .order_by(Observation.effective_datetime.desc().nullslast())
+            .limit(limit)
+            .offset(offset)
+        )
         result = await session.execute(query)
         items = result.scalars().all()
 
@@ -441,6 +485,78 @@ async def list_observations(
             "items": obs_list,
             "total": total_count,
         }
+
+
+async def get_observation_history(
+    tenant_id: str | UUID,
+    patient_id: str | UUID,
+    code: str,
+    period: str = "last-6-months",
+    limit: int = 1000,
+) -> List[Dict[str, Any]]:
+    """Get observation history for a single patient+code pair.
+
+    Audit A2: the ``/fhir/Observation/history`` endpoint previously called
+    ``get_observation(patient_id, code, period)`` — but ``get_observation``
+    only takes ``(observation_id)``. Every call raised ``TypeError``. This
+    new function provides the actual history lookup the endpoint needs, with
+    tenant scoping (audit B5).
+    """
+    if not DATABASE_AVAILABLE:
+        return []
+
+    try:
+        tenant_uuid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+    except (ValueError, TypeError):
+        return []
+
+    try:
+        patient_uuid = (
+            UUID(patient_id) if isinstance(patient_id, str) else patient_id
+        )
+    except (ValueError, TypeError):
+        return []
+
+    # Map the human-readable period token to a date cutoff.
+    period_days = {
+        "last-30-days": 30,
+        "last-3-months": 90,
+        "last-6-months": 180,
+        "last-year": 365,
+        "all": 3650,
+    }.get(period, 180)
+
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+
+    combined = and_(
+        Observation.tenant_id == tenant_uuid,
+        Observation.subject["reference"].astext == f"Patient/{patient_uuid}",
+        Observation.code["coding"][0]["code"].astext == str(code),
+        Observation.effective_datetime >= cutoff,
+    )
+
+    async with AsyncSessionLocal() as session:
+        query = (
+            select(Observation)
+            .where(combined)
+            .order_by(Observation.effective_datetime.asc())
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        items = result.scalars().all()
+
+        out: List[Dict[str, Any]] = []
+        for item in items:
+            try:
+                if hasattr(item, "to_dict"):
+                    out.append(item.to_dict())
+            except Exception as e:
+                logger.error(
+                    f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}"
+                )
+        return out
 
 
 async def create_diagnostic_report(
