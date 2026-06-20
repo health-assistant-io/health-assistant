@@ -161,10 +161,39 @@ app = FastAPI(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"GLOBAL ERROR: {exc}", exc_info=True)
+    """Global 500 handler.
+
+    Audit B4: previously returned ``{"detail": str(exc)}`` to the client,
+    leaking internal detail / stack traces. In production we now log the
+    full detail server-side and return a generic message + correlation id
+    so support can locate the entry. In DEBUG mode the detail is still
+    surfaced for developer convenience.
+    """
+    import uuid as _uuid
+
+    correlation_id = str(_uuid.uuid4())
+    logger.error(
+        "GLOBAL ERROR [correlation_id=%s]: %s",
+        correlation_id,
+        exc,
+        exc_info=True,
+    )
+    if settings.DEBUG:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Internal server error",
+                "detail": str(exc),
+                "correlation_id": correlation_id,
+            },
+        )
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal server error", "detail": str(exc)},
+        content={
+            "message": "Internal server error",
+            "detail": "An internal error occurred. Contact support with this correlation id.",
+            "correlation_id": correlation_id,
+        },
     )
 
 

@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.services.ai_provider_service import AIProviderService
 from app.schemas.ai_config import (
     AIProviderCreate,
@@ -50,6 +51,30 @@ def check_scope_access(scope: AIScope, current_user: TokenData, tenant_id: Optio
              raise HTTPException(
                 status_code=403, detail="Not authorized to manage this user's configuration"
             )
+
+
+def verify_provider_access(provider, current_user: TokenData) -> None:
+    """Audit B2: ensure ``current_user`` may read or modify ``provider``.
+
+    Previously the GET /providers/{id} and /providers/{id}/with-models
+    endpoints returned the row to any authenticated user without checking
+    scope, which leaked other tenants' providers AND their api_key.
+    """
+    check_scope_access(
+        provider.scope,
+        current_user,
+        tenant_id=provider.tenant_id,
+        user_id=provider.user_id,
+    )
+
+
+def verify_model_access(model, provider, current_user: TokenData) -> None:
+    """Audit B2: scope-check via the model's owning provider."""
+    if provider is None:
+        # Caller couldn't resolve the provider — treat as forbidden rather
+        # than leak the existence/absence of the model.
+        raise HTTPException(status_code=403, detail="Access denied")
+    verify_provider_access(provider, current_user)
 
 
 # Provider endpoints
@@ -133,13 +158,18 @@ async def get_provider(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get a specific AI provider"""
+    """Get a specific AI provider.
+
+    Audit B2: previously returned the row to any authenticated user without
+    a scope check — leaked other tenants' providers AND their api_key.
+    """
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
 
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
+    verify_provider_access(provider, current_user)
     return AIProviderResponse.model_validate(provider)
 
 
@@ -151,12 +181,14 @@ async def get_provider_with_models(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get a specific AI provider with its models"""
+    """Get a specific AI provider with its models (audit B2: scope-checked)."""
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
 
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+
+    verify_provider_access(provider, current_user)
 
     models = await service.get_models(provider_id=provider_id, is_active=True)
 
@@ -213,15 +245,53 @@ async def fetch_external_models(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Fetch available models from the provider's external API"""
+    """Fetch available models from the provider's external API.
+
+    Audit B2/B9: previously had no RBAC and no SSRF protection on
+    ``api_base``. Now scope-checked, and the api_base must be an http(s)
+    URL pointing at a non-loopback host.
+    """
+    import ipaddress
+    from urllib.parse import urlparse
+
     service = AIProviderService(db)
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    verify_provider_access(provider, current_user)
+
+    parsed = urlparse(provider.api_base)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported api_base scheme: {parsed.scheme!r}",
+        )
+    hostname = parsed.hostname or ""
+    # Block obvious SSRF targets: loopback, link-local, private networks.
+    # (We allow it in DEBUG so local LLM stacks like Ollama keep working.)
+    if not settings.DEBUG:
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise HTTPException(
+                    status_code=400,
+                    detail="api_base must not point at a private/loopback address",
+                )
+        except ValueError:
+            # hostname is a DNS name — accept (could resolve to anything,
+            # but we don't want to do a DNS lookup synchronously here).
+            pass
+
     try:
         models = await service.fetch_external_models(provider_id)
         return models
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("fetch_external_models failed for provider %s", provider_id)
+        raise HTTPException(status_code=502, detail="Upstream provider request failed")
 
 
 # Model endpoints
@@ -236,13 +306,14 @@ async def create_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a new AI model for a provider"""
+    """Create a new AI model for a provider (audit B2: scope-checked)."""
     service = AIProviderService(db)
 
-    # Verify provider exists
     provider = await service.get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
+
+    verify_provider_access(provider, current_user)
 
     model = await service.create_model(model_data)
     return AIModelResponse.model_validate(model)
@@ -255,8 +326,13 @@ async def get_models_for_provider(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get all models for a specific provider"""
+    """Get all models for a specific provider (audit B2: scope-checked)."""
     service = AIProviderService(db)
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    verify_provider_access(provider, current_user)
+
     models = await service.get_models(provider_id=provider_id, is_active=is_active)
     return [AIModelResponse.model_validate(m) for m in models]
 
@@ -267,12 +343,15 @@ async def get_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get a specific AI model"""
+    """Get a specific AI model (audit B2: scope-checked via owning provider)."""
     service = AIProviderService(db)
     model = await service.get_model(model_id)
 
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
+
+    provider = await service.get_provider(model.provider_id)
+    verify_model_access(model, provider, current_user)
 
     return AIModelResponse.model_validate(model)
 
@@ -284,20 +363,15 @@ async def update_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update an AI model"""
+    """Update an AI model (audit B2: scope-checked via owning provider)."""
     service = AIProviderService(db)
 
-    # Check parent provider ownership
     model = await service.get_model(model_id)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
 
     provider = await service.get_provider(model.provider_id)
-    if provider and provider.user_id and provider.user_id != current_user.user_id:
-        if current_user.role not in ["ADMIN", "SYSTEM_ADMIN"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
-    elif provider and not provider.user_id and current_user.role not in ["ADMIN", "SYSTEM_ADMIN"]:
-        raise HTTPException(status_code=403, detail="Admin only")
+    verify_model_access(model, provider, current_user)
 
     updated = await service.update_model(model_id, model_data)
     return AIModelResponse.model_validate(updated)
@@ -309,7 +383,7 @@ async def delete_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Delete an AI model"""
+    """Delete an AI model (audit B2: scope-checked via owning provider)."""
     service = AIProviderService(db)
 
     model = await service.get_model(model_id)
@@ -317,11 +391,7 @@ async def delete_model(
         return None
 
     provider = await service.get_provider(model.provider_id)
-    if provider and provider.user_id and provider.user_id != current_user.user_id:
-        if current_user.role not in ["ADMIN", "SYSTEM_ADMIN"]:
-            raise HTTPException(status_code=403, detail="Not authorized")
-    elif provider and not provider.user_id and current_user.role not in ["ADMIN", "SYSTEM_ADMIN"]:
-        raise HTTPException(status_code=403, detail="Admin only")
+    verify_model_access(model, provider, current_user)
 
     await service.delete_model(model_id)
     return None
