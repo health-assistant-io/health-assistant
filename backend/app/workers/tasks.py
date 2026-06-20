@@ -490,42 +490,58 @@ async def sync_active_integrations(self):
                     
                     # Pull data
                     observations_data = await provider.pull_data(integration)
-                    
+
+                    observations = []
                     if observations_data:
                         logger.info(f"Pulled {len(observations_data)} observations from {integration.provider}")
-                        
+
                         from app.models.fhir import Observation
-                        
+
                         # Convert to ORM models BEFORE passing to mapping
-                        observations = []
                         for obs_data in observations_data:
-                            # if obs_data is a dict or a pydantic model:
                             obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
                             obs = Observation(**obs_dict)
                             observations.append(obs)
-                        
+
                         from app.services.fhir_service import map_observations_to_biomarkers
                         await map_observations_to_biomarkers(db, observations)
-                        
-                        # Add newly pulled observations
-                        for obs in observations:
-                            if not obs.performer:
-                                obs.performer = [{"type": "Integration", "display": integration.provider}]
-                            db.add(obs)
-                            
+
+                    # Audit A4: route telemetry-class observations to the
+                    # TimescaleDB hypertable. Previously the background task
+                    # wrote everything to fhir_observations, duplicating
+                    # high-frequency data into the wrong store and breaking
+                    # the AI telemetry tools. Manual sync, webhook, and the
+                    # bridge provider all did the split correctly.
+                    telemetry_count = 0
+                    fhir_count = 0
+                    if observations:
+                        from app.services.integration_sync_service import (
+                            apply_telemetry_split,
+                        )
+                        telemetry_records, fhir_records = await apply_telemetry_split(
+                            db,
+                            observations,
+                            tenant_id=integration.tenant_id,
+                            instance_name=integration.instance_name,
+                            provider_name=integration.provider,
+                            integration_id=integration.id,
+                        )
+                        telemetry_count = len(telemetry_records)
+                        fhir_count = len(fhir_records)
+
                     # Push data (for dev dummy)
                     await provider.push_data(integration, {"status": "sync_started"})
-                            
+
                     # Update sync time
                     integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-                    
+
                     # Log sync
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
                         integration_id=integration.id,
                         tenant_id=integration.tenant_id,
                         status="success",
-                        records_synced=len(observations) if observations else 0,
+                        records_synced=telemetry_count + fhir_count,
                         started_at=start_time,
                         completed_at=integration.last_synced_at
                     )
