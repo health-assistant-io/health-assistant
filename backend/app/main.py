@@ -1,6 +1,5 @@
 import os
 import subprocess
-import socket
 from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI, Request

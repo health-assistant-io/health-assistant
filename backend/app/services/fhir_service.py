@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime as dt
 from sqlalchemy import select, func, and_
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
-from app.services.fhir_helpers import FhirSerializationError, _extract_patient_id, _flatten_interpretation, assert_valid_fhir, validate_and_filter_observations
+from app.services.fhir_helpers import _extract_patient_id, _flatten_interpretation, assert_valid_fhir, validate_and_filter_observations
 from app.services.notification_manager import NotificationManager
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 

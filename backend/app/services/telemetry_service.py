@@ -5,7 +5,7 @@ All read paths take ``tenant_id`` explicitly so a caller cannot read another
 tenant's data even if they guess a ``device_id`` (audit items B3, F8).
 """
 import logging
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
 
