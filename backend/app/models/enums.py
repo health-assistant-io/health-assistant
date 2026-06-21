@@ -79,6 +79,20 @@ class MedicationStatus(str, enum.Enum):
     ON_HOLD = "ON_HOLD"
     UNKNOWN = "UNKNOWN"
 
+
+class MedicationIntent(str, enum.Enum):
+    """Discriminator for whether a Medication row is a MedicationStatement
+    (what the patient is taking) or a MedicationRequest (what was prescribed).
+
+    Used by the R4 facade to route a single ``fhir_medications`` row to either
+    ``/fhir/R4/MedicationStatement`` or ``/fhir/R4/MedicationRequest``. Audit
+    items C11 + C12: one table serves both FHIR resources.
+    """
+    STATEMENT = "statement"
+    ORDER = "order"
+    PLAN = "plan"
+    PROPOSAL = "proposal"
+
 class AIScope(str, enum.Enum):
     SYSTEM = "SYSTEM"
     TENANT = "TENANT"

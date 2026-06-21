@@ -153,6 +153,18 @@ def fhir_to_observation_orm(f: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def fhir_to_medication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR MedicationStatement to an ORM dict (intent=statement).
+
+    Reuses the legacy ``fhir_to_medication_orm`` mapping but tags the row
+    with ``intent='statement'`` so the facade can route it correctly.
+    """
+    base = _fhir_to_medication_orm_legacy(f)
+    base["intent"] = "statement"
+    return base
+
+
+def _fhir_to_medication_orm_legacy(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Legacy MedicationStatement → ORM mapping (used by import + facade)."""
     med_cc = f.get("medicationCodeableConcept") or {}
     dosage_list = f.get("dosage") or []
     dosage_text = (
@@ -173,6 +185,70 @@ def fhir_to_medication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             "subject": f.get("subject"),
             "start_date": period.get("start"),
             "end_date": period.get("end"),
+            "dosage": dosage_text,
+            "frequency": timing,
+            "reason": reason_code[0].get("text") if reason_code else None,
+            "note": note_list[0].get("text") if note_list else None,
+        }
+    )
+
+
+def fhir_to_medication_request_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR MedicationRequest to an ORM dict (intent=order/plan/...).
+
+    The reverse of :meth:`Medication._to_medication_request`. Maps:
+    - intent → intent discriminator (order/plan/proposal)
+    - status → MedicationStatus (mapped back from MR vocabulary)
+    - subject → patient_id
+    - encounter → examination_id
+    - medicationCodeableConcept → code
+    - dosageInstruction[0] → dosage + frequency
+    - authoredOn → ignored (no column; created_at handles it)
+    - reasonCode[0].text → reason
+    - note[0].text → note
+    """
+    from app.models.enums import MedicationIntent
+
+    intent_value = (f.get("intent") or "order").lower()
+    try:
+        intent_enum = MedicationIntent(intent_value)
+    except ValueError:
+        intent_enum = MedicationIntent.ORDER
+
+    # Map MedicationRequest status → MedicationStatus enum.
+    mr_status = (f.get("status") or "active").lower()
+    status_map = {
+        "active": "ACTIVE",
+        "completed": "COMPLETED",
+        "cancelled": "CANCELLED",
+        "entered-in-error": "ENTERED_IN_ERROR",
+        "stopped": "STOPPED",
+        "on-hold": "ON_HOLD",
+        "draft": "INTENDED",
+        "unknown": "UNKNOWN",
+    }
+    app_status = status_map.get(mr_status, "ACTIVE")
+
+    med_cc = f.get("medicationCodeableConcept") or {}
+    dosage_list = f.get("dosageInstruction") or []
+    dosage_text = (
+        dosage_list[0].get("text") if dosage_list and isinstance(dosage_list[0], dict) else None
+    )
+    timing = (
+        dosage_list[0].get("timing") if dosage_list and isinstance(dosage_list[0], dict) else None
+    )
+    reason_code = f.get("reasonCode") or []
+    note_list = f.get("note") or []
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "status": app_status,
+            "intent": intent_enum,
+            "code": med_cc,
+            "patient_id": _extract_patient_id(f.get("subject")),
+            "subject": f.get("subject"),
+            "examination_id": _extract_patient_id(f.get("encounter")),
             "dosage": dosage_text,
             "frequency": timing,
             "reason": reason_code[0].get("text") if reason_code else None,
@@ -504,6 +580,7 @@ _TO_ORM = {
     "Patient": fhir_to_patient_orm,
     "Observation": fhir_to_observation_orm,
     "MedicationStatement": fhir_to_medication_orm,
+    "MedicationRequest": fhir_to_medication_request_orm,
     "AllergyIntolerance": fhir_to_allergy_orm,
     "DiagnosticReport": fhir_to_diagnostic_report_orm,
     "Organization": fhir_to_organization_orm,
