@@ -8,7 +8,6 @@ A10: Magic Fill prompt hardcoded ``"Today's date is 2026-03-22."`` instead
      of the live date — relative-date parsing degraded over time.
 """
 import re
-from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -228,8 +227,6 @@ async def test_a10_magic_fill_prompt_contains_today(monkeypatch):
     svc.db.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
 
     captured_prompt = {}
-
-    real_invoke = None
 
     class FakeChain:
         async def ainvoke(self, params):

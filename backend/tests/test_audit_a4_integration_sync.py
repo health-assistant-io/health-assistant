@@ -12,7 +12,7 @@ wires it into both the background task and the manual sync endpoint.
 """
 import datetime
 import inspect
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest

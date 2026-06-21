@@ -12,9 +12,8 @@ B12: The ``AuditLog`` table existed but was never written. Added
      trail (who/what/when + old/new value diff).
 """
 import inspect
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 

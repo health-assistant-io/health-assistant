@@ -13,8 +13,7 @@ B5: FHIR service ``get_*`` functions and endpoints did not enforce tenant
     ownership; the history endpoint now forwards current_user.tenant_id.
 """
 import inspect
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest

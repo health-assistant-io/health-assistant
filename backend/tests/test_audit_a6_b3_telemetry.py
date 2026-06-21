@@ -14,7 +14,7 @@ F8: ``telemetry_service.get_telemetry_data`` and ``.get_telemetry_summary``
 """
 import inspect
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
