@@ -486,6 +486,7 @@ export const BiomarkerList = React.memo(({
               showGrid={showGrid}
               showSpikes={showSpikes}
               unit={formatUnit(active.unit)}
+              mini={true}
             />
           </div>
         ) : (
