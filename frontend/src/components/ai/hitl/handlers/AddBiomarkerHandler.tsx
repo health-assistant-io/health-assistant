@@ -8,7 +8,7 @@ import {
   AddBiomarkerFormPrefill,
   AddBiomarkerFormPayload,
 } from '../../../examinations/AddBiomarkerForm';
-import { createObservation } from '../../../../services/fhirService';
+import { createObservation } from '../../../../services/observationService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
 
 /**

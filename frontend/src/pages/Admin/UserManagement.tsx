@@ -15,7 +15,7 @@ import {
   Eye
 } from 'lucide-react';
 import { listUsers, updateUser, deleteUser, createUser, User as UserType, UserRole } from '../../services/userService';
-import { listPatients } from '../../services/fhirService';
+import { listPatients } from '../../services/patientService';
 import { listDoctors } from '../../services/doctorService';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
@@ -154,7 +154,7 @@ function UserManagement() {
       // Based on previous plan, we add user_id to Doctor/Patient models.
       
       if (linkType === 'patient') {
-        const { updatePatient } = await import('../../services/fhirService');
+        const { updatePatient } = await import('../../services/patientService');
         await updatePatient(recordId, { user_id: selectedUser.id } as any);
       } else {
         const { updateDoctor } = await import('../../services/doctorService');

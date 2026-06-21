@@ -26,7 +26,10 @@
 ### Frontend
 - **PWA manifest shortcut `/examinations/new` → `/examinations/upload`** (the actual route).
 - **PWA runtime caches no longer hardcoded to `http://localhost:8000`.** Switched to same-origin + pathname predicate callbacks so caching works in any deployment.
-- **GraphQL client auth header is now per-request.** New `graphqlRequest()` wrapper reads the live token on every call. Previously the header was captured at module-load and never refreshed, so every call 401'd after the first token rotation.
+
+### Changed (API surface consolidation)
+- **Deprecated the misleadingly-named `/fhir/*` ORM-shape router.** Patient/Observation CRUD moved to proper domain endpoints (`/patients/*`, `/observations/*`); medication create consolidated under `/medications/*` (new `GET /medications/{id}` for citation lookups). The `/fhir/R4/*` facade is now clearly the interop-only surface; the frontend uses domain endpoints. The frontend's `types/fhir.ts` was split into `types/patient.ts` + `types/observation.ts` (the old name was misleading — these types mirror ORM-shape, not FHIR R4). `services/fhirService.ts` was split into `patientService.ts` + `observationService.ts`.
+- **Dead code removed**: GraphQL client (`api/graphql.ts`, defined but zero production callers); 6 unused `/fhir/*` routes (DiagnosticReport CRUD, duplicate Medication create/list, Observation history); the legacy single-layout `PUT /patients/{id}/layout` slot is still available but the live dashboard uses the per-user `/patients/{id}/layouts/*` routes.
 
 ### Fixed (FHIR conformance — runtime)
 - **SDK-built Observations no longer silently dropped by FHIR validation.** `ObservationBuilder.build()` stripped tzinfo "for asyncpg compat" (asyncpg handles tz-aware natively), so `isoformat()` produced e.g. `'2026-06-20T22:39:56.471381'` which failed the FHIR R4 regex. Every pulled observation from `dev_dummy` (and any future SDK provider) was being dropped by `assert_valid_fhir`. The builder now keeps tzinfo; new `fhir_isoformat()` helper on the ORM side defends against naive datetimes anywhere else. The dropped-count now also surfaces to the integration UI: the manual-sync response and `IntegrationSyncLog` carry `dropped_invalid` / `status="partial"` instead of reporting a silent "success" with zero metrics.

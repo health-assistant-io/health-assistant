@@ -28,7 +28,7 @@ import {
   importBackupFile,
   getImportJob,
 } from '../../services/backupService';
-import { listPatients } from '../../services/fhirService';
+import { listPatients } from '../../services/patientService';
 import type {
   BackupRequest,
   ExportJob,
@@ -43,7 +43,7 @@ import {
   JOB_STATUS_COLORS,
   TERMINAL_STATUSES,
 } from '../../types/backup';
-import type { Patient } from '../../types/fhir';
+import type { Patient } from '../../types/patient';
 
 const POLL_INTERVAL_MS = 3000;
 const STALL_TIMEOUT_MS = 5 * 60 * 1000;

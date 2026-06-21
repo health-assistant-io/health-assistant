@@ -1,8 +1,11 @@
 # FHIR R4 Facade — Developer Guide
 
-Health Assistant exposes a **conformant FHIR R4 REST API** at `/api/v1/fhir/R4/*`,
-alongside the legacy ORM-shape `/api/v1/fhir/*` router (which the frontend keeps
-using). This document explains how to use the facade and how to add new resources.
+Health Assistant exposes a **conformant FHIR R4 REST API** at `/api/v1/fhir/R4/*`.
+This is the **interop surface** for external systems — not the frontend's API.
+The frontend uses domain endpoints (`/patients/*`, `/observations/*`,
+`/examinations/*`, `/medications/*`, etc.) which return ORM-shape dicts with
+app-specific fields the UI needs. This document explains how to use the facade
+and how to add new resources.
 
 > **Coverage**: 15 FHIR resources registered; standard search params + Bundle
 > responses + canonical CRUD + soft-delete tombstones + Provenance-on-write.
@@ -169,13 +172,16 @@ Observation, MedicationStatement, AllergyIntolerance, Organization,
 DiagnosticReport are all "FHIR-enhanced relational rows"). The facade just exposes
 that investment at the HTTP layer.
 
-### Why two routers (not retrofit the existing one)
+### Why a separate facade (not retrofit the domain endpoints)
 
-The existing `/api/v1/fhir/*` router speaks **ORM-shape** (snake_case + app fields
-like `tenant_id`, `biomarker_id`, `normalized_value`). The frontend depends on
-that contract. Retrofitting it to canonical FHIR would break the frontend. The
-facade at `/api/v1/fhir/R4/*` speaks **canonical FHIR** (camelCase, validated
-by `fhir.resources`) and is intended for external systems.
+The domain endpoints (`/patients/*`, `/observations/*`, ...) speak **ORM-shape**
+(snake_case + app fields like `tenant_id`, `biomarker_id`, `normalized_value`).
+The frontend depends on that contract. Retrofitting them to canonical FHIR would
+break the frontend and fight FHIR's data model. The facade at `/api/v1/fhir/R4/*`
+speaks **canonical FHIR** (camelCase, validated by `fhir.resources`) and is
+intended for external systems. This is the standard healthcare-IT pattern: an
+internal app API for the UI + a FHIR interop surface for external clients
+(Cerner/Epic run the same way).
 
 ### Why soft-delete (not hard-delete)
 
@@ -194,6 +200,22 @@ has a gap. This matches common FHIR server behavior.
 
 ---
 
+## What the frontend uses instead
+
+The frontend does **not** talk to `/fhir/R4/*`. It uses the domain endpoints,
+which return ORM-shape dicts (snake_case + app fields):
+
+- `/patients/*` for patient identity CRUD
+- `/observations/*` for biomarker readings CRUD
+- `/examinations/*` for the clinical-visit workflow (AI extraction, documents, doctors)
+- `/medications/*` for prescriptions + catalog
+- `/allergies/*` for allergy intolerance + catalog
+- `/clinical-events/*` for the metadata-driven events system
+- `/biomarkers/*` for the biomarker definition catalog
+- `/documents/*` for file storage + OCR pipeline
+- `/analytics/*` for trend/dashboard aggregation
+- `/telemetry/*` for TimescaleDB hypertable reads
+
 ## File map
 
 ```
@@ -206,7 +228,9 @@ backend/app/
 │   ├── bundle.py                           # build_search_bundle (searchset Bundle + pagination links)
 │   └── crud.py                             # generic search/read/create/update/delete dispatcher
 ├── api/v1/endpoints/
-│   └── fhir_r4.py                          # the 6 HTTP routes (GET/POST/PUT/DELETE /fhir/R4/...)
+│   ├── fhir_r4.py                          # the 6 HTTP routes (GET/POST/PUT/DELETE /fhir/R4/...)
+│   ├── patients.py                         # domain endpoint — Patient CRUD (ORM-shape, frontend-facing)
+│   └── observations.py                     # domain endpoint — Observation CRUD (ORM-shape, frontend-facing)
 ├── models/
 │   ├── base.py                             # SoftDeleteMixin (deleted_at)
 │   ├── clinical_event.py                   # to_fhir_dict() → Condition

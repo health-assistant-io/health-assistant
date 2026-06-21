@@ -253,27 +253,26 @@ async def test_b12_log_audit_action_noop_when_db_unavailable():
 
 
 def test_b12_fhir_endpoints_import_audit_service():
-    """B12 regression: the fhir endpoint module must import log_audit_action."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.fhir", fromlist=["x"]))
+    """B12 regression: the observations endpoint module must import log_audit_action."""
+    src = inspect.getsource(__import__("app.api.v1.endpoints.observations", fromlist=["x"]))
     assert "from app.services.audit_service import" in src, (
-        "fhir.py must import log_audit_action."
+        "observations.py must import log_audit_action."
     )
 
 
 def test_b12_fhir_endpoints_call_log_audit_action():
-    """B12 regression: the create/delete endpoints must invoke log_audit_action."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.fhir", fromlist=["x"]))
-    # At least 3 audit calls: create_observation, delete_observation,
-    # create_diagnostic_report, create_medication.
+    """B12 regression: the create/delete observation endpoints must invoke log_audit_action."""
+    src = inspect.getsource(__import__("app.api.v1.endpoints.observations", fromlist=["x"]))
+    # 2 audit calls: create_observation + delete_observation.
     count = src.count("await log_audit_action(")
-    assert count >= 4, (
-        f"Expected >=4 log_audit_action calls in fhir.py, found {count}."
+    assert count >= 2, (
+        f"Expected >=2 log_audit_action calls in observations.py, found {count}."
     )
 
 
 @pytest.mark.asyncio
 async def test_b12_create_observation_endpoint_writes_audit(async_client):
-    """B12: POST /fhir/Observation triggers an AuditLog write."""
+    """B12: POST /observations triggers an AuditLog write."""
     from app.core.database import get_db
     from app.core.security import get_current_user
     from app.main import app
@@ -299,11 +298,11 @@ async def test_b12_create_observation_endpoint_writes_audit(async_client):
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_db] = _override_db
     try:
-        with patch("app.api.v1.endpoints.fhir.check_patient_access", new=AsyncMock()), \
-             patch("app.api.v1.endpoints.fhir.create_observation", new=AsyncMock(return_value=MagicMock(id=uuid4()))), \
-             patch("app.api.v1.endpoints.fhir.log_audit_action", new=AsyncMock()) as mock_audit:
+        with patch("app.api.v1.endpoints.observations.check_patient_access", new=AsyncMock()), \
+             patch("app.api.v1.endpoints.observations.create_observation", new=AsyncMock(return_value=MagicMock(id=uuid4()))), \
+             patch("app.api.v1.endpoints.observations.log_audit_action", new=AsyncMock()) as mock_audit:
             response = await async_client.post(
-                "/api/v1/fhir/Observation",
+                "/api/v1/observations",
                 json={
                     "patient_id": str(uuid4()),
                     "code": {"text": "Glucose"},

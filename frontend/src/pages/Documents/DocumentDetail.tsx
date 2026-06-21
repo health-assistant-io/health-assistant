@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getDocument, downloadDocument, getExtractionStatus, triggerExtraction, deleteDocument, updateDocument, triggerDocumentDownload } from '../../services/documentService';
-import { getPatient } from '../../services/fhirService';
+import { getPatient } from '../../services/patientService';
 import { CATEGORY_LABELS as CATEGORIES } from '../../constants/categories';
 import { TaskProgressIndicator } from '../../components/ui/TaskProgressIndicator';
 import { useBiomarkers } from '../../hooks/useBiomarkers';

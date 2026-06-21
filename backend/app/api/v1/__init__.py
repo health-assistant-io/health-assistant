@@ -3,8 +3,9 @@ from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.tenants import router as tenants_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.documents_db import router as documents_router
-from app.api.v1.endpoints.fhir import router as fhir_router
 from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
+from app.api.v1.endpoints.patients import router as patients_router
+from app.api.v1.endpoints.observations import router as observations_router
 from app.api.v1.endpoints.telemetry import router as telemetry_router
 from app.api.v1.endpoints.alerts import router as alerts_router
 from app.api.v1.endpoints.notifications import router as notifications_router
@@ -40,8 +41,9 @@ api_router.include_router(tenants_router)
 api_router.include_router(users_router)
 api_router.include_router(documents_router)
 api_router.include_router(examinations_router)
-api_router.include_router(fhir_router)
 api_router.include_router(fhir_r4_router)
+api_router.include_router(patients_router)
+api_router.include_router(observations_router)
 api_router.include_router(telemetry_router)
 api_router.include_router(alerts_router)
 api_router.include_router(notifications_router)

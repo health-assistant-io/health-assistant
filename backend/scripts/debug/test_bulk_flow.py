@@ -18,7 +18,7 @@ async def test_bulk():
         print("Logged in")
 
         # 2. Get Patient
-        res = await client.get(f"{API_URL}/fhir/Patient", headers=headers)
+        res = await client.get(f"{API_URL}/patients", headers=headers)
         patients_data = res.json()
         patients = patients_data.get("items", [])
         if not patients:

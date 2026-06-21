@@ -104,10 +104,6 @@ export default defineConfig({
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/graphql': {
-        target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
-        changeOrigin: true,
-      },
       '/ws': {
         target: (process.env.VITE_BACKEND_URL || 'http://localhost:8000').replace('http://', 'ws://').replace('https://', 'wss://'),
         ws: true,
