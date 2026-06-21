@@ -143,6 +143,7 @@ FRONTEND_URL=http://localhost:3000      # where the OAuth callback redirects
 - `provider.py` — `SmartOAuth` refresh-on-use; `_run_pull` / `_run_push`
   (conditional update + echo exclusion + 412 handling); 5 custom actions.
 
-See `dev/fhir-architecture-roadmap.md` for the staged roadmap and
+See [docs/FHIR_R4_FACADE.md](../../docs/FHIR_R4_FACADE.md) for the Stage 3 facade
+that exposes Health Assistant itself as a FHIR R4 server, and
 `integrations/sdk/auth.py` / `integrations/sdk/fhir.py` for the auth + FHIR
-primitives.
+primitives this provider builds on.

@@ -4,8 +4,10 @@ Health Assistant exposes a **conformant FHIR R4 REST API** at `/api/v1/fhir/R4/*
 alongside the legacy ORM-shape `/api/v1/fhir/*` router (which the frontend keeps
 using). This document explains how to use the facade and how to add new resources.
 
-> **Resolution target**: audit Section C (`dev/audits/AUDIT-2026-06-21.md`) —
-> 15 of 16 items closed (C6 advanced conformance deferred).
+> **Coverage**: 15 FHIR resources registered; standard search params + Bundle
+> responses + canonical CRUD + soft-delete tombstones + Provenance-on-write.
+> Advanced conformance (`POST /_search`, `_format=xml`, transaction/batch
+> Bundle) is deferred.
 
 ---
 
@@ -259,8 +261,7 @@ backend/tests/                              # 131 new tests across 6 files
 
 ## References
 
-- **Audit trail**: `dev/audits/AUDIT-2026-06-21.md` Section C (item-by-item resolution).
-- **Roadmap**: `dev/fhir-architecture-roadmap.md` Stage 3.
 - **Architecture**: `docs/ARCHITECTURE.md` "FHIR R4 Facade (Stage 3)".
+- **Status**: `docs/STATUS.md` (FHIR R4 facade bullet under Backend completed).
 - **Skills**: `clinical-data` §1, `backend` §10.
 - **FHIR R4 spec**: <https://hl7.org/fhir/R4/>

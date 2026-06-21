@@ -134,7 +134,7 @@ Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/
 
 **Error shape**: every error response is a FHIR `OperationOutcome` resource with `issue[]` blocks (severity, code, diagnostics). The existing global exception handler still wraps unexpected 500s with a correlation id; facade-specific errors map to 400/404/405/410 with OperationOutcome bodies.
 
-Developer guide: [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md). Audit resolution: `dev/audits/AUDIT-2026-06-21.md` Section C.
+Developer guide: [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 
 ## Frontend Architecture
 
