@@ -2,10 +2,15 @@ import json
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance, AllergyCategory
 from app.core.database import AsyncSessionLocal
+from app.services.fhir_helpers import assert_valid_fhir, FhirSerializationError
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_iso_datetime(date_str: Optional[str]) -> Optional[datetime]:
@@ -140,6 +145,11 @@ async def add_patient_allergy(
             note=data.get("note"),
             reactions=_ensure_json(data.get("reactions", [])),
         )
+        # Audit C13: write-time FHIR validation gate. AllergyIntolerance had a
+        # to_fhir_dict() but no assert_valid_fhir() — invalid FHIR could persist
+        # via this path. fhir_service.py already had the gate for Observation/
+        # Medication/DiagnosticReport; this closes the parity gap.
+        assert_valid_fhir(new_allergy)
         db.add(new_allergy)
         await db.commit()
         await db.refresh(new_allergy)
@@ -174,6 +184,10 @@ async def update_patient_allergy(
                 else:
                     setattr(allergy, key, value)
 
+        # Audit C13: validate the projected FHIR shape after mutation, before
+        # commit. Catches malformed JSON in code/reactions that would only
+        # surface at export time.
+        assert_valid_fhir(allergy)
         await db.commit()
         await db.refresh(allergy)
         return allergy
