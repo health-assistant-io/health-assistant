@@ -48,7 +48,6 @@ def test_b7_no_print_calls_in_ai_assistance_service():
 @pytest.mark.asyncio
 async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
     """B7: _define_biomarker must route through logger.debug, not print."""
-    import json
     import logging
     from unittest.mock import AsyncMock, MagicMock
 
@@ -65,7 +64,6 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
     llm.with_structured_output.return_value = structured_llm
 
     captured = {}
-    real_print = print
 
     monkeypatch.setattr("builtins.print", lambda *a, **k: captured.setdefault("printed", a))
 
@@ -106,7 +104,6 @@ def test_b10_cors_default_is_valid_hostname():
     """B10: sanity-check the fallback hostname parses cleanly."""
     import re
 
-    from app.main import app
 
     src = inspect.getsource(importlib.import_module("app.main"))
     match = re.search(r'allow_origins=\[os\.getenv\("FRONTEND_URL",\s*"([^"]+)"\)\]', src)

@@ -17,9 +17,7 @@ A8: The telemetry trends query double-wrapped aggregates:
     injection via the INTERVAL f-string interpolation.
 """
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +181,6 @@ def test_a8_generated_sql_for_cagg_uses_pre_aggregated_columns():
     avg_expr = f"AVG({col}_avg)"
     max_expr = f"MAX({col}_max)"
     min_expr = f"MIN({col}_min)"
-    safe_bucket = "1 hour"
-    time_col = "bucket"
     table_name = "telemetry_hourly"
 
     sql = f"SELECT {avg_expr}, {max_expr}, {min_expr} FROM {table_name}"

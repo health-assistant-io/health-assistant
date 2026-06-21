@@ -12,7 +12,6 @@ B9: fetch-external-models had no RBAC and no SSRF guard on api_base.
 """
 import importlib
 import inspect
-import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -52,7 +51,6 @@ def _clear_overrides():
 def _make_provider(provider_id, scope, tenant_id=None, user_id=None, api_key="secret-key-XYZ"):
     """Build a fake provider object that satisfies verify_provider_access AND
     AIProviderResponse.model_validate (which uses from_attributes=True)."""
-    from datetime import datetime, timezone
 
     class _Provider:
         pass

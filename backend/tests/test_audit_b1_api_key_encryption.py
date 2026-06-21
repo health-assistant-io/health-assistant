@@ -16,11 +16,9 @@ B1: ``AIProviderModel.api_key`` was stored plaintext and returned in GET/
         legacy rows
 """
 import inspect
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from cryptography.fernet import Fernet

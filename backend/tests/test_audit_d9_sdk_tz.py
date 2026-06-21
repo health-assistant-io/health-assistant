@@ -13,7 +13,6 @@ compat" — asyncpg handles tz-aware datetimes natively for TIMESTAMP WITH
 TIME ZONE columns, so the strip was both unnecessary and destructive.
 """
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
