@@ -270,7 +270,7 @@ def test_b11_no_unawaited_sleep_in_endpoint():
             args = node.args
             if args and isinstance(args[0], ast.Constant) and args[0].value == 0.1:
                 raise AssertionError(
-                    "WebSocket endpoint still has asyncio.sleep(0.1) (audit B11)."
+                    "WebSocket endpoint still has asyncio.sleep(0.1)."
                 )
 
 
@@ -279,7 +279,7 @@ def test_b11_endpoint_logs_errors_before_closing_1011():
     src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     # Find the exception handler block.
     assert "logger.warning" in src or "logger.error" in src, (
-        "WebSocket endpoint does not log errors before close(1011) (audit B11)."
+        "WebSocket endpoint does not log errors before close(1011)."
     )
 
 
@@ -320,7 +320,7 @@ def test_b11_keepalive_ping_present():
     """B11: a periodic ping must be sent so intermediaries don't drop the socket."""
     src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     assert "ping" in src.lower(), (
-        "WebSocket endpoint has no keepalive ping (audit B11)."
+        "WebSocket endpoint has no keepalive ping."
     )
 
 
@@ -329,5 +329,5 @@ def test_b11_poll_timeout_reduced():
     src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     # The 1.0 second timeout replaces the old 10 Hz busy-loop.
     assert "timeout=1.0" in src or "_POLL_TIMEOUT_SECONDS" in src, (
-        "WebSocket endpoint must use a 1s poll timeout (audit B11)."
+        "WebSocket endpoint must use a 1s poll timeout."
     )

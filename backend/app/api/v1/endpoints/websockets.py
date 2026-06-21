@@ -1,20 +1,15 @@
 """WebSocket endpoint for live task-progress updates.
 
-Audit B11: the previous implementation had three issues:
+Connection hygiene:
 
-1. **Auth token in the query string** (``?token=...``) — logged by reverse
-   proxies and preserved in browser history. We now prefer the
-   ``Sec-WebSocket-Protocol`` subprotocol (``new WebSocket(url, ["bearer", token])``)
-   which is not logged as part of the URL. The query-string fallback is
-   retained for backward compatibility with existing clients.
+1. **Auth token via subprotocol** (``new WebSocket(url, ["bearer", token])``)
+   which is not logged as part of the URL. A query-string ``?token=...``
+   fallback is retained for backward compatibility with existing clients.
 
-2. **Busy-loop polling at 10 Hz** — ``asyncio.sleep(0.1)`` was never awaited
-   (a latent bug), so the loop spun as fast as ``pubsub.get_message`` returned.
-   We now rely on ``pubsub.get_message(timeout=1.0)`` for the cadence and
-   yield to the event loop explicitly, cutting Redis round-trips ~10x.
+2. **Bounded polling cadence** via ``pubsub.get_message(timeout=1.0)`` with
+   explicit event-loop yields, keeping Redis round-trips low.
 
-3. **Closing 1011 without logging** — errors were swallowed silently. We
-   now log the exception before closing so operators can diagnose drops.
+3. **Errors logged before close(1011)** so operators can diagnose drops.
 
 A lightweight server-side ping (every 30s) keeps intermediaries from
 timing the connection out.

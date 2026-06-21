@@ -1,4 +1,4 @@
-"""Tests for Encounter projection from ExaminationModel (audit C8).
+"""Tests for Encounter projection from ExaminationModel.
 
 Covers:
 - ExaminationModel.to_fhir_dict() emits valid FHIR R4 Encounter

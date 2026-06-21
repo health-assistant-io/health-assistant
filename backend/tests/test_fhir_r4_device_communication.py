@@ -1,4 +1,4 @@
-"""Tests for Device + Communication models (audit C9 + C15).
+"""Tests for Device + Communication models.
 
 Covers:
 - DeviceModel.to_fhir_dict() emits valid FHIR R4 Device

@@ -8,7 +8,7 @@ from app.models.enums import AIScope
 
 
 def _mask_api_key_for_response(value: Optional[str]) -> Optional[str]:
-    """Audit B1: never return a plaintext api_key in any response shape.
+    """Never return a plaintext api_key in any response shape.
 
     Accepts either the encrypted at-rest form or legacy plaintext and
     returns a ``***<last4>`` mask. Returns None if the input is None/empty.
@@ -74,11 +74,10 @@ class AIProviderUpdate(BaseModel):
 class AIProviderResponse(BaseModel):
     """Schema for AI provider response.
 
-    Audit B1: ``api_key`` is now MASKED in every response (``***<last4>``)
-    regardless of whether the stored form is encrypted or legacy plaintext.
-    The previous plaintext leak allowed any authenticated user to read
-    other tenants' provider keys by UUID. The companion ``has_api_key``
-    field lets the UI indicate a key is configured without exposing it.
+    ``api_key`` is masked in every response (``***<last4>``) regardless of
+    whether the stored form is encrypted or legacy plaintext. The companion
+    ``has_api_key`` field lets the UI indicate a key is configured without
+    exposing it.
     """
 
     id: UUID
@@ -225,7 +224,7 @@ class AITaskAssignmentUpdate(BaseModel):
 
 
 class AIProviderWithModelsResponse(BaseModel):
-    """Schema for provider with models (audit B1: api_key is masked)."""
+    """Schema for provider with models (api_key is masked)."""
 
     id: UUID
     name: str

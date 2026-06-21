@@ -1,4 +1,4 @@
-"""Tests for AllergyIntolerance write-time FHIR gate (audit C13).
+"""Tests for AllergyIntolerance write-time FHIR gate.
 
 The AllergyIntolerance model already had a to_fhir_dict() but the service
 layer (allergy_service.py) never called assert_valid_fhir() on writes —

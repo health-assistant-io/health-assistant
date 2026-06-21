@@ -93,7 +93,7 @@ class Medication(
 
     # Discriminator: is this a MedicationStatement (what the patient takes)
     # or a MedicationRequest (what was prescribed)? Default is statement.
-    # Audit C11 + C12: one table serves both FHIR resources.
+    # One table serves both FHIR resources via the R4 facade.
     intent = Column(
         Enum(MedicationIntent),
         default=MedicationIntent.STATEMENT,

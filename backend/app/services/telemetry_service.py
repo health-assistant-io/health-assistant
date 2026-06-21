@@ -111,10 +111,7 @@ async def get_telemetry_data(
     end_date: str,
     metrics: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Read raw telemetry rows for a device, scoped to the caller's tenant.
-
-    Replaces the previous stub (audit F8) and adds tenant scoping (audit B3).
-    """
+    """Read raw telemetry rows for a device, scoped to the caller's tenant."""
     tenant_uuid = _coerce_uuid(tenant_id)
     if tenant_uuid is None:
         return []
@@ -156,10 +153,7 @@ async def get_telemetry_summary(
     target_date: str,
     device_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Aggregate daily stats (min/max/avg/sum) for a tenant's telemetry.
-
-    Replaces the previous zero-stub (audit F8) and adds tenant scoping (B3).
-    """
+    """Aggregate daily stats (min/max/avg/sum) for a tenant's telemetry."""
     tenant_uuid = _coerce_uuid(tenant_id)
     if tenant_uuid is None:
         return {
@@ -236,8 +230,8 @@ async def get_telemetry_anomalies(
 
     Replaces the broken endpoint at ``telemetry.py:65`` that called
     ``await detector.detect_biomarker_anomalies(device_id, metric, period)``
-    with the wrong arity and on a synchronous function (audit A6). Tenant
-    scoping (audit B3) is enforced via the query.
+    with the wrong arity and on a synchronous function. Tenant scoping is
+    enforced via the query.
     """
     tenant_uuid = _coerce_uuid(tenant_id)
     if tenant_uuid is None:

@@ -1,4 +1,4 @@
-"""Tests for FHIR R4 facade Phase 1 scaffolding (audit C1 prep + helpers).
+"""Tests for FHIR R4 facade Phase 1 scaffolding.
 
 Covers:
 - SoftDeleteMixin column on base

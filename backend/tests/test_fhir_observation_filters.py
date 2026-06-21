@@ -63,7 +63,7 @@ def test_list_observations_signature_accepts_all_filters():
     sig = inspect.signature(list_observations)
     for param in ("tenant_id", "patient_id", "code", "start_date", "end_date"):
         assert param in sig.parameters, (
-            f"list_observations must accept {param!r} (audit A1)"
+            f"list_observations must accept {param!r}"
         )
 
 
@@ -146,7 +146,7 @@ async def test_list_observations_applies_patient_filter(monkeypatch):
     # The subject reference filter must be present, including the patient UUID
     assert str(PATIENT_A1) in joined, (
         "list_observations did not add a subject-reference predicate for patient_id "
-        "(audit A1 not fixed)"
+        "(regression not fixed)"
     )
 
 
@@ -254,7 +254,7 @@ async def test_observation_history_endpoint_does_not_call_get_observation():
         ) as mock_history, patch(
             "app.api.v1.endpoints.fhir.get_observation",
             new=AsyncMock(side_effect=AssertionError(
-                "endpoint called get_observation (audit A2 regressed)"
+                "endpoint called get_observation (regression regressed)"
             )),
         ):
             from app.main import app

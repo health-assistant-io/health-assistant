@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Audit A8: strict whitelist for the INTERVAL '{bucket}' SQL interpolation.
+# Strict whitelist for the INTERVAL '{bucket}' SQL interpolation.
 # Values not in this set fall back to "1 hour". The list mirrors the
 # PERIOD_MAPPING defaults + the auto-calculated buckets.
 _ALLOWED_TELEMETRY_BUCKETS = frozenset(
@@ -95,9 +95,6 @@ async def _get_observation_status(
             return "Normal"
 
     # 2. Use relative score (clamped to [0.0, 1.0] by ObservationBuilder).
-    # Audit A9: the previous check was ``< 0 -> Low`` / ``> 1.0 -> High``,
-    # which can never trigger after clamping — every clamped value fell
-    # through to ``return "Normal"``, masking genuine out-of-range results.
     # A strictly-interior score (0 < score < 1) genuinely means the value
     # sits inside the reference range, so Normal is correct there. Boundary
     # values (exactly 0.0 or 1.0) are ambiguous after clamping: the value
@@ -923,13 +920,7 @@ async def get_biomarker_trends(
         table_name = "telemetry_data"
         time_col = "timestamp"
 
-        # Audit A8: the previous logic built avg_col = "AVG(col)" and then
-        # the SQL template wrapped it in another AVG(AVG(col)) — invalid SQL
-        # that was silently caught by the except handler, producing empty
-        # charts for any bucket size not matching the cagg stride (i.e. all
-        # sub-hour and sub-day queries, plus 1-week / 1-month aggregations).
-        #
-        # Fix: separate the "aggregate expression" (what goes in the SELECT)
+        # Separate the "aggregate expression" (what goes in the SELECT)
         # from the "source table". For cagg tables the columns are already
         # pre-aggregated so we wrap max/min (correct for extremes) and use
         # AVG(_avg) for the mean (best we can do without a count column).
@@ -953,7 +944,7 @@ async def get_biomarker_trends(
             max_expr = f"MAX({col})"
             min_expr = f"MIN({col})"
 
-        # Audit A8: validate the bucket interval against a strict whitelist.
+        # Validate the bucket interval against a strict whitelist.
         # The value is interpolated into INTERVAL '{bucket}' (PostgreSQL
         # INTERVAL literals don't accept bind parameters). The default comes
         # from PERIOD_MAPPING but an API caller can pass aggregation=...,

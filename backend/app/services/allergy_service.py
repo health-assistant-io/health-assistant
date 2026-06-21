@@ -145,10 +145,9 @@ async def add_patient_allergy(
             note=data.get("note"),
             reactions=_ensure_json(data.get("reactions", [])),
         )
-        # Audit C13: write-time FHIR validation gate. AllergyIntolerance had a
-        # to_fhir_dict() but no assert_valid_fhir() — invalid FHIR could persist
-        # via this path. fhir_service.py already had the gate for Observation/
-        # Medication/DiagnosticReport; this closes the parity gap.
+        # Write-time FHIR validation gate: invalid FHIR can never persist via
+        # this path. Parity with fhir_service's gate for Observation/Medication/
+        # DiagnosticReport.
         assert_valid_fhir(new_allergy)
         db.add(new_allergy)
         await db.commit()
@@ -184,8 +183,8 @@ async def update_patient_allergy(
                 else:
                     setattr(allergy, key, value)
 
-        # Audit C13: validate the projected FHIR shape after mutation, before
-        # commit. Catches malformed JSON in code/reactions that would only
+        # Validate the projected FHIR shape after mutation, before commit.
+        # Catches malformed JSON in code/reactions that would otherwise only
         # surface at export time.
         assert_valid_fhir(allergy)
         await db.commit()

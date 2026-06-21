@@ -1,4 +1,4 @@
-"""End-to-end HTTP tests for the FHIR R4 facade (audit C1, C2, C3, C4, C5).
+"""End-to-end HTTP tests for the FHIR R4 facade.
 
 Covers:
 - GET /metadata returns valid CapabilityStatement

@@ -28,7 +28,7 @@
 - **0.3.0 security & critical-fix pass** (see [CHANGELOG.md](../CHANGELOG.md)) — **all 29 Critical/High items resolved**:
   - *First pass:* AI provider `api_key` encrypted at rest + masked in responses; scope checks on `/ai-config/providers/*` and `/models/*`; telemetry endpoints tenant-scoped; global exception handler no longer leaks `str(exc)` (now uses a `correlation_id`); `fetch-external-models` SSRF guard; `list_observations` actually applies its filters; `/fhir/Observation/history` no longer raises `TypeError`; `sync_active_integrations` correctly routes telemetry to TimescaleDB; `AIModel.__table_args__` typo fixed + migration `f1a2b3c4d5e6`; dead `processors/fhir_mapper.py` deleted; `from app.models import *` works again; telemetry service stubs replaced with real implementations.
   - *Second pass (P0 completion):* OHLC double-aggregation fixed (`AVG(AVG(col))` → single-level) + telemetry bucket whitelist; `relative_score` boundary logic fixed (strictly-interior = Normal, boundary defers to range check); Magic Fill date now uses `datetime.now()`; FHIR single-resource reads tenant-scoped at the service level (`get_observation`/`get_diagnostic_report`/`get_medication`/`delete_observation`); **prompt-injection guard** (`app/utils/prompt_guard.py`, 8 OWASP LLM01 patterns + `DEFENSE_PREAMBLE`); `print()` leaks in AI service replaced with `logger.debug`; **SVG sanitizer rewritten** (all event-handler quoting forms + `javascript:`/`vbscript:`/`data:text/html` URLs + `<script>`/`<foreignObject>` elements); CORS fallback hostname fixed (underscore → hyphen); **WebSocket hardened** (subprotocol auth + fixed 10Hz busy-loop + error logging + 30s keepalive ping); **AuditLog provenance** (`app/services/audit_service.py`) wired into FHIR create/delete endpoints; insecure `POSTGRES_PASSWORD` default removed + production validator; SQL threshold validated before inlining; **webhook HMAC-SHA256** verification (opt-in via `webhook_secret`); auth on integration listing + documentation endpoints.
-- **FHIR R4 facade (Stage 3)** — **audit Section C resolved (15 of 16 items)**:
+- **FHIR R4 facade (Stage 3)** — **15 FHIR R4 conformance items resolved** (only advanced C6 conformance deferred):
   - New `/api/v1/fhir/R4/` router exposes a conformant FHIR R4 REST API alongside the legacy ORM-shape `/api/v1/fhir/*` router (frontend untouched). See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
   - `GET /fhir/R4/metadata` CapabilityStatement (dynamic, from `RESOURCE_REGISTRY`).
   - `GET /fhir/R4/{Resource}` returns FHIR Bundles (`type=searchset`) with pagination links; honors `_id`/`_lastUpdated`/`_count`/`_sort`/`_format` + resource-specific params (`patient`/`code`/`date`/`status`/etc).
@@ -38,7 +38,7 @@
   - **Hybrid storage** (no dual-write): existing tables became FHIR-canonical via `to_fhir_dict()` projections (Condition ← ClinicalEvent, Encounter ← ExaminationModel, DocumentReference ← DocumentModel); 3 new tables for concepts with no app analog (`fhir_provenance`, `fhir_devices`, `fhir_communications`).
   - **Provenance-on-write** best-effort hook on every facade create/update/delete.
   - **Medication intent discriminator**: one `fhir_medications` table serves both MedicationStatement (`intent=statement`) and MedicationRequest (`intent=order|plan|proposal`).
-  - **AllergyIntolerance write-time FHIR gate** (audit C13): `allergy_service` now calls `assert_valid_fhir()` (parity with `fhir_service`).
+  - **AllergyIntolerance write-time FHIR gate**: `allergy_service` now calls `assert_valid_fhir()` (parity with `fhir_service`).
   - 4 migrations, 131 new tests, zero regressions.
 
 #### Frontend
@@ -65,4 +65,4 @@
 3. **Testing**: Add E2E tests using Playwright or Cypress.
 4. **Mobile Sync**: Headless mobile sync architecture for wearable data.
 5. **Biomarker Insights**: Deeper clinical insights and correlations (See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)).
-6. **FHIR R4 advanced conformance** (audit Section C item C6): `POST /_search`, `_format=xml`, transaction/batch Bundle processing. Core R4 conformance (CapabilityStatement, Bundle search, missing resources, Provenance) landed in the Stage 3 facade (see [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md)).
+6. **FHIR R4 advanced conformance**: `POST /_search`, `_format=xml`, transaction/batch Bundle processing. Core R4 conformance (CapabilityStatement, Bundle search, missing resources, Provenance) landed in the Stage 3 facade (see [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md)).

@@ -55,9 +55,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
-            // Audit A12: previously this was a hardcoded http://localhost:8000
-            // regex that never matched in any non-local deployment. Match
-            // same-origin /api/v1 calls so the cache works in any host.
+            // Match same-origin /api/v1 calls so the runtime cache works
+            // regardless of where the app is deployed.
             urlPattern: ({ url, sameOrigin }) =>
               sameOrigin && url.pathname.startsWith('/api/v1/auth/me'),
             handler: 'NetworkFirst',

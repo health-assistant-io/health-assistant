@@ -91,7 +91,7 @@ class AIProviderService:
         return result.scalars().unique().all()
 
     async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
-        """Create a new provider (audit B1: api_key encrypted at rest)."""
+        """Create a new provider. The api_key is encrypted at rest before persistence."""
         from app.core.encryption import encrypt_secret
 
         payload = provider_data.model_dump()
@@ -108,7 +108,7 @@ class AIProviderService:
     ) -> Optional[AIProviderModel]:
         """Update a provider.
 
-        Audit B1: encrypt any newly-provided api_key before persistence.
+        Encrypts any newly-provided api_key before persistence.
         ``api_key`` semantics on update:
 
           - absent from the patch (``exclude_unset``) → preserve existing key

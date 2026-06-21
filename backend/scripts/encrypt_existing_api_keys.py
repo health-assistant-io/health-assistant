@@ -1,8 +1,8 @@
 """One-shot backfill: encrypt existing plaintext ``AIProviderModel.api_key`` rows.
 
-Run after deploying audit B1 to convert rows written by the previous code
-into the encrypted at-rest form. Safe to re-run — rows that are already
-encrypted (``enc::<token>``) are skipped.
+Converts rows that predate at-rest encryption into the encrypted form.
+Safe to re-run — rows that are already encrypted (``enc::<token>``) are
+skipped.
 
 Usage:
     cd backend && source venv/bin/activate

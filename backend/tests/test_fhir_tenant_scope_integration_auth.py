@@ -63,7 +63,7 @@ def test_b5_service_signatures_accept_tenant_id():
         fn = getattr(fhir_service, fn_name)
         sig = inspect.signature(fn)
         assert "tenant_id" in sig.parameters, (
-            f"{fn_name} must accept tenant_id for tenant-scoped reads (audit B5)."
+            f"{fn_name} must accept tenant_id for tenant-scoped reads."
         )
         # And it must be optional (default None) so legacy internal callers
         # that have already verified access are not broken.
@@ -158,7 +158,7 @@ def test_b5_endpoints_pass_tenant_id_to_service():
     ):
         assert f"async def {fn_name}(" in src, f"{fn_name} missing from fhir.py?"
         assert service_call in src, (
-            f"fhir.py must call {service_call!r} (audit B5) — found unscoped call."
+            f"fhir.py must call {service_call!r} — found unscoped call."
         )
 
 
@@ -236,7 +236,7 @@ def test_b16_list_available_requires_auth_dependency():
     idx = src.index("async def list_available_integrations(")
     body = src[idx : idx + 800]
     assert "get_current_user" in body, (
-        "list_available_integrations must depend on get_current_user (audit B16)."
+        "list_available_integrations must depend on get_current_user."
     )
 
 
@@ -246,7 +246,7 @@ def test_b16_documentation_requires_auth_dependency():
     idx = src.index("async def get_integration_documentation(")
     body = src[idx : idx + 800]
     assert "get_current_user" in body, (
-        "get_integration_documentation must depend on get_current_user (audit B16)."
+        "get_integration_documentation must depend on get_current_user."
     )
 
 
@@ -258,7 +258,7 @@ async def test_b16_list_available_rejects_anonymous(async_client):
     # 401 (no token) or 403 — either is acceptable; 200 would be the bug.
     assert response.status_code in (401, 403), (
         f"Anonymous access to /integrations/available returned {response.status_code} "
-        "(audit B16)."
+        "."
     )
 
 
@@ -268,7 +268,7 @@ async def test_b16_documentation_rejects_anonymous(async_client):
     response = await async_client.get("/api/v1/integrations/dev_dummy/documentation")
     assert response.status_code in (401, 403), (
         f"Anonymous access to /integrations/documentation returned {response.status_code} "
-        "(audit B16)."
+        "."
     )
 
 

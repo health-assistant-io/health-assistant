@@ -54,11 +54,11 @@ def check_scope_access(scope: AIScope, current_user: TokenData, tenant_id: Optio
 
 
 def verify_provider_access(provider, current_user: TokenData) -> None:
-    """Audit B2: ensure ``current_user`` may read or modify ``provider``.
+    """Ensure ``current_user`` may read or modify ``provider``.
 
-    Previously the GET /providers/{id} and /providers/{id}/with-models
-    endpoints returned the row to any authenticated user without checking
-    scope, which leaked other tenants' providers AND their api_key.
+    Provider records carry an api_key, so reads + writes are scope-checked
+    against the row's ``tenant_id``/``user_id``/``scope`` before any response
+    is built.
     """
     check_scope_access(
         provider.scope,
@@ -69,7 +69,7 @@ def verify_provider_access(provider, current_user: TokenData) -> None:
 
 
 def verify_model_access(model, provider, current_user: TokenData) -> None:
-    """Audit B2: scope-check via the model's owning provider."""
+    """Scope-check via the model's owning provider."""
     if provider is None:
         # Caller couldn't resolve the provider — treat as forbidden rather
         # than leak the existence/absence of the model.
@@ -160,8 +160,8 @@ async def get_provider(
 ):
     """Get a specific AI provider.
 
-    Audit B2: previously returned the row to any authenticated user without
-    a scope check — leaked other tenants' providers AND their api_key.
+    Tenant/user scoped via :func:`verify_provider_access` so cross-tenant
+    reads are impossible (provider rows carry an api_key).
     """
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
@@ -181,7 +181,7 @@ async def get_provider_with_models(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get a specific AI provider with its models (audit B2: scope-checked)."""
+    """Get a specific AI provider with its models (scope-checked)."""
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
 
@@ -247,9 +247,8 @@ async def fetch_external_models(
 ):
     """Fetch available models from the provider's external API.
 
-    Audit B2/B9: previously had no RBAC and no SSRF protection on
-    ``api_base``. Now scope-checked, and the api_base must be an http(s)
-    URL pointing at a non-loopback host.
+    Scope-checked against the provider row, and ``api_base`` must be an
+    http(s) URL pointing at a non-loopback host (SSRF guard).
     """
     import ipaddress
     from urllib.parse import urlparse
@@ -306,7 +305,7 @@ async def create_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a new AI model for a provider (audit B2: scope-checked)."""
+    """Create a new AI model for a provider (scope-checked)."""
     service = AIProviderService(db)
 
     provider = await service.get_provider(provider_id)
@@ -326,7 +325,7 @@ async def get_models_for_provider(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get all models for a specific provider (audit B2: scope-checked)."""
+    """Get all models for a specific provider (scope-checked)."""
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
     if not provider:
@@ -343,7 +342,7 @@ async def get_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get a specific AI model (audit B2: scope-checked via owning provider)."""
+    """Get a specific AI model (scope-checked via owning provider)."""
     service = AIProviderService(db)
     model = await service.get_model(model_id)
 
@@ -363,7 +362,7 @@ async def update_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update an AI model (audit B2: scope-checked via owning provider)."""
+    """Update an AI model (scope-checked via owning provider)."""
     service = AIProviderService(db)
 
     model = await service.get_model(model_id)
@@ -383,7 +382,7 @@ async def delete_model(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Delete an AI model (audit B2: scope-checked via owning provider)."""
+    """Delete an AI model (scope-checked via owning provider)."""
     service = AIProviderService(db)
 
     model = await service.get_model(model_id)

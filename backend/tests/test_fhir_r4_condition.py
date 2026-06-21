@@ -1,4 +1,4 @@
-"""Tests for Condition projection from ClinicalEvent (audit C7, C16).
+"""Tests for Condition projection from ClinicalEvent.
 
 Covers:
 - ClinicalEvent.to_fhir_dict() emits valid FHIR R4 Condition

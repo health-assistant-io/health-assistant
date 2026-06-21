@@ -1,10 +1,8 @@
 """Integration sync helper.
 
-Centralizes the FHIR/telemetry split logic that was previously duplicated
-(and inconsistently applied) across:
+Centralizes the FHIR/telemetry split logic that lives at the boundary of:
 
-  - background task ``sync_active_integrations`` (audit A4: previously did
-    NOT do the split — all pulled Observations went into ``fhir_observations``)
+  - background task ``sync_active_integrations``
   - manual sync endpoint at ``POST /integrations/{id}/sync``
   - webhook delivery endpoint
   - bridge provider
@@ -68,11 +66,6 @@ async def apply_telemetry_split(
 
     Returns ``(telemetry_records, fhir_records)``. The caller is responsible
     for committing ``db`` once both batches are added.
-
-    Audit A4: the background ``sync_active_integrations`` Celery task
-    previously bypassed this logic — every pulled Observation landed in
-    ``fhir_observations`` regardless of ``BiomarkerDefinition.is_telemetry``.
-    Routing the task through this helper fixes the bug.
     """
     if not observations:
         return [], []

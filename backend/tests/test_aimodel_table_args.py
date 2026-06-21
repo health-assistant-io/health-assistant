@@ -63,7 +63,7 @@ def test_aimodel_table_args_in_source():
 def test_migration_creates_index_idempotently():
     """The migration file for A3 must exist and use IF NOT EXISTS."""
     candidates = list(MIGRATIONS_DIR.glob("*create_idx_ai_models_provider_active*.py"))
-    assert candidates, "No migration found for idx_ai_models_provider_active (audit A3)"
+    assert candidates, "No migration found for idx_ai_models_provider_active"
 
     migration_src = candidates[0].read_text()
     assert "CREATE INDEX IF NOT EXISTS idx_ai_models_provider_active" in migration_src, (

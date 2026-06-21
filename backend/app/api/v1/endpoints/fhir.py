@@ -156,18 +156,11 @@ async def get_observation_history_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get observation history for a patient+code pair (audit A2, B5).
+    """Get observation history for a patient+code pair.
 
-    A2: previously called ``get_observation(patient_id, code, period)`` but
-    ``get_observation`` takes only ``(observation_id)`` — every call raised
-    TypeError. Now calls the new ``get_observation_history`` service fn.
-
-    B5: the service filters by ``current_user.tenant_id`` so cross-tenant
-    reads are impossible even with a guessed patient_id.
-
-    NOTE: this route MUST be declared before ``/Observation/{observation_id}``
-    or FastAPI will match ``history`` as the path parameter and route the
-    request to ``get_observation_endpoint``.
+    Tenant-scoped via the service layer. NOTE: this route MUST be declared
+    before ``/Observation/{observation_id}`` or FastAPI will match
+    ``history`` as the path parameter.
     """
     await check_patient_access(patient_id, current_user, db)
     history = await get_observation_history(
@@ -197,18 +190,18 @@ async def delete_observation_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
     """Delete observation by ID"""
-    # Audit B5: service-level tenant scoping (defense in depth) — the
-    # get_observation / delete_observation lookups now filter on tenant_id
-    # so a cross-tenant delete is impossible even if a future caller forgets
-    # to check. The patient-access check below remains for USER-role scoping.
+    # Service-level tenant scoping (defense in depth) — the lookup filters
+    # on tenant_id so a cross-tenant delete is impossible even if a future
+    # caller forgets to check. The patient-access check below remains for
+    # USER-role scoping.
     observation = await get_observation(observation_id, current_user.tenant_id)
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
 
-    # Audit B5: tenant scoping now happens at the service level, so the
-    # explicit tenant_id comparison is redundant. The USER-role
-    # patient-access check below remains — Observation.subject holds the
-    # patient reference and USER must own that patient.
+    # Tenant scoping happens at the service level; the explicit tenant_id
+    # comparison is redundant. The USER-role patient-access check below
+    # remains — Observation.subject holds the patient reference and USER
+    # must own that patient.
     if current_user.role == Role.USER.value:
         patient_id = None
         subject = observation.subject
@@ -229,7 +222,7 @@ async def delete_observation_endpoint(
     success = await delete_observation(observation_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Observation not found")
-    # Audit B12: record the deletion with the pre-delete snapshot.
+    # Record the deletion with the pre-delete snapshot.
     await log_audit_action(
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
@@ -266,7 +259,7 @@ async def create_observation_endpoint(
         observation_data["subject"] = {"reference": f"Patient/{patient_id}"}
 
     observation = await create_observation(observation_data, current_user.tenant_id)
-    # Audit B12: record the provenance trail for every clinical write.
+    # Record the provenance trail for every clinical write.
     await log_audit_action(
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,

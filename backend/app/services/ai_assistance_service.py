@@ -363,8 +363,8 @@ class AIAssistanceService:
     ):
         """Main entry point for AI assistance.
 
-        Audit B6: every task_type passes user_input through the prompt-injection
-        guard before it reaches the LLM. The guard is non-blocking by default
+        Every task_type passes user_input through the prompt-injection guard
+        before it reaches the LLM. The guard is non-blocking by default
         (logs WARNING, proceeds) — the HITL wall remains the structural
         protection for clinical writes. ``high``-risk input is still processed
         but the signal is available in the logs for audit correlation.
@@ -1351,10 +1351,8 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Audit B7: previously two print() calls dumped the user input + LLM
-        # output to stdout (debug leftovers). Use logger.debug so this only
-        # surfaces when DEBUG logging is enabled and never leaks to stdout in
-        # production deployments.
+        # Use logger.debug so diagnostic output only surfaces when DEBUG
+        # logging is enabled and never leaks to stdout in production deployments.
         logger.debug("AI biomarker definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
@@ -1387,8 +1385,7 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Audit B7: previously two print() calls dumped the user input + LLM
-        # output to stdout (debug leftovers). Routed through logger.debug.
+        # Routed through logger.debug so diagnostic output is gated on DEBUG.
         logger.debug("AI medication definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
@@ -1416,8 +1413,7 @@ class AIAssistanceService:
 
         slugs_str = ", ".join(existing_slugs)
 
-        # Audit A10: previously hardcoded "Today's date is 2026-03-22" —
-        # relative-date parsing degraded as time passed. Inject the live date.
+        # Inject the live date so relative-date parsing stays accurate.
         from datetime import datetime, timezone
 
         _now = datetime.now(timezone.utc)

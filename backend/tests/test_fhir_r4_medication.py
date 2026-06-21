@@ -1,4 +1,4 @@
-"""Tests for Medication intent discriminator (audit C11, C12).
+"""Tests for Medication intent discriminator.
 
 Covers:
 - MedicationCatalog.to_fhir_dict() emits valid FHIR R4B Medication

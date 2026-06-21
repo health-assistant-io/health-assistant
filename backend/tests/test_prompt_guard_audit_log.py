@@ -138,13 +138,13 @@ def test_b6_assist_calls_guard_before_llm():
     idx = src.index("async def assist(")
     body = src[idx : idx + 1500]
     assert "check_user_input_safety" in body, (
-        "assist() must call check_user_input_safety before the LLM (audit B6)."
+        "assist() must call check_user_input_safety before the LLM."
     )
     # And the guard call must come BEFORE get_llm.
     guard_pos = body.index("check_user_input_safety")
     llm_pos = body.index("get_llm")
     assert guard_pos < llm_pos, (
-        "Guard must run before LLM construction (audit B6)."
+        "Guard must run before LLM construction."
     )
 
 
@@ -256,7 +256,7 @@ def test_b12_fhir_endpoints_import_audit_service():
     """B12 regression: the fhir endpoint module must import log_audit_action."""
     src = inspect.getsource(__import__("app.api.v1.endpoints.fhir", fromlist=["x"]))
     assert "from app.services.audit_service import" in src, (
-        "fhir.py must import log_audit_action (audit B12)."
+        "fhir.py must import log_audit_action."
     )
 
 
@@ -267,7 +267,7 @@ def test_b12_fhir_endpoints_call_log_audit_action():
     # create_diagnostic_report, create_medication.
     count = src.count("await log_audit_action(")
     assert count >= 4, (
-        f"Expected >=4 log_audit_action calls in fhir.py (audit B12), found {count}."
+        f"Expected >=4 log_audit_action calls in fhir.py, found {count}."
     )
 
 

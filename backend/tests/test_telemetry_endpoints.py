@@ -71,7 +71,7 @@ def _clear_overrides():
 def test_anomaly_detector_method_is_sync():
     """AnomalyDetector.detect_biomarker_anomalies must remain synchronous.
 
-    Audit A6 was caused by an ``await`` on this method. Regression guard.
+    regression was caused by an ``await`` on this method. Regression guard.
     """
     from app.services.anomaly_detector import AnomalyDetector
 
@@ -91,7 +91,7 @@ def test_get_telemetry_anomalies_is_async_and_takes_tenant():
     assert inspect.iscoroutinefunction(get_telemetry_anomalies)
     for required in ("db", "tenant_id", "device_id", "metric"):
         assert required in sig.parameters, (
-            f"get_telemetry_anomalies must accept {required!r} (audit A6+B3)"
+            f"get_telemetry_anomalies must accept {required!r}"
         )
 
 
