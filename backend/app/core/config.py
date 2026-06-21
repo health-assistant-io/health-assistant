@@ -15,7 +15,10 @@ class Settings(BaseSettings):
 
     # Database
     POSTGRES_USER: str = "admin"
-    POSTGRES_PASSWORD: str = "admin123"
+    # Audit B13: no insecure default password — must be supplied via env.
+    # The production validator below refuses to boot with empty/known-weak
+    # credentials outside development.
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "health_assistant"
@@ -29,6 +32,23 @@ class Settings(BaseSettings):
                 f"{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:"
                 f"{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_db_credentials(self) -> "Settings":
+        """Audit B13: refuse to boot in non-dev environments with insecure
+        database credentials. Catches the legacy ``admin123`` default and
+        other common weak values so a misconfigured production instance
+        fails fast instead of silently running exploitable creds.
+        """
+        weak_passwords = {"", "admin123", "password", "postgres", "secret", "changeme"}
+        if self.APP_ENV not in ("development", "test", "testing"):
+            if self.POSTGRES_PASSWORD in weak_passwords:
+                raise ValueError(
+                    "POSTGRES_PASSWORD must be set to a non-default value in "
+                    f"APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
+                    "database credentials (audit B13)."
+                )
         return self
 
     DATABASE_POOL_SIZE: int = 10

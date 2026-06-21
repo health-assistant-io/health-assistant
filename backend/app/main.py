@@ -220,11 +220,14 @@ if settings.APP_ENV == "development":
         expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
     )
 else:
-    # In production, restrict to specific trusted domains
-    # Note: These should ideally come from environment variables
+    # In production, restrict to specific trusted domains.
+    # Audit B10: the previous fallback ``https://app.health_assistant.com``
+    # used an underscore in the hostname — underscores are invalid in DNS
+    # names (RFC 1123) so the CORS rule could never match a real origin.
+    # Use a hyphenated default; FRONTEND_URL env remains the source of truth.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[os.getenv("FRONTEND_URL", "https://app.health_assistant.com")],
+        allow_origins=[os.getenv("FRONTEND_URL", "https://app.health-assistant.com")],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],

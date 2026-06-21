@@ -1334,9 +1334,11 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Log to terminal for visual verification
-        print(f"\n[AI-ASSIST] Biomarker Definition for '{user_input}':")
-        print(json.dumps(result.model_dump(), indent=2))
+        # Audit B7: previously two print() calls dumped the user input + LLM
+        # output to stdout (debug leftovers). Use logger.debug so this only
+        # surfaces when DEBUG logging is enabled and never leaks to stdout in
+        # production deployments.
+        logger.debug("AI biomarker definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
 
@@ -1368,9 +1370,9 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Log to terminal for visual verification
-        print(f"\n[AI-ASSIST] Medication Definition for '{user_input}':")
-        print(json.dumps(result.model_dump(), indent=2))
+        # Audit B7: previously two print() calls dumped the user input + LLM
+        # output to stdout (debug leftovers). Routed through logger.debug.
+        logger.debug("AI medication definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
 
