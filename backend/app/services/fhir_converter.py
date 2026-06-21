@@ -300,6 +300,109 @@ def fhir_to_practitioner_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR Condition dict to a ClinicalEvent ORM dict.
+
+    The reverse of :meth:`ClinicalEvent.to_fhir_dict`. Maps:
+    - clinicalStatus → status enum (resolved → RESOLVED, otherwise ACTIVE)
+    - code → code/coding_system + title (from code.text)
+    - subject → patient_id
+    - onsetDateTime → onset_date
+    - abatementDateTime → resolved_date
+    - note[0].text → description
+
+    Fields without an analog (e.g. stage, evidence) are dropped — the
+    Condition projection is intentionally lossy. ClinicalEvent's metadata-driven
+    JSONB can hold these in ``event_metadata`` if needed by future callers.
+    """
+    from app.models.enums import ClinicalEventStatus, CodingSystem
+
+    # Clinical status → ClinicalEventStatus enum.
+    clinical_codings = (
+        (f.get("clinicalStatus") or {}).get("coding") or []
+    )
+    clinical_code = next(
+        (c.get("code") for c in clinical_codings if c.get("code")),
+        "active",
+    )
+    if clinical_code == "resolved" or f.get("abatementDateTime"):
+        status = ClinicalEventStatus.RESOLVED
+    elif clinical_code in ("inactive", "remission"):
+        status = ClinicalEventStatus.ON_HOLD
+    else:
+        status = ClinicalEventStatus.ACTIVE
+
+    # Code → title/code/coding_system.
+    code_obj = f.get("code") or {}
+    title = code_obj.get("text") or "Untitled Condition"
+    code = None
+    coding_system = None
+    coding_list = code_obj.get("coding") or []
+    if coding_list:
+        first = coding_list[0]
+        code = first.get("code")
+        system_url = first.get("system") or ""
+        if "loinc.org" in system_url:
+            coding_system = CodingSystem.LOINC
+        elif "snomed.info" in system_url:
+            coding_system = CodingSystem.SNOMED
+        else:
+            coding_system = CodingSystem.CUSTOM
+
+    note_list = f.get("note") or []
+    description = (
+        note_list[0].get("text") if note_list and isinstance(note_list[0], dict) else None
+    )
+
+    import datetime as _dt
+    onset_raw = f.get("onsetDateTime")
+    onset_dt = _parse_iso(onset_raw)
+    abatement_raw = f.get("abatementDateTime")
+    abatement_dt = _parse_iso(abatement_raw)
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "patient_id": _extract_patient_id(f.get("subject")),
+            "status": status,
+            "title": title,
+            "description": description,
+            "onset_date": onset_dt,
+            "resolved_date": abatement_dt,
+            "code": code,
+            "coding_system": coding_system,
+        }
+    )
+
+
+def _parse_iso(value: Optional[str]) -> Optional[Any]:
+    """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
+    import datetime as _dt
+    from datetime import timezone
+
+    if not value:
+        return None
+    s = value.rstrip("Z")
+    formats = (
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+        "%Y-%m",
+        "%Y",
+    )
+    for fmt in formats:
+        try:
+            parsed = _dt.datetime.strptime(s, fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
 _TO_ORM = {
     "Patient": fhir_to_patient_orm,
     "Observation": fhir_to_observation_orm,
@@ -308,6 +411,7 @@ _TO_ORM = {
     "DiagnosticReport": fhir_to_diagnostic_report_orm,
     "Organization": fhir_to_organization_orm,
     "Practitioner": fhir_to_practitioner_orm,
+    "Condition": fhir_to_condition_orm,
 }
 
 
