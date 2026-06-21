@@ -392,17 +392,23 @@ async def test_get_observation_history_compiles_tenant_scoped_query(monkeypatch)
     )
 
 
-def test_get_observation_still_single_arg():
-    """A2 sanity: ``get_observation`` still takes a single observation_id.
-
-    The endpoint at /Observation/{id} depends on this contract. We must not
-    accidentally change its signature while fixing the history endpoint.
+def test_get_observation_signature_contract():
+    """A2/B5: ``get_observation`` takes ``observation_id`` plus an optional
+    ``tenant_id`` (added in B5 for service-level tenant scoping). The first
+    positional arg is still ``observation_id`` so the /Observation/{id}
+    endpoint contract is preserved.
     """
     from app.services.fhir_service import get_observation
 
     sig = inspect.signature(get_observation)
     params = list(sig.parameters)
-    assert params == ["observation_id"], (
-        f"get_observation signature changed: {params}. The /Observation/{{id}} "
-        "endpoint depends on this single-arg contract."
+    assert params[0] == "observation_id", (
+        f"get_observation first param changed: {params}. The /Observation/{{id}} "
+        "endpoint depends on observation_id being the first positional arg."
+    )
+    assert "tenant_id" in params, (
+        f"get_observation must accept tenant_id for B5 tenant scoping: {params}"
+    )
+    assert sig.parameters["tenant_id"].default is None, (
+        "get_observation.tenant_id must default to None for backward compatibility."
     )

@@ -342,8 +342,20 @@ async def create_observation(
     return new_obs
 
 
-async def get_observation(observation_id: str | UUID) -> Optional[Observation]:
-    """Get observation by ID"""
+async def get_observation(
+    observation_id: str | UUID,
+    tenant_id: str | UUID | None = None,
+) -> Optional[Observation]:
+    """Get observation by ID.
+
+    Audit B5: previously this function took only ``observation_id`` and did
+    no tenant filtering — a cross-tenant read was possible if an endpoint
+    forgot to verify ownership (the GET endpoint did). ``tenant_id`` is now
+    an optional parameter; when supplied, the query is restricted to that
+    tenant so the service itself enforces isolation (defense in depth).
+    ``None`` preserves the legacy unscoped behaviour for internal callers
+    that have already verified access (e.g. export/import).
+    """
     if not DATABASE_AVAILABLE:
         return None
 
@@ -353,15 +365,29 @@ async def get_observation(observation_id: str | UUID) -> Optional[Observation]:
         except ValueError:
             return None
 
+    predicates = [Observation.id == observation_id]
+    if tenant_id is not None:
+        try:
+            tid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+        except (ValueError, TypeError):
+            return None
+        predicates.append(Observation.tenant_id == tid)
+
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Observation).where(Observation.id == observation_id)
-        )
+        result = await session.execute(select(Observation).where(*predicates))
         return result.scalar_one_or_none()
 
 
-async def delete_observation(observation_id: str | UUID) -> bool:
-    """Delete observation by ID"""
+async def delete_observation(
+    observation_id: str | UUID,
+    tenant_id: str | UUID | None = None,
+) -> bool:
+    """Delete observation by ID.
+
+    Audit B5: ``tenant_id`` is now an optional parameter; when supplied the
+    lookup is tenant-scoped so a cross-tenant delete is impossible even if
+    the endpoint forgets to check.
+    """
     if not DATABASE_AVAILABLE:
         return False
 
@@ -371,9 +397,17 @@ async def delete_observation(observation_id: str | UUID) -> bool:
         except ValueError:
             return False
 
+    predicates = [Observation.id == observation_id]
+    if tenant_id is not None:
+        try:
+            tid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+        except (ValueError, TypeError):
+            return False
+        predicates.append(Observation.tenant_id == tid)
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(Observation).where(Observation.id == observation_id)
+            select(Observation).where(*predicates)
         )
         observation = result.scalar_one_or_none()
         if observation:
@@ -590,8 +624,16 @@ async def create_diagnostic_report(
     return new_report
 
 
-async def get_diagnostic_report(report_id: str | UUID) -> Optional[DiagnosticReport]:
-    """Get diagnostic report by ID"""
+async def get_diagnostic_report(
+    report_id: str | UUID,
+    tenant_id: str | UUID | None = None,
+) -> Optional[DiagnosticReport]:
+    """Get diagnostic report by ID.
+
+    Audit B5: ``tenant_id`` optionally scopes the lookup so cross-tenant
+    reads are impossible at the service level. ``None`` preserves legacy
+    behaviour for internal callers that have already verified access.
+    """
     if not DATABASE_AVAILABLE:
         return None
 
@@ -601,9 +643,17 @@ async def get_diagnostic_report(report_id: str | UUID) -> Optional[DiagnosticRep
         except ValueError:
             return None
 
+    predicates = [DiagnosticReport.id == report_id]
+    if tenant_id is not None:
+        try:
+            tid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+        except (ValueError, TypeError):
+            return None
+        predicates.append(DiagnosticReport.tenant_id == tid)
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(DiagnosticReport).where(DiagnosticReport.id == report_id)
+            select(DiagnosticReport).where(*predicates)
         )
         return result.scalar_one_or_none()
 
@@ -682,8 +732,16 @@ async def create_medication(
     return new_med
 
 
-async def get_medication(medication_id: str | UUID) -> Optional[Medication]:
-    """Get medication by ID"""
+async def get_medication(
+    medication_id: str | UUID,
+    tenant_id: str | UUID | None = None,
+) -> Optional[Medication]:
+    """Get medication by ID.
+
+    Audit B5: ``tenant_id`` optionally scopes the lookup so cross-tenant
+    reads are impossible at the service level. ``None`` preserves legacy
+    behaviour for internal callers that have already verified access.
+    """
     if not DATABASE_AVAILABLE:
         return None
 
@@ -693,9 +751,17 @@ async def get_medication(medication_id: str | UUID) -> Optional[Medication]:
         except ValueError:
             return None
 
+    predicates = [Medication.id == medication_id]
+    if tenant_id is not None:
+        try:
+            tid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+        except (ValueError, TypeError):
+            return None
+        predicates.append(Medication.tenant_id == tid)
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(Medication).where(Medication.id == medication_id)
+            select(Medication).where(*predicates)
         )
         return result.scalar_one_or_none()
 

@@ -183,7 +183,7 @@ async def get_observation_endpoint(
     observation_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """Get observation by ID"""
-    observation = await get_observation(observation_id)
+    observation = await get_observation(observation_id, current_user.tenant_id)
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
     return observation
@@ -191,22 +191,23 @@ async def get_observation_endpoint(
 
 @router.delete("/Observation/{observation_id}")
 async def delete_observation_endpoint(
-    observation_id: str, 
+    observation_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete observation by ID"""
-    observation = await get_observation(observation_id)
+    # Audit B5: service-level tenant scoping (defense in depth) — the
+    # get_observation / delete_observation lookups now filter on tenant_id
+    # so a cross-tenant delete is impossible even if a future caller forgets
+    # to check. The patient-access check below remains for USER-role scoping.
+    observation = await get_observation(observation_id, current_user.tenant_id)
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
-    
-    # Access check - need to check if the observation belongs to a patient the user has access to
-    # The observation model has tenant_id, and we can check that first.
-    if str(observation.tenant_id) != str(current_user.tenant_id):
-        raise HTTPException(status_code=403, detail="Access denied")
 
-    # For standard users, we should also check patient access if possible.
-    # Observation.subject is a JSONB field containing the patient reference.
+    # Audit B5: tenant scoping now happens at the service level, so the
+    # explicit tenant_id comparison is redundant. The USER-role
+    # patient-access check below remains — Observation.subject holds the
+    # patient reference and USER must own that patient.
     if current_user.role == Role.USER.value:
         patient_id = None
         subject = observation.subject
@@ -214,7 +215,7 @@ async def delete_observation_endpoint(
             ref = subject["reference"]
             if "Patient/" in ref:
                 patient_id = ref.split("/")[-1]
-        
+
         if patient_id:
             await check_patient_access(patient_id, current_user, db)
         else:
@@ -222,7 +223,7 @@ async def delete_observation_endpoint(
             # but usually observations should have a subject.
             pass
 
-    success = await delete_observation(observation_id)
+    success = await delete_observation(observation_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Observation not found")
     return {"message": "Observation deleted successfully"}
@@ -261,7 +262,7 @@ async def get_diagnostic_report_endpoint(
     report_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """Get diagnostic report by ID"""
-    report = await get_diagnostic_report(report_id)
+    report = await get_diagnostic_report(report_id, current_user.tenant_id)
     if not report:
         raise HTTPException(status_code=404, detail="Diagnostic report not found")
     return report
@@ -281,7 +282,7 @@ async def get_medication_endpoint(
     medication_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """Get medication by ID"""
-    medication = await get_medication(medication_id)
+    medication = await get_medication(medication_id, current_user.tenant_id)
     if not medication:
         raise HTTPException(status_code=404, detail="Medication not found")
     return medication
