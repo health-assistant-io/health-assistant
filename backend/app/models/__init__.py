@@ -43,6 +43,8 @@ from .fhir import (
     AllergyClinicalStatus,
 )
 from .fhir.provenance import ProvenanceModel
+from .fhir.device import DeviceModel
+from .fhir.communication import CommunicationModel
 from .ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
 from .chat_model import ChatSession, ChatMessage
 from .clinical_event import (
@@ -89,6 +91,8 @@ __all__ = [
     "AllergyCriticality",
     "AllergyClinicalStatus",
     "ProvenanceModel",
+    "DeviceModel",
+    "CommunicationModel",
     "Unit",
     "BiomarkerDefinition",
     "BiomarkerGroup",

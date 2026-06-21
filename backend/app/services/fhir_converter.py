@@ -570,6 +570,51 @@ def fhir_to_provenance_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_device_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR Device to a DeviceModel ORM dict."""
+    # Device.serialNumber is a single string in R4B (not a list).
+    serial = f.get("serialNumber")
+    if isinstance(serial, list):
+        serial = serial[0] if serial else None
+    device_name_list = f.get("deviceName") or []
+    return _clean(
+        {
+            "id": f.get("id"),
+            "identifier": f.get("identifier"),
+            "device_name": device_name_list or None,
+            "type": f.get("type"),
+            "manufacturer": f.get("manufacturer"),
+            "model_number": f.get("modelNumber"),
+            "serial_number": serial,
+            "status": f.get("status") or "active",
+            "patient_id": _extract_patient_id(f.get("patient")),
+            "owner_integration_id": _extract_patient_id(f.get("owner")),
+        }
+    )
+
+
+def fhir_to_communication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR Communication to a CommunicationModel ORM dict."""
+    sent_raw = f.get("sent")
+    received_raw = f.get("received")
+    return _clean(
+        {
+            "id": f.get("id"),
+            "status": f.get("status") or "completed",
+            "category": f.get("category"),
+            "priority": f.get("priority"),
+            "topic": f.get("topic"),
+            "payload": f.get("payload"),
+            "sent": _parse_iso(sent_raw),
+            "received": _parse_iso(received_raw),
+            "sender": f.get("sender"),
+            "recipient": f.get("recipient"),
+            "subject_patient_id": _extract_patient_id(f.get("subject")),
+            "encounter_id": _extract_patient_id(f.get("encounter")),
+        }
+    )
+
+
 def _parse_iso(value: Optional[str]) -> Optional[Any]:
     """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
     import datetime as _dt
@@ -603,6 +648,7 @@ _TO_ORM = {
     "Observation": fhir_to_observation_orm,
     "MedicationStatement": fhir_to_medication_orm,
     "MedicationRequest": fhir_to_medication_request_orm,
+    "Medication": lambda f: _clean({"id": f.get("id"), "code": f.get("code")}),
     "AllergyIntolerance": fhir_to_allergy_orm,
     "DiagnosticReport": fhir_to_diagnostic_report_orm,
     "Organization": fhir_to_organization_orm,
@@ -611,6 +657,8 @@ _TO_ORM = {
     "Encounter": fhir_to_encounter_orm,
     "DocumentReference": fhir_to_document_reference_orm,
     "Provenance": fhir_to_provenance_orm,
+    "Device": fhir_to_device_orm,
+    "Communication": fhir_to_communication_orm,
 }
 
 
