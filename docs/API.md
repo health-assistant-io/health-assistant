@@ -281,6 +281,12 @@ GET /api/v1/documents/{document_id}/extract/status
 
 ### FHIR Resources
 
+> **Two routers coexist**: the routes below (`/api/v1/fhir/*`) are the **legacy ORM-shape** router
+> (snake_case + app fields like `tenant_id`, `biomarker_id`) used by the frontend. For
+> **canonical FHIR R4 JSON** (validated by `fhir.resources`, FHIR Bundles on search, 201 +
+> Location on create, 410 Gone tombstones), use the **R4 facade** at `/api/v1/fhir/R4/*`. See
+> [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md) for the developer guide and full route table.
+
 #### Create Patient
 
 ```http

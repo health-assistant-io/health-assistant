@@ -111,7 +111,30 @@ Beyond export/import (file-based), Health Assistant can connect to a **live exte
 
 - **Auth modes** (`auth_mode` config): `smart` (SMART-on-FHIR standalone launch + Dynamic Client Registration, for hospitals/`r4.smarthealthit.org`) or `none` (tokenless, for a local/open server like vanilla HAPI FHIR). `smart` instances start `PENDING` until the OAuth callback; `none` go straight to `ACTIVE`.
 - **Pull** (`provider.pull_data`): bounded FHIR search `Observation?_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated[&patient][&category]` → each FHIR Observation is mapped to an `ObservationCreate` on the **local** patient (`sdk/fhir.fhir_observation_to_create`) → the existing biomarker-mapping waterfall resolves `biomarker_id` and routes telemetry.
-- The SDK auth/HTTP/FHIR helpers (`integrations/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the future Stage 3 facade (Health Assistant as a FHIR server). Push is deferred to Stage 2b.
+- The SDK auth/HTTP/FHIR helpers (`integrations/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the Stage 3 facade (see below).
+
+### FHIR R4 Facade (Stage 3)
+
+Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/v1/fhir/R4/*` — alongside the legacy ORM-shape `/api/v1/fhir/*` router (which the frontend keeps using). The facade is the externally-facing interop surface; the ORM-shape router is internal-only.
+
+- **`GET /fhir/R4/metadata`** returns a dynamic CapabilityStatement built from `RESOURCE_REGISTRY` (no auth per FHIR spec; Cache-Control 5 min). Advertises every registered resource + supported interactions + search params.
+- **`GET /fhir/R4/{Resource}`** returns a FHIR Bundle (`type=searchset`) with `total`, `link[]` pagination (self/first/last/previous/next), and `entry[]` of `{fullUrl, resource}`. Honors standard search params (`_id`, `_lastUpdated`, `_count` capped at 250, `_sort`, `_format`) plus per-resource params (`patient`, `code`, `date`, `status`, `category`, …). Tenant-scoped by default; soft-deleted rows excluded.
+- **`GET /fhir/R4/{Resource}/{id}`** returns canonical FHIR JSON + `ETag`/`Last-Modified` headers. Reads of deleted rows return `410 Gone` (OperationOutcome) — tombstone semantics, not `404 Not Found`.
+- **`POST /fhir/R4/{Resource}`** accepts canonical FHIR JSON, validates via `fhir.resources`, returns `201 Created` + `Location` header + canonical body. Records a `Provenance` resource targeting the new row.
+- **`PUT /fhir/R4/{Resource}/{id}`** — full replacement, bumps `VersionedMixin.version`, returns 200 + canonical body.
+- **`DELETE /fhir/R4/{Resource}/{id}`** — soft-delete (`deleted_at = now()`), returns `204 No Content`. Records a final Provenance.
+
+**15 registered resources**: Patient, Observation, Condition, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication (catalog, read-only via facade), DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance.
+
+**Hybrid storage (no dual-write)**: existing tables became FHIR-canonical via `to_fhir_dict()` projections. `Condition` ← `clinical_events` (metadata-driven JSONB stays untouched; the projection interprets it per `metadata_schema`). `Encounter` ← `examinations` (model + UI vocabulary unchanged — "Examination" is the user-facing word, "Encounter" is the FHIR name). `DocumentReference` ← `documents` (metadata-only attachment; binary lives in app storage, referenced via `urn:ha-document:<id>`). Three **new tables** hold concepts with no app-table analog: `fhir_provenance` (immutable, multi-target audit), `fhir_devices` (reference table backfilled from `user_integrations`), `fhir_communications` (clinical messaging, distinct from push notifications).
+
+**Medication intent discriminator**: one `fhir_medications` table serves both MedicationStatement (`intent=statement`) and MedicationRequest (`intent=order|plan|proposal`). The facade routes to the right FHIR resource based on the discriminator column.
+
+**Provenance-on-write**: every facade `POST`/`PUT`/`DELETE` records a `Provenance` targeting the affected resource (best-effort — never aborts the parent write on Provenance failure). Agents are the authenticated user or the integration.
+
+**Error shape**: every error response is a FHIR `OperationOutcome` resource with `issue[]` blocks (severity, code, diagnostics). The existing global exception handler still wraps unexpected 500s with a correlation id; facade-specific errors map to 400/404/405/410 with OperationOutcome bodies.
+
+Developer guide: [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md). Audit resolution: `dev/audits/AUDIT-2026-06-21.md` Section C.
 
 ## Frontend Architecture
 
