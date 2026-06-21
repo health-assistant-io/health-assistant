@@ -17,6 +17,7 @@ from app.models.tenant_model import TenantModel
 from app.models.system_setting import SystemSetting
 from app.models.enums import HitlTaskStatus
 from app.utils.svg import sanitize_svg
+from app.utils.prompt_guard import DEFENSE_PREAMBLE, check_user_input_safety
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation
 from app.models.fhir.medication import Medication, MedicationCatalog
@@ -360,7 +361,19 @@ class AIAssistanceService:
         user_id: Optional[UUID] = None,
         stream: bool = False,
     ):
-        """Main entry point for AI assistance"""
+        """Main entry point for AI assistance.
+
+        Audit B6: every task_type passes user_input through the prompt-injection
+        guard before it reaches the LLM. The guard is non-blocking by default
+        (logs WARNING, proceeds) — the HITL wall remains the structural
+        protection for clinical writes. ``high``-risk input is still processed
+        but the signal is available in the logs for audit correlation.
+        """
+        from app.utils.prompt_guard import check_user_input_safety
+
+        if user_input:
+            check_user_input_safety(user_input, context=f"assist:{task_type}")
+
         llm = await self.ai_provider_service.get_llm(task_type, tenant_id, user_id)
 
         if task_type == "fill_biomarker_form":
@@ -445,7 +458,9 @@ class AIAssistanceService:
 
         llm_with_tools = llm.bind_tools(tools) if tools else llm
 
-        system_prompt = f"""You are Health Assistant AI, a professional medical data assistant.
+        system_prompt = f"""{DEFENSE_PREAMBLE}
+
+        You are Health Assistant AI, a professional medical data assistant.
         Answer the user's questions clearly and professionally using Markdown.
         
         FORMATTING RULES:
@@ -863,7 +878,9 @@ class AIAssistanceService:
         )
         llm_with_tools = llm.bind_tools(tools) if tools else llm
 
-        system_prompt = """You are Health Assistant AI, a professional medical data assistant.
+        system_prompt = f"""{DEFENSE_PREAMBLE}
+
+        You are Health Assistant AI, a professional medical data assistant.
         Answer the user's questions clearly and professionally using Markdown.
 
         FORMATTING RULES:

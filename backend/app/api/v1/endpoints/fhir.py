@@ -23,6 +23,7 @@ from app.services.fhir_service import (
 )
 
 from app.schemas.user import TokenData
+from app.services.audit_service import log_audit_action
 
 router = APIRouter(prefix="/fhir", tags=["fhir"])
 
@@ -223,9 +224,20 @@ async def delete_observation_endpoint(
             # but usually observations should have a subject.
             pass
 
+    # Snapshot the observation for the audit log before deletion.
+    old_snapshot = observation.to_dict() if hasattr(observation, "to_dict") else None
     success = await delete_observation(observation_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Observation not found")
+    # Audit B12: record the deletion with the pre-delete snapshot.
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_observation",
+        resource_type="Observation",
+        resource_id=observation.id if hasattr(observation, "id") else None,
+        old_value=old_snapshot,
+    )
     return {"message": "Observation deleted successfully"}
 
 
@@ -254,6 +266,15 @@ async def create_observation_endpoint(
         observation_data["subject"] = {"reference": f"Patient/{patient_id}"}
 
     observation = await create_observation(observation_data, current_user.tenant_id)
+    # Audit B12: record the provenance trail for every clinical write.
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_observation",
+        resource_type="Observation",
+        resource_id=getattr(observation, "id", None),
+        new_value=observation_data,
+    )
     return observation
 
 
@@ -274,6 +295,14 @@ async def create_diagnostic_report_endpoint(
 ):
     """Create a new diagnostic report"""
     report = await create_diagnostic_report(report_data, current_user.tenant_id)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_diagnostic_report",
+        resource_type="DiagnosticReport",
+        resource_id=getattr(report, "id", None),
+        new_value=report_data,
+    )
     return report
 
 
@@ -332,4 +361,12 @@ async def create_medication_endpoint(
         raise HTTPException(status_code=400, detail="Patient reference required")
 
     medication = await create_medication(medication_data, current_user.tenant_id)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_medication",
+        resource_type="Medication",
+        resource_id=getattr(medication, "id", None),
+        new_value=medication_data,
+    )
     return medication
