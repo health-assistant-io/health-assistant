@@ -43,9 +43,33 @@
    ```
 3. **Run migration `f1a2b3c4d5e6`** (`alembic upgrade head`) — creates the previously-dropped `idx_ai_models_provider_active` index.
 4. **Frontend follow-up recommended**: `ProviderManager.tsx` should surface the new `has_api_key` field for cleaner edit UX (currently the masked value pre-fills the edit input — functional, but not ideal).
+5. **Set `POSTGRES_PASSWORD`** explicitly in `.env` — the insecure `admin123` default was removed (audit B13). Production boot will refuse known-weak values.
+6. **Webhook HMAC** (audit B15): integrations that want HMAC verification should set `user_config["webhook_secret"]` to a strong random string. The sender must compute `HMAC-SHA256(secret, raw_body)` and send the hex digest in the `X-Webhook-Signature` header.
+7. **WebSocket frontend migration** (audit B11): update the frontend `useWebSocket` hook to connect with `new WebSocket(url, ["bearer", token])` so the token travels via the subprotocol instead of the query string. The query-string fallback remains for backward compatibility.
+8. **AuditLog** (audit B12): the `audit_logs` table is now populated for FHIR create/delete operations. Query it for provenance: `SELECT * FROM audit_logs WHERE resource_type = 'Observation' ORDER BY created_at DESC`.
 
 ### Tests
-- **87 new tests** covering every fixed item (16 backend test files + 1 frontend test file). See `dev/audits/AUDIT-2026-06-21.md` "Branch progress" section for the file/coverage matrix.
+- **205 new tests** across the full security pass: 87 from the first pass + 118 from the second pass. See `dev/audits/AUDIT-2026-06-21.md` "Branch progress" sections for the file/coverage matrix.
+
+### P0 completion (second pass — 14 items, 118 tests)
+
+**Security hardening:**
+- **Tenant-scoped FHIR single-resource reads** — `get_observation`, `get_diagnostic_report`, `get_medication`, and `delete_observation` now accept an optional `tenant_id` parameter and filter on it (defense in depth at the service level). All `/fhir/*/{id}` endpoints pass `current_user.tenant_id`. ([audit B5](dev/audits/AUDIT-2026-06-21.md))
+- **Prompt-injection guard** (`app/utils/prompt_guard.py`) — heuristic detector for 8 OWASP LLM01 patterns (instruction-override, role-switch, role-marker-injection, prompt-extraction, jailbreak-mode, delimiter-escape, rule-injection). `scan_prompt_injection()` → `{safe, risk, matches, snippets}` with risk escalation (1 match = medium, 2+ = high). Non-blocking — logs WARNING, HITL wall remains the structural defence. `DEFENSE_PREAMBLE` prepended to both chat system prompts. The `assist()` dispatcher runs every input through the guard before the LLM. ([audit B6](dev/audits/AUDIT-2026-06-21.md))
+- **SVG sanitizer rewritten** (`app/utils/svg.py`) — compiled regexes for all event-handler quoting forms (double-quoted, single-quoted, unquoted), `javascript:`/`vbscript:`/`data:text/html` URL protocols in `href`/`xlink:href`, and dangerous elements (`<script>`, `<foreignObject>` — both paired and self-closing). Optimization passes preserved. ([audit B8](dev/audits/AUDIT-2026-06-21.md))
+- **WebSocket hardened** (`app/api/v1/endpoints/websockets.py`) — prefers `Sec-WebSocket-Protocol` subprotocol auth (`["bearer", token]`) over URL query string; fixes unawaited `asyncio.sleep(0.1)` busy-loop (10 Hz → 1 Hz via `get_message(timeout=1.0)`); logs errors before `close(1011)`; sends 30s keepalive ping. ([audit B11](dev/audits/AUDIT-2026-06-21.md))
+- **AuditLog provenance** (`app/services/audit_service.py`) — `log_audit_action()` helper (best-effort, own session, never raises) wired into `POST /fhir/Observation`, `DELETE /fhir/Observation`, `POST /fhir/DiagnosticReport`, `POST /fhir/Medication`. Captures who/what/when + old/new value diff. ([audit B12](dev/audits/AUDIT-2026-06-21.md))
+- **Insecure DB password default removed** — `POSTGRES_PASSWORD` no longer defaults to `admin123` in `config.py`; production `@model_validator` refuses known-weak credentials; `.env.example` uses `CHANGE_ME` placeholder. ([audit B13](dev/audits/AUDIT-2026-06-21.md))
+- **Webhook HMAC-SHA256 verification** — integrations can set `user_config["webhook_secret"]`; when present the route verifies a constant-time HMAC-SHA256 signature over the raw body. Supports `X-Webhook-Signature`, `X-Webhook-Signature-256`, and GitHub-style `X-Hub-Signature-256`. Backward-compatible (no secret = legacy UUID-as-secret). ([audit B15](dev/audits/AUDIT-2026-06-21.md))
+- **Auth on integration listing** — `GET /integrations/available` and `GET /integrations/{domain}/documentation` now depend on `get_current_user` (any role). ([audit B16](dev/audits/AUDIT-2026-06-21.md))
+- **AI debug `print()` leaks removed** — two `print()` calls in `_define_biomarker`/`_define_medication` that dumped user input + LLM output to stdout replaced with `logger.debug`. ([audit B7](dev/audits/AUDIT-2026-06-21.md))
+- **CORS fallback hostname fixed** — `app.health_assistant.com` (underscore — invalid RFC 1123) → `app.health-assistant.com`. ([audit B10](dev/audits/AUDIT-2026-06-21.md))
+- **Catalog search SQL hardened** — `_set_similarity_threshold` validates float in [0, 1] before inlining into `SET pg_trgm.similarity_threshold` (PostgreSQL `SET` doesn't accept bind params). ([audit B14](dev/audits/AUDIT-2026-06-21.md))
+
+**Functional fixes:**
+- **OHLC double-aggregation fixed** (`analytics_service.py`) — the raw-table path set `avg_col = "AVG(col)"` and the SQL template wrapped it in `AVG(AVG(col))` — invalid SQL, silently caught by the except handler, producing empty charts for any non-cagg-stride bucket (all sub-hour/day + 1-week/month aggregations). Now uses single-level `AVG(col)`/`MAX(col)`/`MIN(col)`. Added `_ALLOWED_TELEMETRY_BUCKETS` whitelist to guard the `INTERVAL '{bucket}'` f-string interpolation. ([audit A8](dev/audits/AUDIT-2026-06-21.md))
+- **`relative_score` boundary logic fixed** (`analytics_service.py`) — `_get_observation_status` used `< 0 → Low` / `> 1.0 → High` on a value clamped to [0, 1], so every score short-circuited to Normal. Now only returns Normal for strictly-interior scores (0 < s < 1); boundary values (0.0/1.0) defer to the explicit reference-range comparison. ([audit A9](dev/audits/AUDIT-2026-06-21.md))
+- **Magic Fill live date** (`ai_assistance_service.py`) — hardcoded `"Today's date is 2026-03-22."` replaced with `datetime.now(timezone.utc)` injection for both `today_iso` and `current_year`. ([audit A10](dev/audits/AUDIT-2026-06-21.md))
 
 ---
 
