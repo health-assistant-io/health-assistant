@@ -11,6 +11,7 @@ from app.models.base import (
 )
 import enum
 from app.models.enums import ClinicalEventStatus, CodingSystem
+from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 
 class ClinicalEventCategory(Base, UUIDMixin, TimestampMixin):
@@ -230,3 +231,75 @@ class ClinicalEvent(
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Project this ClinicalEvent to a FHIR R4B Condition resource.
+
+        Maps the metadata-driven event to a FHIR Condition:
+        - ``status`` enum → Condition.clinicalStatus (HL7 condition-clinical)
+        - ``code`` + ``coding_system`` + ``title`` → Condition.code
+        - ``patient_id`` → Condition.subject
+        - ``onset_date`` → Condition.onsetDateTime
+        - ``resolved_date`` → Condition.abatementDateTime
+        - ``description`` → Condition.note
+        - ``created_at`` → Condition.recordedDate
+
+        Validated by ``fhir.resources`` via ``build_fhir_resource`` so invalid
+        data can never be persisted through the FHIR facade.
+
+        Audit items C7 + C16: Clinical Events gain a FHIR projection so the
+        facade can expose them at ``/fhir/R4/Condition`` without a new table.
+        """
+        # Condition.clinicalStatus uses HL7 condition-clinical codes:
+        # active | recurrence | relapse | inactive | resolved | remission
+        status_value = (self.status.value if self.status else "UNKNOWN").lower()
+        clinical_map = {
+            "active": "active",
+            "resolved": "resolved",
+            "on_hold": "active",  # ON_HOLD has no direct equivalent; active is closest
+            "unknown": "active",  # Condition requires clinicalStatus in practice
+        }
+        clinical_code = clinical_map.get(status_value, "active")
+        clinical_status = {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": clinical_code,
+                }
+            ]
+        }
+
+        # Condition.code is required. Build from code/coding_system, with
+        # title as fallback text.
+        condition_code: dict = {"text": self.title}
+        if self.code:
+            system_url = self.coding_system.fhir_system if self.coding_system else None
+            coding = [{"code": self.code}]
+            if system_url:
+                coding[0]["system"] = system_url
+            condition_code["coding"] = coding
+
+        # Abatement: only set if resolved (otherwise Condition is still active).
+        abatement_datetime = None
+        if self.resolved_date:
+            abatement_datetime = fhir_isoformat(self.resolved_date)
+
+        data = {
+            "resourceType": "Condition",
+            "id": str(self.id) if self.id else None,
+            "clinicalStatus": clinical_status,
+            "code": condition_code,
+            "subject": {"reference": f"Patient/{self.patient_id}"}
+            if self.patient_id
+            else None,
+            "onsetDateTime": fhir_isoformat(self.onset_date)
+            if self.onset_date
+            else None,
+            "abatementDateTime": abatement_datetime,
+            "recordedDate": fhir_isoformat(self.created_at)
+            if self.created_at
+            else None,
+            "note": [{"text": self.description}] if self.description else None,
+            "meta": build_meta(str(self.id) if self.id else None),
+        }
+        return build_fhir_resource("Condition", data)
