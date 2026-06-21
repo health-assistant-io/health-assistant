@@ -27,16 +27,23 @@ def _frontend_origin() -> str:
     return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 @router.get("/available", response_model=List[Dict[str, Any]])
-async def list_available_integrations(db: AsyncSession = Depends(get_db)) -> Any:
+async def list_available_integrations(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
     """
     List all available integrations discovered in the system that are explicitly enabled.
+
+    Audit B16: previously this endpoint had no authentication — any anonymous
+    caller could enumerate which integrations the deployment had enabled.
+    Now requires an authenticated user (any role).
     """
     manifests = integration_registry.get_all_manifests()
-    
+
     stmt = select(SystemIntegration).where(SystemIntegration.is_enabled == True)
     result = await db.execute(stmt)
     enabled_domains = {i.domain for i in result.scalars().all()}
-    
+
     return [m for m in manifests if m.get("domain") in enabled_domains]
 
 @router.get("/active", response_model=List[Dict[str, Any]])
@@ -67,12 +74,22 @@ async def list_active_integrations(
     ]
 
 @router.get("/{domain}/documentation")
-async def get_integration_documentation(domain: str, file: str = None) -> Dict[str, Any]:
-    """Get the markdown documentation for an integration if it exists."""
+async def get_integration_documentation(
+    domain: str,
+    file: str = None,
+    current_user: TokenData = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get the markdown documentation for an integration if it exists.
+
+    Audit B16: previously this endpoint had no authentication. Path traversal
+    was already mitigated via ``os.path.basename`` but the endpoint leaked
+    the catalogue of integration docs to anonymous callers. Now requires
+    an authenticated user (any role).
+    """
     import os
     import json
     from app.core.integration_registry import integration_registry
-    
+
     # We don't check if it's enabled here, so users can read docs before enabling.
     # We do check if the domain is known to the registry (discovered).
     manifests = integration_registry.get_all_manifests()
