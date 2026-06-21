@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getPatient, updatePatient, deletePatient } from '../../services/fhirService';
+import { getPatient, updatePatient, deletePatient } from '../../services/patientService';
 import { getExaminations } from '../../services/examinationService';
-import { Patient } from '../../types/fhir';
+import { Patient } from '../../types/patient';
 import { Edit2, Trash2, Activity, Fingerprint, X, Save, Plus, User, ChevronRight, Stethoscope } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';

@@ -115,7 +115,7 @@ Beyond export/import (file-based), Health Assistant can connect to a **live exte
 
 ### FHIR R4 Facade (Stage 3)
 
-Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/v1/fhir/R4/*` — alongside the legacy ORM-shape `/api/v1/fhir/*` router (which the frontend keeps using). The facade is the externally-facing interop surface; the ORM-shape router is internal-only.
+Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/v1/fhir/R4/*` — this is the **interop surface** for external systems (FHIR servers, HL7 importers, export/import jobs, SMART-on-FHIR clients). The frontend does **not** use the facade; it speaks the domain endpoints (`/patients/*`, `/observations/*`, `/examinations/*`, etc.) which return ORM-shape dicts optimized for the UI.
 
 - **`GET /fhir/R4/metadata`** returns a dynamic CapabilityStatement built from `RESOURCE_REGISTRY` (no auth per FHIR spec; Cache-Control 5 min). Advertises every registered resource + supported interactions + search params.
 - **`GET /fhir/R4/{Resource}`** returns a FHIR Bundle (`type=searchset`) with `total`, `link[]` pagination (self/first/last/previous/next), and `entry[]` of `{fullUrl, resource}`. Honors standard search params (`_id`, `_lastUpdated`, `_count` capped at 250, `_sort`, `_format`) plus per-resource params (`patient`, `code`, `date`, `status`, `category`, …). Tenant-scoped by default; soft-deleted rows excluded.

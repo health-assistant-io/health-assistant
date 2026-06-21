@@ -11,7 +11,7 @@ class MockStandardUser:
         self.role = Role.USER.value
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.fhir.list_patients")
+@patch("app.api.v1.endpoints.patients.list_patients")
 async def test_list_patients_isolation_for_standard_user(
     mock_list_patients, async_client: AsyncClient
 ):
@@ -23,7 +23,7 @@ async def test_list_patients_isolation_for_standard_user(
     mock_list_patients.return_value = {"items": [], "total": 0}
 
     # Standard user requests their patients
-    response = await async_client.get("/api/v1/fhir/Patient")
+    response = await async_client.get("/api/v1/patients")
     
     assert response.status_code == 200
     
@@ -34,7 +34,7 @@ async def test_list_patients_isolation_for_standard_user(
     app.dependency_overrides = {}
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.fhir.check_patient_access")
+@patch("app.api.v1.endpoints.patients.check_patient_access")
 async def test_access_denied_standard_user(
     mock_check_access, async_client: AsyncClient
 ):
@@ -46,7 +46,7 @@ async def test_access_denied_standard_user(
     mock_check_access.side_effect = HTTPException(status_code=403, detail="Access denied")
 
     patient_id = uuid.uuid4()
-    response = await async_client.get(f"/api/v1/fhir/Patient/{patient_id}")
+    response = await async_client.get(f"/api/v1/patients/{patient_id}")
     
     assert response.status_code == 403
     app.dependency_overrides = {}

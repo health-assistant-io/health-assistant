@@ -146,19 +146,17 @@ async def test_b5_get_observation_without_tenant_is_unscoped():
 
 
 def test_b5_endpoints_pass_tenant_id_to_service():
-    """B5 regression: the fhir.py single-resource endpoints must thread
+    """B5 regression: the observations endpoint module must thread
     ``current_user.tenant_id`` into the service call."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.fhir", fromlist=["x"]))
+    src = inspect.getsource(__import__("app.api.v1.endpoints.observations", fromlist=["x"]))
 
     for fn_name, service_call in (
         ("get_observation_endpoint", "get_observation(observation_id, current_user.tenant_id)"),
         ("delete_observation_endpoint", "get_observation(observation_id, current_user.tenant_id)"),
-        ("get_diagnostic_report_endpoint", "get_diagnostic_report(report_id, current_user.tenant_id)"),
-        ("get_medication_endpoint", "get_medication(medication_id, current_user.tenant_id)"),
     ):
-        assert f"async def {fn_name}(" in src, f"{fn_name} missing from fhir.py?"
+        assert f"async def {fn_name}(" in src, f"{fn_name} missing from observations.py?"
         assert service_call in src, (
-            f"fhir.py must call {service_call!r} — found unscoped call."
+            f"observations.py must call {service_call!r} — found unscoped call."
         )
 
 
@@ -170,10 +168,10 @@ async def test_b5_get_observation_endpoint_404s_on_cross_tenant(async_client):
     _override_user(MockUser(tenant_id=TENANT_A, role="ADMIN"))
     try:
         with patch(
-            "app.api.v1.endpoints.fhir.get_observation",
+            "app.api.v1.endpoints.observations.get_observation",
             new=AsyncMock(return_value=None),  # service returns None for cross-tenant
         ):
-            response = await async_client.get(f"/api/v1/fhir/Observation/{uuid4()}")
+            response = await async_client.get(f"/api/v1/observations/{uuid4()}")
         assert response.status_code == 404, response.text
     finally:
         _clear_overrides()
@@ -181,29 +179,16 @@ async def test_b5_get_observation_endpoint_404s_on_cross_tenant(async_client):
 
 @pytest.mark.asyncio
 async def test_b5_get_medication_endpoint_404s_on_cross_tenant(async_client):
-    """B5: medication cross-tenant read returns 404."""
+    """B5: medication cross-tenant read returns 404 (via check_medication_access)."""
+    from fastapi import HTTPException
+
     _override_user(MockUser(tenant_id=TENANT_A, role="ADMIN"))
     try:
         with patch(
-            "app.api.v1.endpoints.fhir.get_medication",
-            new=AsyncMock(return_value=None),
+            "app.api.v1.endpoints.medications.check_medication_access",
+            new=AsyncMock(side_effect=HTTPException(status_code=404, detail="Medication record not found")),
         ):
-            response = await async_client.get(f"/api/v1/fhir/Medication/{uuid4()}")
-        assert response.status_code == 404
-    finally:
-        _clear_overrides()
-
-
-@pytest.mark.asyncio
-async def test_b5_get_diagnostic_report_endpoint_404s_on_cross_tenant(async_client):
-    """B5: diagnostic report cross-tenant read returns 404."""
-    _override_user(MockUser(tenant_id=TENANT_A, role="ADMIN"))
-    try:
-        with patch(
-            "app.api.v1.endpoints.fhir.get_diagnostic_report",
-            new=AsyncMock(return_value=None),
-        ):
-            response = await async_client.get(f"/api/v1/fhir/DiagnosticReport/{uuid4()}")
+            response = await async_client.get(f"/api/v1/medications/{uuid4()}")
         assert response.status_code == 404
     finally:
         _clear_overrides()
@@ -215,10 +200,10 @@ async def test_b5_delete_observation_endpoint_404s_on_cross_tenant(async_client)
     _override_user(MockUser(tenant_id=TENANT_A, role="ADMIN"))
     try:
         with patch(
-            "app.api.v1.endpoints.fhir.get_observation",
+            "app.api.v1.endpoints.observations.get_observation",
             new=AsyncMock(return_value=None),
         ):
-            response = await async_client.delete(f"/api/v1/fhir/Observation/{uuid4()}")
+            response = await async_client.delete(f"/api/v1/observations/{uuid4()}")
         assert response.status_code == 404
     finally:
         _clear_overrides()

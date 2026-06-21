@@ -114,6 +114,15 @@ async def update_patient_medication(
     return result
 
 
+@router.get("/{medication_id}", response_model=MedicationRecordResponse)
+async def get_patient_medication(
+    medication_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    return await check_medication_access(medication_id, current_user, db)
+
+
 @router.delete("/{medication_id}")
 async def delete_patient_medication(
     medication_id: UUID,

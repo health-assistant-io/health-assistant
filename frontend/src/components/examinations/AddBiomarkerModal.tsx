@@ -1,6 +1,6 @@
 import React from 'react';
 import { AddBiomarkerForm } from './AddBiomarkerForm';
-import { createObservation } from '../../services/fhirService';
+import { createObservation } from '../../services/observationService';
 
 interface Props {
   isOpen: boolean;

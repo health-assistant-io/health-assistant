@@ -223,7 +223,8 @@ async def test_list_observations_rejects_invalid_patient(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# A2: /fhir/Observation/history endpoint
+# A2: service-level (the /fhir/Observation/history endpoint has been removed;
+# the get_observation_history service fn is retained for the analytics path)
 # ---------------------------------------------------------------------------
 
 
@@ -234,80 +235,6 @@ def test_get_observation_history_signature():
     sig = inspect.signature(get_observation_history)
     for required in ("tenant_id", "patient_id", "code"):
         assert required in sig.parameters
-
-
-@pytest.mark.asyncio
-async def test_observation_history_endpoint_does_not_call_get_observation():
-    """A2 regression: the endpoint must NOT call the arity-mismatched get_observation.
-
-    The original code called ``get_observation(patient_id, code, period)``.
-    ``get_observation`` takes a single ``observation_id`` argument — every
-    call raised TypeError. This test fails if that broken call returns.
-    """
-    _override_user(MockUser())
-    try:
-        with patch(
-            "app.api.v1.endpoints.fhir.check_patient_access", new=AsyncMock()
-        ), patch(
-            "app.api.v1.endpoints.fhir.get_observation_history",
-            new=AsyncMock(return_value=[]),
-        ) as mock_history, patch(
-            "app.api.v1.endpoints.fhir.get_observation",
-            new=AsyncMock(side_effect=AssertionError(
-                "endpoint called get_observation (regression regressed)"
-            )),
-        ):
-            from app.main import app
-            from httpx import AsyncClient, ASGITransport
-
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test",
-            ) as client:
-                response = await client.get(
-                    "/api/v1/fhir/Observation/history",
-                    params={"patient_id": str(PATIENT_A1), "code": "8867-4"},
-                )
-            assert response.status_code == 200, response.text
-            mock_history.assert_awaited_once()
-    finally:
-        _clear_overrides()
-
-
-@pytest.mark.asyncio
-async def test_observation_history_endpoint_passes_tenant_id():
-    """B5: the endpoint must forward current_user.tenant_id to the service."""
-    user = MockUser(tenant_id=TENANT_B)
-    _override_user(user)
-    try:
-        captured = {}
-
-        async def fake_history(tenant_id, patient_id, code, period="last-6-months"):
-            captured["tenant_id"] = tenant_id
-            captured["patient_id"] = patient_id
-            captured["code"] = code
-            return []
-
-        with patch(
-            "app.api.v1.endpoints.fhir.check_patient_access", new=AsyncMock()
-        ), patch(
-            "app.api.v1.endpoints.fhir.get_observation_history", new=fake_history
-        ):
-            from app.main import app
-            from httpx import AsyncClient, ASGITransport
-
-            async with AsyncClient(
-                transport=ASGITransport(app=app),
-                base_url="http://test",
-            ) as client:
-                response = await client.get(
-                    "/api/v1/fhir/Observation/history",
-                    params={"patient_id": str(PATIENT_A1), "code": "8867-4"},
-                )
-            assert response.status_code == 200
-        assert captured["tenant_id"] == TENANT_B
-    finally:
-        _clear_overrides()
 
 
 # ---------------------------------------------------------------------------

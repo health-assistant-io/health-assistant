@@ -29,7 +29,7 @@
   - *First pass:* AI provider `api_key` encrypted at rest + masked in responses; scope checks on `/ai-config/providers/*` and `/models/*`; telemetry endpoints tenant-scoped; global exception handler no longer leaks `str(exc)` (now uses a `correlation_id`); `fetch-external-models` SSRF guard; `list_observations` actually applies its filters; `/fhir/Observation/history` no longer raises `TypeError`; `sync_active_integrations` correctly routes telemetry to TimescaleDB; `AIModel.__table_args__` typo fixed + migration `f1a2b3c4d5e6`; dead `processors/fhir_mapper.py` deleted; `from app.models import *` works again; telemetry service stubs replaced with real implementations.
   - *Second pass (P0 completion):* OHLC double-aggregation fixed (`AVG(AVG(col))` → single-level) + telemetry bucket whitelist; `relative_score` boundary logic fixed (strictly-interior = Normal, boundary defers to range check); Magic Fill date now uses `datetime.now()`; FHIR single-resource reads tenant-scoped at the service level (`get_observation`/`get_diagnostic_report`/`get_medication`/`delete_observation`); **prompt-injection guard** (`app/utils/prompt_guard.py`, 8 OWASP LLM01 patterns + `DEFENSE_PREAMBLE`); `print()` leaks in AI service replaced with `logger.debug`; **SVG sanitizer rewritten** (all event-handler quoting forms + `javascript:`/`vbscript:`/`data:text/html` URLs + `<script>`/`<foreignObject>` elements); CORS fallback hostname fixed (underscore → hyphen); **WebSocket hardened** (subprotocol auth + fixed 10Hz busy-loop + error logging + 30s keepalive ping); **AuditLog provenance** (`app/services/audit_service.py`) wired into FHIR create/delete endpoints; insecure `POSTGRES_PASSWORD` default removed + production validator; SQL threshold validated before inlining; **webhook HMAC-SHA256** verification (opt-in via `webhook_secret`); auth on integration listing + documentation endpoints.
 - **FHIR R4 facade (Stage 3)** — **15 FHIR R4 conformance items resolved** (only advanced C6 conformance deferred):
-  - New `/api/v1/fhir/R4/` router exposes a conformant FHIR R4 REST API alongside the legacy ORM-shape `/api/v1/fhir/*` router (frontend untouched). See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
+  - New `/api/v1/fhir/R4/` router exposes a conformant FHIR R4 REST API — the **interop surface** for external systems. The frontend uses domain endpoints (`/patients/*`, `/observations/*`, ...); the legacy ORM-shape `/fhir/*` router has been deprecated. See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
   - `GET /fhir/R4/metadata` CapabilityStatement (dynamic, from `RESOURCE_REGISTRY`).
   - `GET /fhir/R4/{Resource}` returns FHIR Bundles (`type=searchset`) with pagination links; honors `_id`/`_lastUpdated`/`_count`/`_sort`/`_format` + resource-specific params (`patient`/`code`/`date`/`status`/etc).
   - `POST /fhir/R4/{Resource}` returns 201 + Location + ETag; input parsed via `fhir_to_orm`; output validated by `fhir.resources`.
@@ -40,6 +40,7 @@
   - **Medication intent discriminator**: one `fhir_medications` table serves both MedicationStatement (`intent=statement`) and MedicationRequest (`intent=order|plan|proposal`).
   - **AllergyIntolerance write-time FHIR gate**: `allergy_service` now calls `assert_valid_fhir()` (parity with `fhir_service`).
   - 4 migrations, 131 new tests, zero regressions.
+  - **API surface consolidation**: deprecated the misleadingly-named `/fhir/*` ORM-shape router; patient/observation CRUD moved to proper domain endpoints (`/patients/*`, `/observations/*`); medication create consolidated under `/medications/*` (new `GET /medications/{id}` for citation lookups). The `/fhir/R4/*` facade is now clearly the interop-only surface. The frontend's `types/fhir.ts` was split into `types/patient.ts` + `types/observation.ts` (the old name was misleading — these types mirror ORM-shape, not FHIR R4). Dead code removed: GraphQL client (defined but unused), 6 unused `/fhir/*` routes.
 
 #### Frontend
 - React 18 app with Vite & TypeScript
@@ -51,7 +52,7 @@
 - Notification Center & PWA Push support
 - Document gallery and clinical timeline
 - **Export & Import UI** (`/settings/export-import`, admin-only) — create exports, restore from ZIP/JSON, live job polling, download
-- **0.3.0 PWA + GraphQL fixes**: manifest shortcut `/examinations/new` → `/examinations/upload`; PWA runtime caches now use same-origin predicates (no longer hardcoded to `localhost:8000`); GraphQL client auth header is now per-request via `graphqlRequest()` (no longer captured at module-load).
+- **0.3.0 PWA fixes**: manifest shortcut `/examinations/new` → `/examinations/upload`; PWA runtime caches now use same-origin predicates (no longer hardcoded to `localhost:8000`).
 
 ### ⚠️ In Progress
 - Advanced anomaly detection algorithms (Statistical)

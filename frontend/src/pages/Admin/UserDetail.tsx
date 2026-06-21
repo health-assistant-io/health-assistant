@@ -19,7 +19,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { getUser, User } from '../../services/userService';
-import { listPatients, updatePatient } from '../../services/fhirService';
+import { listPatients, updatePatient } from '../../services/patientService';
 import { listDoctors, updateDoctor } from '../../services/doctorService';
 import { getTenant, Tenant } from '../../services/tenantService';
 import { useUIStore } from '../../store/slices/uiSlice';

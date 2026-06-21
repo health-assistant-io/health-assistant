@@ -279,96 +279,66 @@ GET /api/v1/documents/{document_id}/extract/status
 }
 ```
 
-### FHIR Resources
+### Patient & Observation endpoints
 
-> **Two routers coexist**: the routes below (`/api/v1/fhir/*`) are the **legacy ORM-shape** router
-> (snake_case + app fields like `tenant_id`, `biomarker_id`) used by the frontend. For
-> **canonical FHIR R4 JSON** (validated by `fhir.resources`, FHIR Bundles on search, 201 +
-> Location on create, 410 Gone tombstones), use the **R4 facade** at `/api/v1/fhir/R4/*`. See
-> [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md) for the developer guide and full route table.
+> Patient identity and biomarker readings are managed via dedicated domain
+> endpoints that return ORM-shape JSON (snake_case + app fields like
+> `biomarker_id`, `normalized_value`). These are the frontend's primary API
+> surface. For **canonical FHIR R4 interop** (external systems, export/import,
+> SMART-on-FHIR), see the `/api/v1/fhir/R4/*` facade at
+> [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 
 #### Create Patient
 
 ```http
-POST /api/v1/fhir/Patient
+POST /api/v1/patients
 ```
 
-**Request Body:** (FHIR Patient resource)
+**Request Body:** (ORM-shape patient dict)
 
 #### List Patients
 
 ```http
-GET /api/v1/fhir/Patient
+GET /api/v1/patients
 ```
 
 **Query Parameters:**
-- `_count`: Number of results per page
-- `_page`: Page number
-- `name`: Filter by name
+- `limit`: Number of results per page
+- `offset`: Pagination offset
+- `user_id`: Filter by linked user
 
 #### Get Patient
 
 ```http
-GET /api/v1/fhir/Patient/{id}
+GET /api/v1/patients/{id}
 ```
 
 #### Create Observation
 
 ```http
-POST /api/v1/fhir/Observation
+POST /api/v1/observations
 ```
 
-**Request Body:** (FHIR Observation resource)
+**Request Body:** (ORM-shape observation dict)
 
 #### List Observations
 
 ```http
-GET /api/v1/fhir/Observation
+GET /api/v1/observations
 ```
 
 **Query Parameters:**
-- `patient`: Filter by patient ID
+- `patient_id`: Filter by patient ID
 - `code`: Filter by LOINC code
-- `date`: Filter by date range
-- `_sort`: Sort field
+- `start_date` / `end_date`: Filter by date range
+- `limit` / `offset`: Pagination
 
-#### Get Observation History
-
-```http
-GET /api/v1/fhir/Observation/history
-```
-
-**Query Parameters:**
-- `patient`: Patient ID
-- `code`: LOINC code
-- `period`: Time period
-
-#### Create DiagnosticReport
+#### Get / Delete Observation
 
 ```http
-POST /api/v1/fhir/DiagnosticReport
+GET /api/v1/observations/{id}
+DELETE /api/v1/observations/{id}
 ```
-
-#### Get DiagnosticReport
-
-```http
-GET /api/v1/fhir/DiagnosticReport/{id}
-```
-
-#### Create Medication
-
-```http
-POST /api/v1/fhir/Medication
-```
-
-#### Get Medication
-
-```http
-GET /api/v1/fhir/Medication/{id}
-```
-
-#### List Medications
-- `POST /api/v1/fhir/Medication` - Create medication
 
 ### Clinical Events
 
@@ -691,17 +661,17 @@ GET /api/v1/analytics/reference-ranges
 - `POST /api/v1/documents/{id}/extract` - Trigger extraction
 - `GET /api/v1/documents/{id}/extract/status` - Get extraction status
 
-#### FHIR Resources
-- `GET /api/v1/fhir/Patient` - List patients
-- `POST /api/v1/fhir/Patient` - Create patient
-- `GET /api/v1/fhir/Patient/{id}` - Get patient
-- `GET /api/v1/fhir/Observation` - List observations
-- `POST /api/v1/fhir/Observation` - Create observation
-- `GET /api/v1/fhir/Observation/history` - Get observation history
-- `GET /api/v1/fhir/DiagnosticReport/{id}` - Get diagnostic report
-- `POST /api/v1/fhir/DiagnosticReport` - Create diagnostic report
-- `GET /api/v1/fhir/Medication` - List medications
-- `POST /api/v1/fhir/Medication` - Create medication
+#### Patients & Observations (domain endpoints — ORM-shape)
+- `GET /api/v1/patients` - List patients
+- `POST /api/v1/patients` - Create patient
+- `GET /api/v1/patients/{id}` - Get patient
+- `PUT /api/v1/patients/{id}` - Update patient
+- `DELETE /api/v1/patients/{id}` - Delete patient
+- `GET /api/v1/observations` - List observations (patient/code/date filters)
+- `POST /api/v1/observations` - Create observation
+- `GET /api/v1/observations/{id}` - Get observation
+- `DELETE /api/v1/observations/{id}` - Delete observation
+- For canonical FHIR R4 interop, see `/api/v1/fhir/R4/*` ([FHIR_R4_FACADE.md](FHIR_R4_FACADE.md))
 
 #### Wearable Data
 - `POST /api/v1/wearable/data` - Upload wearable data

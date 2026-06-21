@@ -1,4 +1,5 @@
-import { Patient, Observation, Medication } from './fhir';
+import { Observation } from './observation';
+import { MedicationRecord } from '../services/medicationService';
 
 export interface ContactPoint {
   system: 'phone' | 'email' | 'fax' | 'url' | 'pager' | 'sms' | 'other';
@@ -46,7 +47,7 @@ export interface Examination {
   organization?: Organization;
   doctors?: Doctor[];
   observations?: Observation[];
-  medications?: Medication[];
+  medications?: MedicationRecord[];
   extraction_status?: string;
   extraction_progress?: number;
   error_message?: string;

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
-import { listPatients, createPatient, updatePatient, deletePatient } from '../../services/fhirService';
+import { listPatients, createPatient, updatePatient, deletePatient } from '../../services/patientService';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, User, Edit2, Trash2, Calendar, Fingerprint, ChevronRight, Users, X, Save } from 'lucide-react';
 import { calculateAge, formatAge } from '../../utils/dateUtils';

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
-import { listPatients } from '../../services/fhirService';
+import { listPatients } from '../../services/patientService';
 import { PatientSelect } from '../patients';
 import { Search, ChevronDown, Settings, LogOut, Menu, X, Sparkles, Languages, Sun, Moon, ArrowLeft, Link as LinkIcon, Info } from 'lucide-react';
 import { SyncIndicator } from '../ui/SyncIndicator';

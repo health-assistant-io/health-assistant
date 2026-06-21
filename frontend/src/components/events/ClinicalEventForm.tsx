@@ -12,7 +12,7 @@ import {
   ClinicalEventStatus,
 } from '../../services/clinicalEventService';
 import { getExaminations } from '../../services/examinationService';
-import { listObservations } from '../../services/fhirService';
+import { listObservations } from '../../services/observationService';
 import { DynamicMetadataForm } from './DynamicMetadataForm';
 import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorModal';
 import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
