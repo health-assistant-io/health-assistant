@@ -25,8 +25,8 @@ def fhir_isoformat(value: Optional[dt.datetime]) -> Optional[str]:
     which fails validation. Naive datetimes are assumed UTC (the project's
     canonical storage timezone). Returns ``None`` for ``None``.
 
-    Audit D9: this is the defensive layer that prevents any future
-    naive-datetime regression from silently failing FHIR validation.
+    This is the defensive layer that prevents naive-datetime values from
+    silently failing FHIR validation downstream.
     """
     if value is None:
         return None

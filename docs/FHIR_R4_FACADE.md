@@ -251,7 +251,7 @@ backend/tests/                              # 131 new tests across 6 files
 |------|-------|--------|
 | `POST /fhir/R4/{Resource}/_search` | Phase 8 | Useful for long query strings; no users asking yet. |
 | `_format=xml` | Phase 8 | Adds `lxml` dependency; JSON is sufficient for interop. |
-| Transaction/batch Bundle (`POST /fhir/R4` with `type=transaction\|batch`) | Phase 8 | Complex; deferred per audit C6 (low severity). |
+| Transaction/batch Bundle (`POST /fhir/R4` with `type=transaction\|batch`) | Phase 8 | Complex; low priority, deferred. |
 | SMART-on-FHIR scopes (`/.well-known/smart-configuration`, `patient/*.read`) | Stage 4 | Facade uses existing JWT auth + tenant scoping for now. |
 | US Core profile validation | Stage 4 | Profiles are an internal-best-practice, not required for interop. |
 | `_include` / `_revinclude` chained search params | Phase 8 | Default to depth=1; no recursion for v1. |

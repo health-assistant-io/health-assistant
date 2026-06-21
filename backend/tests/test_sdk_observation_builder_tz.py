@@ -28,7 +28,7 @@ PATIENT = uuid4()
 
 
 def test_observation_builder_keeps_timezone():
-    """Audit D9 regression: builder must NOT strip tzinfo."""
+    """regression regression: builder must NOT strip tzinfo."""
     from integrations.sdk.observation_builder import ObservationBuilder
 
     tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=timezone.utc)
@@ -257,5 +257,5 @@ def test_manual_sync_response_includes_dropped_field():
     # The response dict must include a field that exposes dropped/invalid count
     assert "dropped_invalid" in src or "invalid_dropped" in src, (
         "manual sync endpoint must surface dropped_invalid count to the UI "
-        "(audit A4 follow-up: silent drops are the bug)"
+        "(regression follow-up: silent drops are the bug)"
     )

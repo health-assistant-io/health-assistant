@@ -207,14 +207,14 @@ def test_a10_no_hardcoded_date_in_source():
     code = "\n".join(code_lines)
 
     assert "Today's date is 2026-03-22" not in code, (
-        "ai_assistance_service prompt body still hardcodes the 2026-03-22 date (audit A10)."
+        "ai_assistance_service prompt body still hardcodes the 2026-03-22 date."
     )
     assert "assume 2026" not in code, (
-        "ai_assistance_service prompt body still hardcodes the year 2026 (audit A10)."
+        "ai_assistance_service prompt body still hardcodes the year 2026."
     )
     # And the live injection variables must be present.
-    assert "today_iso" in code, "Missing live today_iso injection (audit A10)."
-    assert "current_year" in code, "Missing live current_year injection (audit A10)."
+    assert "today_iso" in code, "Missing live today_iso injection."
+    assert "current_year" in code, "Missing live current_year injection."
 
 
 @pytest.mark.asyncio
@@ -272,5 +272,5 @@ def test_a10_date_is_current():
     # The code computes datetime.now(timezone.utc) and strftime — confirm
     # those calls exist so the prompt can never serve a stale date.
     assert "datetime.now(timezone.utc)" in src, (
-        "Magic Fill must compute the date from datetime.now(timezone.utc) (audit A10)."
+        "Magic Fill must compute the date from datetime.now(timezone.utc)."
     )

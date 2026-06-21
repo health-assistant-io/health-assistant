@@ -93,11 +93,9 @@ class ObservationBuilder:
             else:
                 relative_score = 0.5 # Default middle score if range is incomplete
 
-        # Audit D9: keep timezone-aware datetimes. The previous code stripped
-        # tzinfo "for asyncpg compat" — asyncpg handles TIMESTAMP WITH TIME
-        # ZONE columns natively for tz-aware Python datetimes, so the strip
-        # was unnecessary AND destructive: the resulting isoformat() lacks
-        # a timezone offset and fails the FHIR R4 regex, causing every
+        # Keep timezone-aware datetimes. asyncpg handles TIMESTAMP WITH TIME
+        # ZONE columns natively for tz-aware Python datetimes; stripping tzinfo
+        # would make isoformat() fail the FHIR R4 regex and cause every
         # SDK-built observation to be silently dropped by assert_valid_fhir.
         # If a caller passes a naive datetime, assume UTC.
         eff_dt = self._data["effective_datetime"]

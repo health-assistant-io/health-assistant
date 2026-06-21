@@ -41,7 +41,7 @@ def test_b7_no_print_calls_in_ai_assistance_service():
     ]
     assert print_calls == [], (
         f"ai_assistance_service.py still contains {len(print_calls)} top-level "
-        "print() call(s) — debug stdout leaks (audit B7)."
+        "print() call(s) — debug stdout leaks."
     )
 
 
@@ -72,7 +72,7 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
 
     assert out["success"] is True
     assert "printed" not in captured, (
-        "_define_biomarker called print() — must use logger (audit B7)"
+        "_define_biomarker called print() — must use logger"
     )
 
 
@@ -96,7 +96,7 @@ def test_b10_cors_default_has_no_underscore():
     fallback = match.group(1)
     assert "_" not in fallback.split("://", 1)[1], (
         f"CORS fallback {fallback!r} contains an underscore in the hostname "
-        "(audit B10) — invalid per RFC 1123."
+        " — invalid per RFC 1123."
     )
 
 
@@ -112,7 +112,7 @@ def test_b10_cors_default_is_valid_hostname():
     # Validate the host portion is RFC-1123 clean (letters, digits, hyphens, dots).
     host = fallback.split("://", 1)[1].split("/")[0]
     assert re.fullmatch(r"[a-z0-9.\-]+", host), (
-        f"CORS fallback host {host!r} contains illegal characters (audit B10)."
+        f"CORS fallback host {host!r} contains illegal characters."
     )
     assert "_" not in host
 
@@ -129,7 +129,7 @@ def test_b13_password_default_is_empty():
     field = Settings.model_fields["POSTGRES_PASSWORD"]
     assert field.default == "", (
         f"POSTGRES_PASSWORD still ships a code default of {field.default!r} "
-        "(audit B13) — must require explicit configuration."
+        " — must require explicit configuration."
     )
 
 
@@ -170,7 +170,7 @@ def test_b13_env_example_has_no_admin123():
         pytest.skip(".env.example not present")
     content = env_example.read_text()
     assert "admin123" not in content, (
-        ".env.example still references the legacy admin123 password (audit B13)."
+        ".env.example still references the legacy admin123 password."
     )
 
 

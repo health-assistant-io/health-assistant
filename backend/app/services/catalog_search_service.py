@@ -50,12 +50,10 @@ async def _set_similarity_threshold(db: AsyncSession, threshold: float) -> None:
     We use the SET command directly rather than func.set_limit() to avoid
     double-precision casting issues in asyncpg.
 
-    Audit B14: ``threshold`` was previously interpolated into the SQL via
-    f-string with no validation. Although the value came from a constant
-    default today, the pattern was SQL-injection-shaped. PostgreSQL ``SET``
-    does not accept bind parameters, so we validate the input is a finite
-    float in ``[0, 1]`` before inlining it — anything outside that range
-    (or of the wrong type) falls back to the safe default.
+    PostgreSQL ``SET`` does not accept bind parameters, so the threshold
+    must be inlined into the SQL string. We validate the input is a finite
+    float in ``[0, 1]`` before inlining — anything outside that range (or
+    of the wrong type) falls back to the safe default.
     """
     from sqlalchemy import text
 

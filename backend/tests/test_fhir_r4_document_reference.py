@@ -1,4 +1,4 @@
-"""Tests for DocumentReference projection from DocumentModel (audit C14).
+"""Tests for DocumentReference projection from DocumentModel.
 
 Covers:
 - DocumentModel.to_fhir_dict() emits valid FHIR R4 DocumentReference

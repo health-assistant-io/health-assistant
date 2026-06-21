@@ -34,9 +34,7 @@ async def list_available_integrations(
     """
     List all available integrations discovered in the system that are explicitly enabled.
 
-    Audit B16: previously this endpoint had no authentication — any anonymous
-    caller could enumerate which integrations the deployment had enabled.
-    Now requires an authenticated user (any role).
+    Requires an authenticated user (any role).
     """
     manifests = integration_registry.get_all_manifests()
 
@@ -81,10 +79,8 @@ async def get_integration_documentation(
 ) -> Dict[str, Any]:
     """Get the markdown documentation for an integration if it exists.
 
-    Audit B16: previously this endpoint had no authentication. Path traversal
-    was already mitigated via ``os.path.basename`` but the endpoint leaked
-    the catalogue of integration docs to anonymous callers. Now requires
-    an authenticated user (any role).
+    Requires an authenticated user (any role). Path traversal is mitigated
+    via ``os.path.basename``.
     """
     import os
     import json
@@ -773,8 +769,8 @@ async def sync_integration(
                 else 0
             )
 
-            # Audit A4: route telemetry-class observations to the
-            # TimescaleDB hypertable via the shared helper.
+            # Route telemetry-class observations to the TimescaleDB hypertable
+            # via the shared helper.
             from app.services.integration_sync_service import (
                 apply_telemetry_split,
             )
@@ -793,9 +789,7 @@ async def sync_integration(
         integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
 
         # If validation dropped observations, mark the sync as partial so the
-        # UI can surface it; otherwise success. (Audit A4 follow-up: silent
-        # drops were the original bug — user saw "Sync completed successfully"
-        # while every observation was rejected.)
+        # UI can surface it; otherwise success.
         sync_status = "success" if dropped_invalid == 0 else "partial"
         message = (
             "Sync completed successfully"
@@ -893,10 +887,9 @@ def _verify_webhook_signature(
 ) -> bool:
     """Constant-time HMAC-SHA256 verification of a webhook payload.
 
-    Audit B15: the webhook route used the integration_id as the only secret,
-    so anyone who could guess/enumerate the UUID could POST arbitrary data.
-    Integrations can now set ``user_config["webhook_secret"]``; when present,
-    the route verifies an HMAC-SHA256 signature over the raw body.
+    Used to authenticate inbound webhook deliveries when an integration has
+    configured a ``webhook_secret``. The route verifies an HMAC-SHA256
+    signature over the raw body before processing the payload.
 
     Supported header formats (case-insensitive lookup by caller):
       - ``X-Webhook-Signature``: ``<hex digest>``
@@ -933,13 +926,12 @@ async def integration_webhook(
     """
     Handle incoming webhooks for a specific integration.
 
-    Audit B15: the integration_id alone is no longer treated as sufficient
-    authentication when a ``webhook_secret`` is configured on the
-    integration's ``user_config``. When a secret is present, the request
-    MUST carry a valid HMAC-SHA256 signature header; otherwise the request
-    is rejected with 401. Integrations without a configured secret retain
-    the legacy behaviour (integration_id acts as the secret) for backward
-    compatibility — operators are encouraged to set a webhook_secret.
+    When a ``webhook_secret`` is configured on the integration's
+    ``user_config``, the request MUST carry a valid HMAC-SHA256 signature
+    header; otherwise the request is rejected with 401. Integrations without
+    a configured secret retain the legacy behaviour (integration_id acts as
+    the secret) for backward compatibility — operators are encouraged to set
+    a webhook_secret.
     """
     try:
         integration_uuid = UUID(integration_id)
@@ -964,8 +956,8 @@ async def integration_webhook(
     if not hasattr(provider, "handle_webhook"):
         raise HTTPException(status_code=400, detail="Provider does not support webhooks")
 
-    # Audit B15: if the integration configured a ``webhook_secret``, verify
-    # the HMAC-SHA256 signature of the raw body before processing. This
+    # If the integration configured a ``webhook_secret``, verify the
+    # HMAC-SHA256 signature of the raw body before processing. This
     # prevents unauthorized POSTs even if the integration UUID leaks.
     # Read the raw body ONCE here so the signature check and the downstream
     # JSON parse share the exact bytes.

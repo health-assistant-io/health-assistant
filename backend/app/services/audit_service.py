@@ -1,11 +1,7 @@
 """Audit logging service — writes provenance records for clinical writes.
 
-Audit B12: the ``AuditLog`` table existed but was never written. ``created_by``
-and ``updated_by`` on FHIR services were always NULL — no provenance trail for
-who created/modified/deleted a clinical resource.
-
-This module provides a single helper, ``log_audit_action``, that the FHIR and
-clinical endpoints call after a successful write. The helper:
+Provides a single helper, ``log_audit_action``, that the FHIR and clinical
+endpoints call after a successful write. The helper:
 
 - Opens its own short-lived session (so the audit row is committed even if the
   caller later rolls back — the fact that the write *happened* is itself the

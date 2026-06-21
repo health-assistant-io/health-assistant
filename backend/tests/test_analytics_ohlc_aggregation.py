@@ -38,7 +38,7 @@ def test_a8_no_double_wrapped_avg_in_source():
     #
     # Check: the template uses {avg_expr} (not AVG({avg_col})).
     assert "AVG({avg_col})" not in src, (
-        "analytics_service still double-wraps AVG(AVG(...)) (audit A8)."
+        "analytics_service still double-wraps AVG(AVG(...))."
     )
     assert "MAX({max_col})" not in src
     assert "MIN({min_col})" not in src
@@ -54,10 +54,10 @@ def test_a8_raw_table_uses_single_level_aggregate():
     # The else branch must define avg_expr = f"AVG({col})", not avg_col.
     # Find the else branch for the raw-table path.
     assert 'avg_expr = f"AVG({col})"' in src, (
-        "Raw-table path must use single-level AVG(col) (audit A8)."
+        "Raw-table path must use single-level AVG(col)."
     )
     assert 'avg_col = f"AVG({col})"' not in src, (
-        "Legacy avg_col = AVG(col) pattern still present (audit A8)."
+        "Legacy avg_col = AVG(col) pattern still present."
     )
 
 
@@ -68,7 +68,7 @@ def test_a8_cagg_uses_pre_aggregated_columns():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert "avg_expr" in src, "Expected avg_expr variable (audit A8 fix)."
+    assert "avg_expr" in src, "Expected avg_expr variable (regression fix)."
     assert "{col}_avg" in src, "Expected pre-aggregated _avg column reference."
     assert "{col}_max" in src
     assert "{col}_min" in src
@@ -87,7 +87,7 @@ def test_a8_bucket_whitelist_exists():
     # Must include the common buckets from PERIOD_MAPPING.
     for expected in ("1 minute", "15 minutes", "1 hour", "1 day", "1 week", "1 month"):
         assert expected in _ALLOWED_TELEMETRY_BUCKETS, (
-            f"Expected {expected!r} in the telemetry bucket whitelist (audit A8)."
+            f"Expected {expected!r} in the telemetry bucket whitelist."
         )
 
 
@@ -116,11 +116,11 @@ def test_a8_sql_uses_safe_bucket_variable():
 
     src = inspect.getsource(analytics_service)
     assert "safe_bucket" in src, (
-        "Expected safe_bucket variable in the SQL construction (audit A8)."
+        "Expected safe_bucket variable in the SQL construction."
     )
     # The INTERVAL must interpolate safe_bucket.
     assert "INTERVAL '{safe_bucket}'" in src, (
-        "SQL must interpolate the validated safe_bucket (audit A8)."
+        "SQL must interpolate the validated safe_bucket."
     )
     # The raw bucket must not appear in an INTERVAL clause in the actual SQL
     # f-string (strip comments to avoid false-triggering on the audit note).
@@ -128,7 +128,7 @@ def test_a8_sql_uses_safe_bucket_variable():
     code = "\n".join(code_lines)
     # Check that no SQL construction uses INTERVAL '{bucket}' (unvalidated).
     assert "INTERVAL '{bucket}'" not in code, (
-        "SQL still interpolates the unvalidated raw bucket into INTERVAL (audit A8)."
+        "SQL still interpolates the unvalidated raw bucket into INTERVAL."
     )
 
 
@@ -165,7 +165,7 @@ def test_a8_generated_sql_for_raw_table_has_no_nested_aggregates():
 
     # No nested aggregate functions.
     assert not re.search(r"AVG\s*\(\s*AVG\s*\(", sql, re.IGNORECASE), (
-        "Raw-table SQL contains AVG(AVG(...)) — double-wrapping bug (audit A8)."
+        "Raw-table SQL contains AVG(AVG(...)) — double-wrapping bug."
     )
     assert not re.search(r"MAX\s*\(\s*MAX\s*\(", sql, re.IGNORECASE)
     assert not re.search(r"MIN\s*\(\s*MIN\s*\(", sql, re.IGNORECASE)

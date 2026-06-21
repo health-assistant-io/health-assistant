@@ -1,4 +1,4 @@
-"""Tests for Provenance model + service (audit C10).
+"""Tests for Provenance model + service.
 
 Covers:
 - ProvenanceModel.to_fhir_dict() emits valid FHIR R4 Provenance

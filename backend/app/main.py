@@ -160,13 +160,11 @@ app = FastAPI(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global 500 handler.
+    """Global 500 handler — never leaks internal exception detail to clients.
 
-    Audit B4: previously returned ``{"detail": str(exc)}`` to the client,
-    leaking internal detail / stack traces. In production we now log the
-    full detail server-side and return a generic message + correlation id
-    so support can locate the entry. In DEBUG mode the detail is still
-    surfaced for developer convenience.
+    Logs the full exception server-side with a correlation id, then returns
+    a generic message + the correlation id so support can locate the entry.
+    In DEBUG mode the detail is surfaced for developer convenience.
     """
     import uuid as _uuid
 
@@ -220,11 +218,8 @@ if settings.APP_ENV == "development":
         expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
     )
 else:
-    # In production, restrict to specific trusted domains.
-    # Audit B10: the previous fallback ``https://app.health_assistant.com``
-    # used an underscore in the hostname — underscores are invalid in DNS
-    # names (RFC 1123) so the CORS rule could never match a real origin.
-    # Use a hyphenated default; FRONTEND_URL env remains the source of truth.
+    # In production, restrict to specific trusted domains. Hostnames must be
+    # RFC 1123 compliant (no underscores); FRONTEND_URL env is the source of truth.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[os.getenv("FRONTEND_URL", "https://app.health-assistant.com")],

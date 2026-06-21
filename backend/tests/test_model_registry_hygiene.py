@@ -25,7 +25,7 @@ BACKEND = REPO_ROOT / "backend"
 def test_fhir_mapper_module_removed():
     """A5: the dead ``fhir_mapper.py`` file must no longer exist."""
     assert not (BACKEND / "app" / "processors" / "fhir_mapper.py").exists(), (
-        "fhir_mapper.py should have been deleted (audit A5)"
+        "fhir_mapper.py should have been deleted"
     )
 
 
@@ -55,7 +55,7 @@ def test_wearabledata_alias_absent():
     import app.models as models_pkg
 
     assert "WearableDataModel" not in models_pkg.__all__, (
-        "models.__all__ still references the renamed WearableDataModel (audit A7)"
+        "models.__all__ still references the renamed WearableDataModel"
     )
 
 
@@ -74,7 +74,7 @@ def test_no_other_references_to_wearabledata():
     own docstrings/assertions, so we exclude it from the scan.
     """
     ignore_dirs = {".git", ".ruff_cache", "__pycache__", "node_modules", "venv"}
-    ignore_files = {"test_audit_a5_a7_model_hygiene.py", "AUDIT-2026-06-21.md"}
+    ignore_files = {"test_model_registry_hygiene.py"}
     hits: list[str] = []
 
     for path in BACKEND.rglob("*.py"):

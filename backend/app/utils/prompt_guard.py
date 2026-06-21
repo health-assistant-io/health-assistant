@@ -1,10 +1,11 @@
 """Prompt-injection / jailbreak detection for AI user inputs.
 
-Audit B6: the platform had no prompt-injection defense at all — OCR text and
-chat user input were shipped raw to the configured LLM endpoint. The HITL
-wall is the only structural protection (the AI never writes directly), but
-defence-in-depth demands that we also detect and flag known injection
-patterns at the input boundary.
+Defence-in-depth input filter that runs before any user-supplied text
+(OCR output, chat messages, Magic Fill prompts) is shipped to the
+configured LLM endpoint. The HITL wall remains the structural protection
+(the AI never writes directly); this filter adds an additional signal at
+the input boundary so suspicious patterns can be logged and (optionally)
+rejected by the caller.
 
 This module is intentionally heuristic-based: no prompt-injection detector
 is perfect, and false positives would hurt UX. We use three tiers:

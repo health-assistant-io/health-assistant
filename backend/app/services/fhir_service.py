@@ -348,13 +348,10 @@ async def get_observation(
 ) -> Optional[Observation]:
     """Get observation by ID.
 
-    Audit B5: previously this function took only ``observation_id`` and did
-    no tenant filtering — a cross-tenant read was possible if an endpoint
-    forgot to verify ownership (the GET endpoint did). ``tenant_id`` is now
-    an optional parameter; when supplied, the query is restricted to that
-    tenant so the service itself enforces isolation (defense in depth).
-    ``None`` preserves the legacy unscoped behaviour for internal callers
-    that have already verified access (e.g. export/import).
+    ``tenant_id`` is an optional parameter; when supplied, the query is
+    restricted to that tenant so the service itself enforces isolation
+    (defense in depth). ``None`` preserves unscoped behaviour for internal
+    callers that have already verified access (e.g. export/import).
     """
     if not DATABASE_AVAILABLE:
         return None
@@ -384,9 +381,9 @@ async def delete_observation(
 ) -> bool:
     """Delete observation by ID.
 
-    Audit B5: ``tenant_id`` is now an optional parameter; when supplied the
-    lookup is tenant-scoped so a cross-tenant delete is impossible even if
-    the endpoint forgets to check.
+    ``tenant_id`` is an optional parameter; when supplied the lookup is
+    tenant-scoped so cross-tenant deletes are impossible even if the
+    endpoint forgets to check.
     """
     if not DATABASE_AVAILABLE:
         return False
@@ -428,12 +425,8 @@ async def list_observations(
 ) -> Dict[str, Any]:
     """List observations (with filtering and pagination).
 
-    Audit A1: previously this function accepted ``patient_id``/``code``/
-    ``start_date``/``end_date`` but silently ignored them — the query only
-    filtered by ``tenant_id``, returning every observation in the tenant
-    regardless of which patient/code/date the caller asked for. This caused
-    cross-patient data exposure even when the endpoint had already verified
-    patient access. All filters are now applied.
+    All four filters (``patient_id``/``code``/``start_date``/``end_date``)
+    are applied to the query, plus the tenant scope. Filters are AND-combined.
     """
     if not DATABASE_AVAILABLE:
         return {"items": [], "total": 0}
@@ -530,11 +523,8 @@ async def get_observation_history(
 ) -> List[Dict[str, Any]]:
     """Get observation history for a single patient+code pair.
 
-    Audit A2: the ``/fhir/Observation/history`` endpoint previously called
-    ``get_observation(patient_id, code, period)`` — but ``get_observation``
-    only takes ``(observation_id)``. Every call raised ``TypeError``. This
-    new function provides the actual history lookup the endpoint needs, with
-    tenant scoping (audit B5).
+    Dedicated lookup used by the ``/fhir/Observation/history`` endpoint.
+    Tenant-scoped via the ``tenant_id`` parameter.
     """
     if not DATABASE_AVAILABLE:
         return []
@@ -630,9 +620,9 @@ async def get_diagnostic_report(
 ) -> Optional[DiagnosticReport]:
     """Get diagnostic report by ID.
 
-    Audit B5: ``tenant_id`` optionally scopes the lookup so cross-tenant
-    reads are impossible at the service level. ``None`` preserves legacy
-    behaviour for internal callers that have already verified access.
+    ``tenant_id`` optionally scopes the lookup so cross-tenant reads are
+    impossible at the service level. ``None`` preserves unscoped behaviour
+    for internal callers that have already verified access.
     """
     if not DATABASE_AVAILABLE:
         return None
@@ -738,9 +728,9 @@ async def get_medication(
 ) -> Optional[Medication]:
     """Get medication by ID.
 
-    Audit B5: ``tenant_id`` optionally scopes the lookup so cross-tenant
-    reads are impossible at the service level. ``None`` preserves legacy
-    behaviour for internal callers that have already verified access.
+    ``tenant_id`` optionally scopes the lookup so cross-tenant reads are
+    impossible at the service level. ``None`` preserves unscoped behaviour
+    for internal callers that have already verified access.
     """
     if not DATABASE_AVAILABLE:
         return None

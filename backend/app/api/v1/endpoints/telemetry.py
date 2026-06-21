@@ -51,10 +51,10 @@ async def get_telemetry_data_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get telemetry data for a device (tenant-scoped).
+    """Get telemetry data for a device.
 
-    The caller can only ever read data belonging to their own tenant
-    regardless of which device_id they pass (audit B3).
+    Tenant-scoped: the caller can only ever read data belonging to their own
+    tenant regardless of which device_id they pass.
     """
     data = await get_telemetry_data(
         db,
@@ -74,7 +74,7 @@ async def get_telemetry_summary_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get daily summary for telemetry data (tenant-scoped, audit B3)."""
+    """Get daily summary for telemetry data (tenant-scoped)."""
     summary = await get_telemetry_summary(
         db,
         tenant_id=current_user.tenant_id,
@@ -92,11 +92,9 @@ async def get_telemetry_anomalies_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Detect anomalies in a device's telemetry stream (tenant-scoped).
+    """Detect anomalies in a device's telemetry stream.
 
-    Replaces the broken implementation that called
-    ``await AnomalyDetector().detect_biomarker_anomalies(device_id, metric,
-    period)`` — wrong arity and on a synchronous function (audit A6).
+    Tenant-scoped via ``current_user.tenant_id``.
     """
     anomalies = await get_telemetry_anomalies(
         db,

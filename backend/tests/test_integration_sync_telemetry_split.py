@@ -271,7 +271,7 @@ def test_sync_active_integrations_imports_apply_telemetry_split():
     src = inspect.getsource(tasks.sync_active_integrations)
     assert "apply_telemetry_split" in src, (
         "sync_active_integrations does not invoke apply_telemetry_split — "
-        "audit A4 regressed (telemetry would again land in fhir_observations)"
+        "regression regressed (telemetry would again land in fhir_observations)"
     )
 
 

@@ -60,7 +60,7 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     )
 
     def to_dict(self) -> dict:
-        """Return a dict with the api_key ENCRYPTED (audit B1).
+        """Return a dict with the api_key in its at-rest encrypted form.
 
         Callers that need the plaintext key must use
         :meth:`get_api_key_plaintext` (defined on the service). The
@@ -89,10 +89,10 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     def get_api_key_plaintext(self) -> Optional[str]:
         """Return the decrypted api_key, or None if not set.
 
-        Audit B1: this is the only sanctioned way to read the plaintext key
-        for use with the LLM client. Handles both the encrypted form and
-        legacy plaintext rows (returns the value verbatim if it doesn't
-        start with the encrypted prefix).
+        This is the only sanctioned way to read the plaintext key for use
+        with the LLM client. Handles both the encrypted form and any legacy
+        plaintext rows (returns the value verbatim if it doesn't start with
+        the encrypted prefix).
         """
         from app.core.encryption import decrypt_secret
 

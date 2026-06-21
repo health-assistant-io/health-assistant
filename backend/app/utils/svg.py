@@ -1,24 +1,16 @@
 """SVG sanitization for AI-generated category icons.
 
-Audit B8: the previous implementation used a single regex
-``re.sub(r'on\\w+=".*?"', ...)`` that only caught double-quoted event
-handlers. It missed:
+Defends against XSS in AI-generated SVG markup. Strips:
 
-- single-quoted handlers: ``<svg onload='alert(1)'>``
-- unquoted handlers:     ``<svg onload=alert(1)>``
-- ``javascript:`` / ``vbscript:`` / ``data:text/html`` URLs in ``href`` /
-  ``xlink:href``
-- dangerous nested elements that survive a single naive ``<script>`` strip
-
-This module now strips:
-
-1. Dangerous elements entirely (``<script>``, ``<foreignObject>``) — both
-   paired and self-closing forms, case-insensitively.
-2. All ``on*`` event-handler attributes regardless of quoting style.
-3. Script-URL attributes (``javascript:``, ``vbscript:``, ``data:text/html``).
+- Dangerous elements entirely (``<script>``, ``<foreignObject>``) — both
+  paired and self-closing forms, case-insensitively.
+- All ``on*`` event-handler attributes regardless of quoting style
+  (double-quoted, single-quoted, or unquoted).
+- Script-URL attributes (``javascript:``, ``vbscript:``, ``data:text/html``)
+  in ``href`` / ``xlink:href``.
 
 The optimization passes (injecting default Lucide-like stroke / fill /
-viewBox attributes) are preserved unchanged.
+viewBox attributes) are preserved.
 """
 import re
 
@@ -35,7 +27,7 @@ _SELF_CLOSED_DANGEROUS = re.compile(
     re.IGNORECASE,
 )
 
-# Audit B8: all on* event handler attributes in every quoting form.
+# All on* event handler attributes in every quoting form.
 #   onfoo="..."   onfoo='...'   onfoo=bar   onfoo = "..."
 # The alternation matches double-quoted, single-quoted, then unquoted values
 # (unquoted = anything up to the next whitespace or tag-closing bracket).
@@ -82,8 +74,7 @@ def sanitize_svg(svg_content: str) -> str:
         if svg == prev:
             break
 
-    # 2. Security: strip all on* event handlers regardless of quoting
-    #    (audit B8 — previously only double-quoted handlers were caught).
+    # 2. Security: strip all on* event handlers regardless of quoting.
     svg = _EVENT_HANDLER_ATTRS.sub("", svg)
 
     # 3. Security: strip javascript:/vbscript:/data:text/html URLs.

@@ -112,7 +112,7 @@ async def test_global_exception_handler_no_detail_in_prod(monkeypatch):
     assert response.status_code == 500
     body = response.body.decode() if hasattr(response, "body") else ""
     assert "hunter2" not in body, (
-        "Production 500 response leaked internal exception detail (audit B4)"
+        "Production 500 response leaked internal exception detail"
     )
     assert "correlation_id" in body, "Missing correlation_id in 500 response"
 

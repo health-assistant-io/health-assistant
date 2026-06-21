@@ -5,9 +5,9 @@ tables (e.g. ``AIProviderModel.api_key``). Integrations continue to use
 ``integrations.sdk.secrets`` which wraps the same Fernet key inside
 ``user_config`` JSONB blobs.
 
-Audit B1: ``AIProviderModel.api_key`` was previously plaintext and returned
-to clients via ``AIProviderResponse.api_key``. Encrypting at rest closes
-the data-leak vector; the response schema masks on read.
+Secrets are encrypted at rest with a Fernet token prefixed by ``enc::`` so
+storage and transport layers can distinguish them from any legacy plaintext.
+Response schemas mask the key on read so it is never returned to clients.
 """
 from __future__ import annotations
 

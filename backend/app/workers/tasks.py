@@ -512,12 +512,9 @@ async def sync_active_integrations(self):
                             else 0
                         )
 
-                    # Audit A4: route telemetry-class observations to the
-                    # TimescaleDB hypertable. Previously the background task
-                    # wrote everything to fhir_observations, duplicating
-                    # high-frequency data into the wrong store and breaking
-                    # the AI telemetry tools. Manual sync, webhook, and the
-                    # bridge provider all did the split correctly.
+                    # Route telemetry-class observations to the TimescaleDB
+                    # hypertable. The split is shared with manual sync, webhook,
+                    # and the bridge provider via ``apply_telemetry_split``.
                     telemetry_count = 0
                     fhir_count = 0
                     if observations:
