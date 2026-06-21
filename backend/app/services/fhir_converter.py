@@ -375,6 +375,55 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR Encounter dict to an ExaminationModel ORM dict.
+
+    The reverse of :meth:`ExaminationModel.to_fhir_dict`. ExaminationModel is
+    the app-facing vocabulary for what FHIR calls an Encounter. Maps:
+    - status → ignored (ExaminationModel has no status column for visit state)
+    - subject → patient_id
+    - period.start → examination_date (date only)
+    - class.code → ignored (no column; category_entity drives app categorization)
+    - serviceProvider → organization_id
+    - reasonCode[0].text → notes
+    - diagnosis[].condition.display → diagnoses JSONB list
+
+    Fields without an analog (hospitalization, priority, admission) are dropped.
+    """
+    period = f.get("period") or {}
+    start_raw = period.get("start")
+    exam_date = None
+    if start_raw:
+        parsed = _parse_iso(start_raw)
+        if parsed is not None:
+            exam_date = parsed.date()
+
+    diagnoses: List[Dict[str, Any]] = []
+    for d in f.get("diagnosis") or []:
+        cond = d.get("condition") or {}
+        text = cond.get("display") or cond.get("reference")
+        if text:
+            diagnoses.append({"text": text})
+
+    reason_list = f.get("reasonCode") or []
+    notes = (
+        reason_list[0].get("text")
+        if reason_list and isinstance(reason_list[0], dict)
+        else None
+    )
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "patient_id": _extract_patient_id(f.get("subject")),
+            "examination_date": exam_date,
+            "organization_id": _extract_patient_id(f.get("serviceProvider")),
+            "notes": notes,
+            "diagnoses": diagnoses or None,
+        }
+    )
+
+
 def _parse_iso(value: Optional[str]) -> Optional[Any]:
     """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
     import datetime as _dt
@@ -412,6 +461,7 @@ _TO_ORM = {
     "Organization": fhir_to_organization_orm,
     "Practitioner": fhir_to_practitioner_orm,
     "Condition": fhir_to_condition_orm,
+    "Encounter": fhir_to_encounter_orm,
 }
 
 
