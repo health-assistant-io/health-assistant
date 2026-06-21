@@ -887,6 +887,42 @@ async def sync_integration(
 
 from fastapi import Request
 
+
+def _verify_webhook_signature(
+    secret: str, raw_body: bytes, provided_signature: str
+) -> bool:
+    """Constant-time HMAC-SHA256 verification of a webhook payload.
+
+    Audit B15: the webhook route used the integration_id as the only secret,
+    so anyone who could guess/enumerate the UUID could POST arbitrary data.
+    Integrations can now set ``user_config["webhook_secret"]``; when present,
+    the route verifies an HMAC-SHA256 signature over the raw body.
+
+    Supported header formats (case-insensitive lookup by caller):
+      - ``X-Webhook-Signature``: ``<hex digest>``
+      - ``X-Webhook-Signature-256``: ``<hex digest>``
+      - ``X-Hub-Signature-256`` (GitHub): ``sha256=<hex digest>``
+
+    Returns True iff the computed HMAC matches the provided signature.
+    """
+    import hashlib
+    import hmac as _hmac
+
+    if not secret or not provided_signature:
+        return False
+
+    computed = _hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+
+    # Strip an optional "sha256=" prefix (GitHub convention) before comparing.
+    provided = provided_signature.strip()
+    if provided.lower().startswith("sha256="):
+        provided = provided[len("sha256="):]
+
+    return _hmac.compare_digest(computed, provided.strip().lower())
+
+
 @router.post("/{domain}/webhook/{integration_id}")
 async def integration_webhook(
     domain: str,
@@ -896,7 +932,14 @@ async def integration_webhook(
 ) -> Any:
     """
     Handle incoming webhooks for a specific integration.
-    This does not require a user token, as the integration_id acts as the secure token.
+
+    Audit B15: the integration_id alone is no longer treated as sufficient
+    authentication when a ``webhook_secret`` is configured on the
+    integration's ``user_config``. When a secret is present, the request
+    MUST carry a valid HMAC-SHA256 signature header; otherwise the request
+    is rejected with 401. Integrations without a configured secret retain
+    the legacy behaviour (integration_id acts as the secret) for backward
+    compatibility — operators are encouraged to set a webhook_secret.
     """
     try:
         integration_uuid = UUID(integration_id)
@@ -920,14 +963,47 @@ async def integration_webhook(
         
     if not hasattr(provider, "handle_webhook"):
         raise HTTPException(status_code=400, detail="Provider does not support webhooks")
-        
+
+    # Audit B15: if the integration configured a ``webhook_secret``, verify
+    # the HMAC-SHA256 signature of the raw body before processing. This
+    # prevents unauthorized POSTs even if the integration UUID leaks.
+    # Read the raw body ONCE here so the signature check and the downstream
+    # JSON parse share the exact bytes.
+    raw_body = await request.body()
+
+    cfg = getattr(integration, "user_config", None) or {}
+    webhook_secret = cfg.get("webhook_secret") if isinstance(cfg, dict) else None
+    if webhook_secret:
+        # Accept any of the conventional signature headers.
+        provided_sig = (
+            request.headers.get("X-Webhook-Signature")
+            or request.headers.get("X-Webhook-Signature-256")
+            or request.headers.get("X-Hub-Signature-256")
+        )
+        if not provided_sig or not _verify_webhook_signature(
+            webhook_secret, raw_body, provided_sig
+        ):
+            logger.warning(
+                "Webhook signature verification failed for %s (Integration: %s)",
+                domain,
+                integration_id,
+            )
+            raise HTTPException(
+                status_code=401, detail="Webhook signature verification failed"
+            )
+
     from app.models.user_integration import IntegrationSyncLog
     import datetime
-    
+
     try:
-        payload = await request.json()
+        payload = (
+            raw_body.decode("utf-8") if raw_body else ""
+        )
+        import json as _json
+
+        payload = _json.loads(payload) if payload else {}
     except Exception:
-        payload = {} # Maybe it's a form or empty body, let the provider handle it
+        payload = {}  # Maybe it's a form or empty body, let the provider handle it
 
     try:
         start_time = datetime.datetime.now(datetime.timezone.utc)
