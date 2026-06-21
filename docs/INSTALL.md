@@ -166,7 +166,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 - [ ] Change `SECRET_KEY` to a secure random value
 - [ ] **Set `INTEGRATION_SECRET_KEY`** (Fernet key — encrypts integration secrets AND AI provider `api_key` at rest; without it, AI keys are stored in plaintext with a warning)
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
-- [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value (audit B13 — the insecure `admin123` default was removed; production boot refuses known-weak passwords)
+- [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value — the insecure `admin123` default was removed; production boot refuses known-weak passwords
 - [ ] Set `DEBUG=false`
 - [ ] Set `APP_ENV=production`
 - [ ] Use HTTPS/TLS
@@ -174,7 +174,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 - [ ] Set up database backups
 - [ ] Configure rate limiting
 - [ ] Enable logging and monitoring
-- [ ] **Set webhook secrets** for any integrations that receive webhooks (audit B15) — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
+- [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
 
 ### Generate Secure SECRET_KEY
 
