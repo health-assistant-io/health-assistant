@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, JSON, Boolean
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from app.models.base import Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin
+from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -85,3 +86,80 @@ class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin)
             if updated_at_value is not None
             else None,
         }
+
+    def to_fhir_dict(self) -> dict:
+        """Project this DocumentModel to a FHIR R4B DocumentReference resource.
+
+        The DocumentReference is metadata-only — binary content lives in the
+        app's file storage and is referenced via ``content[].attachment.url``
+        using a relative path. External systems fetching the binary must use
+        the app's separate download endpoint (NOT the FHIR facade); the FHIR
+        Binary resource pattern is out of scope for this v1 facade.
+
+        Maps:
+        - status → DocumentReference.status (default ``current``)
+        - doc_status → DocumentReference.docStatus (draft|preliminary|final|...)
+          derived from status column (e.g. ``uploaded`` → ``preliminary``)
+        - patient_id → DocumentReference.subject
+        - examination_id → DocumentReference.context.encounter
+        - filename → content[0].attachment.title
+        - file_path → content[0].attachment.url (relative)
+        - owner_id → author
+        - created_at → context.period.start + date
+        - extracted_text → content[0].attachment.data if include_in_extraction
+
+        Audit item C14: DocumentModel gains a FHIR projection so the facade
+        can expose it at ``/fhir/R4/DocumentReference``. The previous
+        ad-hoc _document_to_document_reference in export_service.py should
+        be replaced by a call to this method (Phase 10 cleanup).
+        """
+        # Map app status → DocumentReference.status (always 'current' unless
+        # the doc was deleted/superseded).
+        dr_status = "current"
+        if self.status in ("deleted", "archived"):
+            dr_status = "superseded" if self.status == "archived" else "entered-in-error"
+
+        # docStatus: limited enum (preliminary|final|amended|entered-in-error).
+        # The app status vocabulary is broader; map the common ones.
+        status_to_doc = {
+            "uploaded": "preliminary",
+            "processing": "preliminary",
+            "extracted": "final",
+            "completed": "final",
+            "failed": "entered-in-error",
+        }
+        doc_status = status_to_doc.get(self.status or "", "preliminary")
+
+        # Attachment: metadata-only. URL is a relative path the frontend
+        # resolves against the app's storage root.
+        attachment = {
+            "contentType": "application/octet-stream",
+            "title": self.filename or "Untitled",
+        }
+        if self.file_path:
+            attachment["url"] = f"urn:ha-document:{self.id}"
+
+        data = {
+            "resourceType": "DocumentReference",
+            "id": str(self.id) if self.id else None,
+            "status": dr_status,
+            "docStatus": doc_status,
+            "content": [{"attachment": attachment}],
+            "meta": build_meta(str(self.id) if self.id else None),
+        }
+
+        if self.patient_id:
+            data["subject"] = {"reference": f"Patient/{self.patient_id}"}
+        if self.owner_id:
+            data["author"] = [{"reference": f"Practitioner/{self.owner_id}"}]
+        if self.examination_id:
+            data["context"] = {
+                "encounter": [{"reference": f"Encounter/{self.examination_id}"}]
+            }
+        if self.created_at:
+            ts = fhir_isoformat(self.created_at)
+            if "context" not in data:
+                data["context"] = {}
+            data["context"]["period"] = {"start": ts}
+
+        return build_fhir_resource("DocumentReference", data)

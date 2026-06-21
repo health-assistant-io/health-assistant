@@ -424,6 +424,54 @@ def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR DocumentReference to a DocumentModel ORM dict.
+
+    The reverse of :meth:`DocumentModel.to_fhir_dict`. DocumentModel stores
+    files in app storage; the FHIR DocumentReference is metadata-only. Maps:
+    - status → status (default 'current'; map to app status vocabulary)
+    - docStatus → ignored (no column for draft/final)
+    - subject → patient_id
+    - author[0] → owner_id (REQUIRED on DocumentModel)
+    - content[0].attachment.title → filename (REQUIRED)
+    - content[0].attachment.url → file_path (relative path or urn)
+    - context.encounter[0] → examination_id
+    """
+    content = f.get("content") or []
+    attachment = (content[0].get("attachment") if content else {}) or {}
+    filename = attachment.get("title") or "untitled"
+    file_path = attachment.get("url") or ""
+
+    # Map FHIR status → app status.
+    fhir_status = (f.get("status") or "current").lower()
+    app_status = {
+        "current": "uploaded",
+        "superseded": "archived",
+        "entered-in-error": "failed",
+    }.get(fhir_status, "uploaded")
+
+    author_list = f.get("author") or []
+    owner_id = _extract_patient_id(author_list[0]) if author_list else None
+
+    context = f.get("context") or {}
+    encounter_list = context.get("encounter") or []
+    examination_id = (
+        _extract_patient_id(encounter_list[0]) if encounter_list else None
+    )
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "filename": filename,
+            "file_path": file_path,
+            "owner_id": owner_id,
+            "patient_id": _extract_patient_id(f.get("subject")),
+            "examination_id": examination_id,
+            "status": app_status,
+        }
+    )
+
+
 def _parse_iso(value: Optional[str]) -> Optional[Any]:
     """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
     import datetime as _dt
@@ -462,6 +510,7 @@ _TO_ORM = {
     "Practitioner": fhir_to_practitioner_orm,
     "Condition": fhir_to_condition_orm,
     "Encounter": fhir_to_encounter_orm,
+    "DocumentReference": fhir_to_document_reference_orm,
 }
 
 
