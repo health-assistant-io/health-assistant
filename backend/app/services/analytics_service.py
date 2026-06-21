@@ -76,13 +76,20 @@ async def _get_observation_status(
         if interp in ["N", "NORMAL"]:
             return "Normal"
 
-    # 2. Use relative score
+    # 2. Use relative score (clamped to [0.0, 1.0] by ObservationBuilder).
+    # Audit A9: the previous check was ``< 0 -> Low`` / ``> 1.0 -> High``,
+    # which can never trigger after clamping — every clamped value fell
+    # through to ``return "Normal"``, masking genuine out-of-range results.
+    # A strictly-interior score (0 < score < 1) genuinely means the value
+    # sits inside the reference range, so Normal is correct there. Boundary
+    # values (exactly 0.0 or 1.0) are ambiguous after clamping: the value
+    # could be exactly at the bound (still normal) or beyond it (abnormal).
+    # Rather than guess, fall through to the explicit reference-range
+    # comparison in step 3 which has the raw value + bounds to decide.
     if getattr(obs, "relative_score", None) is not None:
-        if obs.relative_score < 0:
-            return "Low"
-        if obs.relative_score > 1.0:
-            return "High"
-        return "Normal"
+        if 0.0 < obs.relative_score < 1.0:
+            return "Normal"
+        # score at boundary (0.0 or 1.0) — defer to the range check below.
 
     # 3. Use provided ranges or fallback to parsing FHIR reference_range
     status = "Normal"

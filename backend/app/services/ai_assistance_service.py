@@ -1399,6 +1399,14 @@ class AIAssistanceService:
 
         slugs_str = ", ".join(existing_slugs)
 
+        # Audit A10: previously hardcoded "Today's date is 2026-03-22" —
+        # relative-date parsing degraded as time passed. Inject the live date.
+        from datetime import datetime, timezone
+
+        _now = datetime.now(timezone.utc)
+        today_iso = _now.strftime("%Y-%m-%d")
+        current_year = _now.year
+
         system_prompt = f"""You are a medical assistant helping to record a new examination visit.
 Extract the examination date, clinical notes, patient notes, category slug, and any doctor names from the user's input.
 
@@ -1410,9 +1418,9 @@ If unsure, you may suggest a new compact clinical specialty slug (e.g., 'dermato
 Do NOT concatenate multiple categories. Pick the primary one.
 Ensure the slug is lowercase and uses kebab-case.
 
-Output the date in ISO format (YYYY-MM-DD). If no year is mentioned, assume 2026.
+Output the date in ISO format (YYYY-MM-DD). If no year is mentioned, assume {current_year}.
 If no month or day is mentioned, use today's date if appropriate or leave null.
-Today's date is 2026-03-22.
+Today's date is {today_iso}.
 """
 
         structured_llm = llm.with_structured_output(ExaminationMagicFillOutput)
