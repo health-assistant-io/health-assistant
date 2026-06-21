@@ -548,6 +548,28 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_provenance_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR Provenance dict to a ProvenanceModel ORM dict.
+
+    Provenance is immutable; this converter is mainly used for round-trip
+    imports (Provenance resources traveling in a Bundle). The recorded
+    timestamp is preserved; agent/target/activity/entity pass through.
+    """
+    recorded_raw = f.get("recorded")
+    recorded_dt = _parse_iso(recorded_raw)
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "target": f.get("target"),
+            "recorded": recorded_dt,
+            "activity": f.get("activity"),
+            "agent": f.get("agent"),
+            "entity": f.get("entity"),
+        }
+    )
+
+
 def _parse_iso(value: Optional[str]) -> Optional[Any]:
     """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
     import datetime as _dt
@@ -588,6 +610,7 @@ _TO_ORM = {
     "Condition": fhir_to_condition_orm,
     "Encounter": fhir_to_encounter_orm,
     "DocumentReference": fhir_to_document_reference_orm,
+    "Provenance": fhir_to_provenance_orm,
 }
 
 
