@@ -463,10 +463,22 @@ def test_metadata_endpoint_no_auth_required(app_with_facade):
     assert r.status_code == 200
 
 
-def test_unknown_facade_route_returns_501(app_with_facade):
-    client = TestClient(app_with_facade)
-    r = client.get("/api/v1/fhir/R4/Condition/abc")
-    assert r.status_code == 501
-    body = r.json()
-    assert body["resourceType"] == "OperationOutcome"
-    assert body["issue"][0]["code"] == "not-supported"
+def test_unknown_facade_route_returns_404(app_with_facade):
+    """Unknown resource type now returns 404 OperationOutcome (was 501 in the
+    initial Phase 1 scaffold — Phase 5 replaced the catch-all with proper
+    resource-type dispatch via RESOURCE_REGISTRY)."""
+    from app.core.security import get_current_user
+    from app.schemas.user import TokenData
+    from uuid import uuid4
+
+    fake_user = TokenData(user_id=uuid4(), tenant_id=uuid4(), role="USER", sub="test")
+    app_with_facade.dependency_overrides[get_current_user] = lambda: fake_user
+    try:
+        client = TestClient(app_with_facade)
+        r = client.get("/api/v1/fhir/R4/NotARealResource")
+        assert r.status_code == 404
+        body = r.json()
+        assert body["resourceType"] == "OperationOutcome"
+        assert body["issue"][0]["code"] == "not-found"
+    finally:
+        app_with_facade.dependency_overrides = {}
