@@ -72,17 +72,58 @@ To ensure data security and a smooth user experience, Health Assistant uses a "S
 ## 5. Workflows
 
 ### Home Setup (Zero-Config)
-1. **Register**: The first user registers via `/auth/register`. 
+1. **Register**: The first user registers via `/auth/register` **without** supplying a `tenant_id`.
 2. **Auto-Provision**: The system detects this is the first user and:
    - Assigns them the `SYSTEM_ADMIN` role.
    - Creates a new `Tenant` automatically.
    - Creates a "Default Household" `Organization` automatically.
 3. **Ready**: The user can immediately start adding family members as Patients.
 
+Subsequent self-onboarding users (e.g. another household setting up their
+own installation) follow the same path: they omit `tenant_id`, get their
+own new tenant, and become `ADMIN` of it. Only the very first registration
+in the entire database becomes `SYSTEM_ADMIN` — this check is
+race-protected by a Postgres advisory lock so two concurrent bootstrap
+registrations cannot both promote.
+
+### Joining an Existing Tenant (Invite Token Required)
+
+Anyone who knows a `tenant_id` cannot register inside that tenant — that
+would be a tenant-impersonation hole. Joining an existing tenant requires
+a short-lived **invite token** minted by that tenant's admin.
+
+1. **Admin mints invite** — `POST /api/v1/auth/invite` (ADMIN, MANAGER,
+   or SYSTEM_ADMIN only). The admin can optionally bind the token to a
+   specific email, choose a role (USER/ADMIN/MANAGER), and set an expiry
+   (default 7 days). `SYSTEM_ADMIN` is **never** grantable via invite —
+   that role is bootstrap-only by design.
+   ```bash
+   curl -X POST https://your-host/api/v1/auth/invite \
+        -H "Authorization: Bearer $ADMIN_JWT" \
+        -d "email=newmember@family.com" -d "role=USER"
+   # → { "invite_token": "...", "tenant_id": "...", "role": "USER", "expires_in_days": 7 }
+   ```
+2. **Invitee registers** — `POST /api/v1/auth/register` with both
+   `tenant_id` and `invite_token`. The server verifies the token's
+   signature, expiry, tenant binding, and (if set) email binding.
+   ```bash
+   curl -X POST https://your-host/api/v1/auth/register \
+        -H "Content-Type: application/json" \
+        -d '{"email":"newmember@family.com", "password":"...", '\
+           '"tenant_id":"...", "invite_token":"..."}'
+   ```
+3. **Failure modes** (all return 403):
+   - Missing `invite_token` field.
+   - Token signature invalid (tampered) or expired.
+   - Token's `tenant_id` ≠ request's `tenant_id`.
+   - Token bound to a different email than the request.
+
 ### Clinical Setup
-1. **Tenant Admin**: Registers and is assigned to a specific Tenant.
+1. **Tenant Admin**: Registers via the bootstrap path (becomes `ADMIN` of
+   their new tenant) OR is invited by a `SYSTEM_ADMIN` cross-tenant.
 2. **Create Departments**: The Admin creates child Organizations of type `DEPARTMENT`.
-3. **Invite Staff**: Admin creates User accounts for doctors and staff, assigning them to the relevant Departments.
+3. **Invite Staff**: Admin mints invite tokens (see above) for doctors and
+   staff, assigning them to the relevant Departments.
 4. **Link Doctors**: Clinical `Doctor` records are created and linked to the staff's `User` accounts via `user_id`.
 
 ---
@@ -101,3 +142,34 @@ python backend/scripts/create_system_admin.py --email admin@example.com --passwo
 - `--email`: The email address for the account.
 - `--password`: The password (only used if creating a new user).
 - `--tenant`: Optional name for the initial tenant if one needs to be created.
+
+---
+
+## 7. Data Deletion Semantics
+
+The schema enforces cascading deletes so data cannot be orphaned.
+
+### Tenant Deletion
+Deleting a `Tenant` row CASCADEs to **all tenant-owned tables** via
+`tenant_id` foreign keys (`ON DELETE CASCADE`). This includes users,
+patients, observations, medications, examinations, documents, alerts,
+notifications, AI config, chat sessions, etc.
+
+**Exception**: `telemetry_data` is a TimescaleDB hypertable where FK
+constraints aren't reliably supported. The `tenant_id` column has no FK;
+a periodic cleanup job is responsible for purging telemetry rows after
+their tenant is deleted.
+
+### Patient Deletion
+Deleting a `Patient` CASCADEs to **their entire clinical record**:
+medications, allergies, clinical events, examinations, documents,
+devices, chat sessions, alerts, notifications, layouts, and
+user integrations. No patient-owned row is orphaned.
+
+### Soft-Delete (FHIR Facade)
+The 9 FHIR-exposed models (`Patient`, `Observation`, `DiagnosticReport`,
+`Medication`, `AllergyIntolerance`, `Organization`, `Examination`,
+`ClinicalEvent`, `Document`) mix in `SoftDeleteMixin`. The FHIR facade
+sets `deleted_at = now()` instead of hard-deleting; subsequent reads
+return `410 Gone` (not `404 Not Found`) so callers can distinguish
+"never existed" from "was deleted".

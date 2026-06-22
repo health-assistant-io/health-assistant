@@ -12,9 +12,7 @@ from app.core.security import get_current_user
 from app.schemas.backup import ImportJobResponse, ImportJobListResponse
 from app.schemas.import_data import (
     CSVImportConfig,
-    DataImportResponse,
     FHIRImportConfig,
-    ImportStatus,
     OCRImportConfig,
 )
 from app.schemas.user import TokenData
@@ -240,29 +238,3 @@ async def get_import_job(
     if not job:
         raise HTTPException(status_code=404, detail="Import job not found")
     return ImportJobResponse(**job.to_dict())
-
-
-@router.get("/status/{job_id}")
-async def get_import_status(
-    job_id: str,
-    current_user: TokenData = Depends(get_current_user),
-):
-    """Legacy status endpoint (no DB lookup). Use GET /import/jobs/{job_id} for backup jobs."""
-    return {
-        "job_id": job_id,
-        "status": ImportStatus.COMPLETED,
-        "message": "Legacy in-memory jobs are no longer tracked. Use GET /import/jobs/{job_id}.",
-    }
-
-
-@router.post("", response_model=DataImportResponse)
-async def create_import_job(
-    format: str = Form(...),
-    current_user: TokenData = Depends(get_current_user),
-):
-    """Create an import job placeholder (legacy)."""
-    return DataImportResponse(
-        job_id="legacy",
-        status=ImportStatus.PENDING,
-        message=f"Use POST /import/backup, /import/fhir, /import/csv or /import/ocr for {format}.",
-    )

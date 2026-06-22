@@ -157,6 +157,71 @@ def verify_presigned_token(token: str, expected_doc_id: str) -> bool:
     except JWTError:
         return False
 
+
+def create_invite_token(
+    tenant_id: str,
+    email: str | None = None,
+    role: str = "USER",
+    expires_days: int = 7,
+) -> str:
+    """Mint a tenant-scoped invite token.
+
+    Used by ``POST /auth/invite`` (admin-only) to onboard a new member into
+    the admin's tenant. The token:
+
+    - ``sub = "invite"`` so it cannot be confused with a session JWT.
+    - ``tenant_id`` binds the token to the issuing tenant; the register
+      endpoint re-checks it against the request body's ``tenant_id``.
+    - ``role`` (optional) lets the admin pre-assign a role (USER/ADMIN/
+      MANAGER). SYSTEM_ADMIN is forbidden here — bootstrap is the only
+      path that grants SYSTEM_ADMIN.
+    - Default TTL is 7 days; the issuing admin can shorten via the
+      ``expires_days`` arg.
+    """
+    if role == Role.SYSTEM_ADMIN.value:
+        raise ValueError("SYSTEM_ADMIN cannot be granted via invite token")
+    to_encode = {
+        "sub": "invite",
+        "tenant_id": str(tenant_id),
+        "role": role,
+        "exp": datetime.now(timezone.utc) + timedelta(days=expires_days),
+        "iat": datetime.now(timezone.utc),
+    }
+    if email:
+        to_encode["email"] = email
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_invite_token(
+    token: str,
+    expected_tenant_id: str,
+    expected_email: str | None = None,
+) -> tuple[bool, str | None]:
+    """Verify a tenant invite token.
+
+    Returns ``(ok, role)``: ``ok`` is True iff the token is well-formed,
+    unexpired, scoped to ``expected_tenant_id``, and (if ``expected_email``
+    is supplied) bound to that email. ``role`` is the role to grant
+    (defaults to ``USER``); SYSTEM_ADMIN is never returned.
+    """
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
+    except JWTError:
+        return (False, None)
+    if payload.get("sub") != "invite":
+        return (False, None)
+    if payload.get("tenant_id") != str(expected_tenant_id):
+        return (False, None)
+    if expected_email and payload.get("email") not in (None, expected_email):
+        return (False, None)
+    role = payload.get("role") or Role.USER.value
+    if role == Role.SYSTEM_ADMIN.value:
+        # Defense in depth — bootstrap is the only SYSTEM_ADMIN grantor.
+        role = Role.USER.value
+    return (True, role)
+
 async def get_current_user_ws(token: str):
     """Get current user for WebSocket connection"""
     payload = verify_access_token(token)

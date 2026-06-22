@@ -35,6 +35,22 @@ def override_get_admin_user():
         sub="admin@example.com",
     )
 
+
+def override_get_switched_admin():
+    """Simulate a SYSTEM_ADMIN who has switched into another tenant."""
+    original_tenant = uuid.uuid4()
+    scoped_tenant = uuid.uuid4()
+    admin_user_id = uuid.uuid4()
+    tok = MockTokenData(
+        user_id=admin_user_id,
+        tenant_id=scoped_tenant,
+        role="SYSTEM_ADMIN",
+        sub="sysadmin@example.com",
+    )
+    tok.original_tenant_id = original_tenant
+    tok.switched = True
+    return tok
+
 @pytest.fixture
 def mock_target_user():
     return User(
@@ -61,6 +77,42 @@ async def test_get_me(mock_get_user_by_id, async_client: AsyncClient):
     assert data["email"] == "current_user@example.com"
 
     # Clean up
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.users.get_user_by_id")
+async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncClient):
+    """A switched SYSTEM_ADMIN's user row lives in their ORIGINAL tenant,
+    not the scoped tenant. /users/me must look up by original_tenant_id
+    or the query returns 404."""
+    from app.main import app
+    from app.core.security import get_current_user
+
+    switched_admin = override_get_switched_admin()
+    app.dependency_overrides[get_current_user] = lambda: switched_admin
+
+    admin_user = User(
+        id=switched_admin.user_id,
+        email="sysadmin@example.com",
+        role="SYSTEM_ADMIN",
+        tenant_id=str(switched_admin.original_tenant_id),
+    )
+    mock_get_user_by_id.return_value = admin_user
+
+    response = await async_client.get("/api/v1/users/me")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == "sysadmin@example.com"
+
+    # Verify the lookup used original_tenant_id, NOT the scoped tenant_id
+    call_args = mock_get_user_by_id.call_args
+    passed_tenant = call_args.kwargs.get("tenant_id")
+    assert passed_tenant == switched_admin.original_tenant_id, (
+        f"Expected original_tenant_id {switched_admin.original_tenant_id}, "
+        f"got {passed_tenant} — switched admin would get 404"
+    )
+
     app.dependency_overrides = {}
 
 

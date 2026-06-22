@@ -64,8 +64,24 @@ async def create_user_endpoint(
 async def get_current_user_endpoint(
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get current user information"""
-    user = await get_user_by_id(current_user.user_id, tenant_id=current_user.tenant_id)
+    """Get current user information.
+
+    For a switched SYSTEM_ADMIN the JWT's ``tenant_id`` is the target
+    tenant, but the user row lives in the admin's original tenant. We
+    therefore look up by ``original_tenant_id`` when switched, and skip
+    the tenant filter entirely for non-switched SYSTEM_ADMIN (whose user
+    row is in their own tenant).
+    """
+    if current_user.role == Role.SYSTEM_ADMIN.value:
+        lookup_tenant = (
+            current_user.original_tenant_id
+            if getattr(current_user, "switched", False)
+            else None
+        )
+    else:
+        lookup_tenant = current_user.tenant_id
+
+    user = await get_user_by_id(current_user.user_id, tenant_id=lookup_tenant)
     if not user:
         raise HTTPException(status_code=404, detail="User not found in database")
 

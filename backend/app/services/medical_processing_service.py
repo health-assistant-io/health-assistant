@@ -451,91 +451,108 @@ class MedicalProcessingService:
     async def _persist_results(
         self, exam, parsed_data, docs_with_text, slug_map, med_name_map
     ):
-        # Clear existing
-        await self.db.execute(
-            delete(Observation).where(Observation.examination_id == exam.id)
-        )
-        await self.db.execute(
-            delete(Medication).where(Medication.examination_id == exam.id)
-        )
+        """Persist the LLM extraction results for an examination.
 
-        # Refresh maps
-        bio_res = await self.db.execute(select(BiomarkerDefinition))
-        bio_map = {b.slug: b for b in bio_res.scalars().all()}
-        med_res = await self.db.execute(select(MedicationCatalog))
-        med_map = {m.name.lower(): m for m in med_res.scalars().all()}
-        unit_res = await self.db.execute(select(Unit))
-        unit_map = {u.symbol.lower(): u for u in unit_res.scalars().all()}
-
-        patient_ref = f"Patient/{exam.patient_id}"
-
-        # Examination date is guaranteed to be set at the start of the pipeline
-        eff_date = datetime.datetime.combine(
-            exam.examination_date or datetime.date.today(), 
-            datetime.time.min, 
-            tzinfo=datetime.timezone.utc
-        )
-
-        # Save Biomarkers
-        for b in parsed_data.known_biomarkers:
-            source_doc_id = self._find_source_doc(b.name, docs_with_text)
-            await self._save_observation(
-                b,
-                bio_map.get(b.matched_slug),
-                unit_map,
-                exam,
-                patient_ref,
-                eff_date,
-                source_doc_id,
+        Audit item C2 (data loss): the previous implementation deleted
+        ALL of the exam's existing Observations + Medications BEFORE
+        running the LLM re-extraction. If re-extraction produced fewer
+        or invalid observations, previously-correct data was permanently
+        gone — no savepoint, no provenance, no audit log. We now wrap
+        the delete + recreate in a nested transaction (savepoint) so
+        any failure during re-extraction rolls back to the pre-delete
+        state. The caller's outer transaction is unaffected.
+        """
+        # Savepoint: any exception inside this block releases the
+        # savepoint with a rollback, restoring the prior Observations +
+        # Medications. The outer transaction stays open for the caller
+        # to handle the error.
+        async with self.db.begin_nested():
+            # Clear existing
+            await self.db.execute(
+                delete(Observation).where(Observation.examination_id == exam.id)
+            )
+            await self.db.execute(
+                delete(Medication).where(Medication.examination_id == exam.id)
             )
 
-        for b in parsed_data.unknown_biomarkers:
-            slug = slug_map.get(b.raw_name)
-            target = bio_map.get(slug) or next(
-                (
-                    bio
-                    for bio in bio_map.values()
-                    if bio.name.lower() == b.raw_name.lower()
-                ),
-                None,
-            )
-            source_doc_id = self._find_source_doc(b.raw_name, docs_with_text)
+            # Refresh maps
+            bio_res = await self.db.execute(select(BiomarkerDefinition))
+            bio_map = {b.slug: b for b in bio_res.scalars().all()}
+            med_res = await self.db.execute(select(MedicationCatalog))
+            med_map = {m.name.lower(): m for m in med_res.scalars().all()}
+            unit_res = await self.db.execute(select(Unit))
+            unit_map = {u.symbol.lower(): u for u in unit_res.scalars().all()}
 
-            wrapped = KnownBiomarkerExtract(
-                name=b.raw_name,
-                matched_slug=target.slug if target else "unknown",
-                value=b.value,
-                unit_symbol=b.unit_symbol,
-                method=b.method,
-                reference_range_min=b.reference_range_min,
-                reference_range_max=b.reference_range_max,
-                interpretation_flag=b.interpretation_flag,
-            )
-            await self._save_observation(
-                wrapped, target, unit_map, exam, patient_ref, eff_date, source_doc_id
+            patient_ref = f"Patient/{exam.patient_id}"
+
+            # Examination date is guaranteed to be set at the start of the pipeline
+            eff_date = datetime.datetime.combine(
+                exam.examination_date or datetime.date.today(),
+                datetime.time.min,
+                tzinfo=datetime.timezone.utc,
             )
 
-        # Save Medications
-        for m in parsed_data.known_medications + parsed_data.unknown_medications:
-            name = m.name if hasattr(m, "name") else m.raw_name
-            mapped_name = med_name_map.get(name, name)
-            catalog_item = med_map.get(mapped_name.lower())
-            self.db.add(
-                Medication(
-                    patient_id=exam.patient_id,
-                    tenant_id=exam.tenant_id,
-                    examination_id=exam.id,
-                    status=MedicationStatus.ACTIVE,
-                    code={
-                        "text": name,
-                        "catalog_id": str(catalog_item.id) if catalog_item else None,
-                    },
-                    dosage=m.dosage,
-                    reason=m.reason,
-                    subject={"reference": patient_ref},
-                    start_date=exam.examination_date,
+            # Save Biomarkers
+            for b in parsed_data.known_biomarkers:
+                source_doc_id = self._find_source_doc(b.name, docs_with_text)
+                await self._save_observation(
+                    b,
+                    bio_map.get(b.matched_slug),
+                    unit_map,
+                    exam,
+                    patient_ref,
+                    eff_date,
+                    source_doc_id,
                 )
-            )
+
+            for b in parsed_data.unknown_biomarkers:
+                slug = slug_map.get(b.raw_name)
+                target = bio_map.get(slug) or next(
+                    (
+                        bio
+                        for bio in bio_map.values()
+                        if bio.name.lower() == b.raw_name.lower()
+                    ),
+                    None,
+                )
+                source_doc_id = self._find_source_doc(b.raw_name, docs_with_text)
+
+                wrapped = KnownBiomarkerExtract(
+                    name=b.raw_name,
+                    matched_slug=target.slug if target else "unknown",
+                    value=b.value,
+                    unit_symbol=b.unit_symbol,
+                    method=b.method,
+                    reference_range_min=b.reference_range_min,
+                    reference_range_max=b.reference_range_max,
+                    interpretation_flag=b.interpretation_flag,
+                )
+                await self._save_observation(
+                    wrapped, target, unit_map, exam, patient_ref, eff_date, source_doc_id
+                )
+
+            # Save Medications
+            for m in parsed_data.known_medications + parsed_data.unknown_medications:
+                name = m.name if hasattr(m, "name") else m.raw_name
+                mapped_name = med_name_map.get(name, name)
+                catalog_item = med_map.get(mapped_name.lower())
+                self.db.add(
+                    Medication(
+                        patient_id=exam.patient_id,
+                        tenant_id=exam.tenant_id,
+                        examination_id=exam.id,
+                        status=MedicationStatus.ACTIVE,
+                        code={
+                            "text": name,
+                            "catalog_id": str(catalog_item.id) if catalog_item else None,
+                        },
+                        dosage=m.dosage,
+                        reason=m.reason,
+                        subject={"reference": patient_ref},
+                        start_date=exam.examination_date,
+                    )
+                )
+        # end begin_nested — savepoint released cleanly, outer txn continues
 
     def _find_source_doc(
         self, text_to_find: str, docs: List[DocumentModel]

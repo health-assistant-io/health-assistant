@@ -14,6 +14,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Strict whitelist for the INTERVAL '{bucket}' SQL interpolation.
+# Values not in this set fall back to "1 hour". The list mirrors the
+# PERIOD_MAPPING defaults + the auto-calculated buckets.
+_ALLOWED_TELEMETRY_BUCKETS = frozenset(
+    {
+        "1 minute",
+        "5 minutes",
+        "15 minutes",
+        "30 minutes",
+        "1 hour",
+        "6 hours",
+        "12 hours",
+        "1 day",
+        "1 week",
+        "1 month",
+    }
+)
+
 def normalize_unit(unit: str) -> str:
     """Normalize common clinical unit variations to a canonical form for better comparison."""
     if not unit:
@@ -76,13 +94,17 @@ async def _get_observation_status(
         if interp in ["N", "NORMAL"]:
             return "Normal"
 
-    # 2. Use relative score
+    # 2. Use relative score (clamped to [0.0, 1.0] by ObservationBuilder).
+    # A strictly-interior score (0 < score < 1) genuinely means the value
+    # sits inside the reference range, so Normal is correct there. Boundary
+    # values (exactly 0.0 or 1.0) are ambiguous after clamping: the value
+    # could be exactly at the bound (still normal) or beyond it (abnormal).
+    # Rather than guess, fall through to the explicit reference-range
+    # comparison in step 3 which has the raw value + bounds to decide.
     if getattr(obs, "relative_score", None) is not None:
-        if obs.relative_score < 0:
-            return "Low"
-        if obs.relative_score > 1.0:
-            return "High"
-        return "Normal"
+        if 0.0 < obs.relative_score < 1.0:
+            return "Normal"
+        # score at boundary (0.0 or 1.0) — defer to the range check below.
 
     # 3. Use provided ranges or fallback to parsing FHIR reference_range
     status = "Normal"
@@ -898,30 +920,44 @@ async def get_biomarker_trends(
         table_name = "telemetry_data"
         time_col = "timestamp"
 
+        # Separate the "aggregate expression" (what goes in the SELECT)
+        # from the "source table". For cagg tables the columns are already
+        # pre-aggregated so we wrap max/min (correct for extremes) and use
+        # AVG(_avg) for the mean (best we can do without a count column).
+        # For the raw hypertable we aggregate directly — AVG(col), not
+        # AVG(AVG(col)).
         if bucket == "1 hour" and col in ["heart_rate", "steps", "calories"]:
             table_name = "telemetry_hourly"
             time_col = "bucket"
-            avg_col = f"{col}_avg"
-            max_col = f"{col}_max"
-            min_col = f"{col}_min"
+            avg_expr = f"AVG({col}_avg)"
+            max_expr = f"MAX({col}_max)"
+            min_expr = f"MIN({col}_min)"
         elif bucket == "1 day" and col in ["heart_rate", "steps", "calories"]:
             table_name = "telemetry_daily"
             time_col = "bucket"
-            avg_col = f"{col}_avg"
-            max_col = f"{col}_max"
-            min_col = f"{col}_min"
+            avg_expr = f"AVG({col}_avg)"
+            max_expr = f"MAX({col}_max)"
+            min_expr = f"MIN({col}_min)"
         else:
-            avg_col = f"AVG({col})"
-            max_col = f"MAX({col})"
-            min_col = f"MIN({col})"
+            # Raw hypertable — single-level aggregation (no double-wrapping).
+            avg_expr = f"AVG({col})"
+            max_expr = f"MAX({col})"
+            min_expr = f"MIN({col})"
+
+        # Validate the bucket interval against a strict whitelist.
+        # The value is interpolated into INTERVAL '{bucket}' (PostgreSQL
+        # INTERVAL literals don't accept bind parameters). The default comes
+        # from PERIOD_MAPPING but an API caller can pass aggregation=...,
+        # so we must guard against arbitrary strings here.
+        safe_bucket = bucket if bucket in _ALLOWED_TELEMETRY_BUCKETS else "1 hour"
 
         sql = f"""
             SELECT 
-                time_bucket_gapfill(INTERVAL '{bucket}', {time_col}) AS bucket,
+                time_bucket_gapfill(INTERVAL '{safe_bucket}', {time_col}) AS bucket,
                 device_id,
-                AVG({avg_col}) as avg_val,
-                MAX({max_col}) as max_val,
-                MIN({min_col}) as min_val
+                {avg_expr} as avg_val,
+                {max_expr} as max_val,
+                {min_expr} as min_val
             FROM {table_name}
             WHERE tenant_id = :tenant_id
               AND {time_col} >= :start_date AND {time_col} <= :end_date
@@ -992,6 +1028,89 @@ async def get_biomarker_trends(
         trends[key].sort(key=lambda x: x["date"])
 
     return {"biomarkers": trends}
+
+
+async def get_biomarker_anomalies(
+    tenant_id: str,
+    biomarker_codes: str = None,
+    patient_id: str = None,
+    db: AsyncSession = None,
+) -> dict:
+    """Detect anomalies in biomarker trends by reusing the trends pipeline
+    and running statistical + reference-range analysis on each series."""
+    if not db:
+        return {"anomalies": []}
+
+    from app.services.anomaly_detector import AnomalyDetector
+
+    detector = AnomalyDetector()
+
+    trends_data = await get_biomarker_trends(
+        tenant_id=tenant_id,
+        biomarker_codes=biomarker_codes,
+        period="all-time",
+        patient_id=patient_id,
+        db=db,
+    )
+
+    anomalies: list = []
+    biomarkers = trends_data.get("biomarkers", {})
+
+    for slug, points in biomarkers.items():
+        if not points:
+            continue
+
+        latest = points[-1]
+        historical = [{"value": p["value"], "date": p.get("date")} for p in points[:-1]]
+        new_value = {"value": latest["value"], "date": latest.get("date")}
+
+        biomarker_name = latest.get("name", slug)
+        biomarker_id = latest.get("biomarker_id")
+        unit = latest.get("unit", "")
+        ref_min = latest.get("reference_range_min")
+        ref_max = latest.get("reference_range_max")
+        value = latest["value"]
+
+        for a in detector.detect_biomarker_anomalies(historical, new_value):
+            a["biomarker"] = biomarker_name
+            a["biomarker_slug"] = slug
+            a["biomarker_id"] = biomarker_id
+            a["value"] = value
+            a["unit"] = unit
+            anomalies.append(a)
+
+        if ref_min is not None and ref_max is not None and ref_max > ref_min:
+            if value < ref_min:
+                anomalies.append(
+                    {
+                        "type": "below_reference",
+                        "biomarker": biomarker_name,
+                        "biomarker_slug": slug,
+                        "biomarker_id": biomarker_id,
+                        "value": value,
+                        "unit": unit,
+                        "message": f"Value {value} {unit} is below the reference minimum of {ref_min} {unit}",
+                        "severity": "warning" if value < ref_min * 0.9 else "info",
+                    }
+                )
+            elif value > ref_max:
+                anomalies.append(
+                    {
+                        "type": "above_reference",
+                        "biomarker": biomarker_name,
+                        "biomarker_slug": slug,
+                        "biomarker_id": biomarker_id,
+                        "value": value,
+                        "unit": unit,
+                        "message": f"Value {value} {unit} is above the reference maximum of {ref_max} {unit}",
+                        "severity": "warning" if value > ref_max * 1.1 else "info",
+                    }
+                )
+
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    anomalies.sort(key=lambda a: severity_order.get(a.get("severity", "info"), 3))
+
+    return {"anomalies": anomalies}
 
 
 async def get_analytics_summary(

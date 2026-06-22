@@ -8,15 +8,17 @@ from sqlalchemy import (
     Index,
     Float,
     ForeignKey,
+    text,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin
+from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin
 from app.models.enums import Gender
 from app.services.fhir_helpers import _as_list, _clean_quantity, _coerce_human_name_list, _primary_human_name, build_fhir_resource, build_meta
 
 
-class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
+class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "fhir_patients"
 
     user_id = Column(
@@ -43,6 +45,12 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
     __table_args__ = (
         Index("idx_patient_tenant_mrn", "tenant_id", "mrn"),
         Index("idx_patient_tenant_name", "tenant_id", "name"),
+        # FHIR sort: Patient?_sort=birthdate
+        Index("ix_fhir_patients_birth_date", "birth_date"),
+        # Prevent empty-string MRNs — Postgres treats NULLs as distinct
+        # (multiple NULLs are fine) but "" would collide on the unique index.
+        # App code (fhir_service / import_service) normalizes "" → None.
+        CheckConstraint("mrn IS NULL OR mrn <> ''", name="mrn_not_empty"),
     )
     
     @property
@@ -106,7 +114,7 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
         )
 
 
-class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
+class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "fhir_observations"
 
     # Custom linkage for Health Assistant
@@ -204,6 +212,8 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B Observation resource via fhir.resources (validated)."""
+        from app.services.fhir_helpers import fhir_isoformat
+
         interpretation = self.interpretation
         if isinstance(interpretation, str) and interpretation:
             interpretation = [{"text": interpretation}]
@@ -216,9 +226,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
                 "category": self.category,
                 "code": self.code,
                 "subject": self.subject,
-                "effectiveDateTime": self.effective_datetime.isoformat()
-                if self.effective_datetime
-                else None,
+                "effectiveDateTime": fhir_isoformat(self.effective_datetime),
                 "valueQuantity": _clean_quantity(self.value_quantity),
                 "valueString": self.value_string,
                 "valueCodeableConcept": self.value_codeableConcept,
@@ -236,10 +244,19 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
         Index("idx_observation_tenant_patient", "tenant_id", "subject"),
         Index("idx_observation_tenant_code", "tenant_id", "code"),
         Index("idx_observation_tenant_date", "tenant_id", "effective_datetime"),
+        # Expression index on the extracted JSONB path — the most-used query
+        # pattern in the codebase (12+ call sites do
+        # ``subject["reference"].astext == "Patient/<uuid>"``). Without this
+        # index every per-patient observation query is a full scan within
+        # tenant.
+        Index(
+            "ix_fhir_observations_subject_ref",
+            text("(subject->>'reference')"),
+        ),
     )
 
 
-class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin):
+class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "fhir_diagnostic_reports"
 
     # FHIR DiagnosticReport resource fields
@@ -258,6 +275,10 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
     __table_args__ = (
         Index("idx_diagnostic_report_tenant_patient", "tenant_id", "subject"),
         Index("idx_diagnostic_report_tenant_date", "tenant_id", "effective_datetime"),
+        Index(
+            "ix_fhir_diagnostic_reports_subject_ref",
+            text("(subject->>'reference')"),
+        ),
     )
 
     def to_dict(self):
@@ -280,6 +301,8 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B DiagnosticReport resource via fhir.resources (validated)."""
+        from app.services.fhir_helpers import fhir_isoformat
+
         return build_fhir_resource(
             "DiagnosticReport",
             {
@@ -289,10 +312,8 @@ class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin,
                 "category": _as_list(self.category),
                 "code": self.code,
                 "subject": self.subject,
-                "effectiveDateTime": self.effective_datetime.isoformat()
-                if self.effective_datetime
-                else None,
-                "issued": self.issued.isoformat() if self.issued else None,
+                "effectiveDateTime": fhir_isoformat(self.effective_datetime),
+                "issued": fhir_isoformat(self.issued),
                 "performer": self.performer,
                 "conclusion": self.conclusion,
                 "conclusionCode": _as_list(self.conclusion_code),

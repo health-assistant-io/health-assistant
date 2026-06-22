@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libtesseract-dev \
     libleptonica-dev \
     poppler-utils \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

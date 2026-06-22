@@ -1,10 +1,10 @@
-from sqlalchemy import Column, String, Enum as SQLEnum, ForeignKey, UUID
+from sqlalchemy import Boolean, Column, String, Enum as SQLEnum, ForeignKey, UUID
 from sqlalchemy.dialects.postgresql import JSONB
-from app.models.base import Base, UUIDMixin, AuditMixin, VersionedMixin
+from app.models.base import Base, UUIDMixin, AuditMixin, TimestampMixin, VersionedMixin
 from app.models.enums import Role
 
 
-class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin):
+class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
     """SQLAlchemy model for users"""
 
     __tablename__ = "users"
@@ -18,6 +18,12 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin):
         nullable=False,
         index=True,
     )
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        server_default="true",
+        index=True,
+    )
     settings = Column(JSONB, default=dict)
 
     def to_dict(self) -> dict:
@@ -27,5 +33,8 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin):
             "email": self.email,
             "role": self.role.value if self.role else None,  # type: ignore[union-attr]
             "tenant_id": self.tenant_id,
+            "is_active": self.is_active,
             "settings": self.settings,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -133,13 +133,43 @@ async def ocr_document(
 
 
 async def _check_trigger_cumulative(db: AsyncSession, document_id: UUID):
-    """Check if all relevant documents are processed to trigger NLP"""
+    """Check if all relevant documents are processed to trigger NLP.
+
+    Audit item C3 (TOCTOU race): previously this read the pending-doc
+    count and fired ``cumulative_extraction.delay()`` only if no docs
+    remained. Concurrent OCR completions (typical with multi-doc upload)
+    all saw the same pending count → either nobody fired cumulative, or
+    everybody fired it (doubles LLM cost + races biomarker auto-create).
+    Now we acquire a per-examination Postgres advisory lock
+    (``pg_try_advisory_xact_lock``) keyed on the exam id before checking
+    the pending count. If the lock can't be acquired, another OCR
+    completion is already mid-check — we skip and let that one fire.
+    """
     doc_res = await db.execute(
         select(DocumentModel).where(DocumentModel.id == document_id)
     )
     doc = doc_res.scalar_one_or_none()
 
     if not doc or not doc.examination_id:
+        return
+
+    # Per-exam advisory lock. ``pg_try_advisory_xact_lock`` returns True
+    # iff the lock was acquired (held until the surrounding transaction
+    # commits/aborts). Hash the exam_id to a stable int64 key.
+    from sqlalchemy import text
+
+    lock_key = hash(str(doc.examination_id)) & 0x7FFFFFFFFFFFFFFF
+    lock_res = await db.execute(
+        text("SELECT pg_try_advisory_xact_lock(:k)"),
+        {"k": lock_key},
+    )
+    lock_acquired = lock_res.scalar()
+    if not lock_acquired:
+        logger.info(
+            "Another OCR completion is already checking exam %s; skipping "
+            "cumulative trigger to avoid the TOCTOU race (audit C3).",
+            doc.examination_id,
+        )
         return
 
     # Check for pending/processing documents in this exam
@@ -252,23 +282,58 @@ async def check_medication_interactions(self, medications: list, user_id: str):
 
 @celery_app.task(bind=True)
 @async_task
-async def detect_anomalies(self, patient_id: str, biomarker_code: str):
-    from app.services.anomaly_detector import AnomalyDetector
+async def detect_anomalies(self, patient_id: str, biomarker_code: str = None):
+    """Detect anomalies for a patient's biomarkers via the analytics service."""
+    from sqlalchemy import select
+    from app.models.fhir.patient import Observation
+    from app.services.analytics_service import get_biomarker_anomalies
 
-    detector = AnomalyDetector()
-    results = await detector.detect_biomarker_anomalies([], {})
-    return {"patient_id": patient_id, "biomarker": biomarker_code, "anomalies": results}
+    db, engine = get_async_session()
+    try:
+        async with db:
+            tenant_row = await db.execute(
+                select(Observation.tenant_id)
+                .where(
+                    Observation.subject["reference"].as_string()
+                    == f"Patient/{patient_id}"
+                )
+                .limit(1)
+            )
+            tenant_id = tenant_row.scalar_one_or_none()
+            if not tenant_id:
+                return {"patient_id": patient_id, "anomalies": []}
+
+            result = await get_biomarker_anomalies(
+                tenant_id=str(tenant_id),
+                biomarker_codes=biomarker_code,
+                patient_id=patient_id,
+                db=db,
+            )
+            return {
+                "patient_id": patient_id,
+                "biomarker": biomarker_code,
+                "anomalies": result.get("anomalies", []),
+            }
+    finally:
+        await engine.dispose()
 
 
 @celery_app.task
 @async_task
 async def cleanup_stuck_extractions():
+    """Periodic task to mark long-stuck extractions as failed.
+
+    Audit item A5: the threshold here must be **greater** than the Celery
+    hard ``task_time_limit`` (900s = 15 min in ``celery_app.py``) so a
+    task killed at exactly 15 min doesn't race with this cleanup. We
+    use 20 min — a 5-minute safety margin beyond the hard kill.
+    """
     db, engine = get_async_session()
     try:
         async with db:
             threshold = datetime.datetime.now(
                 datetime.timezone.utc
-            ) - datetime.timedelta(minutes=15)
+            ) - datetime.timedelta(minutes=20)
             await db.execute(
                 update(ExaminationModel)
                 .where(
@@ -405,7 +470,7 @@ async def deliver_notification(notification_id: str):
             notif.status = (
                 NotificationStatus.DELIVERED if success else NotificationStatus.FAILED
             )
-            notif.sent_at = datetime.now(timezone.utc)
+            notif.sent_at = datetime.datetime.now(datetime.timezone.utc)
             await db.commit()
             logger.info(
                 f"Notification {notification_id} status updated to {notif.status}"
@@ -448,30 +513,73 @@ def process_document(
 @celery_app.task(name="app.workers.tasks.sync_active_integrations", bind=True, max_retries=1)
 @async_task
 async def sync_active_integrations(self):
-    """Periodic task to sync data from all active user integrations."""
+    """Periodic task to sync data from all active user integrations.
+
+    Audit item C4 (overlapping sync beats): the 60-second Celery beat
+    can overlap when a sync takes >60 s. Two workers both read
+    ``last_synced_at``, both pull, both persist Observations + telemetry
+    — no dedup anywhere in the sync path → duplicate clinical rows.
+
+    Per-integration guard: each integration's sync is wrapped in a
+    Redis-backed lock keyed by ``sync_lock:{integration_id}``. The lock
+    is acquired with ``NX`` (only one writer) and a TTL of 600 s (sync
+    hard timeout; longer than the per-integration 5-min sync budget
+    plus a safety margin). If the lock can't be acquired, this
+    integration is SKIPPED for this beat cycle — another worker is
+    already syncing it.
+    """
     logger.info("Starting integration sync cycle.")
-    
+
     db, engine = get_async_session()
     try:
         async with db:
             # First ensure registry is initialized if not already (celery workers need this)
             await integration_registry.initialize(db)
-            
+
             stmt = select(UserIntegration).where(UserIntegration.status == IntegrationStatus.ACTIVE)
             result = await db.execute(stmt)
             active_integrations = result.scalars().all()
-            
+
             logger.info(f"Found {len(active_integrations)} active integrations to sync.")
-            
+
             for integration in active_integrations:
+                # Per-integration lock (audit C4). ``NX`` = set-if-not-exists,
+                # ``EX`` = expire-after. ``redis_client.set`` returns True iff
+                # the lock was acquired.
+                lock_key = f"sync_lock:{integration.id}"
+                try:
+                    from app.core.redis import redis_client
+
+                    acquired = await redis_client.set(lock_key, "1", nx=True, ex=600)
+                except Exception as lock_err:
+                    # Redis unavailable — degrade to "always sync" (legacy
+                    # behaviour) but log the gap loudly.
+                    logger.warning(
+                        "Could not acquire Redis lock for integration %s (Redis down? %s); "
+                        "proceeding without dedup guard. This may cause duplicate writes under "
+                        "overlapping beats (audit C4).",
+                        integration.id,
+                        lock_err,
+                    )
+                    acquired = True  # legacy mode
+
+                if not acquired:
+                    logger.info(
+                        "Skipping sync for integration %s (provider=%s) — another worker "
+                        "holds the sync_lock (audit C4).",
+                        integration.id,
+                        integration.provider,
+                    )
+                    continue
+
                 try:
                     start_time = datetime.datetime.now(datetime.timezone.utc)
-                    
+
                     # Check if it's time to sync based on user config interval (default to 15 if missing)
                     sync_interval = 15
                     if integration.user_config and "sync_interval" in integration.user_config:
                         sync_interval = int(integration.user_config["sync_interval"])
-                        
+
                     if integration.last_synced_at:
                         next_sync = integration.last_synced_at + datetime.timedelta(minutes=sync_interval)
                         # Add a small buffer (e.g. 10 seconds) to avoid missing cycles due to slight execution delays
@@ -483,68 +591,98 @@ async def sync_active_integrations(self):
                     if not provider:
                         logger.warning(f"Provider not found for integration {integration.provider}")
                         continue
-                        
+
                     logger.info(f"Syncing integration {integration.provider} for user {integration.user_id}")
-                    
+
                     from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
-                    
+
                     # Pull data
                     observations_data = await provider.pull_data(integration)
-                    
+
+                    observations = []
+                    dropped_invalid = 0
                     if observations_data:
                         logger.info(f"Pulled {len(observations_data)} observations from {integration.provider}")
-                        
+
                         from app.models.fhir import Observation
-                        
+
                         # Convert to ORM models BEFORE passing to mapping
-                        observations = []
                         for obs_data in observations_data:
-                            # if obs_data is a dict or a pydantic model:
                             obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
                             obs = Observation(**obs_dict)
                             observations.append(obs)
-                        
+
                         from app.services.fhir_service import map_observations_to_biomarkers
-                        await map_observations_to_biomarkers(db, observations)
-                        
-                        # Add newly pulled observations
-                        for obs in observations:
-                            if not obs.performer:
-                                obs.performer = [{"type": "Integration", "display": integration.provider}]
-                            db.add(obs)
-                            
+                        map_result = await map_observations_to_biomarkers(db, observations)
+                        dropped_invalid = (
+                            map_result.get("dropped_invalid", 0)
+                            if isinstance(map_result, dict)
+                            else 0
+                        )
+
+                    # Route telemetry-class observations to the TimescaleDB
+                    # hypertable. The split is shared with manual sync, webhook,
+                    # and the bridge provider via ``apply_telemetry_split``.
+                    telemetry_count = 0
+                    fhir_count = 0
+                    if observations:
+                        from app.services.integration_sync_service import (
+                            apply_telemetry_split,
+                        )
+                        telemetry_records, fhir_records = await apply_telemetry_split(
+                            db,
+                            observations,
+                            tenant_id=integration.tenant_id,
+                            instance_name=integration.instance_name,
+                            provider_name=integration.provider,
+                            integration_id=integration.id,
+                        )
+                        telemetry_count = len(telemetry_records)
+                        fhir_count = len(fhir_records)
+
                     # Push data (for dev dummy)
                     await provider.push_data(integration, {"status": "sync_started"})
-                            
+
                     # Update sync time
                     integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-                    
+
+                    # If validation dropped observations, surface it in the
+                    # sync log so the UI/admin can see partial-success.
+                    sync_status = "success" if dropped_invalid == 0 else "partial"
+                    error_msg = (
+                        f"{dropped_invalid} of {len(observations_data) if observations_data else 0} "
+                        "pulled observations failed FHIR validation and were dropped"
+                        if dropped_invalid
+                        else None
+                    )
+
                     # Log sync
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
                         integration_id=integration.id,
                         tenant_id=integration.tenant_id,
-                        status="success",
-                        records_synced=len(observations) if observations else 0,
+                        status=sync_status,
+                        records_synced=telemetry_count + fhir_count,
                         started_at=start_time,
-                        completed_at=integration.last_synced_at
+                        completed_at=integration.last_synced_at,
+                        error_message=error_msg,
                     )
                     db.add(sync_log)
-                    
+
                     await db.commit()
-                    
+
                 except IntegrationAuthError as e:
                     logger.warning(f"Auth error for integration {integration.provider} (user {integration.user_id}): {e}")
-                    
+
                     if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
                         try:
                             await provider.log_debug_payload(integration, "Auth Error (Background)", {"error": str(e)}, level="error")
                         except Exception:
                             pass
-                            
+
                     # Update integration status to ERROR so we stop hammering it until user fixes it
                     integration.status = IntegrationStatus.ERROR
-                    
+
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
                         integration_id=integration.id,
@@ -557,16 +695,16 @@ async def sync_active_integrations(self):
                     )
                     db.add(sync_log)
                     await db.commit()
-                    
+
                 except IntegrationRateLimitError as e:
                     logger.warning(f"Rate limit hit for {integration.provider} (user {integration.user_id}): {e}")
-                    
+
                     if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
                         try:
                             await provider.log_debug_payload(integration, "Rate Limit Error (Background)", {"error": str(e)}, level="warning")
                         except Exception:
                             pass
-                            
+
                     # Log the delay but don't mark as error so we try again later
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
@@ -580,16 +718,16 @@ async def sync_active_integrations(self):
                     )
                     db.add(sync_log)
                     await db.commit()
-                    
+
                 except Exception as e:
                     logger.error(f"Error syncing integration {integration.provider} for user {integration.user_id}: {e}")
-                    
+
                     if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
                         try:
                             await provider.log_debug_payload(integration, "Sync Error (Background)", {"error": str(e)}, level="error")
                         except Exception:
                             pass
-                            
+
                     # Log failure
                     from app.models.user_integration import IntegrationSyncLog
                     sync_log = IntegrationSyncLog(
@@ -603,7 +741,21 @@ async def sync_active_integrations(self):
                     )
                     db.add(sync_log)
                     await db.commit()
-                    
+
+                finally:
+                    # Release the lock. We use ``delete`` (not a Lua compare-
+                    # and-delete) for simplicity; the EX=600 fallback handles
+                    # the case where this finally block never runs (worker
+                    # crash mid-sync).
+                    if acquired:
+                        try:
+                            from app.core.redis import redis_client
+
+                            await redis_client.delete(lock_key)
+                        except Exception:
+                            # Lock will expire via TTL — safe to ignore.
+                            pass
+
     except Exception as e:
         logger.error(f"Critical error during integration sync cycle: {e}")
     finally:
@@ -714,7 +866,19 @@ async def migrate_biomarker_data(
                         await db.commit()
 
             else:
-                # Migrate Telemetry -> FHIR
+                # Migrate Telemetry -> FHIR.
+                # Audit item C1: the original implementation picked the
+                # tenant's first patient and assigned ALL migrated
+                # observations to them — silently wrong in any multi-
+                # patient tenant (cross-patient data corruption).
+                #
+                # We now resolve the patient per telemetry row via
+                # ``TelemetryDataModel.device_id`` → ``UserIntegration``
+                # (instance_name match) → ``user_id`` → ``Patient`` where
+                # ``user_id == that AND tenant_id == tenant``. Rows that
+                # can't be attributed to exactly one patient are skipped
+                # and counted in ``meta["migration_skipped_no_patient"]``
+                # so the UI/admin can see the partial-success.
                 stmt = select(TelemetryDataModel).where(TelemetryDataModel.tenant_id == tenant_id)
                 if slug == "8867-4" or "heart-rate" in slug:
                     stmt = stmt.where(TelemetryDataModel.heart_rate.is_not(None))
@@ -734,16 +898,85 @@ async def migrate_biomarker_data(
                 if total_records > 0:
                     u_res = await db.execute(select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id))
                     symbol = u_res.scalar_one_or_none() or ""
-                    
-                    p_res = await db.execute(select(Patient.id).where(Patient.tenant_id == tenant_id).limit(1))
-                    patient_id = p_res.scalar_one_or_none()
 
-                    if patient_id:
+                    # Pre-build a device_id -> patient_id resolver. We
+                    # load all tenant UserIntegrations once (typically a
+                    # small number) and all tenant Patients linked via
+                    # user_id, then join them in-memory.
+                    from app.models.user_integration import UserIntegration as _UInt
+                    from app.models.user_model import UserModel as _UserM
+
+                    uint_res = await db.execute(
+                        select(_UInt.id, _UInt.instance_name, _UInt.provider, _UInt.user_id).where(
+                            _UInt.tenant_id == tenant_id
+                        )
+                    )
+                    uint_rows = uint_res.all()
+                    # Map device_id (instance_name OR provider) -> user_id
+                    device_to_user: dict[str, Any] = {}
+                    for _id, instance_name, provider_name, user_id in uint_rows:
+                        if instance_name:
+                            device_to_user.setdefault(instance_name, user_id)
+                        if provider_name:
+                            device_to_user.setdefault(provider_name, user_id)
+                    # "fhir_migration" was the historical device_id; treat
+                    # it as "no attribution possible" (we can't know who
+                    # the row belonged to).
+                    device_to_user.pop("fhir_migration", None)
+
+                    # Load all tenant patients that have user_id set.
+                    pat_res = await db.execute(
+                        select(Patient.id, Patient.user_id).where(
+                            Patient.tenant_id == tenant_id,
+                            Patient.user_id.is_not(None),
+                        )
+                    )
+                    user_to_patient: dict[Any, Any] = {
+                        user_id: patient_id
+                        for patient_id, user_id in pat_res.all()
+                        if user_id is not None
+                    }
+
+                    # Resolve a default patient for the "no device_id on
+                    # telemetry row" case: only safe if the tenant has
+                    # exactly ONE patient. Otherwise we MUST skip to avoid
+                    # the cross-patient attribution bug.
+                    single_patient_res = await db.execute(
+                        select(Patient.id).where(Patient.tenant_id == tenant_id)
+                    )
+                    all_tenant_patients = single_patient_res.scalars().all()
+                    default_patient_id = (
+                        all_tenant_patients[0]
+                        if len(all_tenant_patients) == 1
+                        else None
+                    )
+
+                    # If we have NO way to attribute any row, abort early
+                    # with a clear error in meta_data.
+                    if not device_to_user and not default_patient_id:
+                        meta = dict(db_biomarker.meta_data or {})
+                        meta["migration_status"] = "failed"
+                        meta["migration_error"] = (
+                            "Cannot attribute telemetry rows to a patient: no "
+                            "UserIntegrations in tenant and tenant has != 1 patient. "
+                            "Telemetry rows require a device_id that maps to a "
+                            "UserIntegration, OR a single-patient tenant."
+                        )
+                        meta["migration_progress"] = 0
+                        db_biomarker.meta_data = meta
+                        flag_modified(db_biomarker, "meta_data")
+                        await db.commit()
+                        logger.error(
+                            f"Aborting telemetry->FHIR migration for biomarker {biomarker_id}: "
+                            f"{meta['migration_error']}"
+                        )
+                    else:
                         processed = 0
+                        skipped_no_patient = 0
                         while processed < total_records:
                             tel_res = await db.execute(stmt.limit(batch_size).offset(processed))
                             telemetry_records = tel_res.scalars().all()
-                            
+
                             if not telemetry_records:
                                 break
 
@@ -763,11 +996,35 @@ async def migrate_biomarker_data(
                                     if tr.data and slug in tr.data:
                                         del tr.data[slug]
                                         flag_modified(tr, "data")
-                                    
-                                if val is not None:
+
+                                # Resolve patient for this row.
+                                # Priority: device_id → user_id → patient_id;
+                                # fallback: single-patient tenant default.
+                                resolved_patient_id = None
+                                if tr.device_id and tr.device_id in device_to_user:
+                                    uid = device_to_user[tr.device_id]
+                                    resolved_patient_id = user_to_patient.get(uid)
+                                if resolved_patient_id is None:
+                                    resolved_patient_id = default_patient_id
+
+                                if resolved_patient_id is None:
+                                    # Skip — we cannot attribute this row
+                                    # without risking cross-patient
+                                    # corruption (audit C1).
+                                    skipped_no_patient += 1
+                                    logger.debug(
+                                        "Skipping telemetry row %s: device_id=%s "
+                                        "does not map to a patient in tenant %s",
+                                        tr.id,
+                                        tr.device_id,
+                                        tenant_id,
+                                    )
+                                    # Still clear out the value so the row
+                                    # can be pruned if empty.
+                                elif val is not None:
                                     obs = Observation(
                                         tenant_id=tr.tenant_id,
-                                        subject={"reference": f"Patient/{patient_id}"},
+                                        subject={"reference": f"Patient/{resolved_patient_id}"},
                                         status="final",
                                         code={
                                             "coding": [{
@@ -787,7 +1044,7 @@ async def migrate_biomarker_data(
                                         biomarker_id=db_biomarker.id
                                     )
                                     fhir_records.append(obs)
-                                
+
                                 is_empty = (
                                     tr.heart_rate is None and
                                     tr.steps is None and
@@ -799,18 +1056,27 @@ async def migrate_biomarker_data(
 
                             if fhir_records:
                                 db.add_all(fhir_records)
-                                
+
                             processed += len(telemetry_records)
-                            
+
                             progress = int((processed / total_records) * 100)
                             meta = dict(db_biomarker.meta_data or {})
                             meta["migration_status"] = "in_progress"
                             meta["migration_progress"] = progress
+                            if skipped_no_patient:
+                                meta["migration_skipped_no_patient"] = skipped_no_patient
                             db_biomarker.meta_data = meta
                             flag_modified(db_biomarker, "meta_data")
                             await db.commit()
-                    else:
-                        logger.warning(f"Could not migrate telemetry to FHIR for {db_biomarker.slug} - no patient found in tenant")
+
+                        if skipped_no_patient:
+                            logger.warning(
+                                "Telemetry->FHIR migration for biomarker %s: "
+                                "%d of %d rows skipped (could not attribute to a patient)",
+                                biomarker_id,
+                                skipped_no_patient,
+                                total_records,
+                            )
 
             # Mark as completed
             meta = dict(db_biomarker.meta_data or {})

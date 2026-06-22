@@ -39,7 +39,18 @@ class UserResponse(UserBase):
 
 
 class TokenData(BaseModel):
-    """Schema for token payload data"""
+    """Schema for token payload data.
+
+    Standard claims: ``user_id``, ``tenant_id``, ``role``, ``sub`` (email).
+
+    Switched-session claims (only present when a SYSTEM_ADMIN has used the
+    tenant-switch surface to operate inside another tenant):
+      * ``original_tenant_id`` — the admin's real tenant.
+      * ``original_user_id``   — the admin's real user id.
+      * ``switched``           — flag distinguishing a switched session.
+
+    All switch claims are optional so normal tokens still validate.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
@@ -47,6 +58,9 @@ class TokenData(BaseModel):
     tenant_id: UUID
     role: str
     sub: Optional[str] = None
+    original_tenant_id: Optional[UUID] = None
+    original_user_id: Optional[UUID] = None
+    switched: bool = False
 
     @property
     def email(self) -> Optional[str]:

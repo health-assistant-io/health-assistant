@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getDocument, downloadDocument, getExtractionStatus, triggerExtraction, deleteDocument, updateDocument, triggerDocumentDownload } from '../../services/documentService';
-import { getPatient } from '../../services/fhirService';
+import { getPatient } from '../../services/patientService';
 import { CATEGORY_LABELS as CATEGORIES } from '../../constants/categories';
 import { TaskProgressIndicator } from '../../components/ui/TaskProgressIndicator';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
-import { getStatusColorClass, isAbnormal } from '../../utils/biomarkerUtils';
+import { getStatusColorClass, isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import { AuthenticatedText } from '../../components/ui/AuthenticatedText';
 import { AuthenticatedImage } from '../../components/ui/AuthenticatedImage';
 import { AuthenticatedPdf } from '../../components/ui/AuthenticatedPdf';
@@ -20,6 +21,7 @@ import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
 export default function DocumentDetail() {
   const { t } = useTranslation();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const { documentId } = useParams();
   const navigate = useNavigate();
   const [docData, setDocData] = React.useState<Record<string, any> | null>(null);
@@ -496,7 +498,7 @@ export default function DocumentDetail() {
                       <tr key={b.id} className="hover:bg-gray-50/50 dark:hover:bg-dark-bg/50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">{b.displayName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
-                          <span className="text-blue-600 dark:text-blue-400 mr-2">{b.value.raw}</span>
+                          <span className="text-blue-600 dark:text-blue-400 mr-2">{formatBiomarkerValue(b.value.raw, precisionProfile)}</span>
                           {isAbnormal(b.interpretation) && (
                             <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${getStatusColorClass(b.interpretation)}`}>
                               {b.interpretation}

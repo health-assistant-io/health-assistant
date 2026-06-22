@@ -30,6 +30,14 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    Once the script finishes starting the services, open your web browser and navigate to:
    - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
    - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
+   - **Flower (Celery Monitoring):** [http://localhost:5555](http://localhost:5555) - *Real-time view of background workers, queues, and task history.*
+
+   The unified script (`scripts/run-dev.sh`) runs every dev process under
+   [honcho](https://github.com/nickstenning/honcho) using `Procfile.dev`:
+   `backend`, `worker`, `beat`, `flower`, and `frontend`. A single `Ctrl+C`
+   cleanly stops all of them, and if any process crashes honcho stops the
+   others so you see the error immediately in the foreground. To start just
+   one process (e.g. the worker): `honcho start worker -f Procfile.dev`.
 
 ### Environment Configuration
 - **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
@@ -44,11 +52,18 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 
 ### Manual Start
 
+The recommended path is `./scripts/run-dev.sh` (it manages all 5 processes
+under honcho). If you need to start services individually, you must replicate
+its environment manually — and remember that running only `uvicorn` without
+the worker means background jobs (OCR, export, import, notifications,
+integration sync) will silently queue and never run.
+
 #### Backend
 
 ```bash
 cd backend
 source venv/bin/activate
+export PYTHONPATH=.:../   # ../ so `integrations.*` resolves
 uvicorn app.main:app --reload
 ```
 
@@ -59,13 +74,18 @@ cd frontend
 npm run dev
 ```
 
-#### Celery Worker
+#### Celery Worker + Beat + Flower
 
 ```bash
 cd backend
 source venv/bin/activate
-export PYTHONPATH=$PYTHONPATH:.
+export PYTHONPATH=.:../
+
 celery -A app.workers.celery_app worker --loglevel=info
+# In a separate shell:
+celery -A app.workers.celery_app beat --loglevel=info
+# And another for monitoring (http://localhost:5555):
+celery -A app.workers.celery_app flower --port=5555
 ```
 
 ## Testing

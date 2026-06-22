@@ -18,6 +18,7 @@ import { IconMap } from '../shared/icons';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
+import { useBiomarkerChange } from '../../../hooks/useBiomarkerChange';
 
 import { format, parseISO } from 'date-fns';
 
@@ -41,20 +42,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
   const unit = latestPoint?.unit ?? '';
   
   // Calculate trend change
-  const changeInfo = React.useMemo(() => {
-    if (!data || data.length < 2) return null;
-    const latest = data[data.length - 1].value;
-    const prev = data[data.length - 2].value;
-    if (prev === 0) return null;
-    const diff = latest - prev;
-    const percent = (diff / Math.abs(prev)) * 100;
-    return {
-      percent: percent.toFixed(1),
-      isUp: diff > 0,
-      isNeutral: diff === 0,
-      color: diff > 0 ? 'text-emerald-500' : diff < 0 ? 'text-red-500' : 'text-gray-400'
-    };
-  }, [data]);
+  const changeInfo = useBiomarkerChange(data);
 
   // Calculate status using the central utility and reference ranges from the data point
   const status = React.useMemo(() => {
@@ -205,7 +193,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
             {changeInfo && (
               <span className={`text-[10px] font-black mt-1.5 flex items-center ${changeInfo.color}`}>
                 {!changeInfo.isNeutral && (changeInfo.isUp ? '↑' : '↓')}
-                {Math.abs(parseFloat(changeInfo.percent))}%
+                {changeInfo.percent}%
               </span>
             )}
           </div>

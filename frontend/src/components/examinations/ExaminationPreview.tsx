@@ -13,7 +13,8 @@ import { ExaminationAIActions } from '../ui/ExaminationAIActions';
 import { MedicationAIActions } from '../ui/MedicationAIActions';
 import { AuthenticatedThumbnail } from '../ui/AuthenticatedThumbnail';
 import { AIBadge } from '../ui/AIBadge';
-import { isAbnormal } from '../../utils/biomarkerUtils';
+import { isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import { stripHtml } from '../../utils/examinationUtils';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
 import { Biomarker, BiomarkerObservation } from '../../types/biomarker';
@@ -35,6 +36,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
   hideHeader = false,
 }) => {
   const { t } = useTranslation();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<Record<string, Biomarker>>({});
   
@@ -300,7 +302,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <span className="font-bold text-blue-600 dark:text-blue-400">{b.value.raw}</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400">{formatBiomarkerValue(b.value.raw, precisionProfile)}</span>
                         <span className="ml-1 text-xs text-gray-400 dark:text-dark-muted">{b.unit.rawSymbol}</span>
                         {isAbnormal(b.interpretation) && (
                           <span className="ml-2 text-[10px] font-bold text-red-500 uppercase">({b.interpretation})</span>

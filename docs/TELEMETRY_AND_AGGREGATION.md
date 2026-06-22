@@ -24,7 +24,35 @@ When integration webhooks push data to the backend, the parser resolves the data
 - If `is_telemetry = true`: Data is mapped to a `TelemetryDataModel` and saved to TimescaleDB.
 - If `is_telemetry = false`: Data is mapped to an `Observation` and saved to FHIR.
 
-**Automated Data Migration:** System administrators can toggle this flag via the UI, making the system infinitely expandable for future IoT devices without requiring code changes. When the flag is toggled on an existing biomarker, the system performs an automatic, seamless data migration—moving all historical records dynamically between the standard PostgreSQL `fhir_observations` table and the TimescaleDB `telemetry_data` hypertable. For extremely large historical datasets, headless CLI scripts (`backend/scripts/migrate_heart_rate.py`) are also available to chunk migrations without timing out browser API requests.
+**Automated Data Migration:** System administrators can toggle this flag via the UI, making the system infinitely expandable for future IoT devices without requiring code changes. When the flag is toggled on an existing biomarker, the Celery task `migrate_biomarker_data` performs an automatic, batched (5000 rows) migration between the standard PostgreSQL `fhir_observations` table and the TimescaleDB `telemetry_data` hypertable. For extremely large historical datasets, headless CLI scripts (`backend/scripts/migrate_heart_rate.py`) are also available to chunk migrations without timing out browser API requests.
+
+**Telemetry → FHIR patient attribution (audit C1):** the
+`telemetry_data` hypertable has **no `patient_id` column by design** —
+telemetry rows are scoped only by `tenant_id` + `device_id`. When an
+admin flips `is_telemetry` true→false on a populated biomarker, the
+migration task must resolve a `Patient` for each row before constructing
+an `Observation` with `subject={"reference": f"Patient/{id}"}`. The
+chain is:
+
+```
+TelemetryDataModel.device_id
+  → UserIntegration (instance_name match) → user_id
+    → Patient.user_id (in the same tenant)
+```
+
+- Rows whose `device_id` resolves to exactly one patient get attributed
+  to that patient.
+- Rows that can't be attributed (unknown device + multi-patient tenant)
+  are **skipped**, not silently assigned to the first patient. The
+  count is exposed in `BiomarkerDefinition.meta_data["migration_skipped_no_patient"]`.
+- The single-patient-tenant case remains the safe fallback (unambiguous
+  attribution).
+- If **no** rows can be attributed (no `UserIntegration` in tenant AND
+  the tenant has multiple patients), the migration aborts with
+  `meta_data["migration_status"] = "failed"` and a clear
+  `meta_data["migration_error"]` instead of corrupting data.
+- The legacy `device_id == "fhir_migration"` marker (set by the
+  FHIR→telemetry direction) is treated as un-attributable.
 
 ## Data Storage Strategy
 The `telemetry_data` table is optimized for both speed and flexibility:

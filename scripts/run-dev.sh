@@ -1,6 +1,12 @@
 #!/bin/bash
 
 # Health Assistant Development Startup Script
+#
+# Bootstrap (venv, deps, migrations, admin user) then runs every dev process
+# as a single group under honcho (Procfile.dev): backend + worker + beat +
+# flower + frontend. A single Ctrl+C cleanly stops everything, and if any
+# process crashes honcho exits loud — no more "celery silently not running"
+# surprises with jobs stuck in PENDING.
 
 echo "Starting Health Assistant Development Environment..."
 
@@ -11,14 +17,16 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Default values
-FORCE_CELERY_RESTART=false
 FORCE_STOP=false
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --force-celery) FORCE_CELERY_RESTART=true ;;
         --force-stop) FORCE_STOP=true ;;
+        --force-celery)
+            # Accepted for backward compat; honcho owns the worker lifecycle now.
+            echo -e "${YELLOW}--force-celery is deprecated (honcho owns celery now); ignoring.${NC}"
+            ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -26,43 +34,39 @@ done
 
 if [ "$FORCE_STOP" = true ]; then
     echo -e "${YELLOW}Force stopping all Health Assistant services...${NC}"
-    
-    # Try graceful shutdown first
+
+    # Kill the honcho parent first so it doesn't respawn children.
+    pkill -f "honcho start" || true
+
+    # Then kill the individual processes (covers the case where someone ran them manually).
     pkill -f "uvicorn app.main:app" || true
     pkill -f "celery -A app.workers.celery_app" || true
     pkill -f "vite.*--port 3000" || true
-    
-    # Wait a moment for graceful exit
+
     sleep 2
-    
-    # Force kill any stragglers based on patterns
+
+    # Force kill stragglers
+    pkill -9 -f "honcho start" || true
     pkill -9 -f "uvicorn app.main:app" || true
     pkill -9 -f "celery -A app.workers.celery_app" || true
     pkill -9 -f "vite.*--port 3000" || true
-    
-    # Ensure port 8000 and 3000 are freed
-    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo -e "${YELLOW}Force killing process on port 8000...${NC}"
-        lsof -ti :8000 | xargs kill -9 2>/dev/null || true
-    fi
-    
-    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo -e "${YELLOW}Force killing process on port 3000...${NC}"
-        lsof -ti :3000 | xargs kill -9 2>/dev/null || true
-    fi
-    
+
+    for port in 8000 3000 5555; do
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo -e "${YELLOW}Force killing process on port $port...${NC}"
+            lsof -ti :$port | xargs kill -9 2>/dev/null || true
+        fi
+    done
+
     rm -f backend/celerybeat.pid
-    
-    # Verify the ports are actually free
+
     sleep 1
-    if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo -e "${RED}Error: Failed to free port 8000. Please check manually using 'lsof -i :8000'.${NC}"
-        exit 1
-    fi
-    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo -e "${RED}Error: Failed to free port 3000. Please check manually using 'lsof -i :3000'.${NC}"
-        exit 1
-    fi
+    for port in 8000 3000; do
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo -e "${RED}Error: Failed to free port $port. Check 'lsof -i :$port'.${NC}"
+            exit 1
+        fi
+    done
 
     echo -e "${GREEN}All services stopped successfully.${NC}"
     exit 0
@@ -74,37 +78,41 @@ if [ ! -d "backend" ] || [ ! -d "frontend" ]; then
     exit 1
 fi
 
-# Function to check if a port is in use
-check_port() {
-    if lsof -Pi :$1 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-        return 0  # Port is in use
-    else
-        return 1  # Port is free
-    fi
-}
-
-# Check required ports
-echo -e "${YELLOW}Checking required ports...${NC}"
-if check_port 8000; then
-    echo -e "${RED}Port 8000 is already in use. Please stop the existing process.${NC}"
+if [ ! -f "Procfile.dev" ]; then
+    echo -e "${RED}Error: Procfile.dev not found in project root.${NC}"
     exit 1
 fi
 
+# Function to check if a port is in use
+check_port() {
+    if lsof -Pi :$1 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+echo -e "${YELLOW}Checking required ports...${NC}"
+if check_port 8000; then
+    echo -e "${RED}Port 8000 is already in use. Stop the existing process (./scripts/run-dev.sh --force-stop).${NC}"
+    exit 1
+fi
+if check_port 5555; then
+    echo -e "${YELLOW}Port 5555 (Flower) is in use; Flower may fail to start.${NC}"
+fi
 if check_port 3000; then
     echo -e "${YELLOW}Port 3000 is in use. Frontend will use an alternative port.${NC}"
 fi
 
-# Start backend
+# Start backend setup
 echo -e "${GREEN}Preparing backend environment...${NC}"
 cd backend
 
-# Robust virtual environment setup
 VENV_DIR="venv"
 if [ -d ".venv" ]; then
     VENV_DIR=".venv"
 fi
 
-# Verify existing venv is functional (paths can break if directory is moved)
 if [ -d "$VENV_DIR" ]; then
     if ! "$VENV_DIR/bin/python" -c "import sys" &> /dev/null || ! "$VENV_DIR/bin/pip" --version &> /dev/null; then
         echo -e "${YELLOW}Existing virtual environment appears broken. Recreating...${NC}"
@@ -119,104 +127,58 @@ if [ ! -d "$VENV_DIR" ]; then
         exit 1
     fi
     if ! python3 -m venv "$VENV_DIR"; then
-        echo -e "${RED}Error: Failed to create virtual environment. Ensure 'python3-venv' (or equivalent) is installed.${NC}"
+        echo -e "${RED}Error: Failed to create virtual environment. Ensure 'python3-venv' is installed.${NC}"
         exit 1
     fi
     echo -e "${GREEN}Virtual environment created successfully.${NC}"
 fi
 
-# Activate virtual environment
 if [ -f "$VENV_DIR/bin/activate" ]; then
-    # We source it so that subsequent commands (like python/pip/alembic/uvicorn) run in the venv context
     source "$VENV_DIR/bin/activate"
 else
     echo -e "${RED}Error: Activation script not found at $VENV_DIR/bin/activate.${NC}"
     exit 1
 fi
 
-# Fallback: ensure we are using the venv's binaries directly in case 'source' partially fails
 VENV_PYTHON="$PWD/$VENV_DIR/bin/python"
 VENV_PIP="$PWD/$VENV_DIR/bin/pip"
 
 if [ ! -x "$VENV_PYTHON" ]; then
-    echo -e "${RED}Error: Virtual environment python not found or not executable. Please delete '$VENV_DIR' and try again.${NC}"
+    echo -e "${RED}Error: Virtual environment python not found or not executable.${NC}"
     exit 1
 fi
 
-# Install dependencies
 echo -e "${YELLOW}Installing/Verifying backend dependencies...${NC}"
 "$VENV_PYTHON" -m pip install -q --upgrade pip
 if ! "$VENV_PIP" install -q -r requirements.txt; then
-    echo -e "${RED}Error: Failed to install requirements. Please check requirements.txt.${NC}"
+    echo -e "${RED}Error: Failed to install requirements.${NC}"
     exit 1
 fi
 
-export PYTHONPATH=.:../
+# Honcho is the process supervisor for dev — verify it landed.
+if ! command -v honcho &> /dev/null; then
+    echo -e "${RED}Error: honcho is not installed even after requirements install. Add 'honcho' to requirements.txt.${NC}"
+    exit 1
+fi
+
+# PYTHONPATH must include backend (for `app.*`) and project root (for `integrations.*`).
+# Exported here so every Procfile.dev process inherits it without re-setting it.
+export PYTHONPATH="$PWD:$(dirname "$PWD")"
 
 # Run database migrations
 echo -e "${YELLOW}Running database migrations...${NC}"
 alembic upgrade head || echo -e "${RED}Migration failed. Proceeding anyway...${NC}"
 
-# Start backend
-echo -e "${GREEN}Starting backend server...${NC}"
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../logging/backend.log 2>&1 &
-
-BACKEND_PID=$!
-echo -e "${YELLOW}Backend started (PID: $BACKEND_PID, logs: logging/backend.log)${NC}"
-
-# Start Celery worker
-echo -e "${GREEN}Starting Celery worker...${NC}"
-# Check if Redis is running
-if ! lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo -e "${YELLOW}Warning: Redis (port 6379) is not running. OCR processing will not work.${NC}"
-else
-    if [ "$FORCE_CELERY_RESTART" = true ]; then
-        echo -e "${YELLOW}Force restarting existing Celery processes...${NC}"
-        pkill -f "celery -A app.workers.celery_app" || true
-        sleep 2
-    fi
-
-    # Start worker using the app instance directly
-    celery -A app.workers.celery_app worker --loglevel=info >> ../logging/celery.log 2>&1 &
-    WORKER_PID=$!
-    echo -e "${YELLOW}Celery worker started (PID: $WORKER_PID, logs: logging/celery.log)${NC}"
-
-    # Start Celery Beat for periodic tasks
-    rm -f celerybeat.pid # Clean up stale lock files
-    celery -A app.workers.celery_app beat --loglevel=info >> ../logging/celery.log 2>&1 &
-    BEAT_PID=$!
-    echo -e "${YELLOW}Celery Beat started (PID: $BEAT_PID, logs: logging/celery.log)${NC}"
-fi
-
-cd ..
-
-# Wait for backend to start
-echo -e "${YELLOW}Waiting for backend to start...${NC}"
-sleep 5
-
-# Check if backend started successfully
-if ! kill -0 $BACKEND_PID 2>/dev/null; then
-    echo -e "${RED}Backend failed to start. Check logs above for details.${NC}"
-    echo -e "${YELLOW}Note: Database connection is optional. App will run without PostgreSQL.${NC}"
-    exit 1
-fi
-
 # Create admin user if database is available
 echo -e "${YELLOW}Setting up admin user...${NC}"
-cd backend
-source "$VENV_DIR/bin/activate"
 python3 scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
-cd ..
 
-# Start frontend
-echo -e "${GREEN}Starting frontend server...${NC}"
-cd frontend
-
+# Frontend deps (done here so the honcho-managed `npm run dev` doesn't pay the install cost on every start)
+cd ../frontend
 if ! command -v npm &> /dev/null; then
     echo -e "${RED}Error: npm is not installed or not in PATH.${NC}"
     exit 1
 fi
-
 if [ ! -d "node_modules" ]; then
     echo -e "${YELLOW}Installing frontend dependencies...${NC}"
     if ! npm install; then
@@ -224,34 +186,39 @@ if [ ! -d "node_modules" ]; then
         exit 1
     fi
 fi
-
-npm run dev -- --host 0.0.0.0 --port 3000 &
-FRONTEND_PID=$!
 cd ..
 
+# Pre-flight: warn if Redis is not running (celery worker + beat + flower all need it).
+if ! lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo -e "${YELLOW}Warning: Redis (port 6379) is not running. Worker/beat/flower will fail to connect.${NC}"
+    echo -e "${YELLOW}Start it via: docker compose -f docker/docker-compose.dev-db.yml up -d redis${NC}"
+fi
+
+# Clean up any stale celery beat lock from a previous run.
+rm -f backend/celerybeat.pid
+
+# Remove stale consolidated celery logs from before per-process split (worker/beat/flower now log separately).
+rm -f logging/celery.log logging/celery.*.log
+
+# Snapshot the LAN IP for the success banner (best-effort, non-fatal).
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -z "$LAN_IP" ] && LAN_IP="localhost"
+
 echo -e "${GREEN}================================${NC}"
-echo -e "${GREEN}Health Assistant is now running!${NC}"
+echo -e "${GREEN}Starting dev processes under honcho...${NC}"
 echo -e "${GREEN}================================${NC}"
-echo -e "Backend:  ${GREEN}http://localhost:8000${NC}"
-echo -e "Frontend: ${GREEN}http://localhost:3000${NC}"
-echo -e "Mobile:   ${GREEN}http://$(hostname -I | awk '{print $1}'):3000${NC}"
-echo -e "API Docs: ${GREEN}http://localhost:8000/docs${NC}"
+echo -e "Backend:   ${GREEN}http://localhost:8000${NC}"
+echo -e "API Docs:  ${GREEN}http://localhost:8000/docs${NC}"
+echo -e "Frontend:  ${GREEN}http://localhost:3000${NC}"
+echo -e "Mobile:    ${GREEN}http://${LAN_IP}:3000${NC}"
+echo -e "Flower:    ${GREEN}http://localhost:5555${NC}  (Celery monitoring)"
 echo -e ""
-echo -e "${YELLOW}Note: Database connection is optional. Run with PostgreSQL for full functionality.${NC}"
-echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
+echo -e "${YELLOW}Processes: backend, worker, beat, flower, frontend (see Procfile.dev).${NC}"
+echo -e "${YELLOW}If any process crashes, honcho stops the whole group so you see the error.${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop all services.${NC}"
+echo -e ""
 
-# Cleanup function
-cleanup() {
-    echo -e "\n${YELLOW}Shutting down...${NC}"
-    kill $BACKEND_PID 2>/dev/null
-    kill $FRONTEND_PID 2>/dev/null
-    kill $WORKER_PID 2>/dev/null
-    kill $BEAT_PID 2>/dev/null
-    rm -f backend/celerybeat.pid
-    exit 0
-}
-
-trap cleanup SIGINT SIGTERM
-
-# Wait for both processes
-wait $BACKEND_PID $FRONTEND_PID
+# `exec` replaces this script with honcho so signals (Ctrl+C) go straight to
+# honcho and propagate to all children. honcho reads Procfile.dev from cwd.
+cd "$(dirname "$0")/.."
+exec honcho start -f Procfile.dev

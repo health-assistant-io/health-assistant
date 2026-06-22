@@ -7,9 +7,10 @@ from app.models.base import (
     AuditMixin,
     VersionedMixin,
     TimestampMixin,
+    SoftDeleteMixin,
 )
 from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus
-from app.services.fhir_helpers import build_fhir_resource, build_meta
+from app.services.fhir_helpers import _enum_value, build_fhir_resource, build_meta, fhir_isoformat
 
 
 class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
@@ -20,8 +21,11 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     description = Column(Text, nullable=True)
     typical_reactions = Column(JSONB, nullable=True)  # List of common symptoms
     tenant_id = Column(
-        UUID(as_uuid=True), nullable=True, index=True
-    )  # NULL means system-wide default
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,  # NULL means system-wide default
+        index=True,
+    )
 
     @property
     def is_custom(self):
@@ -39,7 +43,7 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
 
 
 class AllergyIntolerance(
-    Base, UUIDMixin, TenantMixin, TimestampMixin, AuditMixin, VersionedMixin
+    Base, UUIDMixin, TenantMixin, TimestampMixin, AuditMixin, VersionedMixin, SoftDeleteMixin
 ):
     __tablename__ = "fhir_allergy_intolerances"
 
@@ -98,10 +102,13 @@ class AllergyIntolerance(
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B AllergyIntolerance resource via fhir.resources (validated)."""
-        clinical = (self.clinical_status.value if self.clinical_status else "").lower()
+        # Use _enum_value for defensive enum-or-string handling: pre-flush
+        # SQLAlchemy rows may carry raw strings assigned at construction
+        # (the service passes "ACTIVE" not AllergyClinicalStatus.ACTIVE).
+        clinical = _enum_value(self.clinical_status, "").lower()
         verification = (self.verification_status or "confirmed").lower()
-        category = (self.category.value if self.category else "").lower() or None
-        criticality = (self.criticality.value if self.criticality else "").lower() or None
+        category = _enum_value(self.category, "").lower() or None
+        criticality = _enum_value(self.criticality, "").lower() or None
 
         clinical_status = (
             {
@@ -158,10 +165,8 @@ class AllergyIntolerance(
                 "patient": {"reference": f"Patient/{self.patient_id}"}
                 if self.patient_id
                 else None,
-                "onsetDateTime": self.onset_date.isoformat() if self.onset_date else None,
-                "lastOccurrence": self.last_occurrence.isoformat()
-                if self.last_occurrence
-                else None,
+                "onsetDateTime": fhir_isoformat(self.onset_date),
+                "lastOccurrence": fhir_isoformat(self.last_occurrence),
                 "note": [{"text": self.note}] if self.note else None,
                 "reaction": reactions or None,
                 "meta": build_meta(str(self.id)),

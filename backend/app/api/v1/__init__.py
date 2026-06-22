@@ -3,7 +3,9 @@ from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.tenants import router as tenants_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.documents_db import router as documents_router
-from app.api.v1.endpoints.fhir import router as fhir_router
+from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
+from app.api.v1.endpoints.patients import router as patients_router
+from app.api.v1.endpoints.observations import router as observations_router
 from app.api.v1.endpoints.telemetry import router as telemetry_router
 from app.api.v1.endpoints.alerts import router as alerts_router
 from app.api.v1.endpoints.notifications import router as notifications_router
@@ -26,6 +28,7 @@ from app.api.v1.endpoints.examination_categories import (
 )
 from app.api.v1.endpoints.organizations import router as organizations_router
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.admin_tenants import router as admin_tenants_router
 from app.api.v1.endpoints.integrations import router as integrations_router
 from app.api.v1.endpoints.admin_integrations import router as admin_integrations_router
 from app.api.v1.endpoints.search import router as search_router
@@ -39,7 +42,9 @@ api_router.include_router(tenants_router)
 api_router.include_router(users_router)
 api_router.include_router(documents_router)
 api_router.include_router(examinations_router)
-api_router.include_router(fhir_router)
+api_router.include_router(fhir_r4_router)
+api_router.include_router(patients_router)
+api_router.include_router(observations_router)
 api_router.include_router(telemetry_router)
 api_router.include_router(alerts_router)
 api_router.include_router(notifications_router)
@@ -59,6 +64,7 @@ api_router.include_router(clinical_events_router)
 api_router.include_router(body_parts_router, prefix="/body-parts", tags=["Body Parts"])
 api_router.include_router(examination_categories_router)
 api_router.include_router(admin_router)
+api_router.include_router(admin_tenants_router)
 api_router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
 api_router.include_router(admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"])
 api_router.include_router(search_router, prefix="/search", tags=["Search"])

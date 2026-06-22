@@ -4,7 +4,7 @@ import { AIAssistButton } from '../ui/AIAssistButton';
 import { UnitSelector } from '../ui/UnitSelector';
 import biomarkerService from '../../services/biomarkerService';
 import { Biomarker, Unit } from '../../types/biomarker';
-import { Observation } from '../../types/fhir';
+import { Observation } from '../../types/observation';
 import { CreateBiomarkerModal } from './CreateBiomarkerModal';
 import { useTranslation } from 'react-i18next';
 import { filterBiomarkers, matchBiomarker } from '../../utils/searchUtils';

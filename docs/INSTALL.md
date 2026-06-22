@@ -58,7 +58,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 - Python 3.11+
 - Node.js 18+
 - PostgreSQL 14+ **with TimescaleDB extension** (e.g., `timescale/timescaledb:latest-pg14` Docker image)
-  - *Note: A standard PostgreSQL installation will crash during database migrations. The TimescaleDB extension is strictly required for the `telemetry_data` hypertable to initialize correctly.*
+  - *Note: TimescaleDB is recommended for telemetry hypertable + continuous aggregates. The migration now guards all TimescaleDB DDL behind an extension-availability check, so a plain PostgreSQL install will migrate successfully (it just skips hypertable creation). Install TimescaleDB if you need the telemetry/analytics features.*
 - Redis 7+
 - Tesseract OCR
 
@@ -144,7 +144,7 @@ curl http://localhost:8000/health
 # Expected: {"status":"healthy","database":"connected","redis":"connected"}
 
 curl http://localhost:8000/
-# Expected: {"name":"Health Assistant","version":"0.2.1-rc.2","docs":"/docs"}
+# Expected: {"name":"Health Assistant","version":"0.3.0-rc.1","docs":"/docs"}
 ```
 
 ### Test Frontend
@@ -164,18 +164,32 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 ### Security Checklist
 
 - [ ] Change `SECRET_KEY` to a secure random value
+- [ ] **Set `INTEGRATION_SECRET_KEY`** (Fernet key — encrypts integration secrets AND AI provider `api_key` at rest; without it, AI keys are stored in plaintext with a warning)
+- [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
+- [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value — the insecure `admin123` default was removed; production boot refuses known-weak passwords
 - [ ] Set `DEBUG=false`
 - [ ] Set `APP_ENV=production`
-- [ ] Use HTTPS/TLS
+- [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** — Flower is exposed via the compose network and requires HTTP basic auth in production. Without it, anyone with network access can inspect task payloads, retry jobs, and read worker state.
+- [ ] Set `BACKEND_BIND=127.0.0.1` (default) — backend should NOT be directly internet-facing; place it behind nginx/Traefik for TLS termination.
+- [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
 - [ ] Set up database backups
 - [ ] Configure rate limiting
-- [ ] Enable logging and monitoring
+- [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
+- [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
 
 ### Generate Secure SECRET_KEY
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+### Generate INTEGRATION_SECRET_KEY (Fernet)
+
+Required for encrypting secrets at rest (integration OAuth tokens, MCP secrets, and — as of v0.3.0 — AI provider `api_key`):
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ### Production Environment Modifications
@@ -185,6 +199,7 @@ When deploying to production, modify the variables within your `backend/.env` fi
 - Update `APP_ENV` to `production`
 - Update `DEBUG` to `false`
 - Update `SECRET_KEY` with the securely generated token from the step above.
+- Set `INTEGRATION_SECRET_KEY` with the Fernet key generated above.
 - Update `DATABASE_URL` and `REDIS_URL` to point to your production instances rather than `localhost`.
 
 ### Reverse Proxy (Nginx)

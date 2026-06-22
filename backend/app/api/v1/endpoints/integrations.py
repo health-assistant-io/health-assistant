@@ -27,16 +27,21 @@ def _frontend_origin() -> str:
     return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 @router.get("/available", response_model=List[Dict[str, Any]])
-async def list_available_integrations(db: AsyncSession = Depends(get_db)) -> Any:
+async def list_available_integrations(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
     """
     List all available integrations discovered in the system that are explicitly enabled.
+
+    Requires an authenticated user (any role).
     """
     manifests = integration_registry.get_all_manifests()
-    
+
     stmt = select(SystemIntegration).where(SystemIntegration.is_enabled == True)
     result = await db.execute(stmt)
     enabled_domains = {i.domain for i in result.scalars().all()}
-    
+
     return [m for m in manifests if m.get("domain") in enabled_domains]
 
 @router.get("/active", response_model=List[Dict[str, Any]])
@@ -67,12 +72,20 @@ async def list_active_integrations(
     ]
 
 @router.get("/{domain}/documentation")
-async def get_integration_documentation(domain: str, file: str = None) -> Dict[str, Any]:
-    """Get the markdown documentation for an integration if it exists."""
+async def get_integration_documentation(
+    domain: str,
+    file: str = None,
+    current_user: TokenData = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get the markdown documentation for an integration if it exists.
+
+    Requires an authenticated user (any role). Path traversal is mitigated
+    via ``os.path.basename``.
+    """
     import os
     import json
     from app.core.integration_registry import integration_registry
-    
+
     # We don't check if it's enabled here, so users can read docs before enabling.
     # We do check if the domain is known to the registry (discovered).
     manifests = integration_registry.get_all_manifests()
@@ -736,93 +749,79 @@ async def sync_integration(
         start_time = datetime.datetime.now(datetime.timezone.utc)
         observations_data = await provider.pull_data(integration)
         count = 0
+        dropped_invalid = 0
+        pulled_count = len(observations_data) if observations_data else 0
         if observations_data:
             from app.models.fhir import Observation
-            from app.models.biomarker_model import BiomarkerDefinition
-            
+
             # Convert to ORM models BEFORE passing to mapping
             observations = []
             for obs_data in observations_data:
                 obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
                 obs = Observation(**obs_dict)
                 observations.append(obs)
-                
+
             from app.services.fhir_service import map_observations_to_biomarkers
-            await map_observations_to_biomarkers(db, observations)
-            
-            # Fetch all definitions used
-            b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
-            b_defs_map = {}
-            if b_ids:
-                stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
-                res = await db.execute(stmt)
-                for b in res.scalars().all():
-                    b_defs_map[b.id] = b
+            map_result = await map_observations_to_biomarkers(db, observations)
+            dropped_invalid = (
+                map_result.get("dropped_invalid", 0)
+                if isinstance(map_result, dict)
+                else 0
+            )
 
-            from app.models.telemetry_model import TelemetryDataModel
+            # Route telemetry-class observations to the TimescaleDB hypertable
+            # via the shared helper.
+            from app.services.integration_sync_service import (
+                apply_telemetry_split,
+            )
+            telemetry_records, fhir_records = await apply_telemetry_split(
+                db,
+                observations,
+                tenant_id=integration.tenant_id,
+                instance_name=integration.instance_name,
+                provider_name=integration.provider,
+                integration_id=integration.id,
+            )
+            count = len(telemetry_records) + len(fhir_records)
 
-            telemetry_records = []
-            fhir_records = []
-
-            for obs in observations:
-                is_telemetry = False
-                if obs.biomarker_id and obs.biomarker_id in b_defs_map:
-                    is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
-                
-                if is_telemetry:
-                    # Convert observation to telemetry data point
-                    slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
-                    val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
-                    
-                    hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                    steps = val if slug == "41950-7" or "steps" in slug else None
-                    cal = val if "calories" in slug else None
-                    
-                    data_payload = {}
-                    if not hr and not steps and not cal:
-                        data_payload[slug] = val
-                        data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
-
-                    telemetry_records.append(TelemetryDataModel(
-                        tenant_id=integration.tenant_id,
-                        device_id=integration.instance_name or integration.provider,
-                        timestamp=obs.effective_datetime,
-                        heart_rate=hr,
-                        steps=steps,
-                        calories=cal,
-                        data=data_payload if data_payload else None
-                    ))
-                else:
-                    if not obs.performer:
-                        obs.performer = [{"type": "Integration", "display": integration.instance_name or integration.provider, "reference": f"Integration/{integration.id}"}]
-                    fhir_records.append(obs)
-            
-            if telemetry_records:
-                db.add_all(telemetry_records)
-            if fhir_records:
-                db.add_all(fhir_records)
-            count += len(telemetry_records) + len(fhir_records)
-                
         await provider.push_data(integration, {"status": "manual_sync"})
-        
+
         integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-        
+
+        # If validation dropped observations, mark the sync as partial so the
+        # UI can surface it; otherwise success.
+        sync_status = "success" if dropped_invalid == 0 else "partial"
+        message = (
+            "Sync completed successfully"
+            if dropped_invalid == 0
+            else f"Sync completed with {dropped_invalid} invalid observation(s) dropped"
+        )
+
         # Log the sync
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
-            status="success",
+            status=sync_status,
             records_synced=count,
             started_at=start_time,
-            completed_at=integration.last_synced_at
+            completed_at=integration.last_synced_at,
+            error_message=(
+                f"{dropped_invalid} of {pulled_count} pulled observations "
+                "failed FHIR validation and were dropped"
+                if dropped_invalid
+                else None
+            ),
         )
         db.add(sync_log)
-        
+
         await db.commit()
         return {
-            "message": "Sync completed successfully", 
+            "message": message,
             "metrics_synced": count,
-            "last_synced_at": integration.last_synced_at
+            "pulled": pulled_count,
+            "dropped_invalid": dropped_invalid,
+            "status": sync_status,
+            "last_synced_at": integration.last_synced_at,
         }
     except IntegrationAuthError as e:
         await db.rollback()
@@ -882,6 +881,105 @@ async def sync_integration(
 
 from fastapi import Request
 
+
+def _verify_webhook_signature(
+    secret: str, raw_body: bytes, provided_signature: str
+) -> bool:
+    """Constant-time HMAC-SHA256 verification of a webhook payload.
+
+    Used to authenticate inbound webhook deliveries when an integration has
+    configured a ``webhook_secret``. The route verifies an HMAC-SHA256
+    signature over the raw body before processing the payload.
+
+    Supported header formats (case-insensitive lookup by caller):
+      - ``X-Webhook-Signature``: ``<hex digest>``
+      - ``X-Webhook-Signature-256``: ``<hex digest>``
+      - ``X-Hub-Signature-256`` (GitHub): ``sha256=<hex digest>``
+
+    Returns True iff the computed HMAC matches the provided signature.
+    """
+    import hashlib
+    import hmac as _hmac
+
+    if not secret or not provided_signature:
+        return False
+
+    computed = _hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+
+    # Strip an optional "sha256=" prefix (GitHub convention) before comparing.
+    provided = provided_signature.strip()
+    if provided.lower().startswith("sha256="):
+        provided = provided[len("sha256="):]
+
+    return _hmac.compare_digest(computed, provided.strip().lower())
+
+
+def _verify_api_signature(
+    secret: str,
+    method: str,
+    path: str,
+    raw_body: bytes,
+    provided_signature: str,
+    provided_timestamp: str | None = None,
+    max_skew_seconds: int = 300,
+) -> bool:
+    """Constant-time HMAC-SHA256 verification of an inbound two-way API call.
+
+    Audit item B8: the generic API proxy at
+    ``/{domain}/api/{integration_id}/{path}`` historically used the
+    integration UUID itself as the only credential. UUIDs leak via logs,
+    browser history, JSON responses — anyone who has seen one had full
+    bidirectional API access for the lifetime of the integration.
+
+    When an integration configures ``api_secret`` in its ``user_config``,
+    the proxy now requires a valid HMAC-SHA256 signature over a canonical
+    request string:
+
+        <METHOD>\n<path>\n<raw_body>
+
+    Supported header:
+      - ``X-Api-Signature``: ``<hex digest>`` (required when api_secret set)
+      - ``X-Api-Timestamp``: ``<epoch_seconds>`` (optional but recommended;
+        if present, request is rejected when skew > ``max_skew_seconds``
+        and the timestamp is folded into the signed payload to prevent
+        replay)
+
+    Returns True iff the computed HMAC matches the provided signature
+    AND (when timestamp is supplied) the timestamp is within the allowed
+    skew window. Returns False when ``secret`` or ``provided_signature``
+    is empty.
+    """
+    import hashlib
+    import hmac as _hmac
+    import time
+
+    if not secret or not provided_signature:
+        return False
+
+    canonical_parts = [method.upper().encode("utf-8"), b"\n", path.encode("utf-8"), b"\n"]
+    if provided_timestamp:
+        # Fold the timestamp into the signed payload so a captured signature
+        # cannot be replayed after the skew window.
+        try:
+            ts_int = int(provided_timestamp)
+        except (ValueError, TypeError):
+            return False
+        now = int(time.time())
+        if abs(now - ts_int) > max_skew_seconds:
+            return False
+        canonical_parts.append(provided_timestamp.encode("utf-8") + b"\n")
+    canonical_parts.append(raw_body)
+    canonical = b"".join(canonical_parts)
+
+    computed = _hmac.new(
+        secret.encode("utf-8"), canonical, hashlib.sha256
+    ).hexdigest()
+
+    return _hmac.compare_digest(computed, provided_signature.strip().lower())
+
+
 @router.post("/{domain}/webhook/{integration_id}")
 async def integration_webhook(
     domain: str,
@@ -891,7 +989,13 @@ async def integration_webhook(
 ) -> Any:
     """
     Handle incoming webhooks for a specific integration.
-    This does not require a user token, as the integration_id acts as the secure token.
+
+    When a ``webhook_secret`` is configured on the integration's
+    ``user_config``, the request MUST carry a valid HMAC-SHA256 signature
+    header; otherwise the request is rejected with 401. Integrations without
+    a configured secret retain the legacy behaviour (integration_id acts as
+    the secret) for backward compatibility — operators are encouraged to set
+    a webhook_secret.
     """
     try:
         integration_uuid = UUID(integration_id)
@@ -915,14 +1019,47 @@ async def integration_webhook(
         
     if not hasattr(provider, "handle_webhook"):
         raise HTTPException(status_code=400, detail="Provider does not support webhooks")
-        
+
+    # If the integration configured a ``webhook_secret``, verify the
+    # HMAC-SHA256 signature of the raw body before processing. This
+    # prevents unauthorized POSTs even if the integration UUID leaks.
+    # Read the raw body ONCE here so the signature check and the downstream
+    # JSON parse share the exact bytes.
+    raw_body = await request.body()
+
+    cfg = getattr(integration, "user_config", None) or {}
+    webhook_secret = cfg.get("webhook_secret") if isinstance(cfg, dict) else None
+    if webhook_secret:
+        # Accept any of the conventional signature headers.
+        provided_sig = (
+            request.headers.get("X-Webhook-Signature")
+            or request.headers.get("X-Webhook-Signature-256")
+            or request.headers.get("X-Hub-Signature-256")
+        )
+        if not provided_sig or not _verify_webhook_signature(
+            webhook_secret, raw_body, provided_sig
+        ):
+            logger.warning(
+                "Webhook signature verification failed for %s (Integration: %s)",
+                domain,
+                integration_id,
+            )
+            raise HTTPException(
+                status_code=401, detail="Webhook signature verification failed"
+            )
+
     from app.models.user_integration import IntegrationSyncLog
     import datetime
-    
+
     try:
-        payload = await request.json()
+        payload = (
+            raw_body.decode("utf-8") if raw_body else ""
+        )
+        import json as _json
+
+        payload = _json.loads(payload) if payload else {}
     except Exception:
-        payload = {} # Maybe it's a form or empty body, let the provider handle it
+        payload = {}  # Maybe it's a form or empty body, let the provider handle it
 
     try:
         start_time = datetime.datetime.now(datetime.timezone.utc)
@@ -1044,7 +1181,16 @@ async def integration_api_proxy(
 ) -> Any:
     """
     Handle generic two-way API requests for a specific integration.
-    This does not require a user token, as the integration_id acts as the secure token.
+
+    Audit item B8: the integration UUID is no longer the only credential.
+    When an integration configures ``api_secret`` in its ``user_config``,
+    this route requires a valid ``X-Api-Signature`` header (HMAC-SHA256
+    of ``METHOD\\n<path>\\n[<timestamp>\\n]<raw_body>``) before any work
+    is done. Without the secret the legacy UUID-only behaviour is
+    preserved for backward compatibility, but a warning is logged so
+    operators are nudged toward configuring a secret.
+
+    See ``_verify_api_signature`` for the canonical signing scheme.
     """
     try:
         integration_uuid = UUID(integration_id)
@@ -1058,16 +1204,52 @@ async def integration_api_proxy(
     )
     result = await db.execute(stmt)
     integration = result.scalar_one_or_none()
-    
+
     if not integration:
         raise HTTPException(status_code=404, detail="Active integration not found")
-        
+
     provider = integration_registry.get_provider(domain)
     if not provider:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
-        
+
     if not hasattr(provider, "handle_api_request"):
         raise HTTPException(status_code=400, detail="Provider does not support API requests")
+
+    # API-secret verification (B8). The raw body MUST be read once so
+    # downstream JSON parsing shares the exact bytes used to verify.
+    raw_body = await request.body()
+    cfg = getattr(integration, "user_config", None) or {}
+    api_secret = cfg.get("api_secret") if isinstance(cfg, dict) else None
+    if api_secret:
+        provided_sig = request.headers.get("X-Api-Signature")
+        provided_ts = request.headers.get("X-Api-Timestamp")
+        if not provided_sig or not _verify_api_signature(
+            api_secret,
+            method=request.method,
+            path=path,
+            raw_body=raw_body,
+            provided_signature=provided_sig,
+            provided_timestamp=provided_ts,
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Invalid or missing X-Api-Signature. This integration has an "
+                    "api_secret configured; supply an HMAC-SHA256 of "
+                    "METHOD\\n<path>\\n[<timestamp>\\n]<raw_body> in X-Api-Signature."
+                ),
+            )
+    else:
+        # Legacy UUID-only mode. Log once per call so operators notice the
+        # gap and configure an api_secret. (We don't rate-limit the log to
+        # avoid needing per-integration state.)
+        logger.warning(
+            "Integration %s (provider=%s) has no api_secret configured — "
+            "API proxy is relying solely on the UUID, which is not a credential. "
+            "Set user_config.api_secret to enable HMAC verification (audit B8).",
+            integration_id,
+            domain,
+        )
 
     try:
         response_data = await provider.handle_api_request(

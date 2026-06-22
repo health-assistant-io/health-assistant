@@ -37,35 +37,42 @@ Implemented comprehensive debugging and monitoring system for Celery tasks with 
 
 ### 2. Task Monitor API (`backend/app/api/v1/endpoints/task_monitor.py`)
 
+> All endpoints are **tenant-scoped** (audit B1): a non-`SYSTEM_ADMIN`
+> caller only sees rows whose `tenant_id` matches their token. Cross-
+> tenant retry calls return `404` (no information leak). `SYSTEM_ADMIN`
+> is the deliberate operator-visibility exception and bypasses the
+> tenant filter.
+
 **Endpoints:**
 
 #### GET `/task-monitor/documents/processing`
 - Get documents stuck in processing
 - Filters: patient_id, status, limit
-- Returns: id, filename, status, progress, age_minutes, error_message
-- Security: Authenticated, no sensitive data
+- Returns: id, tenant_id, filename, status, progress, age_minutes, error_message
+- Security: Authenticated, tenant-scoped (or SYSTEM_ADMIN), no sensitive data
 
 #### GET `/task-monitor/examinations/processing`
 - Get examinations stuck in extraction
 - Filters: patient_id, status, limit
-- Returns: id, category, status, progress, age_minutes
-- Security: Authenticated, aggregate metadata only
+- Returns: id, tenant_id, category, status, progress, age_minutes
+- Security: Authenticated, tenant-scoped (or SYSTEM_ADMIN), aggregate metadata only
 
 #### POST `/task-monitor/documents/retry/{document_id}`
 - Retry OCR for failed document
-- Validates document exists
+- Validates document exists in caller's tenant (404 otherwise)
 - Only allows retry for failed/processing docs
 - Resets status to "uploaded" to trigger retry
 
 #### POST `/task-monitor/examinations/retry/{examination_id}`
 - Retry examination extraction
-- Validates examination exists
+- Validates examination exists in caller's tenant (404 otherwise)
 - Resets status to trigger retry
 
 #### GET `/task-monitor/stats`
 - System health statistics
-- Document/examination counts by status
-- Stalled task detection (>10 minutes)
+- Document/examination counts by status (tenant-scoped; global for SYSTEM_ADMIN)
+- Stalled task detection (>10 minutes for the UI badge; the periodic
+  cleanup task uses a 20-minute threshold — see §6 below)
 - Aggregate data only, no sensitive info
 
 ### 3. Task Manager UI (`frontend/src/pages/TaskManager.tsx`)
@@ -176,9 +183,10 @@ ORDER BY created_at DESC;
 - No raw file content logged
 
 ### 2. Authentication
-- All endpoints require authentication
-- User authorization verified
-- Tenant isolation maintained
+- All `/task-monitor/*` endpoints require authentication.
+- **Tenant isolation maintained**: every list/stats query carries a `.where(Model.tenant_id == current_user.tenant_id)` predicate; retry calls fetch by `id AND tenant_id` (cross-tenant → 404, no leak).
+- **`SYSTEM_ADMIN` bypasses** the tenant filter (operator visibility — they monitor the whole platform).
+- See [API.md → Task Monitoring](API.md#task-monitoring-tenant-scoped-except-system_admin-b1).
 
 ### 3. Error Handling
 - Error messages truncated (200 chars)
@@ -194,10 +202,14 @@ ORDER BY created_at DESC;
 
 ### When Task is Stuck:
 
+> Two thresholds are at play:
+> - **UI stall badge:** the Task Manager UI highlights tasks older than **10 minutes** (`TaskTimeoutMonitor(max_duration_seconds=300)` plus the page's polling delay). This is purely visual — older than 10 min doesn't mean dead.
+> - **Periodic cleanup (`cleanup_stuck_extractions`):** marks exams `failed` after **20 minutes** of inactivity (`updated_at < now - 20 min`). The 20-minute threshold is intentionally 5 minutes beyond the Celery hard `task_time_limit=900s` (15 min) so a task killed at exactly 15 min doesn't race with cleanup. The startup cleanup in `main.lifespan` uses the same 20-minute `updated_at` filter so rolling restarts don't kill in-flight exams (audits A5 + A6).
+
 1. **Check Task Monitor UI** (`/task-monitor`)
    - Find stuck document/examination
    - Note error message
-   - Check age (>10 minutes = stalled)
+   - Check age (>10 minutes = stalled; >20 minutes = will be auto-failed on the next cleanup beat)
 
 2. **Retry Task**
    - Click "Retry" button in UI

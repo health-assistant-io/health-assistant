@@ -7,6 +7,7 @@ import re
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.enums import Role
 from app.utils.svg import sanitize_svg
 from app.models.examination_category import ExaminationCategory
 from app.schemas.examination_category import (
@@ -98,11 +99,13 @@ async def update_category(
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    # Check permissions for global categories
-    if category.tenant_id is None:
-        # TODO: Implement super-admin check here.
-        # For now, allow instance owners to customize standard categories.
-        pass
+    # Only system admins can modify global (tenant_id=None) categories;
+    # tenant admins are limited to their own tenant-scoped categories.
+    if category.tenant_id is None and current_user.role != Role.SYSTEM_ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only system admins can modify global categories",
+        )
 
     update_data = category_in.model_dump(exclude_unset=True)
 

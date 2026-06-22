@@ -4,7 +4,8 @@ import { useBiomarkers } from '../../hooks/useBiomarkers';
 import { Info, X } from 'lucide-react';
 import biomarkerService from '../../services/biomarkerService';
 import { Biomarker } from '../../types/biomarker';
-import { getFinalStatus, formatUnit } from '../../utils/biomarkerUtils';
+import { getFinalStatus, formatUnit, formatBiomarkerValue } from '../../utils/biomarkerUtils';
+import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 
 interface Props {
   documents: any[];
@@ -12,6 +13,7 @@ interface Props {
 
 export default function LabResultsVisualizer({ documents }: Props) {
   const { biomarkers } = useBiomarkers({ documents });
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const [catalog, setCatalog] = useState<Record<string, Biomarker>>({});
   const [selectedInfo, setSelectedInfo] = useState<any>(null);
 
@@ -107,7 +109,7 @@ export default function LabResultsVisualizer({ documents }: Props) {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400 font-bold">
-                      {b.value.raw} {(() => {
+                      {formatBiomarkerValue(b.value.raw, precisionProfile)} {(() => {
                         const status = getFinalStatus(b as any);
                         return status !== 'Normal' ? (
                           <span className={`${status === 'High' ? 'text-red-500' : 'text-blue-500'} ml-1 text-xs uppercase font-black`}>

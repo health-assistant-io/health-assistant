@@ -20,7 +20,6 @@ from .notification import (
 )
 from .audit_model import AuditLog
 from .task_log import TaskLog
-from .dashboard import DashboardData
 from .patient_layout import PatientLayoutModel
 from .biomarker_model import (
     Unit,
@@ -42,6 +41,9 @@ from .fhir import (
     AllergyCriticality,
     AllergyClinicalStatus,
 )
+from .fhir.provenance import ProvenanceModel
+from .fhir.device import DeviceModel
+from .fhir.communication import CommunicationModel
 from .ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
 from .chat_model import ChatSession, ChatMessage
 from .clinical_event import (
@@ -72,11 +74,10 @@ __all__ = [
     "DoctorModel",
     "OrganizationModel",
     "organization_doctors",
-    "WearableDataModel",
+    "TelemetryDataModel",
     "AlertModel",
     "AuditLog",
     "TaskLog",
-    "DashboardData",
     "PatientLayoutModel",
     "Patient",
     "Observation",
@@ -87,6 +88,9 @@ __all__ = [
     "AllergyCategory",
     "AllergyCriticality",
     "AllergyClinicalStatus",
+    "ProvenanceModel",
+    "DeviceModel",
+    "CommunicationModel",
     "Unit",
     "BiomarkerDefinition",
     "BiomarkerGroup",

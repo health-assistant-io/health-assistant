@@ -6,6 +6,7 @@ import { listDoctors, createDoctor, updateDoctor, deleteDoctor, Doctor, ContactP
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 function DoctorList() {
   const { t } = useTranslation();
@@ -120,6 +121,9 @@ function DoctorList() {
     }
     setIsModalOpen(true);
   };
+
+  // Open the create modal automatically when arrived via ?new=doctor
+  useCreateIntent(() => handleOpenModal(), 'doctor');
 
   const handleAddTelecom = () => {
     setFormData({

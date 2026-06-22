@@ -7,7 +7,7 @@ class BodyPartModel(Base, UUIDMixin, TenantMixin, TimestampMixin):
     __tablename__ = "body_parts"
 
     name = Column(String(100), nullable=False)
-    slug = Column(String(100), nullable=False, index=True)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
     snomed_code = Column(String(50), nullable=True)
     description = Column(Text, nullable=True)
     is_custom = Column(Boolean, default=False, nullable=False)

@@ -1,27 +1,15 @@
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Image as ImageIcon, 
-  FileText, 
-  Users, 
-  PlusCircle, 
-  Stethoscope, 
-  ShieldAlert, 
-  Pill, 
-  Bell,
-  Calendar,
-  X, 
-  Sparkles, 
-  ChevronLeft, 
-  ChevronRight, 
-  BarChart3 as AnalyticsIcon,
+import {
+  LayoutDashboard,
+  FileText,
+  Pill,
+  X,
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
-  Activity,
   User,
   ShieldCheck,
-  Building2,
-  Globe,
-  Info,
   Settings as SettingsIcon
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -29,14 +17,25 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, Fragment } from 'react';
 import AppVersion from '../ui/AppVersion';
+import CreateMenu from '../ui/CreateMenu';
+
+interface SubItem {
+  path: string;
+  labelKey: string;
+  roles?: string[];
+  /** When set, renders a section divider above this sub-item (e.g. merged Administration group). */
+  section?: string;
+  /** Resolved dynamically — e.g. /patient-info becomes /patients/{id} or /patients. */
+  dynamicPath?: 'patient-detail';
+}
 
 interface MenuItem {
   path: string;
   labelKey: string;
   icon: any;
-  subItems?: { path: string; labelKey: string; roles?: string[] }[];
+  subItems?: SubItem[];
   requiresPatient?: boolean;
   roles?: string[];
 }
@@ -50,9 +49,43 @@ function Sidebar() {
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
   const theme = useSettingsStore(state => state.theme);
-  const [expandedItems, setExpandedItems] = useState<string[]>(['/analytics', '/admin/system', '/admin/tenant']);
-  const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: any[], labelKey: string } | null>(null);
+  const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record', '/clinical-data', '/settings']);
+  const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolve a sub-item path (handles the /patient-info dynamic token)
+  const resolveSubPath = (path: string): string => {
+    if (path === '/patient-info') {
+      return currentPatient ? `/patients/${currentPatient.id}` : '/patients';
+    }
+    return path;
+  };
+
+  // Active-state check at the sub-item level — robust against overlapping prefixes
+  const isSubActive = (subItem: SubItem): boolean => {
+    const path = location.pathname;
+    if (subItem.dynamicPath === 'patient-detail') {
+      // Active only when viewing a specific patient's detail page
+      return /^\/patients\/[^/]+/.test(path);
+    }
+    if (subItem.path === '/patients') {
+      // The patient list — exact match only (so it doesn't shadow the detail page)
+      return path === '/patients';
+    }
+    return path === subItem.path || path.startsWith(subItem.path + '/');
+  };
+
+  // Active-state check at the top-item level
+  const isItemActive = (item: MenuItem): boolean => {
+    const path = location.pathname;
+    if (item.subItems) {
+      return item.subItems.some(isSubActive);
+    }
+    if (item.path === '/dashboard') {
+      return path === '/dashboard' || path === '/';
+    }
+    return path === item.path || path.startsWith(item.path + '/');
+  };
 
   const handleMouseEnter = (e: React.MouseEvent, item: MenuItem) => {
     if (!sidebarCollapsed) return;
@@ -65,7 +98,7 @@ function Sidebar() {
     if (!sidebarCollapsed) return;
     hoverTimeoutRef.current = setTimeout(() => {
       setHoveredMenu(null);
-    }, 150); // slight delay to allow moving to popup
+    }, 150);
   };
 
   const handlePopupMouseEnter = () => {
@@ -79,52 +112,67 @@ function Sidebar() {
   };
 
   const menuItems = useMemo<MenuItem[]>(() => [
+    // 1. Dashboard
     { path: '/dashboard', labelKey: 'common.dashboard', icon: LayoutDashboard },
-    { path: '/patient-info', labelKey: 'common.patient_info', icon: User, requiresPatient: true },
-    { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
-    { path: '/alerts', labelKey: 'common.clinical_alerts', icon: ShieldAlert },
-    { 
-      path: '/analytics', 
-      labelKey: 'common.analytics', 
-      icon: AnalyticsIcon,
-      subItems: [
-        { path: '/analytics/trends', labelKey: 'common.biomarker_trends' },
-        { path: '/analytics/correlative', labelKey: 'common.correlative_analytics' }
-      ]
-    },
-    { path: '/documents', labelKey: 'common.documents_explorer', icon: ImageIcon },
-    { path: '/examinations', labelKey: 'common.examinations', icon: FileText },
-    { path: '/calendar', labelKey: 'common.calendar', icon: Calendar },
-    { path: '/events', labelKey: 'events.title', icon: Activity },
-    { path: '/medications', labelKey: 'common.medications', icon: Pill },
-    { 
-      path: '/admin/system', 
-      labelKey: 'admin.system_administration', 
-      icon: Globe,
-      roles: ['SYSTEM_ADMIN'],
-      subItems: [
-        { path: '/admin/system/tenants', labelKey: 'admin.system_tenants' },
-        { path: '/admin/system/users', labelKey: 'admin.users' },
-        { path: '/admin/system/catalogs', labelKey: 'Clinical Ontology' },
-        { path: '/admin/system/ai-config', labelKey: 'admin.system_ai_config' },
-        { path: '/admin/system/integrations', labelKey: 'System Integrations' },
-        { path: '/admin/system/settings', labelKey: 'admin.system_settings' },
-      ]
-    },
+
+    // 2. Patient Record (grouped)
     {
-      path: '/admin/tenant',
-      labelKey: 'admin.tenant_management',
-      icon: Building2,
+      path: '/patient-record',
+      labelKey: 'common.patient_record',
+      icon: User,
+      subItems: [
+        { path: '/patient-info', labelKey: 'common.patient_overview', dynamicPath: 'patient-detail' },
+        { path: '/analytics/trends', labelKey: 'common.biomarker_trends' },
+        { path: '/analytics/correlative', labelKey: 'common.correlative_analytics' },
+        { path: '/alerts', labelKey: 'common.clinical_alerts' },
+        { path: '/events', labelKey: 'events.title' },
+        { path: '/calendar', labelKey: 'common.calendar' },
+      ],
+    },
+
+    // 3. Clinical Data (grouped)
+    {
+      path: '/clinical-data',
+      labelKey: 'common.clinical_data',
+      icon: FileText,
+      subItems: [
+        { path: '/examinations', labelKey: 'common.examinations' },
+        { path: '/documents', labelKey: 'common.documents_explorer' },
+        { path: '/telemetry', labelKey: 'common.telemetry' },
+      ],
+    },
+
+    // 4. Medications
+    { path: '/medications', labelKey: 'common.medications', icon: Pill },
+
+    // 5. AI Assistant
+    { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
+
+    // 6. Administration (merged System + Tenant, role-gated)
+    {
+      path: '/administration',
+      labelKey: 'common.administration',
+      icon: ShieldCheck,
       roles: ['SYSTEM_ADMIN', 'ADMIN'],
       subItems: [
-        { path: '/admin/tenant/users', labelKey: 'admin.users' },
-        { path: '/admin/tenant/ai-config', labelKey: 'admin.tenant_ai_config' },
-        { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings' },
-        { path: '/patients', labelKey: 'common.patients' },
-        { path: '/doctors', labelKey: 'common.doctors' },
-        { path: '/organizations', labelKey: 'common.organizations' },
-      ]
+        // ── System section ──
+        { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/users', labelKey: 'admin.users', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/catalogs', labelKey: 'Clinical Ontology', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/ai-config', labelKey: 'admin.system_ai_config', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/integrations', labelKey: 'System Integrations', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/settings', labelKey: 'admin.system_settings', roles: ['SYSTEM_ADMIN'] },
+        // ── Tenant section ──
+        { path: '/admin/tenant/users', labelKey: 'admin.users', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/admin/tenant/ai-config', labelKey: 'admin.tenant_ai_config', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/organizations', labelKey: 'common.organizations', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+      ],
     },
+
+    // 7. Settings (grouped)
     {
       path: '/settings',
       labelKey: 'common.settings',
@@ -135,10 +183,10 @@ function Sidebar() {
         { path: '/settings/integrations', labelKey: 'common.integrations' },
         { path: '/settings/ai-config', labelKey: 'common.personal_ai_keys' },
         { path: '/settings/export-import', labelKey: 'backup.title', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
-        { path: '/notifications', labelKey: 'common.notifications' }
-      ]
+        { path: '/notifications', labelKey: 'common.notifications' },
+      ],
     },
-  ], [currentPatient]);
+  ], []);
 
   const toggleExpand = (path: string) => {
     setExpandedItems(prev => 
@@ -148,23 +196,34 @@ function Sidebar() {
 
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter(item => {
-      // Check top level role
       if (item.roles && user && !item.roles.includes(user.role)) return false;
       return true;
     }).map(item => {
-      // Filter sub items
       if (item.subItems) {
         const filteredSubItems = item.subItems.filter(sub => {
           if (sub.roles && user && !sub.roles.includes(user.role)) return false;
           return true;
         });
-        
-        return {
-          ...item,
-          subItems: filteredSubItems.length > 0 ? filteredSubItems : undefined
-        };
+        // Preserve the section divider on the first surviving item of each section
+        const seenSections = new Set<string>();
+        const recomputedSections = filteredSubItems.map(sub => {
+          if (sub.section) {
+            if (seenSections.has(sub.section)) {
+              const { section: _section, ...rest } = sub;
+              return rest as SubItem;
+            }
+            seenSections.add(sub.section);
+            return sub;
+          }
+          return sub;
+        });
+        return { ...item, subItems: recomputedSections.length > 0 ? recomputedSections : undefined };
       }
       return item;
+    }).filter(item => {
+      // Hide the Administration group entirely if no sub-items survived role filtering
+      if (item.roles && item.subItems === undefined) return false;
+      return true;
     });
   }, [menuItems, user]);
 
@@ -176,7 +235,6 @@ function Sidebar() {
           {!sidebarCollapsed && <h1 className="text-xl font-bold text-[#1a2b4b] dark:text-white truncate">Health Assistant</h1>}
         </div>
         
-        {/* Mobile Close Button */}
         {!sidebarCollapsed && (
           <button 
             onClick={() => setSidebarOpen(false)}
@@ -189,18 +247,8 @@ function Sidebar() {
 
       <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
         {filteredMenuItems.map((item) => {
-          // Skip patient-info if no patient selected
-          if (item.requiresPatient && !currentPatient) return null;
-
           const Icon = item.icon;
-          let targetPath = item.path === '/patient-info' && currentPatient 
-            ? `/patients/${currentPatient.id}` 
-            : item.path;
-
-          const isActive = location.pathname === targetPath || 
-            (item.path !== '/dashboard' && location.pathname.startsWith(item.path)) ||
-            (item.path === '/patient-info' && location.pathname.startsWith('/patients/') && currentPatient && location.pathname.includes(currentPatient.id));
-          
+          const isActive = isItemActive(item);
           const isExpanded = expandedItems.includes(item.path);
           
           if (item.subItems) {
@@ -224,22 +272,25 @@ function Sidebar() {
                   
                   {isExpanded && (
                     <div className="ml-10 space-y-1 animate-in slide-in-from-top-2 duration-200">
-                      {item.subItems.map((subItem) => {
-                        const isSubActive = location.pathname === subItem.path;
-                        return (
+                      {item.subItems.map((subItem) => (
+                        <Fragment key={subItem.path}>
+                          {subItem.section && (
+                            <div className="px-4 pt-3 pb-1 text-[9px] font-black text-gray-300 dark:text-dark-border uppercase tracking-widest">
+                              {t(subItem.section)}
+                            </div>
+                          )}
                           <Link
-                            key={subItem.path}
-                            to={subItem.path}
+                            to={resolveSubPath(subItem.path)}
                             className={`block px-4 py-2 text-sm rounded-xl transition-all duration-200 ${
-                              isSubActive
+                              isSubActive(subItem)
                                 ? 'text-[#0088CC] dark:text-blue-400 font-black'
                                 : 'text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text'
                             }`}
                           >
                             {t(subItem.labelKey)}
                           </Link>
-                        );
-                      })}
+                        </Fragment>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -280,7 +331,7 @@ function Sidebar() {
               onMouseLeave={handleMouseLeave}
             >
               <Link
-                to={targetPath}
+                to={item.path}
                 className={`flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'px-4'} py-3 rounded-xl transition-all duration-200 ${
                   isActive
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold shadow-sm'
@@ -296,16 +347,8 @@ function Sidebar() {
       </nav>
 
       <div className={`p-4 space-y-2 mt-auto border-t border-gray-50 dark:border-white/5`}>
-        <Link 
-          to="/examinations/upload"
-          title={sidebarCollapsed ? t('common.new_examination') : ''}
-          className={`w-full flex items-center justify-center bg-[#0088CC] hover:bg-[#0077B3] text-white ${sidebarCollapsed ? 'h-12 w-12 mx-auto' : 'px-4 py-3'} rounded-xl font-bold transition-all shadow-md shadow-blue-100 dark:shadow-none active:scale-95`}
-        >
-          <PlusCircle className={`w-5 h-5 ${sidebarCollapsed ? '' : 'mr-2'} shrink-0`} />
-          {!sidebarCollapsed && <span className="truncate">{t('common.new_examination')}</span>}
-        </Link>
+        <CreateMenu collapsed={sidebarCollapsed} />
 
-        {/* Collapse Toggle Button (Integrated at bottom) */}
         <button
           onClick={toggleSidebarCollapse}
           className={`hidden lg:flex items-center ${sidebarCollapsed ? 'justify-center h-12 w-12 mx-auto' : 'px-4 py-3'} w-full text-gray-400 hover:text-indigo-600 hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-all group`}
@@ -321,7 +364,6 @@ function Sidebar() {
           )}
         </button>
 
-        {/* Version Display */}
         <AppVersion collapsed={sidebarCollapsed} className="pt-1" />
       </div>
 
@@ -333,8 +375,8 @@ function Sidebar() {
             onMouseLeave={handlePopupMouseLeave}
             className="fixed z-[100] bg-white dark:bg-dark-surface rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] border border-gray-100 dark:border-dark-border py-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 dark:ring-white/5"
             style={{
-              top: Math.min(hoveredMenu.rect.top, window.innerHeight - (hoveredMenu.items.length * 40 + 60)),
-              left: hoveredMenu.rect.right + 12, // slightly more spacing
+              top: Math.min(hoveredMenu.rect.top, window.innerHeight - (hoveredMenu.items.length * 40 + 80)),
+              left: hoveredMenu.rect.right + 12,
               minWidth: '220px'
             }}
           >
@@ -342,14 +384,17 @@ function Sidebar() {
               <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase tracking-wider">{t(hoveredMenu.labelKey)}</span>
             </div>
             <div className="px-2 space-y-0.5">
-              {hoveredMenu.items.map((subItem) => {
-                const isSubActive = location.pathname === subItem.path;
-                return (
+              {hoveredMenu.items.map((subItem) => (
+                <Fragment key={subItem.path}>
+                  {subItem.section && (
+                    <div className="px-3 pt-2 pb-1 text-[9px] font-black text-gray-300 dark:text-dark-border uppercase tracking-widest">
+                      {t(subItem.section)}
+                    </div>
+                  )}
                   <Link
-                    key={subItem.path}
-                    to={subItem.path}
+                    to={resolveSubPath(subItem.path)}
                     className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
-                      isSubActive
+                      isSubActive(subItem)
                         ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold'
                         : 'text-gray-600 hover:bg-gray-50 dark:text-dark-text dark:hover:bg-dark-border hover:text-gray-900'
                     }`}
@@ -357,8 +402,8 @@ function Sidebar() {
                   >
                     {t(subItem.labelKey)}
                   </Link>
-                );
-              })}
+                </Fragment>
+              ))}
             </div>
           </div>
         ) : (
@@ -370,7 +415,6 @@ function Sidebar() {
             }}
           >
             {t(hoveredMenu.labelKey)}
-            {/* Small triangle pointer */}
             <div 
               className="absolute w-2 h-2 bg-white dark:bg-dark-surface border-l border-b border-gray-100 dark:border-dark-border rotate-45"
               style={{
@@ -387,3 +431,4 @@ function Sidebar() {
 }
 
 export default Sidebar;
+

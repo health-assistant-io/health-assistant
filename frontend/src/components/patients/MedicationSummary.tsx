@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Pill, Plus, Calendar, Clock, List } from 'lucide-react';
+import { Pill, Calendar, Clock, List } from 'lucide-react';
 import { getPatientMedications, MedicationRecord, deletePatientMedication } from '../../services/medicationService';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { MedicationModal } from './MedicationModal';
 import { UniversalCalendar } from '../ui/UniversalCalendar';
 import MedicationCard from '../medications/MedicationCard';
+import SummaryCardHeader, { TAG_NEUTRAL } from '../ui/SummaryCardHeader';
 
 interface Props {
   patientId: string;
@@ -13,6 +15,7 @@ interface Props {
 
 export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [medications, setMedications] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -69,49 +72,23 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
 
   return (
     <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
-      <div className="px-4 sm:px-6 py-4 border-b border-gray-50 dark:border-dark-border flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-dark-surface">
-        <div className="flex items-center space-x-3 flex-wrap">
-          <div className="flex items-center space-x-2">
-            <Pill className="w-5 h-5 text-blue-500 shrink-0" />
-            <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text whitespace-nowrap">{t('common.medications')}</h2>
-          </div>
-          <span className="px-2 py-0.5 bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted rounded-full text-[10px] font-bold uppercase shrink-0">
-            {activeMeds.length} {t('medications.active')}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <div className="flex bg-gray-100 dark:bg-dark-bg p-0.5 rounded-lg">
-                <button 
-                onClick={() => setViewMode('compact')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
-                title={t('allergies.compact_view')}
-                >
-                <List className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                onClick={() => setViewMode('timeline')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
-                title={t('allergies.timeline_view')}
-                >
-                <Clock className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                onClick={() => setViewMode('calendar')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
-                title={t('dashboard.cards.unified_schedule')}
-                >
-                <Calendar className="w-3.5 h-3.5" />
-                </button>
-            </div>
-            <button 
-            onClick={() => { setSelectedMedication(undefined); setIsModalOpen(true); }}
-            className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold"
-            >
-            <Plus className="w-3 h-3" />
-            <span>{t('medications.add_drug')}</span>
-            </button>
-        </div>
-      </div>
+      <SummaryCardHeader
+        icon={Pill}
+        iconClassName="text-blue-500"
+        title={t('common.medications')}
+        info={{
+          title: t('common.medications'),
+          content: t('medications.info_text'),
+          ariaLabel: t('common.info'),
+        }}
+        tags={[
+          <span key="active" className={TAG_NEUTRAL}>{activeMeds.length} {t('medications.active')}</span>,
+        ]}
+        onAdd={() => { setSelectedMedication(undefined); setIsModalOpen(true); }}
+        addLabel={t('medications.add_drug')}
+        onOpen={() => navigate('/medications')}
+        openLabel={t('common.open_x', { x: t('common.medications') })}
+      />
 
       <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
         {medications.length === 0 ? (
@@ -120,13 +97,41 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
             <p className="text-gray-400 text-sm italic">{t('medications.no_patients_prescribed')}</p>
           </div>
         ) : (
-          viewMode === 'compact' ? (
-            <div className="space-y-4">
-              {activeMeds.length > 0 && (
-                <div className="space-y-3">
-                   <h3 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] px-1">{t('medications.active_prescriptions')}</h3>
-                   <div className="grid grid-cols-1 gap-4">
-                      {activeMeds.map(med => (
+          <>
+            {/* View-mode toggle — moved from header to body */}
+            <div className="flex items-center justify-end mb-4">
+              <div className="flex bg-gray-100 dark:bg-dark-bg p-0.5 rounded-lg">
+                <button
+                  onClick={() => setViewMode('compact')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  title={t('allergies.compact_view')}
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode('timeline')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  title={t('allergies.timeline_view')}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  title={t('dashboard.cards.unified_schedule')}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {viewMode === 'compact' ? (
+              <div className="space-y-4">
+                {activeMeds.length > 0 && (
+                  <div className="space-y-3">
+                     <h3 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] px-1">{t('medications.active_prescriptions')}</h3>
+                     <div className="grid grid-cols-1 gap-4">
+                       {activeMeds.map(med => (
                         <MedicationCard 
                           key={med.id} 
                           medication={med} 
@@ -155,17 +160,18 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
                    </div>
                 </div>
               )}
-            </div>
-          ) : viewMode === 'timeline' ? (
-            <MedicationTimeline 
-              medications={medications} 
-              t={t}
-              onEdit={(med) => { setSelectedMedication(med); setIsModalOpen(true); }}
-            />
-          ) : (
-            <UniversalCalendar config={{ patientId, types: ['medication'] }} defaultView="classic" />
-          )
-        )}
+             </div>
+           ) : viewMode === 'timeline' ? (
+             <MedicationTimeline
+               medications={medications}
+               t={t}
+               onEdit={(med) => { setSelectedMedication(med); setIsModalOpen(true); }}
+             />
+           ) : (
+             <UniversalCalendar config={{ patientId, types: ['medication'] }} defaultView="classic" />
+           )}
+           </>
+         )}
       </div>
 
       <MedicationModal 

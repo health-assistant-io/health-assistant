@@ -39,9 +39,10 @@ export const getFinalStatus = (b: BiomarkerObservation): string => {
 export const isAbnormal = (status: string): boolean => {
   if (!status) return false;
   const s = status.toLowerCase().trim();
+  if (['high', 'low', 'h', 'l', 'abnormal', 'warning'].includes(s) ||
+      s.includes('abnormal') || s.includes('warn')) return true;
   if (['normal', 'n', 'stable', 'within range'].includes(s) || s.includes('normal')) return false;
-  return ['high', 'low', 'h', 'l', 'abnormal', 'warning'].includes(s) || 
-         s.includes('high') || s.includes('low') || s.includes('abnormal') || s.includes('warn');
+  return s.includes('high') || s.includes('low');
 };
 
 /**

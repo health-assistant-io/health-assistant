@@ -87,11 +87,13 @@ class BiomarkerGroupMember(Base, UUIDMixin, AuditMixin, TimestampMixin):
         PG_UUID(as_uuid=True),
         ForeignKey("biomarker_groups.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     biomarker_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     display_order = Column(Integer, default=0)
 
@@ -107,11 +109,13 @@ class BiomarkerRelationship(Base, UUIDMixin, AuditMixin, TimestampMixin):
         PG_UUID(as_uuid=True),
         ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     target_biomarker_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     relation_type = Column(String(100), nullable=False)
 

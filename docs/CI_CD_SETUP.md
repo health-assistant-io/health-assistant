@@ -35,9 +35,9 @@ The pipeline (`.gitea/workflows/deploy.yml`) is split into four highly optimized
    - Authenticates and builds both backend and frontend images using the runner host's native `docker` daemon (bypassing isolated Buildx/BuildKit TLS certificate issues).
 4. **`deploy`:**
    - Establishes an SSH connection to your target deployment server.
-   - Transfers `docker-compose.prod.yml` and updates server-level `.env` configs.
-   - Pulls updated images, restarts containers, and triggers automatic backend Alembic database migrations.
-   - Verifies container health (checks for premature container exits after startup to fail the pipeline if a crash loop occurs).
+   - Transfers `docker-compose.prod.yml` and updates server-level `.env` configs (must include `FLOWER_USER` / `FLOWER_PASSWORD` for Flower auth).
+   - Pulls updated images and (re)starts containers. The one-shot `migrate` service runs `alembic upgrade head` before `backend`, `worker`, and `beat` boot — they depend on it with `condition: service_completed_successfully`.
+   - Verifies container health (checks for premature container exits after startup to fail the pipeline if a crash loop occurs). Healthchecks on `backend` (`/health`), `worker` (`celery inspect ping`), and `flower` (`/`) catch wedged-but-running processes.
 
 ---
 

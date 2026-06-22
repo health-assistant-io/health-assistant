@@ -31,12 +31,33 @@ class TokenRefresh(BaseModel):
 
 
 class UserRegister(BaseModel):
-    """User registration schema"""
+    """User registration schema.
+
+    Two onboarding paths:
+    1. **Bootstrap (no tenant_id)** — creates a new tenant and the new user
+       becomes SYSTEM_ADMIN of it. Used for the household self-onboarding
+       UX. Race-protected via a Postgres advisory lock so concurrent
+       bootstraps cannot promote two registrations to SYSTEM_ADMIN.
+    2. **Join existing tenant (tenant_id + invite_token)** — joins an
+       existing tenant as USER (or another role encoded in the invite
+       token). Requires a valid invite token minted by that tenant's
+       admin via ``POST /auth/invite``. Closes the audit B7 hole where
+       knowing a ``tenant_id`` was sufficient to register inside it.
+    """
 
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(
         ..., min_length=8, max_length=100, description="Password (min 8 characters)"
     )
-    tenant_id: Optional[str] = Field(None, description="Tenant/Organization ID (optional)")
+    tenant_id: Optional[str] = Field(
+        None, description="Tenant/Organization ID. If omitted, a new tenant is created."
+    )
+    invite_token: Optional[str] = Field(
+        None,
+        description=(
+            "Required when tenant_id is provided. Minted by POST /auth/invite "
+            "by an admin of that tenant."
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

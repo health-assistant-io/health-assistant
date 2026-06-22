@@ -81,6 +81,12 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
         ForeignKey("notification_triggers.id", ondelete="SET NULL"),
         nullable=True,
     )
+    communication_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("fhir_communications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     type = Column(Enum(NotificationType), nullable=False)
     status = Column(
@@ -99,13 +105,12 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
     delivered_at = Column(DateTime(timezone=True), nullable=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
 
-    # FHIR Compliance
-    fhir_resource_type = Column(String(50), default="Communication")
-
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
             "patient_id": str(self.patient_id),
+            "trigger_id": str(self.trigger_id) if self.trigger_id else None,
+            "communication_id": str(self.communication_id) if self.communication_id else None,
             "type": self.type.value,
             "status": self.status.value,
             "channel": self.channel.value,

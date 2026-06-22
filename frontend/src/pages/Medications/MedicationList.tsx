@@ -10,6 +10,7 @@ import { MedicationModal } from '../../components/patients/MedicationModal';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 function MedicationList() {
   const { t } = useTranslation();
@@ -28,6 +29,9 @@ function MedicationList() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedMedication, setSelectedMedication] = useState<MedicationRecord | undefined>(undefined);
+
+  // Open the create modal automatically when arrived via ?new=medication
+  useCreateIntent(() => { setSelectedMedication(undefined); setIsModalOpen(true); }, 'medication');
 
   const fetchMedications = async () => {
     if (!currentPatient?.id) return;
