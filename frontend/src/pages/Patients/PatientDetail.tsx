@@ -1,35 +1,29 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getPatient, updatePatient, deletePatient } from '../../services/fhirService';
-import { getExaminations } from '../../services/examinationService';
-import { Patient } from '../../types/fhir';
-import { Edit2, Trash2, Activity, Fingerprint, X, Save, Plus, User, ChevronRight, Stethoscope } from 'lucide-react';
+import { getPatient, updatePatient, deletePatient } from '../../services/patientService';
+import { Patient } from '../../types/patient';
+import { Edit2, Trash2, Fingerprint, X, Save, User } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
-import { useTabScroll } from '../../hooks/useTabScroll';
 import { AllergySummary } from '../../components/patients/AllergySummary';
 import { MedicationSummary } from '../../components/patients/MedicationSummary';
-import { EventDashboard } from '../../components/events/EventDashboard';
+import BiomarkerSummary from '../../components/patients/BiomarkerSummary';
+import ExaminationSummary from '../../components/patients/ExaminationSummary';
+import ClinicalEventSummary from '../../components/patients/ClinicalEventSummary';
+import ScheduleSummary from '../../components/patients/ScheduleSummary';
 import { formatAge } from '../../utils/dateUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
-import { UniversalCalendar } from '../../components/ui/UniversalCalendar';
 
 function PatientDetail() {
   const { t } = useTranslation();
-  const { patientId, activeTab: urlTab } = useParams<{ patientId: string, activeTab?: string }>();
+  const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
   const showConfirmation = useUIStore(state => state.showConfirmation);
   const { currentPatient, setCurrentPatient } = usePatientStore();
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [examinations, setExaminations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'history' | 'events' | 'calendar'>((urlTab as any) || 'history');
-  const tabsRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll when tab changes
-  useTabScroll(tabsRef, activeTab);
 
   // Sync global patient when this patient is loaded
   useEffect(() => {
@@ -37,19 +31,7 @@ function PatientDetail() {
       setCurrentPatient(patient);
     }
   }, [patient, currentPatient, setCurrentPatient]);
-  
-  // Sync tab with URL
-  useEffect(() => {
-    if (urlTab && (urlTab === 'history' || urlTab === 'events' || urlTab === 'calendar')) {
-      setActiveTab(urlTab as any);
-    }
-  }, [urlTab]);
 
-  const handleTabChange = (tab: 'history' | 'events' | 'calendar') => {
-    setActiveTab(tab);
-    navigate(`/patients/${patientId}/${tab}`, { replace: true });
-  };
-  
   // Edit state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -71,12 +53,8 @@ function PatientDetail() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [patientData, examsData] = await Promise.all([
-        getPatient(patientId!),
-        getExaminations(patientId!)
-      ]);
+      const patientData = await getPatient(patientId!);
       setPatient(patientData);
-      setExaminations(examsData || []);
     } catch (error) {
       console.error('Failed to load patient details:', error);
     } finally {
@@ -155,13 +133,6 @@ function PatientDetail() {
     return <div className="text-center py-10 text-gray-500">{t('patients.patient_not_found')}</div>;
   }
 
-  const stripHtml = (html: string) => {
-    if (!html) return '—';
-    const tmp = document.createElement("DIV");
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '—';
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -205,168 +176,28 @@ function PatientDetail() {
         <div className="2xl:col-span-3 order-2 2xl:order-1 space-y-8 min-w-0">
           
           {/* Middle Section: Quick Clinical Overview (Now part of main flow) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {patientId && <AllergySummary patientId={patientId} />}
             {patientId && <MedicationSummary patientId={patientId} />}
+            {patientId && <BiomarkerSummary patientId={patientId} />}
           </div>
 
-          {/* Main Content: Tabs & Tab Content */}
-          <div ref={tabsRef} className="w-full flex flex-col min-h-0 scroll-mt-20">
-            <div className="flex items-center space-x-1 bg-gray-100/50 dark:bg-dark-bg/50 p-1 rounded-2xl w-fit mb-6 border border-gray-100 dark:border-dark-border overflow-x-auto no-scrollbar">
-              <button
-                onClick={() => handleTabChange('history')}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
-                  activeTab === 'history' 
-                    ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {t('patients.examination_history')}
-              </button>
-              <button
-                onClick={() => handleTabChange('events')}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
-                  activeTab === 'events' 
-                    ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {t('events.title')}
-              </button>
-              <button
-                onClick={() => handleTabChange('calendar')}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
-                  activeTab === 'calendar' 
-                    ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' 
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {t('common.calendar')}
-              </button>
-            </div>
-
-            {activeTab === 'history' && (
-              <div className="bg-white dark:bg-dark-surface rounded-[2rem] shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
-                <div className="px-6 sm:px-8 py-6 border-b border-gray-50 dark:border-dark-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">
-                    {t('patients.examination_history')}
-                  </h2>
-                  <button 
-                    onClick={() => navigate('/examinations/upload')}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 transition-all text-[10px] font-black uppercase tracking-widest shadow-sm border border-blue-100/50 dark:border-blue-800/30 active:scale-95 w-full sm:w-auto justify-center"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{t('patients.add_visit')}</span>
-                  </button>
-                </div>
-                
-                {examinations.length === 0 ? (
-                  <div className="p-8 text-center text-gray-400 italic">
-                    {t('patients.no_exams_recorded')}
-                  </div>
-                ) : (
-                  <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-                    <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border">
-                      <thead className="bg-gray-50/50 dark:bg-dark-bg/50 sticky top-0 z-10">
-                        <tr>
-                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-                            {t('dashboard.config.date_range')}
-                          </th>
-                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-                            {t('examinations.categories')}
-                          </th>
-                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-                            {t('examinations.subtitle')}
-                          </th>
-                          <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-                            {t('patients.clinician')}
-                          </th>
-                          <th className="px-8 py-4 text-right text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-                            {t('documents_explorer.status')}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white dark:bg-dark-surface divide-y divide-gray-50 dark:divide-dark-border">
-                        {examinations.sort((a, b) => new Date(b.examination_date).getTime() - new Date(a.examination_date).getTime()).map((exam) => (
-                          <tr key={exam.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
-                            <td className="px-8 py-5 whitespace-nowrap text-sm font-bold">
-                              <Link 
-                                to={`/examinations/${exam.id}`} 
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1 group/link"
-                              >
-                                {new Date(exam.examination_date).toLocaleDateString()}
-                                <ChevronRight className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
-                              </Link>
-                            </td>
-                            <td className="px-8 py-5 whitespace-nowrap">
-                              <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-blue-100 dark:border-blue-800/50">
-                                {exam.category || 'General'}
-                              </span>
-                            </td>
-                            <td className="px-8 py-5 text-sm text-gray-500 dark:text-dark-muted truncate max-w-[200px] font-medium">
-                              {stripHtml(exam.notes)}
-                            </td>
-                            <td className="px-8 py-5 whitespace-nowrap">
-                              {exam.doctors && exam.doctors.length > 0 ? (
-                                <div className="flex items-center text-sm text-gray-700 dark:text-dark-text font-bold">
-                                  <Stethoscope className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
-                                  {exam.doctors.map((d: any) => d.name).join(', ')}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-gray-400 italic font-medium">{t('patients.no_clinician')}</span>
-                              )}
-                            </td>
-                            <td className="px-8 py-5 whitespace-nowrap text-right">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
-                                exam.extraction_status === 'completed' 
-                                  ? 'bg-green-50 text-green-700 border-green-100' 
-                                  : exam.extraction_status === 'failed'
-                                  ? 'bg-red-50 text-red-700 border-red-100'
-                                  : exam.extraction_status === 'processing'
-                                  ? 'bg-yellow-50 text-yellow-700 border-yellow-100 animate-pulse'
-                                  : 'bg-gray-50 text-gray-600 border-gray-100'
-                              }`}>
-                                {exam.extraction_status ? exam.extraction_status : t('patients.pending')}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'events' && (
-              <div className="w-full">
-                {patientId && <EventDashboard patientId={patientId} />}
-              </div>
-            )}
-
-            {activeTab === 'calendar' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <UniversalCalendar 
-                  config={{ 
-                    patientId: patientId,
-                    types: ['medication', 'examination', 'allergy', 'clinical-event'] 
-                  }} 
-                  defaultView="timeline"
-                />
-              </div>
-            )}
+          {/* Activity Overview: rich summary cards (replaces former tabbed area) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {patientId && <ExaminationSummary patientId={patientId} />}
+            {patientId && <ClinicalEventSummary patientId={patientId} />}
+            {patientId && <ScheduleSummary patientId={patientId} />}
           </div>
         </div>
 
-        {/* Sidebar: Personal Info & Activity (Top on small, Side on wide) */}
-        <div className="2xl:col-span-1 order-1 2xl:order-2 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-1 gap-6">
-          {/* Personal Info Box */}
+        {/* Sidebar: Personal Info (Top on small, Side on wide) */}
+        <div className="2xl:col-span-1 order-1 2xl:order-2">
           <div className="bg-gray-50 dark:bg-dark-bg/30 rounded-[2rem] p-6 2xl:p-8 border border-gray-100 dark:border-dark-border shadow-sm">
             <div className="flex items-center space-x-2 mb-6">
               <User className="w-4 h-4 text-gray-400" />
               <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('patients.personal_info')}</h4>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 2xl:block 2xl:space-y-6">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('patients.mrn')}</p>
@@ -374,7 +205,7 @@ function PatientDetail() {
                   <span className="text-[10px] font-mono font-black bg-white dark:bg-dark-surface px-3 py-1.5 rounded-lg border border-gray-200 dark:border-dark-border shadow-sm text-gray-700 dark:text-dark-text tracking-tight">{patient.mrn || '—'}</span>
                 </div>
               </div>
-              
+
               <div>
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('patients.dob')}</p>
                 <div className="flex flex-col">
@@ -394,28 +225,6 @@ function PatientDetail() {
                 <p className="text-sm font-black text-gray-700 dark:text-dark-text capitalize leading-none">
                   {patient.gender || t('patients.unknown')}
                 </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Activity Box */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-6 2xl:p-8 border border-gray-100 dark:border-dark-border shadow-sm h-full">
-            <div className="flex items-center space-x-2 mb-6">
-              <Activity className="w-4 h-4 text-gray-400" />
-              <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('patients.patient_activity')}</h4>
-            </div>
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">{t('patients.total_examinations')}</span>
-                <span className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">{examinations.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">{t('patients.last_visit')}</span>
-                <span className="text-xs font-black text-gray-700 dark:text-dark-text">
-                  {examinations.length > 0 
-                    ? new Date(Math.max(...examinations.map(e => new Date(e.examination_date).getTime()))).toLocaleDateString()
-                    : '—'}
-                </span>
               </div>
             </div>
           </div>

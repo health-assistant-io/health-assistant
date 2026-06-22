@@ -200,9 +200,19 @@ class NotificationManager:
 
     @staticmethod
     async def get_active_notifications(
-        patient_id: Union[str, UUID], limit: int = 20, unread_only: bool = False
+        patient_id: Union[str, UUID],
+        tenant_id: Optional[Union[str, UUID]] = None,
+        limit: int = 20,
+        unread_only: bool = False,
     ) -> List[Notification]:
-        """Fetch notifications for a patient."""
+        """Fetch notifications for a patient.
+
+        ``tenant_id`` is optional but **strongly recommended** for any
+        call originating from an authenticated request — it enforces
+        isolation at the service layer so an endpoint that forgets the
+        filter cannot leak another tenant's notifications. Calls from
+        internal workers may omit it (the patient_id is already scoped).
+        """
         if not DATABASE_AVAILABLE:
             return []
 
@@ -210,6 +220,10 @@ class NotificationManager:
             query = select(Notification).where(
                 Notification.patient_id == UUID(str(patient_id))
             )
+            if tenant_id is not None:
+                query = query.where(
+                    Notification.tenant_id == UUID(str(tenant_id))
+                )
             if unread_only:
                 query = query.where(Notification.status == NotificationStatus.PENDING)
 
@@ -218,36 +232,68 @@ class NotificationManager:
             return list(result.scalars().all())
 
     @staticmethod
-    async def mark_as_read(notification_id: Union[str, UUID]) -> bool:
-        """Mark a notification as read."""
+    async def mark_as_read(
+        notification_id: Union[str, UUID],
+        tenant_id: Optional[Union[str, UUID]] = None,
+    ) -> bool:
+        """Mark a notification as read.
+
+        Returns ``True`` only if a row was actually updated. When
+        ``tenant_id`` is supplied the update is constrained to that
+        tenant — a cross-tenant call returns ``False`` (no row matched),
+        which the endpoint surfaces as 404.
+        """
         if not DATABASE_AVAILABLE:
             return False
 
         async with AsyncSessionLocal() as session:
-            await session.execute(
+            predicates = [Notification.id == UUID(str(notification_id))]
+            if tenant_id is not None:
+                predicates.append(
+                    Notification.tenant_id == UUID(str(tenant_id))
+                )
+            result = await session.execute(
                 update(Notification)
-                .where(Notification.id == UUID(str(notification_id)))
-                .values(status=NotificationStatus.READ, read_at=datetime.now(timezone.utc))
-            )
-            await session.commit()
-            return True
-
-    @staticmethod
-    async def mark_as_delivered(notification_id: Union[str, UUID]) -> bool:
-        """Mark a notification as delivered."""
-        if not DATABASE_AVAILABLE:
-            return False
-
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                update(Notification)
-                .where(Notification.id == UUID(str(notification_id)))
+                .where(*predicates)
                 .values(
-                    status=NotificationStatus.DELIVERED, delivered_at=datetime.now(timezone.utc)
+                    status=NotificationStatus.READ,
+                    read_at=datetime.now(timezone.utc),
                 )
             )
             await session.commit()
-            return True
+            return (result.rowcount or 0) > 0
+
+    @staticmethod
+    async def mark_as_delivered(
+        notification_id: Union[str, UUID],
+        tenant_id: Optional[Union[str, UUID]] = None,
+    ) -> bool:
+        """Mark a notification as delivered.
+
+        Returns ``True`` only if a row was actually updated. When
+        ``tenant_id`` is supplied the update is constrained to that
+        tenant — a cross-tenant call returns ``False`` (no row matched),
+        which the endpoint surfaces as 404.
+        """
+        if not DATABASE_AVAILABLE:
+            return False
+
+        async with AsyncSessionLocal() as session:
+            predicates = [Notification.id == UUID(str(notification_id))]
+            if tenant_id is not None:
+                predicates.append(
+                    Notification.tenant_id == UUID(str(tenant_id))
+                )
+            result = await session.execute(
+                update(Notification)
+                .where(*predicates)
+                .values(
+                    status=NotificationStatus.DELIVERED,
+                    delivered_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+            return (result.rowcount or 0) > 0
 
     @staticmethod
     async def subscribe_user(

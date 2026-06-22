@@ -8,6 +8,7 @@ import { Organization, Doctor } from '../../types/clinical';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 const ORGANIZATION_TYPES = [
   { value: 'prov', label: 'organizations.hospital' },
@@ -106,6 +107,9 @@ function OrganizationList() {
     }
     setIsModalOpen(true);
   };
+
+  // Open the create modal automatically when arrived via ?new=organization
+  useCreateIntent(() => handleOpenModal(), 'organization');
 
   const handleCloseModal = () => {
     setIsModalOpen(false);

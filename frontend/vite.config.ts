@@ -41,7 +41,7 @@ export default defineConfig({
         shortcuts: [
           {
             name: 'New Examination',
-            url: '/examinations/new',
+            url: '/examinations/upload',
             icons: [{ src: 'icon.svg', sizes: '192x192' }]
           },
           {
@@ -55,7 +55,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
-            urlPattern: /^http:\/\/localhost:8000\/api\/v1\/auth\/me/,
+            // Match same-origin /api/v1 calls so the runtime cache works
+            // regardless of where the app is deployed.
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin && url.pathname.startsWith('/api/v1/auth/me'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'auth-cache',
@@ -66,7 +69,8 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^http:\/\/localhost:8000\/api\/v1\/biomarkers/,
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin && url.pathname.startsWith('/api/v1/biomarkers'),
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'biomarker-cache',
@@ -77,7 +81,9 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^http:\/\/localhost:8000\/api\/v1\/patients\/.*\/examinations/,
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin &&
+              /^\/api\/v1\/patients\/[^/]+\/examinations/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'patient-data-cache',
@@ -95,10 +101,6 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/graphql': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
       },

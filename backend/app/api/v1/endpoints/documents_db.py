@@ -2,6 +2,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     UploadFile,
     File,
     BackgroundTasks,
@@ -193,7 +194,7 @@ async def update_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in ["admin", "manager"] and str(document.owner_id) != str(user_id):
+    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to update this document"
         )
@@ -245,7 +246,7 @@ async def edit_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in ["admin", "manager"] and str(document.owner_id) != str(user_id):
+    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to edit this document"
         )
@@ -336,7 +337,7 @@ async def trigger_extraction_endpoint(
         user_id = current_user.user_id
         role = current_user.role
 
-        if role not in ["admin", "manager"] and str(document.owner_id) != str(user_id):
+        if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
             raise HTTPException(
                 status_code=403, detail="Not authorized to extract this document"
             )
@@ -374,7 +375,7 @@ async def get_extraction_status_endpoint(
         f"Checking permissions: user={current_user_id}, role={role}, doc_owner={doc_owner_id}"
     )
 
-    if role not in ["admin", "manager"] and doc_owner_id != current_user_id:
+    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and doc_owner_id != current_user_id:
         logger.warning(
             f"Permission denied: user {current_user_id} (role: {role}) tried to access document owned by {doc_owner_id}"
         )
@@ -527,27 +528,88 @@ async def get_dicom_metadata_endpoint(
 
 @router.get("/{document_id}/preview")
 async def get_document_preview_endpoint(
+    request: Request,
     document_id: str,
     page: int = 0,
     token: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get an image preview of a document (converts DICOM/PDF to image). Supports multiple pages/frames via 'page' query param."""
-    if not token:
-        from app.core.security import get_current_user
+    """Get an image preview of a document.
 
-        # This allows internal authenticated calls or presigned public calls
-        # Note: Depends(get_current_user) doesn't work well with img src unless we use presigned tokens
-        pass
+    Converts DICOM/PDF to image. Supports multiple pages/frames via ``page``
+    query param.
 
-    from app.core.security import verify_presigned_token
+    Auth (audit item B5 — previously this endpoint had no auth at all when
+    ``?token=`` was omitted): a caller MUST present either
 
-    if token and not verify_presigned_token(token, document_id):
-        raise HTTPException(status_code=401, detail="Invalid or expired preview token")
+    1. a valid presigned ``?token=...`` (short-lived JWT bound to this
+       ``document_id`` — used by ``<img src="...">`` tags in the frontend
+       that cannot send an ``Authorization`` header), OR
+    2. a valid ``Authorization: Bearer <jwt>`` for the document's tenant
+       (used by JSON-fetch clients like the AI assistant that already
+       carry the user's session).
+
+    A request with neither credential → 401. A request with a valid
+    credential that doesn't match the document's tenant → 404 (no
+    information leak that the row exists in another tenant).
+    """
+    from app.core.security import decode_access_token, verify_presigned_token
+
+    authenticated_tenant_id = None
+
+    if token:
+        # Presigned-token path. ``verify_presigned_token`` checks the JWT
+        # signature, the ``sub == "download"`` claim, the ``doc_id`` match,
+        # and the ``exp`` window. Tenant enforcement happened at mint time
+        # (the authenticated caller asked for a doc they could already read).
+        if not verify_presigned_token(token, document_id):
+            raise HTTPException(status_code=401, detail="Invalid or expired preview token")
+    else:
+        # No presigned token → require an Authorization: Bearer <jwt>.
+        authorization = request.headers.get("authorization")
+        if not authorization or not authorization.lower().startswith("bearer "):
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required: provide a presigned token or a Bearer token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        bearer = authorization[len("Bearer "):]
+        payload = decode_access_token(bearer)
+        if not payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        try:
+            token_data = TokenData(**payload)
+        except Exception:
+            raise HTTPException(
+                status_code=401,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # SYSTEM_ADMIN can preview any document (operator role); other
+        # roles are constrained to their own tenant below.
+        if token_data.role != Role.SYSTEM_ADMIN.value:
+            authenticated_tenant_id = token_data.tenant_id
 
     document = await get_document(document_id, db)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Tenant enforcement for the authenticated-session path. (The presigned
+    # path is scoped to the document_id and was minted by an authenticated
+    # caller, so the tenant check already happened at mint time.)
+    if authenticated_tenant_id is not None:
+        try:
+            doc_tenant = UUID(str(document.tenant_id))
+            caller_tenant = UUID(str(authenticated_tenant_id))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=403, detail="Tenant mismatch")
+        if doc_tenant != caller_tenant:
+            # 404 (not 403) so we don't leak that the doc exists in another tenant.
+            raise HTTPException(status_code=404, detail="Document not found")
 
     from app.processors.ocr.utils import convert_to_images
     from fastapi.responses import Response
@@ -584,14 +646,8 @@ async def get_document_preview_endpoint(
             media_type="image/jpeg",
             headers={"X-Total-Pages": str(len(images)), "X-Current-Page": str(page)},
         )
-    except Exception as e:
-        logger.error(f"Preview generation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Preview generation failed: {str(e)}"
-        )
-
-        # Return the first page/frame as the preview
-        return Response(content=images[0], media_type="image/jpeg")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Preview generation failed: {e}")
         raise HTTPException(
@@ -615,7 +671,7 @@ async def delete_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in ["admin", "manager"] and str(document.owner_id) != str(user_id):
+    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to delete this document"
         )

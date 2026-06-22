@@ -1,7 +1,6 @@
-from datetime import datetime, timezone, timezone
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 from uuid import UUID
-import random
 
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.enums import CodingSystem
@@ -94,11 +93,14 @@ class ObservationBuilder:
             else:
                 relative_score = 0.5 # Default middle score if range is incomplete
 
-        # Ensure timezone-naive datetime for SQLAlchemy/asyncpg compatibility
+        # Keep timezone-aware datetimes. asyncpg handles TIMESTAMP WITH TIME
+        # ZONE columns natively for tz-aware Python datetimes; stripping tzinfo
+        # would make isoformat() fail the FHIR R4 regex and cause every
+        # SDK-built observation to be silently dropped by assert_valid_fhir.
+        # If a caller passes a naive datetime, assume UTC.
         eff_dt = self._data["effective_datetime"]
-        if eff_dt and eff_dt.tzinfo is not None:
-            # Convert to UTC then remove tzinfo
-            eff_dt = eff_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        if eff_dt and eff_dt.tzinfo is None:
+            eff_dt = eff_dt.replace(tzinfo=timezone.utc)
 
         return ObservationCreate(
             tenant_id=self.tenant_id,

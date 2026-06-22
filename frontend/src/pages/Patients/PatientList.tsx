@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
-import { listPatients, createPatient, updatePatient, deletePatient } from '../../services/fhirService';
+import { listPatients, createPatient, updatePatient, deletePatient } from '../../services/patientService';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, User, Edit2, Trash2, Calendar, Fingerprint, ChevronRight, Users, X, Save } from 'lucide-react';
 import { calculateAge, formatAge } from '../../utils/dateUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 function Patients() {
   const { t } = useTranslation();
@@ -36,22 +37,11 @@ function Patients() {
   });
 
   const fetchPatients = async () => {
-    let currentTenantId = user?.tenant_id;
-    if (!currentTenantId) {
-      try {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-           const decoded = JSON.parse(atob(token.split('.')[1]));
-           currentTenantId = decoded.tenant_id;
-        }
-      } catch (e) {}
-    }
-    
-    if (!currentTenantId) return;
-
     setLoading(true);
     try {
-      const response = await listPatients(currentTenantId);
+      // Omitting tenant_id ensures the backend uses the tenant_id from the
+      // active JWT, correctly handling switched SYSTEM_ADMIN sessions.
+      const response = await listPatients(undefined, 200);
       setPatients(response.items || []);
     } catch (error) {
       console.error('Failed to load patients:', error);
@@ -62,7 +52,7 @@ function Patients() {
 
   useEffect(() => {
     fetchPatients();
-  }, [user?.tenant_id]);
+  }, []);
 
   useEffect(() => {
     setIsPageSearchSupported(true);
@@ -80,8 +70,7 @@ function Patients() {
         lastName: patient.name?.family || '',
         gender: patient.gender || 'unknown',
         birthDate: patient.birth_date || '',
-        mrn: patient.mrn || ''
-      });
+        mrn: patient.mrn || ''      });
     } else {
       setEditingPatient(null);
       setFormData({
@@ -95,6 +84,9 @@ function Patients() {
     setError(null);
     setIsModalOpen(true);
   };
+
+  // Open the create modal automatically when arrived via ?new=patient
+  useCreateIntent(() => handleOpenModal(), 'patient');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

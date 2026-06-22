@@ -1,7 +1,59 @@
-version: '3.8'
+# Health Assistant — production Docker Compose.
+#
+# This file is the canonical production deployment. Docker Compose is the
+# process supervisor here (NOT honcho — honcho is dev-only). Each service
+# runs in its own container with its own restart policy, healthcheck,
+# resource limits, and log rotation. Failure domains are isolated: a
+# crashed worker does NOT bring down the backend or frontend.
+#
+# Required env vars (set in .env or your secret manager):
+#   POSTGRES_PASSWORD, SECRET_KEY, INTEGRATION_SECRET_KEY, OPENAI_API_KEY,
+#   FLOWER_USER, FLOWER_PASSWORD,
+#   REGISTRY, REPOSITORY, IMAGE_TAG (for pre-built images)
+#
+# Optional env vars (have defaults):
+#   POSTGRES_DB, POSTGRES_USER, POSTGRES_PORT, REDIS_PORT,
+#   BACKEND_PORT, FRONTEND_PORT, FLOWER_PORT,
+#   CELERY_WORKER_CONCURRENCY, CELERY_MAX_TASKS_PER_CHILD,
+#   BACKEND_MEMORY, WORKER_MEMORY, BACKEND_CPUS, WORKER_CPUS,
+#   LOG_MAX_SIZE, LOG_MAX_FILE
+#
+# Bring up:    docker compose -f docker/docker-compose.prod.yml up -d
+# Migrate only: docker compose -f docker/docker-compose.prod.yml run --rm migrate
+# View logs:   docker compose -f docker/docker-compose.prod.yml logs -f backend worker
+# Stop:        docker compose -f docker/docker-compose.prod.yml down
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILE:-3}"
+
+x-backend-env: &backend-env
+  APP_ENV: production
+  DEBUG: "false"
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+  REDIS_URL: redis://redis:6379
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  OPENAI_API_BASE: ${OPENAI_API_BASE}
+  OPENAI_MODEL: ${OPENAI_MODEL}
+  SECRET_KEY: ${SECRET_KEY}
+  INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY}
+  OCR_PROVIDER: ${OCR_PROVIDER:-openai}
+  JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+  SMTP_HOST: ${SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  SMTP_FROM: ${SMTP_FROM:-noreply@health-assistant.local}
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  APP_URL: ${APP_URL:-}
 
 services:
+  # ───────────────────────────────────────────────────────────────────────
   # PostgreSQL with TimescaleDB
+  # ───────────────────────────────────────────────────────────────────────
   postgres:
     image: timescale/timescaledb:latest-pg14
     container_name: health_assistant-postgres
@@ -14,22 +66,27 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # Safe binding to localhost on host
+      # Bind to localhost only — do not expose the DB to the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-health_assistant}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     networks:
       - health_assistant-network
 
-  # Redis for caching and task queue
+  # ───────────────────────────────────────────────────────────────────────
+  # Redis (broker + cache + OAuth state store)
+  # ───────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: health_assistant-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379" # Safe binding to localhost on host
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -37,32 +94,51 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     networks:
       - health_assistant-network
 
-  # Backend API
+  # ───────────────────────────────────────────────────────────────────────
+  # Migrations (one-shot)
+  #
+  # Runs `alembic upgrade head` and exits. All app containers depend on it
+  # with `condition: service_completed_successfully`, so they wait for
+  # migrations to complete before booting. This avoids the previous race
+  # where parallel backend replicas ran migrations simultaneously, and
+  # decouples migration failure from backend boot (Compose surfaces the
+  # migrate container's failure clearly).
+  #
+  # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
+  # ───────────────────────────────────────────────────────────────────────
+  migrate:
+    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health_assistant-migrate
+    restart: "no"
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    logging: *default-logging
+    networks:
+      - health_assistant-network
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Backend API (uvicorn)
+  #
+  # Does NOT run migrations (handled by `migrate` service above). Reverse
+  # proxy (nginx/Traefik) should terminate TLS and forward to this service.
+  # The port binding below defaults to 127.0.0.1 only — set
+  # BACKEND_BIND_ALL=true and override BACKEND_PORT to expose directly.
+  # ───────────────────────────────────────────────────────────────────────
   backend:
     image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-backend
     restart: unless-stopped
-    environment:
-      - APP_ENV=production
-      - DEBUG=false
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
-      - REDIS_URL=redis://redis:6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_API_BASE=${OPENAI_API_BASE}
-      - OPENAI_MODEL=${OPENAI_MODEL}
-      - SECRET_KEY=${SECRET_KEY}
-      - OCR_PROVIDER=${OCR_PROVIDER:-openai}
-      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - SMTP_FROM=${SMTP_FROM:-noreply@health-assistant.local}
+    init: true
+    environment: *backend-env
     ports:
-      - "${BACKEND_PORT:-8000}:8000" # Expose backend port to network
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -70,58 +146,144 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEMORY:-1G}
+          cpus: "${BACKEND_CPUS:-1.0}"
+    logging: *default-logging
     networks:
       - health_assistant-network
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  # Frontend
-  frontend:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-frontend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-frontend
-    restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000" # Expose frontend port to network
-    depends_on:
-      - backend
-    networks:
-      - health_assistant-network
-    command: npm run preview -- --host 0.0.0.0 --port 3000
-
-  # Worker (Celery)
+  # ───────────────────────────────────────────────────────────────────────
+  # Celery Worker
+  #
+  # Processes background jobs: OCR, NLP extraction, notifications,
+  # integration syncs, export/import, biomarker-data migration.
+  # --concurrency defaults to 2 (override via CELERY_WORKER_CONCURRENCY).
+  # --max-tasks-per-child recycles the worker process every N tasks to
+  # release memory leaked by ML/OCR libraries.
+  # ───────────────────────────────────────────────────────────────────────
   worker:
     image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-worker
     restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
-      - REDIS_URL=redis://redis:6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_API_BASE=${OPENAI_API_BASE}
-      - OPENAI_MODEL=${OPENAI_MODEL}
-      - OCR_PROVIDER=${OCR_PROVIDER:-openai}
+    init: true
+    environment: *backend-env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: >
+      celery -A app.workers.celery_app worker
+      --loglevel=info
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+      --max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-100}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -t 5 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${WORKER_MEMORY:-2G}
+          cpus: "${WORKER_CPUS:-2.0}"
+    logging: *default-logging
     networks:
       - health_assistant-network
-    command: celery -A app.workers.celery_app worker --loglevel=info
 
-  # Flower (Celery monitoring)
+  # ───────────────────────────────────────────────────────────────────────
+  # Celery Beat (periodic task scheduler)
+  #
+  # Fires scheduled tasks: cleanup_stuck_extractions (5min),
+  # check_notification_triggers (60s), sync_active_integrations (60s beat;
+  # per-instance sync_interval default 15min). Without this service,
+  # medication reminders, recurring notifications, and auto-sync NEVER FIRE
+  # in production.
+  #
+  # Only ONE beat instance must run — beat is not idempotent. Do NOT scale.
+  # ───────────────────────────────────────────────────────────────────────
+  beat:
+    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health_assistant-beat
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
+    logging: *default-logging
+    networks:
+      - health_assistant-network
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Flower (Celery monitoring UI)
+  #
+  # Auth required (FLOWER_USER / FLOWER_PASSWORD). Bind to 127.0.0.1 by
+  # default — expose via your reverse proxy with TLS, OR set
+  # FLOWER_BIND_ALL=true to expose directly (not recommended).
+  # ───────────────────────────────────────────────────────────────────────
   flower:
     image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-flower
     restart: unless-stopped
+    init: true
     ports:
-      - "${FLOWER_PORT:-5555}:5555" # Expose flower port to network
+      - "${FLOWER_BIND:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    command: >
+      celery -A app.workers.celery_app flower
+      --port=5555
+      --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u ${FLOWER_USER:-admin}:${FLOWER_PASSWORD} http://localhost:5555/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
     networks:
       - health_assistant-network
-    command: celery -A app.workers.celery_app flower --port=5555
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Frontend (Vite preview — production build)
+  # ───────────────────────────────────────────────────────────────────────
+  frontend:
+    image: ${REGISTRY}/${REPOSITORY}/health_assistant-frontend:${IMAGE_TAG:-latest}
+    container_name: health_assistant-frontend
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]
+    logging: *default-logging
+    networks:
+      - health_assistant-network
 
 volumes:
   postgres_data:

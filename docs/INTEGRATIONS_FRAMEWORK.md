@@ -16,8 +16,10 @@ This document covers the high-level architecture and how the system manages inte
    - **Users** connect their individual accounts, provide credentials, and control sync preferences. Users can create **multiple instances** of the same integration (e.g., tracking two separate IoT scales).
 3. **Dynamic Schema Setup (Config Flow)**: Instead of hardcoding forms in React, integrations expose a JSON Schema. The frontend dynamically generates the setup UI.
 4. **Dynamic Documentation Trees**: The framework supports both simple (`README.md`) and complex, multi-page documentation structures. Complex integrations can define a `docs/docs-tree.json` file, which the backend parses and serves to the frontend to render interactive, nested navigation menus directly within the application.
-5. **Unified Sync Engine**: A background Celery worker automatically runs every 15 minutes, fetching data and mapping it to standard FHIR resources.
-6. **Secure Webhook Routing**: The system provides dedicated, tokenless (UUID-based) endpoints for integrations that push data (e.g., Tasker, Notify App) directly into the unified patient record.
+5. **Unified Sync Engine**: A background Celery beat fires `sync_active_integrations` every 60 seconds. Each `UserIntegration` row has its own `sync_interval` (default 15 min) — the beat checks each integration's `last_synced_at + sync_interval` and skips the ones that aren't due yet. Per-integration dedup is enforced via a Redis lock (`sync_lock:{integration_id}`, `SET NX EX 600`) so overlapping beats don't double-write Observations/telemetry (see audit C4).
+6. **Secure Webhook + API Proxy Routing**: The system provides dedicated inbound routes for integrations that push or two-way-sync data:
+   - `POST /api/v1/integrations/{domain}/webhook/{integration_id}` — tokenless UUID routing; opt-in HMAC-SHA256 via `user_config.webhook_secret` (`X-Webhook-Signature`).
+   - `ANY /api/v1/integrations/{domain}/api/{integration_id}/{path}` — generic two-way proxy; opt-in HMAC-SHA256 via `user_config.api_secret` (`X-Api-Signature`, optional `X-Api-Timestamp` for replay protection; see audit B8 + [API.md → Integrations & Webhooks](API.md#integrations--webhooks)).
 7. **Tool Exposure Contract**: Integrations can opt-in to expose LangChain tools to the chat assistant by implementing `supports_tools()` + `get_tools()` on their provider. The platform tool aggregator (`integration_tool_aggregator.py`) is domain-agnostic — any integration that opts in is picked up automatically. See the [SDK guide](INTEGRATIONS_SDK.md) §3.6.
 8. **Secret Encryption**: Integrations declare secret config fields via `get_secret_fields()`; the SDK encrypts them at rest (Fernet) and masks them on read. No per-domain code in the endpoint. See the [SDK guide](INTEGRATIONS_SDK.md) §3.7.
 
@@ -37,13 +39,23 @@ The user's form inputs (and potentially OAuth tokens) are securely saved in the 
 Because the system allows multiple instances of the same integration (e.g., configuring two different Webhook endpoints for two different phones), all instance management, deletions, syncs, and custom actions are routed via this `integration_id` (UUID) rather than the generic `domain`.
 
 ### 4. Background Syncing (Polling)
-`celery_app.py` has a periodic beat that triggers `sync_active_integrations` in `tasks.py`. This task loops through all active `UserIntegration` records, loads their specific provider instance, and calls the `pull_data()` method to poll external APIs.
+`celery_app.py` has a periodic beat (every 60 s) that triggers `sync_active_integrations` in `tasks.py`. This task loops through all active `UserIntegration` records, loads their specific provider instance, and calls `pull_data()` to poll external APIs. Each integration's per-row `sync_interval` (default 15 min) gates whether the beat actually pulls.
+
+**Per-integration dedup lock (audit C4):** before pulling, the task acquires a Redis lock keyed `sync_lock:{integration_id}` via `SET NX EX 600` (sync hard timeout). If the lock can't be acquired (another worker is already syncing this integration), the integration is SKIPPED for this cycle — no duplicate writes. The lock is released in a `finally` block; if the worker crashes mid-sync, the 600 s TTL expires it. Redis-down degrades gracefully to the legacy always-sync mode but logs a warning.
 
 ### 5. Webhooks (Push)
 When a third party pushes data to the unique `/api/v1/integrations/{domain}/webhook/{integration_id}` URL, the framework intercepts it, loads the specific `UserIntegration` matching that UUID, and hands the payload off to the provider's `handle_webhook()` method. This ensures secure, tokenless routing to the exact integration instance.
 
-### 6. FHIR Normalization
+### 6. FHIR Normalization & Telemetry Split
 Whether data is pulled or pushed, the framework expects the integration to return standardized FHIR `ObservationCreate` objects. The core engine handles saving these observations to the database and mapping them to the correct semantic Clinical Ontology (Biomarkers).
+
+**Frequency-based routing (FHIR vs TimescaleDB):** observations linked to a `BiomarkerDefinition` flagged `is_telemetry=True` are routed to the `telemetry_data` TimescaleDB hypertable (heart rate, steps, CGM, etc.); everything else lands in the standard `fhir_observations` table. As of v0.3.0 this routing is centralized in `app.services.integration_sync_service.apply_telemetry_split`, which is called by:
+
+- The background `sync_active_integrations` Celery task (runs every 60s)
+- The manual sync endpoint `POST /api/v1/integrations/{id}/sync`
+- (Webhook + bridge provider still inline the same logic; future cleanup will route them through the helper too.)
+
+The helper stamps the `performer` reference (`Integration/<id>`) on FHIR rows that don't already have one, and routes the long-tail of telemetry slugs (anything without a dedicated `heart_rate`/`steps`/`calories` column) into the row's JSONB `data` payload alongside its unit.
 
 ### 7. Interactive Documentation Rendering
 When a user views an integration's details in the UI, the frontend requests `/api/v1/integrations/{domain}/documentation`. The backend checks the integration's root folder for a `docs/docs-tree.json`. If found, it parses the JSON tree and returns it alongside the requested markdown file. The frontend uses this metadata to dynamically render a sidebar navigation menu, allowing users to browse complex SDK references or setup guides without leaving the platform.

@@ -4,13 +4,16 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
-import { listPatients } from '../../services/fhirService';
+import { useTenantStore } from '../../store/slices/tenantSlice';
+import { listPatients } from '../../services/patientService';
 import { PatientSelect } from '../patients';
 import { Search, ChevronDown, Settings, LogOut, Menu, X, Sparkles, Languages, Sun, Moon, ArrowLeft, Link as LinkIcon, Info } from 'lucide-react';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { NotificationBell } from './NotificationBell';
+import { TenantSwitcher } from './TenantSwitcher';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { useTenantSwitchStore } from '../../store/slices/tenantSwitchSlice';
 
 function Header() {
   const { t } = useTranslation();
@@ -19,6 +22,8 @@ function Header() {
   const location = useLocation();
   const { setPatients, setCurrentPatient } = usePatientStore();
   const { language, setLanguage, theme, setTheme } = useSettingsStore();
+  const loadCurrentTenant = useTenantStore((s) => s.loadCurrentTenant);
+  const clearTenant = useTenantStore((s) => s.clear);
   
   const sidebarOpen = useUIStore(state => state.sidebarOpen);
   const toggleSidebar = useUIStore(state => state.toggleSidebar);
@@ -49,77 +54,77 @@ function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Load the current tenant's display name whenever the user changes
+  // (login, tenant switch, exit-switch). The tenant name is not in the
+  // JWT — it must be fetched via GET /tenants.
+  useEffect(() => {
+    if (user?.tenant_id) {
+      loadCurrentTenant();
+    } else {
+      clearTenant();
+    }
+  }, [user?.tenant_id, loadCurrentTenant, clearTenant]);
+
+  const switched = useTenantSwitchStore((s) => s.switched);
+
   useEffect(() => {
     const fetchPatients = async () => {
-      // Safely get tenantId
-      let currentTenantId = user?.tenant_id;
-      if (!currentTenantId) {
-        try {
-          const token = localStorage.getItem('accessToken');
-          if (token) {
-             const decoded = JSON.parse(atob(token.split('.')[1]));
-             currentTenantId = decoded.tenant_id;
-          }
-        } catch (e) {}
-      }
-      
-      if (currentTenantId) {
-        try {
-          // Fetch a larger list to increase chance of finding currentPatient
-          const response = await listPatients(currentTenantId, 100);
-          const items = response.items || [];
-          setPatients(items);
+      try {
+        // We explicitly omit the tenant_id parameter so the backend uses the
+        // tenant_id from the active JWT (which handles switched admin sessions correctly).
+        const response = await listPatients(undefined, 100);
+        const items = response.items || [];
+        setPatients(items);
+        
+        // Refresh or auto-select patient
+        if (items.length > 0) {
+          const current = usePatientStore.getState().currentPatient;
           
-          // Refresh or auto-select patient
-          if (items.length > 0) {
-            const current = usePatientStore.getState().currentPatient;
-            
-            // Logic 1: If current user is linked to a patient, that patient MUST be the context
-            const linkedPatient = items.find((p: any) => p.user_id === user?.id);
-            
-            if (linkedPatient) {
-              if (!current || current.id !== linkedPatient.id) {
-                setCurrentPatient(linkedPatient);
-                return; // Priority 1 satisfied
-              }
+          // Logic 1: If current user is linked to a patient, that patient MUST be the context
+          const linkedPatient = items.find((p: any) => p.user_id === user?.id);
+          
+          if (linkedPatient) {
+            if (!current || current.id !== linkedPatient.id) {
+              setCurrentPatient(linkedPatient);
+              return; // Priority 1 satisfied
             }
-
-            // Logic 2: If no link but we have a stale context from another tenant, clear it
-            if (current && !items.find(p => p.id === current.id)) {
-              setCurrentPatient(null);
-              return;
-            }
-
-            // Logic 3: If no patient is selected yet and we are an admin, we don't auto-select random patients
-            // Only auto-select if it's the ONLY patient in the tenant (Home user context)
-            if (!current && items.length === 1) {
-              setCurrentPatient(items[0]);
-            }
-            
-            // Update existing currentPatient data if it was already correct
-            if (current) {
-              const latest = items.find(p => p.id === current.id);
-              if (latest) {
-                // Update if there are meaningful differences
-                if (latest.mrn !== current.mrn || 
-                    latest.birth_date !== current.birth_date ||
-                    JSON.stringify(latest.name) !== JSON.stringify(current.name)) {
-                  setCurrentPatient(latest);
-                }
-              }
-            }
-          } else {
-            // No patients available at all
-            setCurrentPatient(null);
           }
-        } catch (error) {
-          console.error("Failed to fetch patients for header dropdown:", error);
+
+          // Logic 2: If no link but we have a stale context from another tenant, clear it
+          if (current && !items.find(p => p.id === current.id)) {
+            setCurrentPatient(null);
+            return;
+          }
+
+          // Logic 3: If no patient is selected yet and we are an admin, we don't auto-select random patients
+          // Only auto-select if it's the ONLY patient in the tenant (Home user context)
+          if (!current && items.length === 1) {
+            setCurrentPatient(items[0]);
+          }
+          
+          // Update existing currentPatient data if it was already correct
+          if (current) {
+            const latest = items.find(p => p.id === current.id);
+            if (latest) {
+              // Update if there are meaningful differences
+              if (latest.mrn !== current.mrn || 
+                  latest.birth_date !== current.birth_date ||
+                  JSON.stringify(latest.name) !== JSON.stringify(current.name)) {
+                setCurrentPatient(latest);
+              }
+            }
+          }
+        } else {
+          // No patients available at all
+          setCurrentPatient(null);
         }
+      } catch (error) {
+        console.error("Failed to fetch patients for header dropdown:", error);
       }
     };
     
     fetchPatients();
-  }, [user?.tenant_id, setPatients, setCurrentPatient]); // Removed currentPatient from dependencies
+  }, [user?.tenant_id, setPatients, setCurrentPatient, switched]); // Re-fetch when user tenant or switched status changes
 
   const handleLanguageToggle = () => {
     const newLang = language === 'en' ? 'el' : 'en';
@@ -203,6 +208,11 @@ function Header() {
           )}
         </button>
 
+        {/* Tenant Switcher — shows active tenant, dropdown for SYSTEM_ADMIN */}
+        <div className="hidden sm:flex items-center">
+          <TenantSwitcher />
+        </div>
+
         {/* Global Patient Selector */}
         <div className="hidden sm:flex items-center">
           <PatientSelect />
@@ -275,7 +285,8 @@ function Header() {
             {isUserMenuOpen && (
               <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-xl z-[510] py-2 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
                 {/* Mobile/Compact Patient Selector in Menu */}
-                <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
+                <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border space-y-2">
+                  <TenantSwitcher className="w-full" />
                   <PatientSelect className="border-none bg-transparent shadow-none" align="right" />
                 </div>
 

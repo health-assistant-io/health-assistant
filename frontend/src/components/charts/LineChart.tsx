@@ -43,6 +43,7 @@ interface LineChartProps {
   hideAxes?: boolean;
   hideTooltip?: boolean;
   unit?: string;
+  mini?: boolean;
 }
 
 const LineChart = React.memo(({
@@ -62,10 +63,12 @@ const LineChart = React.memo(({
   hideAxes = false,
   hideTooltip = false,
   unit = '',
+  mini,
 }: LineChartProps) => {
   const theme = useSettingsStore(state => state.theme);
   const precisionProfile = useBiomarkerPrecisionProfile();
   const isDark = theme === 'dark';
+  const isMini = mini ?? hideAxes;
 
   const chartRef = React.useRef<HTMLDivElement>(null);
   const [zoomIndices, setZoomIndices] = useState<{start: number, end: number} | null>(null);
@@ -204,6 +207,21 @@ const LineChart = React.memo(({
       />
     ) : null;
 
+    // Discreet dots: smaller by default, invisible (hover-only) in mini mode.
+    // When there's only one data point, always show a visible solid dot since
+    // there's no line to draw (a line needs 2+ points).
+    const isSinglePoint = displayData.length === 1;
+    const dotProps = isSinglePoint
+      ? (isMini
+        ? { r: 4, strokeWidth: 0, fill: color }
+        : { r: 5, strokeWidth: 2, fill: color, stroke: isDark ? '#1e293b' : '#fff' })
+      : (isMini
+        ? { r: 0 }
+        : { r: 2.5, strokeWidth: 1.5, fill: isDark ? '#1e293b' : '#fff' });
+    const activeDotProps = isMini
+      ? { r: 3, strokeWidth: 0 }
+      : { r: 4, strokeWidth: 0 };
+
     switch (chartType) {
       case 'area':
         return (
@@ -222,8 +240,8 @@ const LineChart = React.memo(({
               strokeWidth={strokeWidth}
               fillOpacity={1}
               fill={`url(#colorValue-${dataKey})`}
-              dot={{ r: 3, strokeWidth: 2, fill: isDark ? '#1e293b' : '#fff' }}
-              activeDot={{ r: 6, strokeWidth: 0 }}
+              dot={dotProps}
+              activeDot={activeDotProps}
               isAnimationActive={!isPanning}
             />
           </>
@@ -250,8 +268,8 @@ const LineChart = React.memo(({
               dataKey={dataKey}
               stroke={color}
               strokeWidth={strokeWidth}
-              dot={{ r: 4, strokeWidth: 2, fill: isDark ? '#1e293b' : '#fff' }}
-              activeDot={{ r: 6, strokeWidth: 0 }}
+              dot={dotProps}
+              activeDot={activeDotProps}
               isAnimationActive={!isPanning}
             />
           </>

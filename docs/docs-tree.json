@@ -33,6 +33,7 @@
     "icon": "Plug",
     "items": [
       { "id": "api", "file": "API.md", "title": "REST API Reference" },
+      { "id": "fhir-r4-facade", "file": "FHIR_R4_FACADE.md", "title": "FHIR R4 Facade" },
       { "id": "integrations-framework", "file": "INTEGRATIONS_FRAMEWORK.md", "title": "Integrations Framework" },
       { "id": "integrations-sdk", "file": "INTEGRATIONS_SDK.md", "title": "Integrations SDK" },
       { "id": "user-integrations-plan", "file": "USER_INTEGRATIONS_PLAN.md", "title": "Integrations Plan" },

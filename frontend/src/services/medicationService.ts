@@ -69,23 +69,13 @@ export async function getPatientMedications(patientId: string): Promise<Medicati
   return response.data;
 }
 
+export async function getMedication(medicationId: string): Promise<MedicationRecord> {
+  const response = await api.get<MedicationRecord>(`/medications/${medicationId}`);
+  return response.data;
+}
+
 export async function addPatientMedication(patientId: string, data: Partial<MedicationRecord>): Promise<MedicationRecord> {
-  // Map our internal timing to FHIR timing
-  const fhirData = {
-    ...data,
-    patient_id: patientId,
-    subject: { reference: `Patient/${patientId}` },
-    timing: data.frequency ? {
-      repeat: {
-        frequency: data.frequency.frequency,
-        period: data.frequency.period,
-        periodUnit: data.frequency.period_unit === 'day' ? 'd' : (data.frequency.period_unit === 'week' ? 'wk' : 'mo'),
-        dayOfWeek: data.frequency.days_of_week,
-        timeOfDay: data.frequency.time_of_day
-      }
-    } : undefined
-  };
-  const response = await api.post<MedicationRecord>(`/fhir/Medication`, fhirData);
+  const response = await api.post<MedicationRecord>(`/medications/patient/${patientId}`, data);
   return response.data;
 }
 

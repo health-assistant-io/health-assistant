@@ -84,8 +84,16 @@ For cloud-synced services, the backend handles OAuth tokens and runs a backgroun
 
 ## 5. Synchronization Engine
 
-A Celery background task `sync_active_integrations` will be scheduled to run every 12 hours.
-1. It queries `UserIntegration` where status is `ACTIVE`.
+> **Historical plan note (2026-06):** the cadence below was originally
+> sketched as "every 12 hours." The shipped implementation runs the
+> Celery beat every 60 s and lets each `UserIntegration` row declare its
+> own `sync_interval` (default 15 min). The 60 s beat checks each row's
+> `last_synced_at + sync_interval` and skips rows that aren't due yet.
+> See [INTEGRATIONS_FRAMEWORK.md §4](INTEGRATIONS_FRAMEWORK.md) for the
+> live behaviour + the per-integration Redis dedup lock.
+
+The `sync_active_integrations` Celery task:
+1. Queries `UserIntegration` where status is `ACTIVE`.
 2. Checks if `expires_at` is near. If so, calls `provider.refresh_access_token()`.
 3. Calls `provider.fetch_data(last_synced_at, now)`.
 4. Saves new `Observation` records to the database.

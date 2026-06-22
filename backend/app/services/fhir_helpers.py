@@ -17,6 +17,29 @@ class FhirSerializationError(Exception):
     """Raised when a value cannot be serialized to / parsed from a FHIR resource."""
 
 
+def fhir_isoformat(value: Optional[dt.datetime]) -> Optional[str]:
+    """Serialize a datetime to a FHIR-conformant ISO-8601 string.
+
+    FHIR R4 regex requires a timezone offset (``Z`` or ``+HH:MM``); a naive
+    ``value.isoformat()`` produces e.g. ``'2026-06-20T22:39:56.471381'``
+    which fails validation. Naive datetimes are assumed UTC (the project's
+    canonical storage timezone). Returns ``None`` for ``None``.
+
+    This is the defensive layer that prevents naive-datetime values from
+    silently failing FHIR validation downstream.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    iso = value.isoformat()
+    # Normalize '+00:00' to 'Z' for the canonical FHIR form (fhir.resources
+    # accepts both, but 'Z' is the spec-preferred UTC designator).
+    if iso.endswith("+00:00"):
+        iso = iso[:-6] + "Z"
+    return iso
+
+
 def build_fhir_resource(resource_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate a FHIR-shaped dict via ``fhir.resources`` and return its canonical
     camelCase dump (None values excluded).

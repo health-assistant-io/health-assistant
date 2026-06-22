@@ -1,9 +1,12 @@
+import os
+
 from celery import Celery
 from app.core.config import settings
 from app.core.logging_setup import setup_logging
 
-# Configure logging for worker
-setup_logging(log_name="celery", debug=settings.DEBUG)
+# Configure logging for worker. HA_LOG_NAME lets each celery process (worker /
+# beat / flower) write to its own file via Procfile.dev; falls back to "celery".
+setup_logging(log_name=os.getenv("HA_LOG_NAME", "celery"), debug=settings.DEBUG)
 
 celery_app = Celery(
     "health_assistant_workers",

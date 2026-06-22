@@ -17,6 +17,7 @@ from app.models.tenant_model import TenantModel
 from app.models.system_setting import SystemSetting
 from app.models.enums import HitlTaskStatus
 from app.utils.svg import sanitize_svg
+from app.utils.prompt_guard import DEFENSE_PREAMBLE, check_user_input_safety
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation
 from app.models.fhir.medication import Medication, MedicationCatalog
@@ -360,7 +361,19 @@ class AIAssistanceService:
         user_id: Optional[UUID] = None,
         stream: bool = False,
     ):
-        """Main entry point for AI assistance"""
+        """Main entry point for AI assistance.
+
+        Every task_type passes user_input through the prompt-injection guard
+        before it reaches the LLM. The guard is non-blocking by default
+        (logs WARNING, proceeds) — the HITL wall remains the structural
+        protection for clinical writes. ``high``-risk input is still processed
+        but the signal is available in the logs for audit correlation.
+        """
+        from app.utils.prompt_guard import check_user_input_safety
+
+        if user_input:
+            check_user_input_safety(user_input, context=f"assist:{task_type}")
+
         llm = await self.ai_provider_service.get_llm(task_type, tenant_id, user_id)
 
         if task_type == "fill_biomarker_form":
@@ -445,7 +458,9 @@ class AIAssistanceService:
 
         llm_with_tools = llm.bind_tools(tools) if tools else llm
 
-        system_prompt = f"""You are Health Assistant AI, a professional medical data assistant.
+        system_prompt = f"""{DEFENSE_PREAMBLE}
+
+        You are Health Assistant AI, a professional medical data assistant.
         Answer the user's questions clearly and professionally using Markdown.
         
         FORMATTING RULES:
@@ -863,7 +878,9 @@ class AIAssistanceService:
         )
         llm_with_tools = llm.bind_tools(tools) if tools else llm
 
-        system_prompt = """You are Health Assistant AI, a professional medical data assistant.
+        system_prompt = f"""{DEFENSE_PREAMBLE}
+
+        You are Health Assistant AI, a professional medical data assistant.
         Answer the user's questions clearly and professionally using Markdown.
 
         FORMATTING RULES:
@@ -1334,9 +1351,9 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Log to terminal for visual verification
-        print(f"\n[AI-ASSIST] Biomarker Definition for '{user_input}':")
-        print(json.dumps(result.model_dump(), indent=2))
+        # Use logger.debug so diagnostic output only surfaces when DEBUG
+        # logging is enabled and never leaks to stdout in production deployments.
+        logger.debug("AI biomarker definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
 
@@ -1368,9 +1385,8 @@ class AIAssistanceService:
         chain = prompt | structured_llm
         result = await chain.ainvoke({"user_input": user_input})
 
-        # Log to terminal for visual verification
-        print(f"\n[AI-ASSIST] Medication Definition for '{user_input}':")
-        print(json.dumps(result.model_dump(), indent=2))
+        # Routed through logger.debug so diagnostic output is gated on DEBUG.
+        logger.debug("AI medication definition generated for %r", user_input)
 
         return {"suggested_data": result.model_dump(), "success": True}
 
@@ -1397,6 +1413,13 @@ class AIAssistanceService:
 
         slugs_str = ", ".join(existing_slugs)
 
+        # Inject the live date so relative-date parsing stays accurate.
+        from datetime import datetime, timezone
+
+        _now = datetime.now(timezone.utc)
+        today_iso = _now.strftime("%Y-%m-%d")
+        current_year = _now.year
+
         system_prompt = f"""You are a medical assistant helping to record a new examination visit.
 Extract the examination date, clinical notes, patient notes, category slug, and any doctor names from the user's input.
 
@@ -1408,9 +1431,9 @@ If unsure, you may suggest a new compact clinical specialty slug (e.g., 'dermato
 Do NOT concatenate multiple categories. Pick the primary one.
 Ensure the slug is lowercase and uses kebab-case.
 
-Output the date in ISO format (YYYY-MM-DD). If no year is mentioned, assume 2026.
+Output the date in ISO format (YYYY-MM-DD). If no year is mentioned, assume {current_year}.
 If no month or day is mentioned, use today's date if appropriate or leave null.
-Today's date is 2026-03-22.
+Today's date is {today_iso}.
 """
 
         structured_llm = llm.with_structured_output(ExaminationMagicFillOutput)

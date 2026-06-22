@@ -1,54 +1,95 @@
-from fastapi import APIRouter, Depends, HTTPException
-from app.core.security import get_current_user, RoleChecker
-from app.services.tenant_service import get_tenant, create_tenant, update_tenant, delete_tenant
+"""Tenant self-info endpoints.
+
+The administrative surface (list, create, update, delete, switch, user
+management) lives at ``/admin/tenants`` and is SYSTEM_ADMIN-only.
+
+This module exposes only the routes a tenant member needs to see their
+own tenant:
+  * ``GET /tenants``          — the caller's own tenant summary.
+  * ``GET /tenants/{id}``     — read a specific tenant (own tenant, or
+    any tenant if the caller is SYSTEM_ADMIN).
+  * ``PATCH /tenants/{id}``   — tenant admin self-service update
+    (name / description / settings only).
+"""
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.security import get_current_user, RoleChecker, TokenData
 from app.models.enums import Role
-from app.schemas.user import TokenData
+from app.schemas.tenant import TenantResponse, TenantUpdate
+from app.services.tenant_admin_service import TenantAdminService
+from app.services.tenant_service import get_tenant
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
-@router.get("/{tenant_id}")
-async def get_tenant_endpoint(tenant_id: str, current_user: TokenData = Depends(get_current_user)):
-    """Get tenant information. Only System Admins or the Tenant Admin of this tenant can see this."""
-    if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != tenant_id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this tenant")
-        
-    tenant = await get_tenant(tenant_id)
+
+def _coerce_uuid(value: str, field: str = "tenant_id") -> UUID:
+    try:
+        return UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {field}: must be a valid UUID.",
+        )
+
+
+@router.get("", response_model=TenantResponse)
+async def get_my_tenant(
+    current_user: TokenData = Depends(get_current_user),
+) -> TenantResponse:
+    """Return the caller's own tenant."""
+    tenant = await get_tenant(current_user.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return TenantResponse.model_validate(tenant)
+
+
+@router.get("/{tenant_id}", response_model=TenantResponse)
+async def get_tenant_endpoint(
+    tenant_id: str,
+    current_user: TokenData = Depends(get_current_user),
+) -> TenantResponse:
+    """Read a tenant by ID.
+
+    A non-SYSTEM_ADMIN caller can only read their own tenant. A switched
+    SYSTEM_ADMIN (``switched=True``) reads the tenant their scoped token
+    points at.
+    """
+    tid = _coerce_uuid(tenant_id)
+    is_admin = current_user.role == Role.SYSTEM_ADMIN.value
+    if not is_admin and str(current_user.tenant_id) != str(tid):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this tenant.",
+        )
+    tenant = await get_tenant(tid)
     if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return TenantResponse.model_validate(tenant)
 
-@router.post("")
-async def create_tenant_endpoint(
-    name: str, 
-    settings: dict, 
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN]))
-):
-    """Create a new tenant (organization) - System Admin only"""
-    tenant = await create_tenant(name, settings)
-    return tenant
 
-@router.put("/{tenant_id}")
-async def update_tenant_endpoint(
-    tenant_id: str, 
-    name: str = None, 
-    settings: dict = None, 
-    current_user: TokenData = Depends(get_current_user)
-):
-    """Update tenant information. Only System Admins or Tenant Admins of this tenant."""
-    is_system_admin = current_user.role == Role.SYSTEM_ADMIN.value
-    is_tenant_admin = current_user.role == Role.ADMIN.value and str(current_user.tenant_id) == tenant_id
-    
-    if not is_system_admin and not is_tenant_admin:
-        raise HTTPException(status_code=403, detail="Not authorized to update this tenant")
-    
-    tenant = await update_tenant(tenant_id, name, settings)
-    return tenant
+@router.patch("/{tenant_id}", response_model=TenantResponse)
+async def update_my_tenant_endpoint(
+    tenant_id: str,
+    payload: TenantUpdate,
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
+    db: AsyncSession = Depends(get_db),
+) -> TenantResponse:
+    """Tenant-admin self-service update (name / description / settings).
 
-@router.delete("/{tenant_id}")
-async def delete_tenant_endpoint(
-    tenant_id: str, 
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN]))
-):
-    """Delete tenant - System Admin only"""
-    await delete_tenant(tenant_id)
-    return {"message": "Tenant deleted successfully"}
+    SYSTEM_ADMIN callers managing a tenant they don't own should use the
+    richer surface at ``PATCH /admin/tenants/{id}`` instead.
+    """
+    tid = _coerce_uuid(tenant_id)
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != str(tid):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this tenant.",
+        )
+    tenant = await TenantAdminService(db).update_tenant(
+        tid, payload, actor_id=current_user.user_id
+    )
+    return TenantResponse.model_validate(tenant)

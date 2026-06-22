@@ -36,6 +36,7 @@ flower==2.0.1
 frozenlist==1.8.0
 greenlet==3.5.1
 h11==0.16.0
+honcho==2.0.0
 http_ece==1.2.1
 httpcore==1.0.9
 httptools==0.8.0

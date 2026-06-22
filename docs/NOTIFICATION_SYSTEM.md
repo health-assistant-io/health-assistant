@@ -23,6 +23,41 @@ The system is built on three main database models:
 
 ---
 
+## Auth & Tenant Isolation
+
+All `/api/v1/notifications/*` endpoints require authentication (Bearer
+JWT) and are **tenant-scoped** — a caller can only see notifications,
+triggers, and subscriptions whose `tenant_id` matches their own. Cross-
+tenant calls return `404` (no leak that the row exists in another
+tenant). Patient-scoped routes (`list`, `create_trigger`, `list_triggers`,
+`get_alert_history`) additionally call `check_patient_access` so a
+`USER`-role caller can only touch patients assigned to them; `ADMIN`/
+`MANAGER` see the tenant-wide view.
+
+Endpoints:
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET`  | `/notifications?vapid-public-key` | Public (no auth). |
+| `POST` | `/notifications/subscribe` | Auth + tenant-scoped (user-bound). |
+| `GET`  | `/notifications?patient_id=...` | Auth + tenant + patient-access. |
+| `PATCH`| `/notifications/{id}/read` | Auth + tenant-scoped. |
+| `PATCH`| `/notifications/{id}/delivered` | **Auth + tenant-scoped.** Previously had no auth at all — the frontend service worker now needs to send the session JWT (audit B2). |
+| `POST` | `/notifications/triggers` | Auth + tenant + patient-access. |
+| `GET`  | `/notifications/triggers?patient_id=...` | Auth + tenant + patient-access. |
+| `DELETE`| `/notifications/triggers/{id}` | Auth + tenant-scoped (cross-tenant delete is a no-op; success returned to avoid leaking existence). |
+| `POST` | `/notifications/triggers/{id}/test` | Auth + tenant-scoped (cross-tenant → 404). |
+
+At the service layer, `NotificationManager.mark_as_read` /
+`mark_as_delivered` / `get_active_notifications` accept an optional
+`tenant_id` parameter and constrain the UPDATE/SELECT with it. The
+mark_* methods return the actual `rowcount > 0` so an endpoint can
+distinguish a successful update from a no-op cross-tenant call (they
+previously returned `True` unconditionally, masking cross-tenant
+no-ops).
+
+---
+
 ## How to Add New Notification Types
 
 To extend the system with a new type of notification (e.g., a "Heart Rate Alarm"), follow these steps:

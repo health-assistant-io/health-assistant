@@ -6,3 +6,7 @@ export * from './BiomarkersCard';
 export * from './UnifiedHealthCalendarCard';
 export * from './AllergyAlertsCard';
 export * from './LatestDocumentsCard';
+export * from './RangeGaugeCard';
+export * from './HealthSummaryCard';
+export * from './MultiBiomarkerComparisonCard';
+export * from './AnomalyCard';

@@ -1,133 +1,90 @@
-import pytest
+"""Tests for the legacy tenant self-info endpoints (``/api/v1/tenants``).
+
+The administrative surface (list/create/delete/etc.) moved to
+``/api/v1/admin/tenants`` and is covered by ``test_admin_tenants.py``.
+
+These tests pin the remaining public contract:
+  * ``GET /tenants`` returns the caller's own tenant.
+  * ``GET /tenants/{id}`` allows same-tenant reads, refuses cross-tenant
+    reads with 403 (no information leak), and lets SYSTEM_ADMIN read any.
+  * ``PATCH /tenants/{id}`` allows tenant-admin self-service updates
+    only on their own tenant.
+"""
 import uuid
-from httpx import AsyncClient
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.core.security import get_current_user
+from app.main import app
 from app.schemas.user import TokenData
 
 
-def override_get_current_user():
-    uid = uuid.uuid4()
+def _token(role: str, tenant_id=None) -> TokenData:
     return TokenData(
-        user_id=uid,
-        sub="current_user@example.com",
-        role="USER",
-        tenant_id=uuid.uuid4(),
+        sub=f"{role.lower()}@example.com",
+        user_id=uuid.uuid4(),
+        tenant_id=tenant_id or uuid.uuid4(),
+        role=role,
     )
-
-
-def override_get_admin_user():
-    uid = uuid.uuid4()
-    return TokenData(
-        user_id=uid,
-        sub="admin@example.com",
-        role="SYSTEM_ADMIN",
-        tenant_id=uuid.uuid4(),
-    )
-
-
-@pytest.fixture
-def mock_tenant():
-    # Use simple mock object or dictionary since TenantModel expects DB session config
-    class MockTenant:
-        def __init__(self):
-            self.id = uuid.uuid4()
-            self.name = "Test Tenant"
-            self.settings = {"theme": "dark"}
-
-        def to_dict(self):
-            return {"id": str(self.id), "name": self.name, "settings": self.settings}
-
-    return MockTenant()
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.tenants.get_tenant")
-async def test_get_tenant(mock_get_tenant, async_client: AsyncClient, mock_tenant):
-    from app.main import app
-    from app.core.security import get_current_user
-
-    # System Admin can see any tenant
-    app.dependency_overrides[get_current_user] = override_get_admin_user
-    mock_get_tenant.return_value = mock_tenant.to_dict()
-
-    response = await async_client.get(f"/api/v1/tenants/{mock_tenant.id}")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "Test Tenant"
-
+async def test_get_my_tenant_returns_own_tenant(async_client):
+    """A caller always sees their own tenant via GET /tenants."""
+    tid = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: _token("USER", tid)
+    fake = type("T", (), {"id": tid, "name": "Mine", "slug": "mine",
+                          "description": None, "is_active": True,
+                          "owner_id": None, "settings": {},
+                          "created_at": None, "updated_at": None})()
+    with patch("app.api.v1.endpoints.tenants.get_tenant", new=AsyncMock(return_value=fake)):
+        resp = await async_client.get("/api/v1/tenants")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == str(tid)
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
-async def test_create_tenant_forbidden(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
-
-    response = await async_client.post(
-        "/api/v1/tenants?name=NewTenant", json={"settings": {}}
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Role USER is not authorized to access this resource"
-
+async def test_get_tenant_by_id_forbidden_cross_tenant(async_client):
+    """A USER cannot read another tenant by guessing the id."""
+    own = uuid.uuid4()
+    other = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: _token("USER", own)
+    resp = await async_client.get(f"/api/v1/tenants/{other}")
+    assert resp.status_code == 403
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.tenants.create_tenant")
-async def test_create_tenant_admin(
-    mock_create_tenant, async_client: AsyncClient, mock_tenant
-):
-    from app.main import app
-    from app.core.security import get_current_user
-
-    app.dependency_overrides[get_current_user] = override_get_admin_user
-    mock_create_tenant.return_value = mock_tenant.to_dict()
-
-    response = await async_client.post(
-        "/api/v1/tenants?name=Test%20Tenant",
-        json={
-            "theme": "dark"
-        },  # Pass settings dictionary as json body or via query, depending on endpoint implementation
-    )
-
-    assert response.status_code == 200
-    assert response.json()["name"] == "Test Tenant"
-
+async def test_get_tenant_by_id_system_admin_can_read_any(async_client):
+    """SYSTEM_ADMIN bypasses the same-tenant gate (read-only here)."""
+    other = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: _token("SYSTEM_ADMIN", uuid.uuid4())
+    fake = type("T", (), {"id": other, "name": "Other", "slug": "other",
+                          "description": None, "is_active": True,
+                          "owner_id": None, "settings": {},
+                          "created_at": None, "updated_at": None})()
+    with patch("app.api.v1.endpoints.tenants.get_tenant", new=AsyncMock(return_value=fake)):
+        resp = await async_client.get(f"/api/v1/tenants/{other}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == str(other)
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
-async def test_update_tenant_forbidden(async_client: AsyncClient, mock_tenant):
-    from app.main import app
-    from app.core.security import get_current_user
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
-
-    response = await async_client.put(f"/api/v1/tenants/{mock_tenant.id}")
-
-    assert response.status_code == 403
-
+async def test_get_tenant_malformed_uuid_returns_400(async_client):
+    app.dependency_overrides[get_current_user] = lambda: _token("USER")
+    resp = await async_client.get("/api/v1/tenants/not-a-uuid")
+    assert resp.status_code == 400
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.tenants.delete_tenant")
-async def test_delete_tenant_admin(
-    mock_delete_tenant, async_client: AsyncClient, mock_tenant
-):
-    from app.main import app
-    from app.core.security import get_current_user
-
-    app.dependency_overrides[get_current_user] = override_get_admin_user
-    mock_delete_tenant.return_value = None
-
-    response = await async_client.delete(f"/api/v1/tenants/{mock_tenant.id}")
-
-    assert response.status_code == 200
-    assert response.json()["message"] == "Tenant deleted successfully"
-    mock_delete_tenant.assert_called_once_with(str(mock_tenant.id))
-
+async def test_patch_my_tenant_requires_admin_role(async_client):
+    """A USER cannot PATCH a tenant even their own."""
+    tid = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: _token("USER", tid)
+    resp = await async_client.patch(f"/api/v1/tenants/{tid}", json={"name": "New"})
+    assert resp.status_code == 403
     app.dependency_overrides = {}

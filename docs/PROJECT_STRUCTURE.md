@@ -67,8 +67,12 @@ Health Assistant/
 │   └── vite.config.ts         # Vite bundler configuration
 │
 ├── docker/                    # Docker configuration
-│   ├── docker-compose.yml     # Production services
-│   └── docker-compose.dev-db.yml # Development services
+│   ├── docker-compose.yml        # All-in-one compose (dev / staging / single-host)
+│   ├── docker-compose.prod.yml   # Production compose (resource limits, Flower auth, one-shot migrate)
+│   ├── docker-compose.dev-db.yml # Development DB (Postgres+TimescaleDB + Redis only)
+│   ├── Dockerfile                # Backend image (uvicorn)
+│   ├── Dockerfile.worker         # Worker image (celery — used by docker-compose.yml)
+│   └── Dockerfile.frontend       # Frontend image
 │
 ├── docs/                      # Technical Documentation
 │   ├── ARCHITECTURE.md        # Technical architecture details
@@ -80,7 +84,8 @@ Health Assistant/
 │   └── ...
 │
 ├── scripts/                   # Root-level utility scripts
-│   └── run-dev.sh             # Consolidated development startup script
+│   └── run-dev.sh             # Dev startup — bootstrap + `honcho start -f Procfile.dev`
+├── Procfile.dev               # Dev process group (backend/worker/beat/flower/frontend)
 ├── uploads/                   # Local file storage (documents)
 └── README.md                  # Project overview
 ```

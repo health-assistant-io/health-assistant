@@ -24,6 +24,7 @@ import { MasterDetailLayout } from '../../components/ui/MasterDetailLayout';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { CategoryDropdown } from '../../components/ui/CategoryDropdown';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 export const ClinicalEventList = () => {
   const { t } = useTranslation();
@@ -105,6 +106,9 @@ export const ClinicalEventList = () => {
     setEditingEvent(undefined);
     setIsModalOpen(true);
   };
+
+  // Open the create modal automatically when arrived via ?new=event
+  useCreateIntent(handleCreateNew, 'event');
 
   const filteredEvents = events.filter(ev => {
     const matchesSearch = 

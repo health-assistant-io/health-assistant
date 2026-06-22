@@ -18,7 +18,7 @@ import {
   RotateCcw, CloudLightning, Camera, Building2
 } from 'lucide-react';
 import { listDoctors, createDoctor, Doctor } from '../../services/doctorService';
-import { deleteObservation } from '../../services/fhirService';
+import { deleteObservation } from '../../services/observationService';
 import { isAbnormal } from '../../utils/biomarkerUtils';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';

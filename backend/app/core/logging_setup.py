@@ -11,7 +11,18 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
     Sets up logging for the application using rotating file handlers.
     Creates a 'logging' directory at the project root.
     Keeps the last 5 logs and rotates at 10MB.
+
+    The log file name can be overridden per-process via the ``HA_LOG_NAME``
+    environment variable — e.g. the celery worker, beat and flower processes
+    each set ``HA_LOG_NAME=worker|beat|flower`` so they write to separate
+    files instead of sharing ``celery.log``.
+
+    Set ``HA_LOG_TO_CONSOLE=0`` to suppress the console StreamHandler
+    (default is to keep console output alongside the file).
     """
+    # HA_LOG_NAME wins over the function arg so Procfile.dev can name each process.
+    log_name = os.environ.get("HA_LOG_NAME", log_name)
+
     # Project root is 3 levels up from this file: backend/app/core/logging_setup.py
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     log_dir = project_root / "logging"
@@ -72,10 +83,11 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
     except Exception as e:
         print(f"Error creating log file handler: {e}")
 
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(log_format))
-    root_logger.addHandler(console_handler)
+    # Console handler (can be disabled with HA_LOG_TO_CONSOLE=0)
+    if os.environ.get("HA_LOG_TO_CONSOLE", "1") != "0":
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(console_handler)
 
     # Ensure uvicorn and other loggers propagate to root
     for logger_name in [

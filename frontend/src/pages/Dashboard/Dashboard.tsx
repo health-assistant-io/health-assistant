@@ -18,18 +18,15 @@ import {
   deletePatientLayout
 } from '../../services/dashboardLayoutService';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { Activity, Settings, Plus, Save, ChevronDown, Trash2, Calendar, ShieldAlert, Image as ImageIcon, FileText, User, Copy, LayoutTemplate, Edit2 } from 'lucide-react';
-import { 
-  BiomarkerCard, 
-  TrendsCard, 
-  ImageViewerCard, 
-  ExaminationCard, 
-  BiomarkersCard,
-  UnifiedHealthCalendarCard,
-  AllergyAlertsCard,
-  LatestDocumentsCard,
-  getBestIcon
-} from '../../components/dashboard';
+import { Settings, Plus, Save, ChevronDown, Trash2, User, Copy, LayoutTemplate, Edit2 } from 'lucide-react';
+import {
+  getCardDefinition,
+  resolveCardComponent,
+  resolveDefaultConfig,
+  resolveDefaultLayout,
+  ADDABLE_CARDS,
+} from '../../components/dashboard/cardRegistry';
+import { getBestIcon } from '../../components/dashboard';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
@@ -141,19 +138,28 @@ function Dashboard() {
   const loadAllCardData = useCallback(async () => {
     if (!currentPatient?.id) return;
     try {
-      const biomarkerCards = cards.filter(c => c.type === 'biomarker' || c.type === 'trends' || c.type === 'labs');
-      
+      const biomarkerCards = cards.filter(c =>
+        c.type === 'biomarker' || c.type === 'trends' || c.type === 'labs' ||
+        c.type === 'range_gauge' || c.type === 'multi_biomarker_comparison' || c.type === 'health_summary'
+      );
+
       const specificSlugs = new Set<string>();
       let fetchAll = false;
 
       biomarkerCards.forEach(c => {
-        if (c.type === 'labs') {
+        if (c.type === 'labs' || c.type === 'health_summary') {
           if (c.config.biomarkers && c.config.biomarkers.length > 0) {
             c.config.biomarkers.forEach((s: string) => specificSlugs.add(s));
           } else {
             fetchAll = true;
           }
-        } else if (c.type === 'biomarker' || c.type === 'trends') {
+        } else if (c.type === 'multi_biomarker_comparison') {
+          if (c.config.biomarkers && c.config.biomarkers.length > 0) {
+            c.config.biomarkers.forEach((s: string) => specificSlugs.add(s));
+          } else {
+            fetchAll = true;
+          }
+        } else if (c.type === 'biomarker' || c.type === 'trends' || c.type === 'range_gauge') {
           const slug = c.config.biomarker || (c.type === 'trends' ? selectedBiomarker : null);
           if (slug) specificSlugs.add(slug);
         }
@@ -455,56 +461,31 @@ function Dashboard() {
   };
 
   const addCard = (type: string) => {
+    const def = getCardDefinition(type);
+    if (!def) return;
+
     const id = `card-${Date.now()}`;
     const firstBiomarker = availableBiomarkers[0];
-    const defaultBiomarkerValue = typeof firstBiomarker === 'object' 
-      ? (firstBiomarker as any).slug 
+    const defaultBiomarker = typeof firstBiomarker === 'object'
+      ? (firstBiomarker as any).slug
       : (firstBiomarker || 'glucose');
-    
     const biomarkerLabel = typeof firstBiomarker === 'object'
       ? (firstBiomarker as any).name
       : (firstBiomarker || 'Glucose');
-    
-    let newCard;
-    switch(type) {
-      case 'biomarker':
-        newCard = { id, type: 'biomarker', config: { biomarker: defaultBiomarkerValue, icon: getBestIcon(biomarkerLabel) } };
-        break;
-      case 'trends':
-        newCard = { id, type: 'trends', config: { biomarker: defaultBiomarkerValue } };
-        break;
-      case 'imaging':
-        newCard = { id, type: 'imaging', config: {} };
-        break;
-      case 'latest_documents':
-        newCard = { id, type: 'latest_documents', config: { viewMode: 'list' } };
-        break;
-      case 'examination':
-        newCard = { id, type: 'examination', config: {} };
-        break;
-      case 'labs':
-        newCard = { id, type: 'labs', config: {} };
-        break;
-      case 'health_calendar':
-        newCard = { id, type: 'health_calendar', config: { viewType: 'timeline', timelineDays: 3, categories: ['medications', 'allergies', 'examinations'] } };
-        break;
-      case 'allergy_alerts':
-        newCard = { id, type: 'allergy_alerts', config: {} };
-        break;
-      default:
-        return;
-    }
-    
+
+    const config = resolveDefaultConfig(type, { defaultBiomarker, biomarkerLabel });
+    const resolvedType = def.aliases?.includes(type) ? def.type : type;
+    const newCard = { id, type: resolvedType, config };
     setCards([...cards, newCard]);
-    
+
+    const { w, h } = resolveDefaultLayout(type);
     const newLayout = { ...layouts };
-    const h = (type === 'trends' || type === 'labs' || (type as string) === 'medication_calendar' || type === 'health_calendar') ? 5 : type === 'latest_documents' ? 3 : type === 'allergy_alerts' ? 3 : type === 'imaging' ? 5 : 2;
-    const w = type === 'trends' ? 8 : type === 'labs' ? 12 : ((type as string) === 'medication_calendar' || type === 'health_calendar') ? 6 : type === 'latest_documents' ? 4 : type === 'allergy_alerts' ? 4 : type === 'imaging' ? 4 : 3;
-    
+    const colsFor: Record<string, number> = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
     Object.keys(newLayout).forEach(breakpoint => {
+      const cols = colsFor[breakpoint] ?? 6;
       newLayout[breakpoint] = [
         ...newLayout[breakpoint],
-        { i: id, x: 0, y: Infinity, w, h }
+        { i: id, x: 0, y: Infinity, w: Math.min(w, cols), h }
       ];
     });
     setLayouts(newLayout);
@@ -528,60 +509,67 @@ function Dashboard() {
     setCards(cards.map(c => c.id === id ? { ...c, config: newConfig } : c));
   };
 
+  const resolveExtraProps = (type: string, card: any, cardData: any): Record<string, any> => {
+    switch (type) {
+      case 'biomarker':
+      case 'range_gauge':
+        return { availableBiomarkers };
+      case 'trends':
+        return {
+          selectedBiomarker: card.config.biomarker || selectedBiomarker,
+          setSelectedBiomarker: (val: string) => updateCardConfig(card.id, { ...card.config, biomarker: val }),
+          trendsData: cardData,
+          mockTrends: [],
+          availableBiomarkers,
+        };
+      case 'multi_biomarker_comparison':
+        return { trendsData: cardsData, availableBiomarkers };
+      case 'health_summary':
+        return { trendsData: cardsData, data: latestExamination };
+      case 'labs':
+        return { data: latestLabs, trendsData: cardsData, documents: recentDocuments, availableBiomarkers };
+      case 'imaging':
+        return { data: latestImaging };
+      case 'latest_documents':
+        return { data: recentDocuments };
+      case 'examination':
+        return { data: latestExamination, documents: recentDocuments };
+      case 'health_calendar':
+      case 'medication_calendar':
+        return { medications, allergies, examinations, clinicalEvents };
+      case 'allergy_alerts':
+        return { data: allergies };
+      default:
+        return {};
+    }
+  };
+
   const renderCard = (card: any) => {
     const cardBiomarker = card.config.biomarker || (card.type === 'trends' ? selectedBiomarker : '');
-    
+
     let cardData = undefined;
     if (cardBiomarker) {
       const keys = Object.keys(cardsData);
       const exactKey = keys.find(k => k === cardBiomarker);
       const lowerKey = keys.find(k => k.toLowerCase() === cardBiomarker.toLowerCase());
       const slugKey = keys.find(k => k === cardBiomarker.toLowerCase().replace(/\s+/g, '-'));
-      
       const keyToUse = exactKey || lowerKey || slugKey;
       if (keyToUse) cardData = cardsData[keyToUse];
     }
-    
-    const props = {
+
+    const Component = resolveCardComponent(card.type);
+    if (!Component) return <div key={card.id}>Unknown Card Type</div>;
+
+    const baseProps = {
       id: card.id,
       config: card.config,
       isEditMode,
       onRemove: removeCard,
       onUpdateConfig: updateCardConfig,
-      data: cardData
+      data: cardData,
     };
 
-    switch (card.type) {
-      case 'biomarker':
-        return <BiomarkerCard key={card.id} {...props} availableBiomarkers={availableBiomarkers} />;
-      case 'trends':
-        return (
-          <TrendsCard 
-            key={card.id}
-            {...props} 
-            selectedBiomarker={cardBiomarker} 
-            setSelectedBiomarker={(val: string) => updateCardConfig(card.id, { ...card.config, biomarker: val })}
-            trendsData={cardData}
-            mockTrends={[]}
-            availableBiomarkers={availableBiomarkers}
-          />
-        );
-      case 'imaging':
-        return <ImageViewerCard key={card.id} {...props} data={latestImaging} />;
-      case 'latest_documents':
-        return <LatestDocumentsCard key={card.id} {...props} data={recentDocuments} />;
-      case 'examination':
-        return <ExaminationCard key={card.id} {...props} data={latestExamination} documents={recentDocuments} />;
-      case 'labs':
-        return <BiomarkersCard key={card.id} {...props} data={latestLabs} trendsData={cardsData} documents={recentDocuments} availableBiomarkers={availableBiomarkers} />;
-      case 'health_calendar':
-      case 'medication_calendar':
-        return <UnifiedHealthCalendarCard key={card.id} {...props} medications={medications} allergies={allergies} examinations={examinations} clinicalEvents={clinicalEvents} />;
-      case 'allergy_alerts':
-        return <AllergyAlertsCard key={card.id} {...props} data={allergies} />;
-      default:
-        return <div key={card.id}>Unknown Card Type</div>;
-    }
+    return <Component key={card.id} {...baseProps} {...resolveExtraProps(card.type, card, cardData)} />;
   };
 
   if (isLoading) {
@@ -698,39 +686,16 @@ function Dashboard() {
                     <span className="hidden xs:inline">{t('dashboard.add_card')}</span>
                   </button>
                   {isAddCardMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl z-[60] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                      <button onClick={() => addCard('biomarker')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <Activity className="w-4 h-4" />
-                        <span>{t('dashboard.cards.biomarker_stats')}</span>
-                      </button>
-                      <button onClick={() => addCard('trends')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <Activity className="w-4 h-4 rotate-90" />
-                        <span>{t('dashboard.cards.trend_graph')}</span>
-                      </button>
-                      <button onClick={() => addCard('imaging')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <ImageIcon className="w-4 h-4 text-blue-500" />
-                        <span>{t('dashboard.cards.image_viewer')}</span>
-                      </button>
-                      <button onClick={() => addCard('latest_documents')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <FileText className="w-4 h-4 text-indigo-500" />
-                        <span>{t('dashboard.cards.latest_documents')}</span>
-                      </button>
-                      <button onClick={() => addCard('examination')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <Plus className="w-4 h-4" />
-                        <span>{t('dashboard.cards.examination_note')}</span>
-                      </button>
-                      <button onClick={() => addCard('labs')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <Plus className="w-4 h-4" />
-                        <span>{t('dashboard.cards.lab_results')}</span>
-                      </button>
-                      <button onClick={() => addCard('health_calendar')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <Calendar className="w-4 h-4 text-emerald-500" />
-                        <span>{t('dashboard.cards.health_timeline')}</span>
-                      </button>
-                      <button onClick={() => addCard('allergy_alerts')} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                        <ShieldAlert className="w-4 h-4 text-red-500" />
-                        <span>{t('dashboard.cards.clinical_alerts')}</span>
-                      </button>
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl z-[60] py-2 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                      {ADDABLE_CARDS.map((def) => {
+                        const Icon = def.icon;
+                        return (
+                          <button key={def.type} onClick={() => addCard(def.type)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
+                            <Icon className={`w-4 h-4 flex-shrink-0 ${def.iconClassName || ''}`} />
+                            <span>{t(def.labelKey)}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

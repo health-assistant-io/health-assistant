@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, Integer, Text, Enum as SQLEnum
+from sqlalchemy import Column, String, ForeignKey, Integer, Text, DateTime, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from app.models.base import (
     Base,
@@ -36,7 +36,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     resource_counts = Column(JSONB, nullable=True)
     smart_scope = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)
-    completed_at = Column(Text, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -54,7 +54,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
             "resource_counts": self.resource_counts,
             "smart_scope": self.smart_scope,
             "error_message": self.error_message,
-            "completed_at": self.completed_at,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -81,7 +81,7 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     errors = Column(JSONB, nullable=True)
     warnings = Column(JSONB, nullable=True)
     error_message = Column(Text, nullable=True)
-    completed_at = Column(Text, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -98,7 +98,7 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
             "errors": self.errors,
             "warnings": self.warnings,
             "error_message": self.error_message,
-            "completed_at": self.completed_at,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

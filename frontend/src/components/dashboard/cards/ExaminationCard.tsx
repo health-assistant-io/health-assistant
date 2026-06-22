@@ -6,12 +6,14 @@ import {
   FileText
 } from 'lucide-react';
 import { useBiomarkers } from '../../../hooks/useBiomarkers';
+import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
-import { isAbnormal, formatUnit } from '../../../utils/biomarkerUtils';
+import { isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
 
 export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const { id, isEditMode, onRemove, style, className, onMouseDown, onMouseUp, onTouchEnd, children, data, documents
   } = props;
   
@@ -69,7 +71,7 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
                     <div key={b.id} className="bg-gray-50 dark:bg-dark-bg px-2 py-1 rounded-lg border border-gray-100 dark:border-dark-border flex items-center space-x-2">
                       <span className="text-[10px] font-bold text-gray-700 dark:text-dark-text">{b.displayName}:</span>
                       <span className={`text-[10px] font-black ${isAbnormal(b.interpretation) ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'}`}>
-                        {b.value.raw} <span className="text-[8px] font-bold opacity-60 uppercase">{formatUnit(b.unit.rawSymbol)}</span>
+                        {formatBiomarkerValue(b.value.raw, precisionProfile)} <span className="text-[8px] font-bold opacity-60 uppercase">{formatUnit(b.unit.rawSymbol)}</span>
                       </span>
                     </div>
                   ))}

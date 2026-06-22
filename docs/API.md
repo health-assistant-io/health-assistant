@@ -9,7 +9,9 @@ Health Assistant provides RESTful APIs for interacting with the health data plat
 
 ## Authentication
 
-All API endpoints (except `/auth/login` and `/auth/register`) require authentication.
+All API endpoints (except `/auth/login`, `/auth/register`, and
+`/auth/invite` — the latter requires a JWT but is the issuance mechanism
+for the second one) require authentication.
 
 ### JWT Token
 
@@ -18,6 +20,22 @@ Include your JWT token in the `Authorization` header:
 ```
 Authorization: Bearer <your-jwt-token>
 ```
+
+### Tenant & patient scoping
+
+Every authenticated request carries a `tenant_id` (from the JWT). All
+list/read/write endpoints are **tenant-scoped** — a caller can only see
+rows whose `tenant_id` matches their own. Cross-tenant calls return
+`404` (not `403`) so the existence of a row in another tenant is not
+leaked. The deliberate exception is the **`SYSTEM_ADMIN`** role, which
+bypasses the tenant filter (operator visibility — see
+[TENANCY_AND_USER_MANAGEMENT.md](TENANCY_AND_USER_MANAGEMENT.md)).
+
+For patient-scoped endpoints (anything that takes a `patient_id`), a
+`USER`-role caller must additionally be the patient's linked user
+(`Patient.user_id == current_user.user_id`); `ADMIN` and `MANAGER` see
+all patients in their tenant. The canonical check is
+`check_patient_access` in `app/api/v1/endpoints/utils.py`.
 
 ### Login Endpoint
 
@@ -72,12 +90,52 @@ POST /api/v1/auth/register
 **Request Body:**
 - `email`: (Required) User email address
 - `password`: (Required) Password (min 8 characters)
-- `tenant_id`: (Optional) Tenant ID to join.
+- `tenant_id`: (Optional) Tenant ID to join. **If provided, `invite_token` is required** (see [Joining an Existing Tenant](#joining-an-existing-tenant-invite-required)).
+- `invite_token`: (Optional but **required** when `tenant_id` is provided) Tenant-scoped JWT issued by that tenant's administrator via [`POST /api/v1/auth/invite`](#issue-an-invite-token).
 
-**Note on Auto-Provisioning:**
-- If `tenant_id` is omitted, the system automatically creates a new **Tenant** and a **Default Household** organization for the user.
-- The first user registered on a new installation is automatically promoted to **SYSTEM_ADMIN**.
-- Subsequent users registering without a `tenant_id` are promoted to **ADMIN** of their own new household.
+The register endpoint supports two onboarding paths:
+
+#### Path 1 — Bootstrap (no `tenant_id`)
+
+Used for the household self-onboarding UX. The server creates a new Tenant +
+"Default Household" Organization for the user. The very first registration
+in the entire database is promoted to **SYSTEM_ADMIN**; subsequent
+bootstraps become **ADMIN** of their own new household.
+
+The first-user check is race-protected via a Postgres advisory lock
+(`pg_advisory_xact_lock`) acquired before `COUNT(users)` and held across
+the insert, so two concurrent bootstraps cannot both promote.
+
+```json
+{
+  "email": "user@example.com",
+  "password": "securepassword123"
+}
+```
+
+#### Path 2 — Joining an Existing Tenant (invite required)
+
+When `tenant_id` is provided, the server verifies (in order):
+
+1. The tenant exists (404 otherwise — no leak).
+2. The `invite_token` is a valid `SECRET_KEY`-signed JWT scoped to that
+   tenant (403 otherwise). The token may also bind to a specific `email`
+   and encode a role (`USER` / `ADMIN` / `MANAGER`; **`SYSTEM_ADMIN` is
+   never grantable via invite** — bootstrap is the only SYSTEM_ADMIN
+   grantor; defense in depth: the issuer refuses to encode it and the
+   verifier downgrades any hand-crafted `SYSTEM_ADMIN` claim to `USER`).
+
+See [TENANCY_AND_USER_MANAGEMENT.md](TENANCY_AND_USER_MANAGEMENT.md) for
+the full invite flow + curl examples.
+
+```json
+{
+  "email": "newmember@family.com",
+  "password": "securepassword123",
+  "tenant_id": "123e4567-e89b-12d3-a456-426614174001",
+  "invite_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
 
 **Response:** `200 OK`
 ```json
@@ -86,6 +144,36 @@ POST /api/v1/auth/register
   "email": "user@example.com",
   "role": "SYSTEM_ADMIN",
   "tenant_id": "123e4567-e89b-12d3-a456-426614174001"
+}
+```
+
+### Issue an Invite Token
+
+```http
+POST /api/v1/auth/invite
+```
+
+**Role gating:** `ADMIN`, `MANAGER`, or `SYSTEM_ADMIN` only. A non-
+`SYSTEM_ADMIN` caller can only mint invites for their own tenant.
+
+**Query Parameters:**
+- `tenant_id` (Optional) Target tenant. Defaults to the caller's tenant.
+  `SYSTEM_ADMIN` can target any tenant; other roles get 403 if they
+  name a different tenant.
+- `email` (Optional) Bind the token to a specific invitee email. If set,
+  the register endpoint will reject any request using this token with a
+  different email.
+- `role` (Optional, default `USER`) Role to grant. Cannot be
+  `SYSTEM_ADMIN` — that role is bootstrap-only.
+- `expires_days` (Optional, default `7`) Token TTL in days.
+
+**Response:** `200 OK`
+```json
+{
+  "invite_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tenant_id": "123e4567-e89b-12d3-a456-426614174001",
+  "role": "USER",
+  "expires_in_days": 7
 }
 ```
 
@@ -256,6 +344,29 @@ GET /api/v1/documents/{document_id}/download
 
 **Response:** File download
 
+#### Preview Document
+
+```http
+GET /api/v1/documents/{document_id}/preview?page=0
+```
+
+Returns a single-page JPEG/PNG preview of a document (DICOM frames or
+PDF pages are converted on the fly). Multi-page docs expose total page
+count via the `X-Total-Pages` response header; `page` is zero-indexed.
+
+**Auth (one of):**
+- A valid **presigned token** in the `?token=...` query parameter
+  (short-lived JWT bound to this `document_id`; minted by an
+  authenticated caller). This is the path used by `<img src="...">`
+  tags in the frontend, which cannot send an `Authorization` header.
+- A valid **`Authorization: Bearer <jwt>`** for the document's tenant.
+  Used by JSON-fetch clients (the AI assistant, fetch-based viewers).
+  `SYSTEM_ADMIN` Bearer bypasses the tenant check.
+
+A request with **neither** credential returns `401`. A Bearer JWT for a
+different tenant returns `404` (no information leak that the row exists
+elsewhere).
+
 #### Trigger Extraction
 
 ```http
@@ -279,90 +390,66 @@ GET /api/v1/documents/{document_id}/extract/status
 }
 ```
 
-### FHIR Resources
+### Patient & Observation endpoints
+
+> Patient identity and biomarker readings are managed via dedicated domain
+> endpoints that return ORM-shape JSON (snake_case + app fields like
+> `biomarker_id`, `normalized_value`). These are the frontend's primary API
+> surface. For **canonical FHIR R4 interop** (external systems, export/import,
+> SMART-on-FHIR), see the `/api/v1/fhir/R4/*` facade at
+> [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 
 #### Create Patient
 
 ```http
-POST /api/v1/fhir/Patient
+POST /api/v1/patients
 ```
 
-**Request Body:** (FHIR Patient resource)
+**Request Body:** (ORM-shape patient dict)
 
 #### List Patients
 
 ```http
-GET /api/v1/fhir/Patient
+GET /api/v1/patients
 ```
 
 **Query Parameters:**
-- `_count`: Number of results per page
-- `_page`: Page number
-- `name`: Filter by name
+- `limit`: Number of results per page
+- `offset`: Pagination offset
+- `user_id`: Filter by linked user
 
 #### Get Patient
 
 ```http
-GET /api/v1/fhir/Patient/{id}
+GET /api/v1/patients/{id}
 ```
 
 #### Create Observation
 
 ```http
-POST /api/v1/fhir/Observation
+POST /api/v1/observations
 ```
 
-**Request Body:** (FHIR Observation resource)
+**Request Body:** (ORM-shape observation dict)
 
 #### List Observations
 
 ```http
-GET /api/v1/fhir/Observation
+GET /api/v1/observations
 ```
 
 **Query Parameters:**
-- `patient`: Filter by patient ID
+- `patient_id`: Filter by patient ID
 - `code`: Filter by LOINC code
-- `date`: Filter by date range
-- `_sort`: Sort field
+- `start_date` / `end_date`: Filter by date range
+- `limit` / `offset`: Pagination
 
-#### Get Observation History
-
-```http
-GET /api/v1/fhir/Observation/history
-```
-
-**Query Parameters:**
-- `patient`: Patient ID
-- `code`: LOINC code
-- `period`: Time period
-
-#### Create DiagnosticReport
+#### Get / Delete Observation
 
 ```http
-POST /api/v1/fhir/DiagnosticReport
+GET /api/v1/observations/{id}
+DELETE /api/v1/observations/{id}
 ```
-
-#### Get DiagnosticReport
-
-```http
-GET /api/v1/fhir/DiagnosticReport/{id}
-```
-
-#### Create Medication
-
-```http
-POST /api/v1/fhir/Medication
-```
-
-#### Get Medication
-
-```http
-GET /api/v1/fhir/Medication/{id}
-```
-
-#### List Medications
-- `POST /api/v1/fhir/Medication` - Create medication
 
 ### Clinical Events
 
@@ -462,37 +549,13 @@ GET /api/v1/wearable/data/summary
 - `date`: Date
 - `device_id`: Filter by device
 
-### Alerts & Notifications
-
-#### Create Alert
-
-```http
-POST /api/v1/alerts
-```
-
-**Request Body:**
-```json
-{
-  "type": "high_glucose",
-  "patient_id": "123e4567-e89b-12d3-a456-426614174002",
-  "threshold": 7.0,
-  "enabled": true
-}
-```
-
-#### List Alerts
-
-```http
-GET /api/v1/alerts
-```
-
-#### Get Alert History
-
-```http
-GET /api/v1/alerts/history
-```
-
 ### Notifications & Push
+
+> All notification endpoints require authentication and are
+> **tenant-scoped** via `current_user.tenant_id`. Patient-scoped routes
+> additionally call `check_patient_access` so a `USER`-role caller can
+> only reach patients assigned to them. Cross-tenant calls return `404`
+> (no leak that the row exists elsewhere).
 
 #### Get VAPID Public Key
 
@@ -527,15 +590,33 @@ GET /api/v1/notifications
 ```
 
 **Query Parameters:**
-- `patient_id`: (Required) Filter by patient
+- `patient_id`: (Required) Filter by patient. The caller must have
+  access to this patient (`USER`-role patient-assignment check;
+  `ADMIN`/`MANAGER` see any patient in their tenant).
 - `unread_only`: (Boolean)
 - `limit`: Default 20
+
+**Tenant-scoped**: results are additionally constrained to
+`current_user.tenant_id`.
 
 #### Mark as Read
 
 ```http
 PATCH /api/v1/notifications/{id}/read
 ```
+
+**Tenant-scoped**: a cross-tenant call returns `404` (no leak).
+
+#### Mark as Delivered
+
+```http
+PATCH /api/v1/notifications/{id}/delivered
+```
+
+**Requires authentication** (Bearer JWT). **Tenant-scoped**: a cross-
+tenant call returns `404`. This endpoint previously had no auth at all
+and was used by the frontend service worker; the SW now needs to send
+the session JWT.
 
 #### Create Trigger
 
@@ -558,7 +639,73 @@ POST /api/v1/notifications/triggers
 }
 ```
 
-### Analytics
+**Patient-access scoped**: `USER`-role callers can only create triggers
+on patients assigned to them; `ADMIN`/`MANAGER` see any patient in
+their tenant.
+
+#### List Triggers
+
+```http
+GET /api/v1/notifications/triggers?patient_id=<uuid>
+```
+
+**Tenant-scoped**: results constrained to `current_user.tenant_id`.
+**Patient-access scoped** for `USER` role.
+
+#### Delete Trigger
+
+```http
+DELETE /api/v1/notifications/triggers/{trigger_id}
+```
+
+**Tenant-scoped**: a cross-tenant delete is a no-op (the endpoint
+returns success either way to avoid leaking existence).
+
+#### Test Trigger
+
+```http
+POST /api/v1/notifications/triggers/{trigger_id}/test
+```
+
+Fires the trigger immediately (skipping its schedule). **Tenant-scoped**:
+a cross-tenant call returns `404`.
+
+### Alerts
+
+> All `/alerts/*` endpoints require authentication and are
+> **tenant-scoped** via `current_user.tenant_id`. Cross-tenant read/
+> update/delete/trigger calls return `404` (no leak). Patient-scoped
+> routes additionally call `check_patient_access` so a `USER` cannot
+> read another user's patient; `ADMIN`/`MANAGER` see the tenant-wide
+> view.
+
+#### Create Alert
+
+```http
+POST /api/v1/alerts
+```
+
+**Request Body:**
+```json
+{
+  "type": "high_glucose",
+  "patient_id": "123e4567-e89b-12d3-a456-426614174002",
+  "threshold": 7.0,
+  "enabled": true
+}
+```
+
+#### List Alerts
+
+```http
+GET /api/v1/alerts
+```
+
+#### Get Alert History
+
+```http
+GET /api/v1/alerts/history
+```
 
 #### Get Dashboard Data
 
@@ -623,6 +770,54 @@ GET /api/v1/analytics/summary
 GET /api/v1/analytics/reference-ranges
 ```
 
+### Integrations & Webhooks
+
+The integrations surface lives at `/api/v1/integrations/*` (see
+[INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) for the discovery
++ enable + sync flow). Two **tokenless** inbound routes are exposed for
+external systems that don't carry the platform JWT:
+
+#### Webhook (inbound push from the provider)
+
+```http
+POST /api/v1/integrations/{domain}/webhook/{integration_id}
+```
+
+HMAC-SHA256 verification when the integration's `user_config.webhook_secret`
+is set. Supported signature headers: `X-Webhook-Signature`,
+`X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>`
+prefix tolerated). Without a configured secret the integration UUID is
+the only credential (legacy mode — operators are encouraged to set a
+secret).
+
+#### Generic two-way API proxy
+
+```http
+{GET|POST|PUT|DELETE} /api/v1/integrations/{domain}/api/{integration_id}/{path}
+```
+
+Forwards to the provider's `handle_api_request` for headless two-way
+integration clients. **Auth:**
+- **HMAC** (recommended) — when the integration's `user_config.api_secret`
+  is set, the request MUST carry an `X-Api-Signature` header with an
+  HMAC-SHA256 of the canonical request:
+
+  ```
+  METHOD\n<path>\n[<timestamp>\n]<raw_body>
+  ```
+
+  The optional `X-Api-Timestamp` header (epoch seconds) is folded into
+  the signed payload and validated against a ±5-minute skew window to
+  prevent replay. Missing or invalid signature → `401`.
+- **Legacy UUID-only** — when no `api_secret` is configured, the
+  integration UUID acts as the credential. A `logger.warning` is
+  emitted on every call so operators notice the gap. This mode is
+  preserved for backward compatibility but is not recommended for new
+  deployments.
+
+See the integrations skill for the `webhook_secret` / `api_secret`
+configuration flow.
+
 ## Error Handling
 
 ### Standard Error Response
@@ -649,11 +844,14 @@ GET /api/v1/analytics/reference-ranges
 | 200 | Success |
 | 201 | Created |
 | 202 | Accepted (async operation) |
+| 204 | No Content (delete success) |
 | 400 | Bad Request |
-| 401 | Unauthorized |
-| 403 | Forbidden |
-| 404 | Not Found |
-| 409 | Conflict |
+| 401 | Unauthorized (missing/invalid token) |
+| 403 | Forbidden (role/tenant/patient-access denied) |
+| 404 | Not Found (also returned for cross-tenant calls — no leak) |
+| 410 | Gone (FHIR R4 facade: tombstone of a soft-deleted resource) |
+| 422 | Validation error |
+| 429 | Too Many Requests (rate limited — future) |
 | 500 | Internal Server Error |
 
 ## Current API Status
@@ -664,7 +862,8 @@ GET /api/v1/analytics/reference-ranges
 - `POST /api/v1/auth/login` - Login and get tokens
 - `POST /api/v1/auth/refresh` - Refresh access token
 - `GET /api/v1/auth/validate` - Validate current token
-- `POST /api/v1/auth/register` - Register new user
+- `POST /api/v1/auth/register` - Register new user (bootstrap or invite)
+- `POST /api/v1/auth/invite` - Issue a tenant invite token (ADMIN+)
 - `GET /api/v1/users/me` - Get current user
 
 #### Users
@@ -682,20 +881,21 @@ GET /api/v1/analytics/reference-ranges
 - `POST /api/v1/documents` - Upload document
 - `GET /api/v1/documents/{id}` - Get document
 - `GET /api/v1/documents/{id}/download` - Download document
+- `GET /api/v1/documents/{id}/preview` - Get preview image (presigned token or Bearer JWT; B5)
 - `POST /api/v1/documents/{id}/extract` - Trigger extraction
 - `GET /api/v1/documents/{id}/extract/status` - Get extraction status
 
-#### FHIR Resources
-- `GET /api/v1/fhir/Patient` - List patients
-- `POST /api/v1/fhir/Patient` - Create patient
-- `GET /api/v1/fhir/Patient/{id}` - Get patient
-- `GET /api/v1/fhir/Observation` - List observations
-- `POST /api/v1/fhir/Observation` - Create observation
-- `GET /api/v1/fhir/Observation/history` - Get observation history
-- `GET /api/v1/fhir/DiagnosticReport/{id}` - Get diagnostic report
-- `POST /api/v1/fhir/DiagnosticReport` - Create diagnostic report
-- `GET /api/v1/fhir/Medication` - List medications
-- `POST /api/v1/fhir/Medication` - Create medication
+#### Patients & Observations (domain endpoints — ORM-shape)
+- `GET /api/v1/patients` - List patients
+- `POST /api/v1/patients` - Create patient
+- `GET /api/v1/patients/{id}` - Get patient
+- `PUT /api/v1/patients/{id}` - Update patient
+- `DELETE /api/v1/patients/{id}` - Delete patient
+- `GET /api/v1/observations` - List observations (patient/code/date filters)
+- `POST /api/v1/observations` - Create observation
+- `GET /api/v1/observations/{id}` - Get observation
+- `DELETE /api/v1/observations/{id}` - Delete observation
+- For canonical FHIR R4 interop, see `/api/v1/fhir/R4/*` ([FHIR_R4_FACADE.md](FHIR_R4_FACADE.md))
 
 #### Wearable Data
 - `POST /api/v1/wearable/data` - Upload wearable data
@@ -703,7 +903,7 @@ GET /api/v1/analytics/reference-ranges
 - `GET /api/v1/wearable/data/summary` - Get daily summary
 - `GET /api/v1/wearable/anomalies` - Detect anomalies
 
-#### Alerts
+#### Alerts (tenant-scoped; B4)
 - `GET /api/v1/alerts` - List alerts
 - `POST /api/v1/alerts` - Create alert
 - `GET /api/v1/alerts/{id}` - Get alert
@@ -718,12 +918,38 @@ GET /api/v1/analytics/reference-ranges
 - `GET /api/v1/analytics/summary` - Get analytics summary
 - `GET /api/v1/analytics/reference-ranges` - Get reference ranges
 
-#### Notifications
+#### Notifications (tenant-scoped; B2/B3)
 - `GET /api/v1/notifications/vapid-public-key` - Get VAPID key
 - `POST /api/v1/notifications/subscribe` - Register for push
 - `GET /api/v1/notifications` - List patient notifications
 - `PATCH /api/v1/notifications/{id}/read` - Mark read
+- `PATCH /api/v1/notifications/{id}/delivered` - Mark delivered (was unauthenticated; now requires JWT)
 - `POST /api/v1/notifications/triggers` - Create manual trigger
+- `GET /api/v1/notifications/triggers` - List triggers for a patient
+- `DELETE /api/v1/notifications/triggers/{id}` - Delete a trigger
+- `POST /api/v1/notifications/triggers/{id}/test` - Fire a trigger immediately
+
+#### Task Monitoring (tenant-scoped except SYSTEM_ADMIN; B1)
+- `GET /api/v1/task-monitor/documents/processing` - List stuck processing documents
+- `GET /api/v1/task-monitor/examinations/processing` - List stuck processing examinations
+- `POST /api/v1/task-monitor/documents/retry/{id}` - Retry OCR for a document
+- `POST /api/v1/task-monitor/examinations/retry/{id}` - Retry extraction for an examination
+- `GET /api/v1/task-monitor/stats` - Aggregate task stats (tenant-scoped; global for SYSTEM_ADMIN)
+
+#### Integrations & Webhooks
+- `GET /api/v1/integrations` - List available integrations
+- `GET /api/v1/integrations/{domain}` - Integration metadata / config flow
+- `POST /api/v1/integrations/{domain}/enable` - Enable an integration for the current user
+- `DELETE /api/v1/integrations/{domain}/disable` - Disable an integration
+- `POST /api/v1/integrations/{domain}/sync/{integration_id}` - Trigger a manual sync
+- `POST /api/v1/integrations/{domain}/webhook/{integration_id}` - Inbound webhook (HMAC via `webhook_secret`)
+- `ANY /api/v1/integrations/{domain}/api/{integration_id}/{path}` - Generic two-way API proxy (HMAC via `api_secret` + `X-Api-Signature`; B8)
+
+#### FHIR R4 Facade (interop surface)
+- `GET /api/v1/fhir/R4/metadata` - CapabilityStatement
+- `GET/POST /api/v1/fhir/R4/{Resource}` - Search / Create (15 resource types)
+- `GET/PUT/DELETE /api/v1/fhir/R4/{Resource}/{id}` - Read / Update (version-bumps) / Delete (soft-delete → 410 Gone)
+- See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md)
 
 #### Export & Import (Backup)
 

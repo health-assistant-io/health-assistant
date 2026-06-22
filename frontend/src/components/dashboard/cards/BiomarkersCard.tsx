@@ -8,9 +8,10 @@ import {
   Info
 } from 'lucide-react';
 import { useBiomarkers } from '../../../hooks/useBiomarkers';
+import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
 import { DOCUMENT_CATEGORIES } from '../../../constants/categories';
-import { getFinalStatus, isAbnormal, formatUnit } from '../../../utils/biomarkerUtils';
+import { getFinalStatus, isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
 import { filterBiomarkers } from '../../../utils/searchUtils';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
@@ -20,6 +21,7 @@ import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const { id, isEditMode, onRemove, style, className, onMouseDown, onMouseUp, onTouchEnd, children, data, documents, trendsData, config, onUpdateConfig } = props;
   const [selectedInfo, setSelectedInfo] = React.useState<any>(null);
   const [showConfig, setShowConfig] = React.useState(false);
@@ -144,7 +146,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
     
     return {
       name: b.displayName,
-      result: b.value.raw,
+      result: formatBiomarkerValue(b.value.raw, precisionProfile),
       unit: b.unit.rawSymbol,
       status: status,
       date: b.source.date,

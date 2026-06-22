@@ -57,3 +57,8 @@ uploads/
 htmlcov/
 .tox/
 .nox/
+
+# pytest tmp_path fixture writes under the cwd when running as a different user
+# (e.g. root in containers); stray archives from test_export_import_tasks.
+pytest-of-*/
+tmp*.zip

@@ -53,16 +53,21 @@ async def test_ocr_document_async():
     res_include.scalars.return_value.all.return_value = [mock_doc]
     res_include.scalars.return_value.first.return_value = mock_doc
 
+    res_lock = MagicMock()
+    res_lock.scalar.return_value = True  # pg_try_advisory_xact_lock acquired
+
     # Execute calls:
     # 1. update status to processing
     # 2. update status to completed
     # 3. select doc
-    # 4. select check processing
-    # 5. select check include
+    # 4. pg_try_advisory_xact_lock (audit C3)
+    # 5. select check processing
+    # 6. select check include
     mock_db.execute.side_effect = [
         MagicMock(),  # update 1
         MagicMock(),  # update 2
         res_doc,  # select doc
+        res_lock,  # advisory lock (audit C3)
         res_check,  # check processing
         res_include,  # check include
     ]
@@ -99,6 +104,14 @@ async def test_cumulative_extraction_async():
     mock_db = AsyncMock()
     mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
+    # begin_nested() is a sync method returning an async context manager.
+    # The default AsyncMock returns another AsyncMock which is awaitable
+    # but not an async CM, so we wire one explicitly. (Audit C2 made
+    # _persist_results wrap its delete + recreate in a SAVEPOINT.)
+    _savepoint = AsyncMock()
+    _savepoint.__aenter__ = AsyncMock(return_value=_savepoint)
+    _savepoint.__aexit__ = AsyncMock(return_value=False)
+    mock_db.begin_nested = MagicMock(return_value=_savepoint)
     mock_session_factory = MagicMock()
     mock_session_factory.return_value.__aenter__.return_value = mock_db
     mock_engine = AsyncMock()

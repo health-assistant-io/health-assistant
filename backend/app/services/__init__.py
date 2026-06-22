@@ -1,6 +1,6 @@
-from .unit_converter import UnitConverter
-from .anomaly_detector import AnomalyDetector
-from .medication_interactor import MedicationInteractor
-from .notification_service import NotificationService
+"""Service-layer package.
 
-__all__ = ['UnitConverter', 'AnomalyDetector', 'MedicationInteractor', 'NotificationService']
+Historical re-exports were removed (no callers used them — all imports go
+through direct module paths like ``from app.services.anomaly_detector import
+AnomalyDetector``). New services should be imported by path, not added here.
+"""

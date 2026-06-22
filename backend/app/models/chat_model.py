@@ -15,7 +15,7 @@ class ChatSession(Base, UUIDMixin, TenantMixin, TimestampMixin):
     )
     patient_id = Column(
         PG_UUID(as_uuid=True),
-        ForeignKey("fhir_patients.id", ondelete="SET NULL"),
+        ForeignKey("fhir_patients.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )

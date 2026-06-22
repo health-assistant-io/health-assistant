@@ -44,6 +44,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import UserManagement from './pages/Admin/UserManagement';
 import UserDetail from './pages/Admin/UserDetail';
 import TenantManagement from './pages/Admin/TenantManagement';
+import TenantDetail from './pages/Admin/TenantDetail';
 import CatalogManagement from './pages/Admin/CatalogManagement';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
 
@@ -55,6 +56,7 @@ import { getCurrentUser } from './services/userService';
 import { nativeNotificationService } from './services/nativeNotificationService';
 import { offlineService } from './services/offlineService';
 import { validateToken, clearAuthData } from './utils/auth';
+import { useTenantSwitchStore } from './store/slices/tenantSwitchSlice';
 
 function App() {
   const { isAuthenticated, isLoading } = useProtectedRoute();
@@ -140,6 +142,24 @@ function App() {
     }
   }, [theme]);
 
+  // Sync tenant-switch state from the JWT on boot / token change.
+  // The JWT's `switched` claim is the source of truth — the persisted
+  // store can get out of sync if localStorage was partially cleared.
+  const syncTenantSwitch = useTenantSwitchStore((s) => s.syncFromToken);
+  useEffect(() => {
+    if (isAuthenticated) {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          syncTenantSwitch(payload);
+        } catch (e) {
+          console.error('Failed to sync tenant switch state from JWT', e);
+        }
+      }
+    }
+  }, [isAuthenticated, syncTenantSwitch]);
+
   useEffect(() => {
     if (isAuthenticated && !user) {
       getCurrentUser()
@@ -148,6 +168,25 @@ function App() {
         })
         .catch((error) => {
           console.error('Failed to load user profile', error);
+          // Fallback: decode the JWT to populate a minimal user object
+          // so the app remains usable (e.g. during a tenant switch where
+          // /users/me may transiently 404 if the backend hasn't been
+          // restarted with the fix yet).
+          try {
+            const token = localStorage.getItem('accessToken');
+            if (token) {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              updateUser({
+                id: payload.user_id,
+                email: payload.sub || '',
+                role: payload.role,
+                tenant_id: payload.tenant_id,
+                settings: {},
+              });
+            }
+          } catch (e) {
+            console.error('JWT fallback also failed', e);
+          }
         });
     }
   }, [isAuthenticated, user, updateUser]);
@@ -212,6 +251,7 @@ function App() {
           {user?.role === 'SYSTEM_ADMIN' && (
             <>
               <Route path="/admin/system/tenants" element={<TenantManagement />} />
+              <Route path="/admin/system/tenants/:tenantId" element={<TenantDetail />} />
               <Route path="/admin/system/users" element={<UserManagement />} />
               <Route path="/admin/system/users/:userId" element={<UserDetail />} />
               <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />

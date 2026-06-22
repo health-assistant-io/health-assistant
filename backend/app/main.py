@@ -1,6 +1,4 @@
 import os
-import subprocess
-import socket
 from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI, Request
@@ -15,41 +13,6 @@ from app.services.fhir_helpers import FhirSerializationError
 # Configure logging
 setup_logging(log_name="backend", debug=settings.DEBUG)
 logger = logging.getLogger(__name__)
-
-
-def check_and_start_celery():
-    """Ensure the background worker is running"""
-    try:
-        # Check if celery worker process is alive
-        result = subprocess.run(
-            ["pgrep", "-f", "celery -A app.workers.celery_app worker"],
-            capture_output=True,
-            text=True,
-        )
-        if not result.stdout.strip():
-            logger.warning(
-                "Celery worker not found running! Attempting auto-restart..."
-            )
-            # Auto-restart in the background using nohup
-            venv_python = os.path.join(os.getcwd(), "venv/bin/celery")
-            log_path = os.path.join(
-                os.path.dirname(os.getcwd()), "logging", "celery.log"
-            )
-            if os.path.exists(venv_python):
-                subprocess.Popen(
-                    f"nohup {venv_python} -A app.workers.celery_app worker --loglevel=info >> {log_path} 2>&1 &",
-                    shell=True,
-                )
-            else:
-                subprocess.Popen(
-                    f"nohup celery -A app.workers.celery_app worker --loglevel=info >> {log_path} 2>&1 &",
-                    shell=True,
-                )
-            logger.info("Celery worker auto-restarted successfully.")
-        else:
-            logger.info("Celery worker is running healthily.")
-    except Exception as e:
-        logger.error(f"Failed to check/restart celery: {e}")
 
 
 @asynccontextmanager
@@ -67,11 +30,18 @@ async def lifespan(app: FastAPI):
                 "Continuing without database tables. Run migrations when database is available."
             )
 
-    # Auto-heal the background queue
-    check_and_start_celery()
+    # Background worker (Celery) is managed by the process supervisor
+    # (systemd, Docker restart policy, etc.) — not auto-healed from the app.
 
-    # Cleanup stuck extractions from previous runs
+    # Cleanup stuck extractions from previous runs.
+    # Audit item A6: original code marked EVERY active-status exam as
+    # failed on every boot — including exams being actively processed by
+    # a worker at that moment (severe under rolling restarts). Now we
+    # only target exams whose ``updated_at`` is older than the Celery
+    # hard ``task_time_limit`` (900s) plus a safety margin (5 min) —
+    # matching the periodic ``cleanup_stuck_extractions`` beat.
     from app.core.database import DATABASE_AVAILABLE
+    import datetime as _dt
 
     if DATABASE_AVAILABLE:
         try:
@@ -80,7 +50,10 @@ async def lifespan(app: FastAPI):
             from app.core.database import AsyncSessionLocal
 
             async with AsyncSessionLocal() as db:
-                # Target statuses that indicate the process is active
+                stuck_threshold = _dt.datetime.now(
+                    _dt.timezone.utc
+                ) - _dt.timedelta(minutes=20)
+                # Target statuses that indicate the process is active.
                 stuck_statuses = [
                     "aggregating",
                     "analyzing_text",
@@ -91,13 +64,20 @@ async def lifespan(app: FastAPI):
                 result = await db.execute(
                     update(ExaminationModel)
                     .where(ExaminationModel.extraction_status.in_(stuck_statuses))
-                    .values(extraction_status="failed", extraction_progress=0)
+                    .where(ExaminationModel.updated_at < stuck_threshold)
+                    .values(
+                        extraction_status="failed",
+                        extraction_progress=0,
+                        error_message="Task timeout (startup cleanup)",
+                    )
                 )
                 count = result.rowcount
                 if count > 0:
                     await db.commit()
                     logger.info(
-                        f"Cleaned up {count} stuck examinations from previous session."
+                        "Cleaned up %d stuck examinations (older than %s) from previous session.",
+                        count,
+                        stuck_threshold.isoformat(),
                     )
         except Exception as e:
             logger.error(f"Failed to cleanup stuck extractions: {e}")
@@ -161,10 +141,37 @@ app = FastAPI(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"GLOBAL ERROR: {exc}", exc_info=True)
+    """Global 500 handler — never leaks internal exception detail to clients.
+
+    Logs the full exception server-side with a correlation id, then returns
+    a generic message + the correlation id so support can locate the entry.
+    In DEBUG mode the detail is surfaced for developer convenience.
+    """
+    import uuid as _uuid
+
+    correlation_id = str(_uuid.uuid4())
+    logger.error(
+        "GLOBAL ERROR [correlation_id=%s]: %s",
+        correlation_id,
+        exc,
+        exc_info=True,
+    )
+    if settings.DEBUG:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Internal server error",
+                "detail": str(exc),
+                "correlation_id": correlation_id,
+            },
+        )
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal server error", "detail": str(exc)},
+        content={
+            "message": "Internal server error",
+            "detail": "An internal error occurred. Contact support with this correlation id.",
+            "correlation_id": correlation_id,
+        },
     )
 
 
@@ -192,11 +199,11 @@ if settings.APP_ENV == "development":
         expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
     )
 else:
-    # In production, restrict to specific trusted domains
-    # Note: These should ideally come from environment variables
+    # In production, restrict to specific trusted domains. Hostnames must be
+    # RFC 1123 compliant (no underscores); FRONTEND_URL env is the source of truth.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[os.getenv("FRONTEND_URL", "https://app.health_assistant.com")],
+        allow_origins=[os.getenv("FRONTEND_URL", "https://app.health-assistant.com")],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],

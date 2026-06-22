@@ -1,12 +1,28 @@
 from sqlalchemy import Column, String, Boolean, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
+from app.models.base import (
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+)
 from app.models.enums import OrganizationType
 from app.services.fhir_helpers import _as_list, build_fhir_resource, build_meta
 
 
-class OrganizationModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
+class OrganizationModel(
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+):
     __tablename__ = "fhir_organizations"
 
     # FHIR Organization resource fields

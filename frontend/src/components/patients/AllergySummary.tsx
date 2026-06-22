@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Plus, Edit2, Trash2, Calendar, ShieldAlert, History, ChevronDown, ChevronUp, Clock, List } from 'lucide-react';
+import { AlertTriangle, Edit2, Trash2, Calendar, ShieldAlert, History, ChevronDown, ChevronUp, Clock, List } from 'lucide-react';
 import { getPatientAllergies, AllergyIntolerance, deletePatientAllergy } from '../../services/allergyService';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
 import { AllergyModal } from './AllergyModal';
+import SummaryCardHeader, { TAG_NEUTRAL } from '../ui/SummaryCardHeader';
 
 interface Props {
   patientId: string;
@@ -11,6 +14,7 @@ interface Props {
 
 export const AllergySummary: React.FC<Props> = ({ patientId }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [allergies, setAllergies] = useState<AllergyIntolerance[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,6 +38,9 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
   useEffect(() => {
     fetchAllergies();
   }, [patientId]);
+
+  // Open the create modal automatically when arrived via ?new=allergy
+  useCreateIntent(() => { setSelectedAllergy(undefined); setIsModalOpen(true); }, 'allergy');
 
   const handleDelete = (allergy: AllergyIntolerance) => {
     showConfirmation({
@@ -75,24 +82,23 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
 
   return (
     <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
-      <div className="px-4 sm:px-6 py-4 border-b border-gray-50 dark:border-dark-border flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-dark-surface">
-        <div className="flex items-center space-x-3 flex-wrap">
-          <div className="flex items-center space-x-2">
-            <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
-            <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text whitespace-nowrap">{t('allergies.title')}</h2>
-          </div>
-          <span className="px-2 py-0.5 bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted rounded-full text-[10px] font-bold uppercase shrink-0">
-            {activeAllergies.length} {t('allergies.active')}
-          </span>
-        </div>
-        <button 
-          onClick={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
-          className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold shrink-0"
-        >
-          <Plus className="w-3 h-3" />
-          <span>{t('allergies.add_record')}</span>
-        </button>
-      </div>
+      <SummaryCardHeader
+        icon={ShieldAlert}
+        iconClassName="text-red-500"
+        title={t('allergies.title')}
+        info={{
+          title: t('allergies.title'),
+          content: t('allergies.info_text'),
+          ariaLabel: t('common.info'),
+        }}
+        tags={[
+          <span key="active" className={TAG_NEUTRAL}>{activeAllergies.length} {t('allergies.active')}</span>,
+        ]}
+        onAdd={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
+        addLabel={t('allergies.add_record')}
+        onOpen={() => navigate('/alerts')}
+        openLabel={t('common.open_x', { x: t('common.clinical_alerts') })}
+      />
 
       <div className="p-4 sm:p-6 max-h-[400px] overflow-y-auto custom-scrollbar">
         {activeAllergies.length === 0 && resolvedAllergies.length === 0 ? (

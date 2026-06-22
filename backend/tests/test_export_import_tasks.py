@@ -94,7 +94,7 @@ async def test_import_backup_task_runs_service(monkeypatch, tmp_path):
         def __init__(self, db):
             pass
 
-        async def run_import(self, job_id, path, owner_id):
+        async def run_import(self, job_id, path, owner_id, config=None):
             run_called["job_id"] = str(job_id)
             run_called["owner_id"] = str(owner_id)
             return FakeResult()

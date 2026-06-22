@@ -223,3 +223,25 @@ export async function getAvailableCategories(patientId?: string): Promise<string
   });
   return response.data.categories;
 }
+
+export interface BiomarkerAnomaly {
+  type: 'statistical_anomaly' | 'upward_trend' | 'downward_trend' | 'below_reference' | 'above_reference';
+  message: string;
+  severity: 'info' | 'warning' | 'critical';
+  biomarker?: string;
+  biomarker_slug?: string;
+  biomarker_id?: string;
+  value?: number;
+  unit?: string;
+}
+
+export async function getAnomalies(patientId?: string, biomarkerCodes?: string): Promise<BiomarkerAnomaly[]> {
+  try {
+    const response = await api.get<{ anomalies: BiomarkerAnomaly[] }>('/analytics/anomalies', {
+      params: { patient_id: patientId, biomarker_codes: biomarkerCodes }
+    });
+    return response.data.anomalies ?? [];
+  } catch {
+    return [];
+  }
+}

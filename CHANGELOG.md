@@ -1,5 +1,187 @@
 # Changelog
 
+## [Unreleased] - 2026-06-22
+
+### DB foundation: migration squash + schema hardening
+
+**Single deterministic baseline replaces the 62-migration chain.** Existing
+databases must be dropped and recreated (`alembic upgrade head` from empty).
+There is no in-place upgrade path from the prior chain — the historical
+migrations are archived under `backend/alembic/versions_archived/` for
+traceability but no longer executed.
+
+The squashed `0001_initial_schema.py` is fully idempotent (re-runnable),
+guards all TimescaleDB DDL behind an extension-availability check, creates
+all 20 PG enum types via `DO $$ ... EXCEPTION WHEN duplicate_object` blocks,
+and seeds examination categories with deterministic uuid5-based IDs.
+
+#### Migrations (21 audit items closed)
+- **D7**: `Medication.intent` column is now a proper PG enum (was `VARCHAR(50)`).
+- **D8**: `TenantMixin` now declares `ForeignKey("tenants.id", ondelete="CASCADE")` — 29 tables got the FK. Deleting a tenant purges all owned data instead of orphaning it. `TelemetryDataModel` overrides `tenant_id` without FK (TimescaleDB hypertable limitation).
+- **D9**: Patient deletion cascades to ALL clinical tables. Previously `examinations`, `documents`, `fhir_devices`, `chat_sessions` used `SET NULL` (orphaned rows); now `CASCADE` (full record removal).
+- **D10 + E2**: `documents.entities` converted from `JSON` to `JSONB` + GIN index for `@>` / path queries.
+- **D11**: Dead `SENT` value in `notificationstatus` enum dropped (was never in the Python enum).
+- **D12**: `role` enum no longer uses the `COMMIT` workaround for `ALTER TYPE ADD VALUE`.
+- **D13**: Examination category seed UUIDs are deterministic (`uuid5` + `ON CONFLICT DO NOTHING`).
+- **D14**: All TimescaleDB DDL (hypertable, continuous aggregates, retention/compression policies) is guarded — plain-PG dev/test databases now migrate successfully without the extension.
+- **D16**: Dropped dead `notifications.fhir_resource_type` column (never honored).
+- **D17**: `export_jobs.completed_at` + `import_jobs.completed_at` converted from `TEXT` to `TIMESTAMPTZ`.
+- **D18**: `BodyPartModel.slug` is now `UNIQUE` (matches every other slug column in the codebase).
+- **D19**: `CHECK` constraint on `fhir_patients.mrn` prevents empty-string MRNs.
+- **D22**: Consistent index naming across the schema.
+- **D23**: Idempotent enum creation (all via `DO` blocks or `create_type=False`).
+- **K12**: Stale migration docstring archived.
+
+#### Performance indexes
+- **E1**: Expression index on `Observation.subject->>'reference'` + `DiagnosticReport.subject->>'reference'`. This is the most-used query pattern in the codebase (12+ call sites). `EXPLAIN` confirms the planner now uses an Index Scan instead of a full-table scan within tenant.
+- **E3**: Indexes on `biomarker_group_members.biomarker_id` + `.group_id` (FK reverse-lookups).
+- **E4**: Indexes on `biomarker_relationships.source_biomarker_id` + `.target_biomarker_id`.
+- **E5**: Composite `(tenant_id, timestamp)` index on `telemetry_data` for tenant-wide analytics.
+- **E6**: Indexes on FHIR sort columns — `fhir_patients.birth_date`, `fhir_medications.start_date`, `fhir_communications.sent`.
+
+#### Migration upgrade instructions
+```bash
+# Existing dev databases must be reset (no in-place upgrade path):
+PGPASSWORD=admin123 psql -h localhost -p 5433 -U admin -d postgres \
+  -c "DROP DATABASE IF EXISTS health_assistant;"
+PGPASSWORD=admin123 psql -h localhost -p 5433 -U admin -d postgres \
+  -c "CREATE DATABASE health_assistant OWNER admin;"
+cd backend && alembic upgrade head
+```
+
+---
+
+## [Unreleased - prior] - 2026-06-22
+
+**P0 stabilization pass following the comprehensive re-audit.** 7 critical/high fixes landed + a redesigned dev workflow + production-grade Docker hardening.
+
+### Fixed (critical/high)
+- **`deliver_notification` `NameError` on every PUSH delivery** — `tasks.py` imported `datetime` as a module but called `datetime.now(timezone.utc)` with `timezone` unbound. Push notifications were silently 100% broken (status never advanced past `PENDING`). Fixed.
+- **`admin.py` was entirely broken at import-call boundary** — imported nonexistent `async_session_maker`, wrong `TaskLogger`/`TaskProgressTracker` arity, called nonexistent methods. The frontend's `adminService.ts` uses both endpoints (`/admin/catalogs/import/url` + `/file`) so the feature was dead in prod. Rewritten against real signatures in `app.workers.task_logger`.
+- **`list_examination_categories` raised `NameError`** — used `or_(...)` not imported at module scope. Re-flagged from 0.3.0-alpha; now actually fixed.
+- **5 lowercase role-string comparisons in `documents_db.py`** (`update/edit/trigger_extraction/extraction_status/delete` endpoints) compared against `["admin", "manager"]` while enum values are uppercase. Admin/manager bypass never matched → admins couldn't perform their jobs on these endpoints. Now uses `Role.ADMIN.value` / `Role.MANAGER.value` / `Role.SYSTEM_ADMIN.value`.
+- **Three PG enum drifts** that crashed on first use of the missing values: `medicationstatus` missing `INACTIVE`/`CANCELLED`; `allergycriticality` had wrong token (`unable_to_assess` underscore vs `unable-to-assess` hyphen rename); `aiscope` missing `ORGANIZATION`. Fixed by migration `7a9c2e1b4f3a` (idempotent, uses `DO $$ … IF NOT EXISTS … END $$`).
+- **`fhir_communications` schema drift** — `CommunicationModel` uses `VersionedMixin` but the table lacked `version` + `is_current` columns and declared `tenant_id` `NOT NULL` (model inherits nullable from `TenantMixin`). ORM attribute access + facade PUT version-bump crashed. Fixed by migration `b3f1d52a9c7e`.
+- **`notifications.communication_id`** column existed in DB but was missing from the `Notification` model. Added to model + surfaced in `to_dict()`; index created by migration `b3f1d52a9c7e`.
+
+### Changed — dev workflow (resilience)
+- **Dev processes now run under [honcho](https://github.com/nickstenning/honcho)** via `Procfile.dev`. `scripts/run-dev.sh` keeps the bootstrap (venv/deps/migrations/admin/frontend-deps/Redis-preflight) but replaces manual PID tracking + cleanup trap with `exec honcho start`. Single Ctrl+C stops everything cleanly; if any process crashes, honcho stops the whole group so the error is impossible to miss (instead of jobs silently queuing in PENDING).
+- **Flower added at http://localhost:5555** for dev visibility (parity with the docker-compose Flower service). `flower==2.0.1` was already in requirements.
+- `--force-celery` flag deprecated (no-op with backward-compat message; honcho owns the worker lifecycle now). `--force-stop` now also kills `honcho start` and port 5555.
+
+### Changed — production Docker hardening
+- **`beat` service added** to both `docker-compose.yml` and `docker-compose.prod.yml`. Previously silent broken state in Docker deploys — periodic tasks (`cleanup_stuck_extractions`, `check_notification_triggers`, `sync_active_integrations`) never fired, breaking medication reminders, recurring notifications, stuck-exam cleanup, and integration auto-sync.
+- **Migrations moved out of the backend container** into a one-shot `migrate` service (`restart: "no"`, runs `alembic upgrade head`, exits). Backend/worker/beat depend on it with `condition: service_completed_successfully`. Fixes the parallel-replica race + boot-coupling.
+- **Flower now requires HTTP basic auth** (`--basic-auth=${FLOWER_USER}:${FLOWER_PASSWORD}`) and binds to `127.0.0.1` by default. Previously exposed unauthenticated on all interfaces — anyone with network access could inspect task payloads + retry jobs.
+- **Healthchecks** added for backend (`curl /health`), worker (`celery inspect ping`), flower (`curl /`). Combined with `init: true` for proper PID 1 signal handling.
+- **Resource limits** on backend (1G/1cpu) and worker (2G/2cpu) via `deploy.resources.limits`. Worker `--concurrency=${CELERY_WORKER_CONCURRENCY:-2}` + `--max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-100}` to release memory leaked by ML/OCR libraries.
+- **Log rotation** on every service (`max-size: 10m`, `max-file: 3` via YAML anchor). Without this, `json-file` logs grow unbounded.
+- **All ports bind to `127.0.0.1` by default** (`BACKEND_BIND`, `FLOWER_BIND`, `FRONTEND_BIND` env overrides). Forces reverse-proxy use in prod.
+- `SECRET_KEY` + `INTEGRATION_SECRET_KEY` now passed through to worker/beat/flower via a shared `*backend-env` YAML anchor (previously missing — broke integration sync decryption + JWT issuance inside worker tasks).
+- `curl` added to both Dockerfiles for healthchecks.
+- `.env.example` rewritten with grouped sections and inline generator commands.
+- Removed obsolete `version: '3.8'` from both compose files (modern Compose spec ignores it).
+
+### Docs
+- `docs/DEVELOPMENT.md` — Flower URL, honcho flow, manual-start warning that running `uvicorn` standalone silently breaks background jobs.
+- `docs/INSTALL.md` — security checklist updated with `FLOWER_USER`/`FLOWER_PASSWORD`, `BACKEND_BIND`, reverse-proxy requirement.
+- `docs/STATUS.md` — added note that the comprehensive 2026-06-22 re-audit superseded the "29 items resolved" claim (110 new findings: 25C/32H/30M/23L), tracked in the local stabilization plan.
+- `docs/PROJECT_STRUCTURE.md` — clarified `docker-compose.yml` (dev/staging) vs `docker-compose.prod.yml` (prod); added `Procfile.dev`.
+- Project skills — fixed false claim that `main.py` has "celery auto-heal" (`check_and_start_celery()` was removed; celery is managed by the process supervisor). Documented the honcho dev workflow.
+
+## [0.3.0-rc.1] - 2026-06-21
+
+**Release candidate — cleanup pass following the API surface consolidation in 0.3.0-alpha.**
+
+### Fixed
+- **RBAC gate on global examination categories.** `PATCH /examination-categories/{id}` previously had a `# TODO: Implement super-admin check here` placeholder; tenant admins could mutate global (`tenant_id=None`) categories. The route now requires `Role.SYSTEM_ADMIN` for global-category mutations. Tenant-scoped categories are unaffected. Locked in by 7 new tests in `test_examination_categories_endpoints.py`.
+- **`test_import_backup_task_runs_service` no longer fails.** The test's `FakeImportService.run_import` was missing the `config=None` kwarg that the real `ImportService.run_import(job_id, archive_path, owner_id, config=None)` requires. The fake raised `TypeError` inside the task wrapper, returning `status="failed"`. Full backend test suite now green: 776 passed.
+
+### Removed (dead code)
+- **`POST /import` + `GET /import/status/{id}` placeholder routes.** Both were legacy stubs that returned redirect messages ("Use POST /import/backup, /import/fhir, …" / "Legacy in-memory jobs are no longer tracked"). Zero frontend callers (all imports go through `/import/backup` and `/import/jobs/{id}`); zero test coverage.
+- **`UnitConverter` class** (`backend/app/services/unit_converter.py`, 81 lines) — defined but zero callers anywhere in `backend/app`, `backend/tests`, or `backend/scripts`. Deleted.
+- **`services/__init__.py` re-exports** — `UnitConverter`, `AnomalyDetector`, `MedicationInteractor`, `NotificationService` were re-exported but no caller imported via the package; everyone uses direct path imports (`from app.services.anomaly_detector import AnomalyDetector`). File emptied (kept as package marker) with a comment explaining the convention.
+- **Frontend deps `graphql` and `graphql-request`** removed from `package.json`. The `api/graphql.ts` client was deleted in 0.3.0-alpha (zero production callers); the dependency entries were left behind. Lockfile updated.
+
+### Changed
+- **Stale docstrings refreshed** in `backend/app/api/v1/endpoints/fhir_r4.py` and `backend/app/facade/__init__.py` — both still referenced "the legacy ORM-shape `/fhir/*` router (which the frontend keeps using)" after the router was deleted in 0.3.0-alpha. Now describe the facade as the interop-only surface.
+
+## [0.3.0-alpha] - 2026-06-21
+
+**Critical & high-severity security fixes. Breaking changes — see details below.**
+
+### Security
+- **AI provider `api_key` is now encrypted at rest** (Fernet, via `INTEGRATION_SECRET_KEY`) and **masked in every API response** (`***<last4>`, plus a new `has_api_key` boolean). Plaintext keys persisted before this release must be migrated with `PYTHONPATH=. python scripts/encrypt_existing_api_keys.py` (supports `--dry-run`, idempotent). The factory layer reads plaintext only via the new `AIProviderModel.get_api_key_plaintext()` accessor at LLM-instantiation time.
+- **Scope checks on `/ai-config/providers/{id}`, `/providers/{id}/with-models`, `/providers/{id}/models`, `/models/{id}`, `/providers/{id}/fetch-external-models`** — previously any authenticated user could read any provider (including its key) by UUID. New `verify_provider_access` / `verify_model_access` helpers enforce USER/TENANT/SYSTEM scope on all 7 entry points.
+- **`fetch-external-models` SSRF guard**: in production (`DEBUG=False`) the `api_base` must be `http(s)://` and not point at a loopback / private / link-local address.
+- **Telemetry endpoints are now tenant-scoped**. `/telemetry/data`, `/telemetry/data/summary`, and `/telemetry/anomalies` previously accepted only `device_id`; a user who guessed another tenant's `device_id` could read its data. All three endpoints now require and filter on the caller's `tenant_id`.
+- **Global exception handler no longer leaks `str(exc)` in production**. 500 responses now include a `correlation_id`; the full detail is logged server-side with the same id. `DEBUG=True` preserves the verbose detail for developer convenience.
+
+### Fixed (critical)
+- **`list_observations` now applies its filters.** The function accepted `patient_id`/`code`/`start_date`/`end_date` but silently ignored them, returning every observation in the tenant. Cross-patient data exposure. Results are also ordered by `effective_datetime DESC`.
+- **`/fhir/Observation/history` no longer raises `TypeError`.** It was calling `get_observation(patient_id, code, period)` — wrong arity. New `get_observation_history` service fn + reordered routes so `/Observation/history` is matched before `/Observation/{observation_id}`.
+- **`sync_active_integrations` (background Celery task) now routes telemetry to TimescaleDB.** Every pulled observation previously landed in `fhir_observations` regardless of `BiomarkerDefinition.is_telemetry`, breaking the AI telemetry tools. New shared helper `app.services.integration_sync_service.apply_telemetry_split` — also wired into the manual-sync endpoint for DRY.
+- **`/telemetry/anomalies` no longer raises `TypeError`.** Was calling the synchronous `AnomalyDetector.detect_biomarker_anomalies(device_id, metric, period)` with the wrong arity and an `await`. New wrapper `get_telemetry_anomalies` fetches history and feeds the detector correctly.
+
+### Fixed (high)
+- **`AIModel.__table_args__` typo corrected** (was missing trailing `__`, silently dropped the `idx_ai_models_provider_active` composite index). Migration `f1a2b3c4d5e6` creates the index on existing databases.
+- **Dead `processors/fhir_mapper.py` deleted** — broken import (`from app.models.fhir.observation import Observation` — module doesn't exist). Would have raised `ModuleNotFoundError` if imported.
+- **`from app.models import *` works again** — removed the stale `WearableDataModel` alias (renamed to `TelemetryDataModel`); `TelemetryDataModel` is now exported in `__all__`.
+- **`telemetry_service.get_telemetry_data` and `get_telemetry_summary` are no longer stubs.** Real tenant-scoped `SELECT` + aggregate queries against the `telemetry_data` hypertable.
+
+### Frontend
+- **PWA manifest shortcut `/examinations/new` → `/examinations/upload`** (the actual route).
+- **PWA runtime caches no longer hardcoded to `http://localhost:8000`.** Switched to same-origin + pathname predicate callbacks so caching works in any deployment.
+
+### Changed (API surface consolidation)
+- **Deprecated the misleadingly-named `/fhir/*` ORM-shape router.** Patient/Observation CRUD moved to proper domain endpoints (`/patients/*`, `/observations/*`); medication create consolidated under `/medications/*` (new `GET /medications/{id}` for citation lookups). The `/fhir/R4/*` facade is now clearly the interop-only surface; the frontend uses domain endpoints. The frontend's `types/fhir.ts` was split into `types/patient.ts` + `types/observation.ts` (the old name was misleading — these types mirror ORM-shape, not FHIR R4). `services/fhirService.ts` was split into `patientService.ts` + `observationService.ts`.
+- **Dead code removed**: GraphQL client (`api/graphql.ts`, defined but zero production callers); 6 unused `/fhir/*` routes (DiagnosticReport CRUD, duplicate Medication create/list, Observation history); the legacy single-layout `PUT /patients/{id}/layout` slot is still available but the live dashboard uses the per-user `/patients/{id}/layouts/*` routes.
+
+### Fixed (FHIR conformance — runtime)
+- **SDK-built Observations no longer silently dropped by FHIR validation.** `ObservationBuilder.build()` stripped tzinfo "for asyncpg compat" (asyncpg handles tz-aware natively), so `isoformat()` produced e.g. `'2026-06-20T22:39:56.471381'` which failed the FHIR R4 regex. Every pulled observation from `dev_dummy` (and any future SDK provider) was being dropped by `assert_valid_fhir`. The builder now keeps tzinfo; new `fhir_isoformat()` helper on the ORM side defends against naive datetimes anywhere else. The dropped-count now also surfaces to the integration UI: the manual-sync response and `IntegrationSyncLog` carry `dropped_invalid` / `status="partial"` instead of reporting a silent "success" with zero metrics.
+
+### Operational notes for deploy
+1. **Set `INTEGRATION_SECRET_KEY`** (Fernet key) in `.env`. Generate one with:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+2. **Run the api_key backfill** after deploying:
+   ```bash
+   cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py --dry-run
+   cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
+   ```
+3. **Run migration `f1a2b3c4d5e6`** (`alembic upgrade head`) — creates the previously-dropped `idx_ai_models_provider_active` index.
+4. **Frontend follow-up recommended**: `ProviderManager.tsx` should surface the new `has_api_key` field for cleaner edit UX (currently the masked value pre-fills the edit input — functional, but not ideal).
+5. **Set `POSTGRES_PASSWORD`** explicitly in `.env` — the insecure `admin123` default was removed. Production boot will refuse known-weak values.
+6. **Webhook HMAC**: integrations that want HMAC verification should set `user_config["webhook_secret"]` to a strong random string. The sender must compute `HMAC-SHA256(secret, raw_body)` and send the hex digest in the `X-Webhook-Signature` header.
+7. **WebSocket frontend migration**: update the frontend `useWebSocket` hook to connect with `new WebSocket(url, ["bearer", token])` so the token travels via the subprotocol instead of the query string. The query-string fallback remains for backward compatibility.
+8. **AuditLog**: the `audit_logs` table is now populated for FHIR create/delete operations. Query it for provenance: `SELECT * FROM audit_logs WHERE resource_type = 'Observation' ORDER BY created_at DESC`.
+
+### Tests
+- **205 new tests** across the full security pass: 87 from the first pass + 118 from the second pass. See the changelog below "Branch progress" sections for the file/coverage matrix.
+
+### P0 completion (second pass — 14 items, 118 tests)
+
+**Security hardening:**
+- **Tenant-scoped FHIR single-resource reads** — `get_observation`, `get_diagnostic_report`, `get_medication`, and `delete_observation` now accept an optional `tenant_id` parameter and filter on it (defense in depth at the service level). All `/fhir/*/{id}` endpoints pass `current_user.tenant_id`.
+- **Prompt-injection guard** (`app/utils/prompt_guard.py`) — heuristic detector for 8 OWASP LLM01 patterns (instruction-override, role-switch, role-marker-injection, prompt-extraction, jailbreak-mode, delimiter-escape, rule-injection). `scan_prompt_injection()` → `{safe, risk, matches, snippets}` with risk escalation (1 match = medium, 2+ = high). Non-blocking — logs WARNING, HITL wall remains the structural defence. `DEFENSE_PREAMBLE` prepended to both chat system prompts. The `assist()` dispatcher runs every input through the guard before the LLM.
+- **SVG sanitizer rewritten** (`app/utils/svg.py`) — compiled regexes for all event-handler quoting forms (double-quoted, single-quoted, unquoted), `javascript:`/`vbscript:`/`data:text/html` URL protocols in `href`/`xlink:href`, and dangerous elements (`<script>`, `<foreignObject>` — both paired and self-closing). Optimization passes preserved.
+- **WebSocket hardened** (`app/api/v1/endpoints/websockets.py`) — prefers `Sec-WebSocket-Protocol` subprotocol auth (`["bearer", token]`) over URL query string; fixes unawaited `asyncio.sleep(0.1)` busy-loop (10 Hz → 1 Hz via `get_message(timeout=1.0)`); logs errors before `close(1011)`; sends 30s keepalive ping.
+- **AuditLog provenance** (`app/services/audit_service.py`) — `log_audit_action()` helper (best-effort, own session, never raises) wired into `POST /fhir/Observation`, `DELETE /fhir/Observation`, `POST /fhir/DiagnosticReport`, `POST /fhir/Medication`. Captures who/what/when + old/new value diff.
+- **Insecure DB password default removed** — `POSTGRES_PASSWORD` no longer defaults to `admin123` in `config.py`; production `@model_validator` refuses known-weak credentials; `.env.example` uses `CHANGE_ME` placeholder.
+- **Webhook HMAC-SHA256 verification** — integrations can set `user_config["webhook_secret"]`; when present the route verifies a constant-time HMAC-SHA256 signature over the raw body. Supports `X-Webhook-Signature`, `X-Webhook-Signature-256`, and GitHub-style `X-Hub-Signature-256`. Backward-compatible (no secret = legacy UUID-as-secret).
+- **Auth on integration listing** — `GET /integrations/available` and `GET /integrations/{domain}/documentation` now depend on `get_current_user` (any role).
+- **AI debug `print()` leaks removed** — two `print()` calls in `_define_biomarker`/`_define_medication` that dumped user input + LLM output to stdout replaced with `logger.debug`.
+- **CORS fallback hostname fixed** — `app.health_assistant.com` (underscore — invalid RFC 1123) → `app.health-assistant.com`.
+- **Catalog search SQL hardened** — `_set_similarity_threshold` validates float in [0, 1] before inlining into `SET pg_trgm.similarity_threshold` (PostgreSQL `SET` doesn't accept bind params).
+
+**Functional fixes:**
+- **OHLC double-aggregation fixed** (`analytics_service.py`) — the raw-table path set `avg_col = "AVG(col)"` and the SQL template wrapped it in `AVG(AVG(col))` — invalid SQL, silently caught by the except handler, producing empty charts for any non-cagg-stride bucket (all sub-hour/day + 1-week/month aggregations). Now uses single-level `AVG(col)`/`MAX(col)`/`MIN(col)`. Added `_ALLOWED_TELEMETRY_BUCKETS` whitelist to guard the `INTERVAL '{bucket}'` f-string interpolation.
+- **`relative_score` boundary logic fixed** (`analytics_service.py`) — `_get_observation_status` used `< 0 → Low` / `> 1.0 → High` on a value clamped to [0, 1], so every score short-circuited to Normal. Now only returns Normal for strictly-interior scores (0 < s < 1); boundary values (0.0/1.0) defer to the explicit reference-range comparison.
+- **Magic Fill live date** (`ai_assistance_service.py`) — hardcoded `"Today's date is 2026-03-22."` replaced with `datetime.now(timezone.utc)` injection for both `today_iso` and `current_year`.
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -19,7 +201,7 @@
 - **Biomarker Citations & Telemetry Tooling**: The system prompt now strictly enforces referencing biomarkers by their `id` (UUID) instead of `slug`. Backend tools (`get_biomarker_history` and `get_aggregated_biomarker_trends`) have been updated to accept `id` instead of `slug` to prevent collision bugs.
 - **AI Chatbot Biomarker Tool**: `search_available_biomarkers` tool was upgraded from unindexed Regex (`~*`) to indexed trigram search, improving performance and accuracy.
 - **`ChatbotTools` examination context**: `ChatbotTools` now accepts `examination_id`, threaded from the chat context in both `_stream_chat` and `_general_chat`, so the propose/inspect tools can target the active examination.
-- **Write-time FHIR validation (FHIR architecture Stage 1.1)**: every `fhir_service.create_*` / `update_*` now calls `assert_valid_fhir()` before persisting, so invalid FHIR can never be stored — the root-cause fix for the shape-drift bug class. A dedicated handler maps `FhirSerializationError` → HTTP 400 (more specific than the global 500). See `dev/fhir-architecture-roadmap.md`.
+- **Write-time FHIR validation (FHIR architecture Stage 1.1)**: every `fhir_service.create_*` / `update_*` now calls `assert_valid_fhir()` before persisting, so invalid FHIR can never be stored — the root-cause fix for the shape-drift bug class. A dedicated handler maps `FhirSerializationError` → HTTP 400 (more specific than the global 500). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) § "Data Serialization & FHIR Interoperability".
 - **Integrations SDK OAuth2 + SMART auth module** (`integrations/sdk/auth.py`): reusable Authorization Code + PKCE primitives, SMART discovery (`.well-known/smart-configuration`), **Dynamic Client Registration** (users enter only the server URL), encrypted `OAuthTokenStore`, Redis-backed `OAuthStateStore`, and a composed `SmartOAuth` (incl. `force_refresh` for refresh-on-401). Foundation for all cloud integrations (FHIR, Fitbit, Withings, …). 23 unit tests. See [INTEGRATIONS_SDK.md §3.8](docs/INTEGRATIONS_SDK.md).
 - **Integrations SDK HTTP + FHIR helpers** (`integrations/sdk/http.py`, `integrations/sdk/fhir.py`): token-aware `http_request` (Bearer inject, retry/backoff, SDK exception mapping) + `paginate_bundle` (follows `link[rel=next]`); and `fhir_search`, `fhir_observation_to_create`, `parse_operation_outcome`. Reused by Stage 2 (client) and the future Stage 3 (facade). 19 unit tests.
 - **FHIR Server integration** (`integrations/fhir_server/`): SMART Patient/Standalone Launch connect + **bounded FHIR search pull**. Each sync runs `Observation?patient=<remote>&_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated` (+ optional `category`), maps each FHIR Observation to the local patient via `ObservationCreate`, and feeds the Biomarker Engine. Push is deferred to Stage 2b.

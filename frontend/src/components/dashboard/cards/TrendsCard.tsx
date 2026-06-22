@@ -13,7 +13,9 @@ import {
   Activity
 } from 'lucide-react';
 import LineChart from '../../charts/LineChart';
-import { getFinalStatus, isAbnormal, formatUnit } from '../../../utils/biomarkerUtils';
+import { getFinalStatus, isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
+import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
+import { useBiomarkerChange } from '../../../hooks/useBiomarkerChange';
 import { BiomarkerObservation } from '../../../types/biomarker';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
@@ -23,6 +25,7 @@ import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
 export const TrendsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const precisionProfile = useBiomarkerPrecisionProfile();
   const { id, isEditMode, selectedBiomarker, setSelectedBiomarker, trendsData, mockTrends, availableBiomarkers, onRemove, style, className, onMouseDown, onMouseUp, onTouchEnd, children, config, onUpdateConfig 
   } = props;
   const [selectedInfo, setSelectedInfo] = React.useState<any>(null);
@@ -74,20 +77,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
     return getFinalStatus(mockObs as BiomarkerObservation);
   }, [latestPoint]);
 
-  const changeInfo = React.useMemo(() => {
-    if (!trendsData || trendsData.length < 2) return null;
-    const latest = trendsData[trendsData.length - 1].value;
-    const prev = trendsData[trendsData.length - 2].value;
-    if (prev === 0) return null;
-    const diff = latest - prev;
-    const percent = (diff / Math.abs(prev)) * 100;
-    return {
-      percent: Math.abs(percent).toFixed(1),
-      isUp: diff > 0,
-      isNeutral: diff === 0,
-      color: diff > 0 ? 'text-emerald-500' : diff < 0 ? 'text-red-500' : 'text-gray-400'
-    };
-  }, [trendsData]);
+  const changeInfo = useBiomarkerChange(trendsData);
 
   const displayBiomarkerName = React.useMemo(() => {
     if (!selectedBiomarker) return t('dashboard.config.select_biomarker');
@@ -188,7 +178,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
         <div className="mb-4">
           <div className="flex items-baseline space-x-1">
             <span className={`text-3xl font-black tracking-tight ${interpretation.toLowerCase().includes('high') ? 'text-red-600' : (interpretation.toLowerCase().includes('low') ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text')}`}>
-              {latestPoint.value}
+              {formatBiomarkerValue(latestPoint.value, precisionProfile)}
             </span>
             <span className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase">{formatUnit(latestPoint.unit)}</span>
           </div>

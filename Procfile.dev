@@ -1,0 +1,24 @@
+# Health Assistant — development Procfile (used by scripts/run-dev.sh via honcho)
+#
+# Each entry: `<name>: <command>`. Honcho runs them as a process group:
+#   - Single Ctrl+C cleanly stops all of them.
+#   - If ANY process dies, honcho stops the others AND exits non-zero
+#     (so a crashed worker is impossible to miss in dev — you see the
+#     traceback in the foreground instead of jobs silently queuing).
+#   - Logs are prefixed with the process name and colour-coded.
+#
+# PYTHONPATH is set inline per-process (rather than inherited from the
+# caller) so the Procfile works standalone with `honcho start -f Procfile.dev`
+# even if you forgot to export PYTHONPATH in your shell. After `cd backend`,
+# `$(pwd)` is the backend dir and `$(pwd)/..` is the project root — that
+# combination lets both `app.*` and `integrations.*` resolve.
+#
+# Start everything:        ./scripts/run-dev.sh
+# Start one process:       honcho start worker -f Procfile.dev
+# Run with extra process:  add a line here or use Procfile.dev.local (gitignored)
+
+backend:    cd backend && PYTHONPATH=$(pwd):$(pwd)/.. exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+worker:     cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=worker exec celery -A app.workers.celery_app worker --loglevel=info
+beat:       cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=beat   exec celery -A app.workers.celery_app beat --loglevel=info
+flower:     cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=flower FLOWER_UNAUTHENTICATED_API=true exec celery -A app.workers.celery_app flower --port=5555
+frontend:   cd frontend && exec npm run dev -- --host 0.0.0.0 --port 3000

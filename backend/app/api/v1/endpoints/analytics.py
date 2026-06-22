@@ -10,6 +10,7 @@ from app.services.analytics_service import (
     get_analytics_summary,
     get_biomarker_trends,
     get_dashboard_data,
+    get_biomarker_anomalies,
 )
 
 from app.schemas.user import TokenData
@@ -78,6 +79,28 @@ async def get_trends_endpoint(
         db=db,
     )
     return trends
+
+
+@router.get("/anomalies")
+async def get_anomalies_endpoint(
+    biomarker_codes: str = Query(None),
+    patient_id: str = Query(None),
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detect anomalies in biomarker trends (statistical outliers + reference range violations)"""
+    if patient_id:
+        await check_patient_access(patient_id, current_user, db)
+    elif current_user.role == Role.USER.value:
+        return {"anomalies": []}
+
+    result = await get_biomarker_anomalies(
+        tenant_id=str(current_user.tenant_id),
+        biomarker_codes=biomarker_codes,
+        patient_id=patient_id,
+        db=db,
+    )
+    return result
 
 
 @router.get("/reference-ranges")
