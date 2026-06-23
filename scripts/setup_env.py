@@ -160,7 +160,7 @@ try:
             print("      docker compose --env-file .env -f docker/docker-compose.prod.yml up -d")
         else:
             print("\n🚀 You can now start the application with:")
-            print("   docker compose --env-file .env -f docker/docker-compose.yml up -d")
+            print("   docker compose --env-file .env -f docker/docker-compose.dev.yml up -d")
     else:
         print("\n⚠️  Next steps:")
         print("   Please open the newly created '.env' file in your text editor and review")

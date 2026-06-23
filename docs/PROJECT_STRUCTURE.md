@@ -67,11 +67,12 @@ Health Assistant/
 │   └── vite.config.ts         # Vite bundler configuration
 │
 ├── docker/                    # Docker configuration
-│   ├── docker-compose.yml        # All-in-one compose (dev / staging / single-host)
-│   ├── docker-compose.prod.yml   # Production compose (resource limits, Flower auth, one-shot migrate)
+│   ├── docker-compose.dev.yml    # Development compose (builds from source, mounts volumes, hot-reload)
+│   ├── docker-compose.prod.yml   # Production compose (Bring-Your-Own-Proxy flavor, resource limits)
+│   ├── docker-compose.standalone.yml # Production compose (All-in-one flavor with integrated Nginx)
 │   ├── docker-compose.dev-db.yml # Development DB (Postgres+TimescaleDB + Redis only)
 │   ├── Dockerfile                # Backend image (uvicorn)
-│   ├── Dockerfile.worker         # Worker image (celery — used by docker-compose.yml)
+│   ├── Dockerfile.worker         # Worker image (celery — used by docker-compose.dev.yml)
 │   └── Dockerfile.frontend       # Frontend image
 │
 ├── docs/                      # Technical Documentation

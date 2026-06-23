@@ -5,14 +5,14 @@
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
-docker compose --env-file .env -f docker/docker-compose.yml up -d
+docker compose --env-file .env -f docker/docker-compose.dev.yml up -d
 ```
 
 
 ## Dev infrastructure (host-based development)
 
 When you run the app on the host (via `./scripts/run-dev.sh`) rather than in
-Docker, use these lightweight stacks instead of the full `docker-compose.yml`:
+Docker, use these lightweight stacks instead of the full `docker-compose.dev.yml`:
 
 ### Database + Redis — `docker-compose.dev-db.yml`
 
@@ -168,61 +168,61 @@ JWT_EXPIRATION_HOURS=24
 
 ```bash
 # Build all services
-docker compose --env-file .env -f docker/docker-compose.yml build
+docker compose --env-file .env -f docker/docker-compose.dev.yml build
 
 # Build specific service
-docker compose --env-file .env -f docker/docker-compose.yml build backend
-docker compose --env-file .env -f docker/docker-compose.yml build frontend
+docker compose --env-file .env -f docker/docker-compose.dev.yml build backend
+docker compose --env-file .env -f docker/docker-compose.dev.yml build frontend
 ```
 
 ### Start Services
 
 ```bash
 # Start all services
-docker compose --env-file .env -f docker/docker-compose.yml up -d
+docker compose --env-file .env -f docker/docker-compose.dev.yml up -d
 
 # Start with rebuild
-docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f docker/docker-compose.dev.yml up -d --build
 
 # View logs
-docker compose --env-file .env -f docker/docker-compose.yml logs -f
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs -f
 
 # View logs for specific service
-docker compose --env-file .env -f docker/docker-compose.yml logs -f backend
-docker compose --env-file .env -f docker/docker-compose.yml logs -f worker
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs -f backend
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs -f worker
 ```
 
 ### Stop Services
 
 ```bash
 # Stop all services
-docker compose --env-file .env -f docker/docker-compose.yml down
+docker compose --env-file .env -f docker/docker-compose.dev.yml down
 
 # Stop and remove volumes
-docker compose --env-file .env -f docker/docker-compose.yml down -v
+docker compose --env-file .env -f docker/docker-compose.dev.yml down -v
 ```
 
 ### Run Migrations
 
 ```bash
 # Run database migrations
-docker compose --env-file .env -f docker/docker-compose.yml exec backend alembic upgrade head
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec backend alembic upgrade head
 
 # Create new migration
-docker compose --env-file .env -f docker/docker-compose.yml exec backend alembic revision -m "migration name"
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec backend alembic revision -m "migration name"
 ```
 
 ### Execute Commands
 
 ```bash
 # Access backend shell
-docker compose --env-file .env -f docker/docker-compose.yml exec backend bash
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec backend bash
 
 # Access PostgreSQL
-docker compose --env-file .env -f docker/docker-compose.yml exec postgres psql -U admin -d health_assistant
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec postgres psql -U admin -d health_assistant
 
 # Access Redis
-docker compose --env-file .env -f docker/docker-compose.yml exec redis redis-cli
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec redis redis-cli
 
 
 # Create admin user
@@ -233,10 +233,10 @@ python backend/scripts/create_system_admin.py --email admin@example.local --pass
 
 ```bash
 # Pull latest images
-docker compose --env-file .env -f docker/docker-compose.yml pull
+docker compose --env-file .env -f docker/docker-compose.dev.yml pull
 
 # Update and restart
-docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f docker/docker-compose.dev.yml up -d --build
 ```
 
 ## Production Deployment
@@ -288,7 +288,7 @@ volumes:
 docker swarm init
 
 # Deploy stack
-docker stack deploy -c docker-compose.yml health_assistant
+docker stack deploy -c docker-compose.dev.yml health_assistant
 
 # View services
 docker service ls
@@ -303,41 +303,41 @@ docker service logs health_assistant_backend
 
 ```bash
 # Check if PostgreSQL is running
-docker compose --env-file .env -f docker/docker-compose.yml ps
+docker compose --env-file .env -f docker/docker-compose.dev.yml ps
 
 # Check logs
-docker compose --env-file .env -f docker/docker-compose.yml logs postgres
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs postgres
 
 # Connect to PostgreSQL
-docker compose --env-file .env -f docker/docker-compose.yml exec postgres psql -U admin -d health_assistant
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec postgres psql -U admin -d health_assistant
 ```
 
 ### Redis Connection Issues
 
 ```bash
 # Check if Redis is running
-docker compose --env-file .env -f docker/docker-compose.yml ps
+docker compose --env-file .env -f docker/docker-compose.dev.yml ps
 
 # Test Redis connection
-docker compose --env-file .env -f docker/docker-compose.yml exec redis redis-cli ping
+docker compose --env-file .env -f docker/docker-compose.dev.yml exec redis redis-cli ping
 ```
 
 ### Application Logs
 
 ```bash
 # View backend logs
-docker compose --env-file .env -f docker/docker-compose.yml logs backend
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs backend
 
 # Follow logs
-docker compose --env-file .env -f docker/docker-compose.yml logs -f backend
+docker compose --env-file .env -f docker/docker-compose.dev.yml logs -f backend
 ```
 
 ### Restart Services
 
 ```bash
 # Restart specific service
-docker compose --env-file .env -f docker/docker-compose.yml restart backend
+docker compose --env-file .env -f docker/docker-compose.dev.yml restart backend
 
 # Restart all services
-docker compose --env-file .env -f docker/docker-compose.yml restart
+docker compose --env-file .env -f docker/docker-compose.dev.yml restart
 ```
