@@ -1,7 +1,5 @@
 # Health Assistant - Installation Guide
 
-## Last Updated: March 2026
-
 ## Installations - Quickstart (Recommended)
 
 Using Docker is the easiest and most recommended way to get Health Assistant up and running.
@@ -19,12 +17,16 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    git clone https://github.com/health-assistant-io/health-assistant.git
    cd health-assistant
    ```
-3. **Configure environment variables:**
-   Copy the Docker environment example file to the root directory and update it with your specific values (e.g., adding `OPENAI_API_KEY`):
+3. **Copy environment variables:**
+   Copy the Docker environment example file to the root directory:
    ```bash
    cp docker/.env.example .env
    ```
-4. **Start the application:**
+
+4. **Configure environment variables:**
+   Review the inline comments within the newly created `.env` file and supply your required credentials (e.g., database credentials, secret keys).
+
+5. **Start the application:**
    For development (hot-reloading):
    ```bash
    docker compose -f docker/docker-compose.yml up -d
@@ -34,8 +36,8 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose -f docker/docker-compose.prod.yml up -d
    ```
 
-5. **First-Time Data Seeding (Required for Production only):**
-   *Note: If you started in development mode, this step is handled automatically. Skip to step 6.*
+6. **First-Time Data Seeding (Required for Production only):**
+   *Note: If you started in development mode, this step is handled automatically. Skip to step 7.*
    
    If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account:
    ```bash
@@ -45,7 +47,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
    ```
 
-6. **Access the application:**
+7. **Access the application:**
    Once the services are running, open your web browser and navigate to:
    - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
    - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
@@ -133,7 +135,9 @@ Both the frontend and backend utilize `.env` files to document required configur
    cp docker/.env.example .env
    ```
 2. Open this file in your preferred text editor.
-3. Review the inline comments within the `.env` file and supply your required credentials (e.g., `OPENAI_API_KEY`, database credentials).
+3. Review the inline comments within the `.env` file and supply your required credentials (e.g., database credentials).
+
+
 
 ## Verification
 
