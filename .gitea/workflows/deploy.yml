@@ -107,15 +107,15 @@ jobs:
 
       - name: Build and Push Backend
         run: |
-          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:${{ github.sha }} -f ./backend/Dockerfile ./backend
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:latest
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-backend:${{ github.sha }}
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ github.sha }} -f ./backend/Dockerfile ./backend
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:latest
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ github.sha }}
 
       - name: Build and Push Frontend
         run: |
-          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:${{ github.sha }} -f ./frontend/Dockerfile ./frontend
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:latest
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health_assistant-frontend:${{ github.sha }}
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }} -f ./frontend/Dockerfile ./frontend
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:latest
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }}
 
   deploy:
     name: Deploy to Target Server
