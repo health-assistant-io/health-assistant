@@ -1,6 +1,6 @@
 # Local HAPI FHIR R4 server for offline Stage 2 testing.
 #
-#   docker compose -f docker/docker-compose.fhir.yml up -d
+#   docker compose -f docker/fhir/docker-compose.yml up -d
 #   # FHIR base URL -> http://localhost:8080/fhir
 #
 # What this is good for:
@@ -17,7 +17,7 @@
 services:
   hapi-fhir:
     image: hapiproject/hapi:latest
-    container_name: health_assistant-hapi-fhir
+    container_name: health-assistant-hapi-fhir
     restart: unless-stopped
     ports:
       - "${HAPI_PORT:-8080}:${HAPI_PORT:-8080}"
@@ -30,11 +30,11 @@ services:
       HAPI_PORT: "${HAPI_PORT:-8080}"
       SERVER_PORT: "${HAPI_PORT:-8080}"
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
 volumes:
   hapi_data:
 
 networks:
-  health_assistant-network:
+  health-assistant-network:
     driver: bridge
