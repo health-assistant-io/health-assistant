@@ -15,7 +15,7 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 3. **Configure the environment:**
    Copy the Docker environment example file to `.env` in the root directory and update it with your specific values (e.g., adding `OPENAI_API_KEY`):
    ```bash
-   cp docker/.env.example .env
+   cp .env.example .env
    ```
 4. **Start the database:**
    ```bash

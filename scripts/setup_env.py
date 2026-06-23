@@ -55,8 +55,8 @@ if os.path.exists(".env"):
     print("If you want to regenerate, please delete or rename your current .env file and run this script again.")
     sys.exit(0)
 
-if not os.path.exists("docker/.env.example"):
-    print("\n❌ Error: docker/.env.example not found.")
+if not os.path.exists(".env.example"):
+    print("\n❌ Error: .env.example not found.")
     print("Please run this script from the root of the repository.")
     sys.exit(1)
 
@@ -123,7 +123,7 @@ if setup_mode == "1":
 print("\nGenerating .env file...")
 
 try:
-    with open("docker/.env.example", "r") as example_file:
+    with open(".env.example", "r") as example_file:
         lines = example_file.readlines()
         
     with open(".env", "w") as env_file:
@@ -157,10 +157,10 @@ try:
             print("   1. Please review the 'Production Deployment' section in docs/INSTALL.md")
             print("      (or https://health-assistant.io/docs/install#production-deployment)")
             print("   2. Once ready, you can start the application with:")
-            print("      docker compose -f docker/docker-compose.prod.yml up -d")
+            print("      docker compose --env-file .env -f docker/docker-compose.prod.yml up -d")
         else:
             print("\n🚀 You can now start the application with:")
-            print("   docker compose -f docker/docker-compose.yml up -d")
+            print("   docker compose --env-file .env -f docker/docker-compose.yml up -d")
     else:
         print("\n⚠️  Next steps:")
         print("   Please open the newly created '.env' file in your text editor and review")

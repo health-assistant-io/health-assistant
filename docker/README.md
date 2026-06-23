@@ -3,10 +3,9 @@
 ## Quick Start
 
 ```bash
-cd docker
 cp .env.example .env
 # Edit .env with your configuration
-docker-compose up -d
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 ```
 
 
@@ -169,61 +168,62 @@ JWT_EXPIRATION_HOURS=24
 
 ```bash
 # Build all services
-docker-compose build
+docker compose --env-file .env -f docker/docker-compose.yml build
 
 # Build specific service
-docker-compose build backend
-docker-compose build frontend
+docker compose --env-file .env -f docker/docker-compose.yml build backend
+docker compose --env-file .env -f docker/docker-compose.yml build frontend
 ```
 
 ### Start Services
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 
 # Start with rebuild
-docker-compose up -d --build
+docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose --env-file .env -f docker/docker-compose.yml logs -f
 
 # View logs for specific service
-docker-compose logs -f backend
-docker-compose logs -f worker
+docker compose --env-file .env -f docker/docker-compose.yml logs -f backend
+docker compose --env-file .env -f docker/docker-compose.yml logs -f worker
 ```
 
 ### Stop Services
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose --env-file .env -f docker/docker-compose.yml down
 
 # Stop and remove volumes
-docker-compose down -v
+docker compose --env-file .env -f docker/docker-compose.yml down -v
 ```
 
 ### Run Migrations
 
 ```bash
 # Run database migrations
-docker-compose exec backend alembic upgrade head
+docker compose --env-file .env -f docker/docker-compose.yml exec backend alembic upgrade head
 
 # Create new migration
-docker-compose exec backend alembic revision -m "migration name"
+docker compose --env-file .env -f docker/docker-compose.yml exec backend alembic revision -m "migration name"
 ```
 
 ### Execute Commands
 
 ```bash
 # Access backend shell
-docker-compose exec backend bash
+docker compose --env-file .env -f docker/docker-compose.yml exec backend bash
 
 # Access PostgreSQL
-docker-compose exec postgres psql -U admin -d health_assistant
+docker compose --env-file .env -f docker/docker-compose.yml exec postgres psql -U admin -d health_assistant
 
 # Access Redis
-docker-compose exec redis redis-cli
+docker compose --env-file .env -f docker/docker-compose.yml exec redis redis-cli
+
 
 # Create admin user
 python backend/scripts/create_system_admin.py --email admin@example.local --password securepassword
@@ -233,10 +233,10 @@ python backend/scripts/create_system_admin.py --email admin@example.local --pass
 
 ```bash
 # Pull latest images
-docker-compose pull
+docker compose --env-file .env -f docker/docker-compose.yml pull
 
 # Update and restart
-docker-compose up -d --build
+docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 ```
 
 ## Production Deployment
@@ -303,41 +303,41 @@ docker service logs health_assistant_backend
 
 ```bash
 # Check if PostgreSQL is running
-docker-compose ps
+docker compose --env-file .env -f docker/docker-compose.yml ps
 
 # Check logs
-docker-compose logs postgres
+docker compose --env-file .env -f docker/docker-compose.yml logs postgres
 
 # Connect to PostgreSQL
-docker-compose exec postgres psql -U admin -d health_assistant
+docker compose --env-file .env -f docker/docker-compose.yml exec postgres psql -U admin -d health_assistant
 ```
 
 ### Redis Connection Issues
 
 ```bash
 # Check if Redis is running
-docker-compose ps
+docker compose --env-file .env -f docker/docker-compose.yml ps
 
 # Test Redis connection
-docker-compose exec redis redis-cli ping
+docker compose --env-file .env -f docker/docker-compose.yml exec redis redis-cli ping
 ```
 
 ### Application Logs
 
 ```bash
 # View backend logs
-docker-compose logs backend
+docker compose --env-file .env -f docker/docker-compose.yml logs backend
 
 # Follow logs
-docker-compose logs -f backend
+docker compose --env-file .env -f docker/docker-compose.yml logs -f backend
 ```
 
 ### Restart Services
 
 ```bash
 # Restart specific service
-docker-compose restart backend
+docker compose --env-file .env -f docker/docker-compose.yml restart backend
 
 # Restart all services
-docker-compose restart
+docker compose --env-file .env -f docker/docker-compose.yml restart
 ```
