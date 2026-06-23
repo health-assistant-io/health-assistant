@@ -22,8 +22,8 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    ```
 
 3. **Initialize environment & secure keys:**
-   **Option A: Auto-generate (Recommended)**
-   Run the setup script to copy the template to `.env` and **automatically generate secure passwords and cryptographic keys**:
+   **Option A: Interactive Setup (Recommended)**
+   Run the setup script to copy the template to `.env`, **automatically generate secure passwords and cryptographic keys**, and interactively configure your environment settings (URLs, workers, debug mode):
    ```bash
    python scripts/setup_env.py
    ```
