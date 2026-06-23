@@ -15,8 +15,12 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 2. **Clone the repository:**
    ```bash
    git clone https://github.com/health-assistant-io/health-assistant.git
+   ```
+
+   ```bash
    cd health-assistant
    ```
+
 3. **Copy environment variables:**
    Copy the Docker environment example file to the root directory:
    ```bash
@@ -42,8 +46,17 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account:
    ```bash
    docker compose -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   ```
+
+   ```bash
    docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
+   ```
+   
+   ```bash
    docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
+   ```
+   
+   ```bash
    docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
    ```
 
@@ -68,23 +81,32 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 
 ```bash
 cd backend
+```
 
-# Create virtual environment
+Create virtual environment:
+```bash
 python -m venv venv
+```
 
-# Activate virtual environment
+Activate virtual environment:
+```bash
 source venv/bin/activate  # Windows: venv\Scripts\activate
+```
 
-# Install dependencies
+Install dependencies:
+```bash
 pip install -r requirements.txt
+```
 
-# Create environment file
+Create environment file:
+```bash
 cp .env.example .env
+```
 
-# Edit .env with your configuration
-# See Configuration section below
+Edit `.env` with your configuration (See Configuration section below).
 
-# Start backend
+Start backend:
+```bash
 uvicorn app.main:app --reload
 ```
 
@@ -94,14 +116,20 @@ Backend runs on: http://localhost:8000
 
 ```bash
 cd frontend
+```
 
-# Install dependencies
+Install dependencies:
+```bash
 npm install
+```
 
-# Create environment file from the example
+Create environment file from the example:
+```bash
 cp .env.example .env
+```
 
-# Start development server
+Start development server:
+```bash
 npm run dev
 ```
 
@@ -235,6 +263,9 @@ server {
 
 ```bash
 sudo apt install certbot python3-certbot-nginx
+```
+
+```bash
 sudo certbot --nginx -d health_assistant.example.com
 ```
 
@@ -242,16 +273,28 @@ sudo certbot --nginx -d health_assistant.example.com
 
 ### Manual Update
 
+**Backend:**
 ```bash
-# Backend
 cd backend
+```
+```bash
 git pull
+```
+```bash
 source venv/bin/activate
+```
+```bash
 pip install -r requirements.txt
+```
 
-# Frontend
+**Frontend:**
+```bash
 cd frontend
+```
+```bash
 git pull
+```
+```bash
 npm install
 ```
 
@@ -259,13 +302,19 @@ npm install
 
 ### Port Already in Use
 
+Find and kill process on port 8000:
 ```bash
-# Find and kill process on port 8000
 lsof -i :8000
+```
+```bash
 lsof -ti:8000 | xargs kill -9
+```
 
-# Find and kill process on port 3000
+Find and kill process on port 3000:
+```bash
 lsof -i :3000
+```
+```bash
 lsof -ti:3000 | xargs kill -9
 ```
 
@@ -273,18 +322,24 @@ lsof -ti:3000 | xargs kill -9
 
 ```bash
 cd backend
-source venv/bin/activate
-python -c "from app.main import app"
-# Should output no errors
 ```
+```bash
+source venv/bin/activate
+```
+```bash
+python -c "from app.main import app"
+```
+*(Should output no errors)*
 
 ### Frontend Build Errors
 
 ```bash
 cd frontend
-npm run build
-# Check for TypeScript/ESLint errors
 ```
+```bash
+npm run build
+```
+*(Check for TypeScript/ESLint errors)*
 
 ### Database Connection Error
 
