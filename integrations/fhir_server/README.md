@@ -99,7 +99,7 @@ No Redis or secret key needed for this mode.
 
 1. **Enable + run a local FHIR server**:
    ```bash
-   docker compose -f docker/fhir/docker-compose.yml up -d   # HAPI on ${HAPI_PORT:-8080}/fhir
+   docker compose -f docker/fhir-test-server/docker-compose.yml up -d   # HAPI on ${HAPI_PORT:-8080}/fhir
    cd backend && python scripts/enable_integration.py fhir_server && # restart backend
    ```
 2. **Configure** — Settings → Integrations → FHIR Server. Enter

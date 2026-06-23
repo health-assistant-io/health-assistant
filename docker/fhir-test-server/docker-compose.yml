@@ -1,6 +1,6 @@
 # Local HAPI FHIR R4 server for offline Stage 2 testing.
 #
-#   docker compose -f docker/fhir/docker-compose.yml up -d
+#   docker compose -f docker/fhir-test-server/docker-compose.yml up -d
 #   # FHIR base URL -> http://localhost:8080/fhir
 #
 # What this is good for:

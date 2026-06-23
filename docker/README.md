@@ -45,7 +45,7 @@ SQL
 ### Local FHIR server (Stage 2 testing) — `docker-compose.fhir.yml`
 
 ```bash
-docker compose -f docker/fhir/docker-compose.yml up -d
+docker compose -f docker/fhir-test-server/docker-compose.yml up -d
 # FHIR base URL -> http://localhost:${HAPI_PORT:-8080}/fhir
 # (8095 in the default docker/.env)
 ```
