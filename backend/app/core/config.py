@@ -41,11 +41,18 @@ class Settings(BaseSettings):
         instance fails fast instead of silently running exploitable creds.
         """
         weak_passwords = {"", "admin123", "password", "postgres", "secret", "changeme"}
+        
+        # We know DATABASE_URL is constructed by the time this runs.
+        # Extract the actual password being used.
+        import urllib.parse
+        parsed_url = urllib.parse.urlparse(self.DATABASE_URL)
+        active_password = parsed_url.password or ""
+
         if self.APP_ENV not in ("development", "test", "testing"):
-            if self.POSTGRES_PASSWORD in weak_passwords:
+            if active_password in weak_passwords:
                 raise ValueError(
-                    "POSTGRES_PASSWORD must be set to a non-default value in "
-                    f"APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
+                    "A strong database password must be provided in the DATABASE_URL "
+                    f"for APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
                     "database credentials."
                 )
         return self
