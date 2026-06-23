@@ -39,6 +39,19 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    others so you see the error immediately in the foreground. To start just
    one process (e.g. the worker): `honcho start worker -f Procfile.dev`.
 
+### Alternative: All-in-Docker Development
+
+If you prefer to run the entire development stack (including the backend and frontend code) inside Docker containers with mounted volumes, you can use the `run-docker.sh` script or the `docker-compose.dev.yml` file directly:
+
+```bash
+# Using the helper script:
+./scripts/run-docker.sh
+
+# Or using docker compose directly:
+docker compose --env-file docker/.env -f docker/docker-compose.dev.yml up --build
+```
+*(Note: This approach isolates your environment completely, but hot-reloading may be slightly slower depending on your operating system's file-sharing performance with Docker).*
+
 ### Environment Configuration
 - **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
 - **Frontend**: Configured via `VITE_API_URL`.

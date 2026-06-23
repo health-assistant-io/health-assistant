@@ -39,26 +39,13 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    Open the newly created `.env` file in your preferred text editor. While your secure keys are set (if you used Option A), you should review and adjust other configurations like ports, `APP_URL`, or optional settings (email, AI, etc.) according to your environment.
 
 5. **Start the application:**
-   For development (hot-reloading, mounts local source code):
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.dev.yml up -d
-   ```
-   For production, choose your deployment flavor (see [Deployment Flavors](#deployment-flavors) for details):
-   
-   **Option A: Standalone (Recommended for fresh servers)** - Includes a built-in Nginx proxy on port 80:
    ```bash
    docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
    ```
-   **Option B: Bring-Your-Own-Proxy** - Binds securely to localhost only:
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
-   ```
+   *(Note: This uses the recommended "Standalone" flavor with a built-in Nginx proxy on port 80. If you already run a reverse proxy like Traefik/Nginx, or if you want to set up a development environment, see the advanced sections below).*
 
-6. **First-Time Data Seeding (Required for Production only):**
-   *Note: If you started in development mode, this step is handled automatically. Skip to step 7.*
-   
-   If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account. 
-   *(Note: Replace `docker-compose.standalone.yml` below with `docker-compose.prod.yml` if you chose the Bring-Your-Own-Proxy flavor)*:
+6. **First-Time Data Seeding:**
+   You must manually seed the database and create your initial admin account:
    
    ```bash
    docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
@@ -83,92 +70,19 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 
 ---
 
-## Manual Installation
-
-### Prerequisites for Manual Setup
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 14+ **with TimescaleDB extension** (e.g., `timescale/timescaledb:latest-pg14` Docker image)
-  - *Note: TimescaleDB is recommended for telemetry hypertable + continuous aggregates. The migration now guards all TimescaleDB DDL behind an extension-availability check, so a plain PostgreSQL install will migrate successfully (it just skips hypertable creation). Install TimescaleDB if you need the telemetry/analytics features.*
-- Redis 7+
-- Tesseract OCR
-
-### Step 1: Backend Setup
-
-```bash
-cd backend
-```
-
-Create virtual environment:
-```bash
-python -m venv venv
-```
-
-Activate virtual environment:
-```bash
-source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-Create environment file:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your configuration (See Configuration section below).
-
-Start backend:
-```bash
-uvicorn app.main:app --reload
-```
-
-Backend runs on: http://localhost:8000
-
-### Step 2: Frontend Setup
-
-```bash
-cd frontend
-```
-
-Install dependencies:
-```bash
-npm install
-```
-
-Create environment file from the example:
-```bash
-cp .env.example .env
-```
-
-Start development server:
-```bash
-npm run dev
-```
-
-Frontend runs on: http://localhost:3000
-
 ## First-Time Setup & Linking
 
 After your application is running and your data is seeded, you need to finalize your user setup.
 
-### Development Environments
-If you started the application in development mode:
-1. **Register the First User**: Open the application at [http://localhost:3000](http://localhost:3000) and register. The very first user created on a fresh installation is automatically granted the **SYSTEM_ADMIN** role.
-2. **Auto-Provisioning**: For home users, registering will automatically create a new **Household Tenant** and a **Default Organization**.
-
-### Production Environments
-If you started in production mode, you should have already run the `create_system_admin.py` command during the Quickstart.
-
-1. **Log In**: Open the application at [http://localhost:3000](http://localhost:3000) (or your domain) and log in with the credentials you provided to the script.
-
-### Final Step (All Environments)
+1. **Log In**: Open the application at [http://localhost](http://localhost) (or your domain) and log in with the credentials you provided to the script.
+2. **Auto-Provisioning**: For home users, the system will automatically create a new **Household Tenant** and a **Default Organization** if they don't exist.
 3. **Link Your Profile**: Visit your profile settings in the app to link your User account to a Patient or Doctor record.
 
 For more details on managing multiple users and clinical hierarchies, see the [Tenancy and User Management Guide](./TENANCY_AND_USER_MANAGEMENT.md).
+
+## Development Setup
+
+If you are looking to contribute to the codebase or run the application from source with hot-reloading, please see our dedicated [Development Guide](./DEVELOPMENT.md) instead of this installation manual.
 
 ## Configuration
 
@@ -185,27 +99,18 @@ Both the frontend and backend utilize `.env` files to document required configur
 
 ## Verification
 
+Once running via the standalone setup (Option A), Nginx exposes the application on port 80. You can test it using the following commands:
+
 ### Test Backend
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost/health
 # Expected: {"status":"healthy","database":"connected","redis":"connected"}
-
-curl http://localhost:8000/
-# Expected: {"name":"Health Assistant","version":"0.3.0-rc.1","docs":"/docs"}
 ```
 
 ### Test Frontend
 
-Open http://localhost:3000 in your browser
-
-### Test Authentication
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=test@example.com&password=test123"
-```
+Open http://localhost in your browser.
 
 ## Production Deployment
 
