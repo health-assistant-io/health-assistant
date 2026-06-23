@@ -56,7 +56,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   postgres:
     image: timescale/timescaledb:latest-pg14
-    container_name: health_assistant-postgres
+    container_name: health-assistant-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-health_assistant}
@@ -75,14 +75,14 @@ services:
       retries: 5
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Redis (broker + cache + OAuth state store)
   # ───────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: health_assistant-redis
+    container_name: health-assistant-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
@@ -96,7 +96,7 @@ services:
       retries: 5
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Migrations (one-shot)
@@ -111,8 +111,8 @@ services:
   # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
   migrate:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-migrate
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-migrate
     restart: "no"
     environment: *backend-env
     depends_on:
@@ -121,7 +121,7 @@ services:
     command: ["alembic", "upgrade", "head"]
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Backend API (uvicorn)
@@ -132,8 +132,8 @@ services:
   # BACKEND_BIND_ALL=true and override BACKEND_PORT to expose directly.
   # ───────────────────────────────────────────────────────────────────────
   backend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-backend
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-backend
     restart: unless-stopped
     init: true
     environment: *backend-env
@@ -161,7 +161,7 @@ services:
           cpus: "${BACKEND_CPUS:-1.0}"
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Celery Worker
@@ -173,8 +173,8 @@ services:
   # release memory leaked by ML/OCR libraries.
   # ───────────────────────────────────────────────────────────────────────
   worker:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-worker
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-worker
     restart: unless-stopped
     init: true
     environment: *backend-env
@@ -203,7 +203,7 @@ services:
           cpus: "${WORKER_CPUS:-2.0}"
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Celery Beat (periodic task scheduler)
@@ -217,8 +217,8 @@ services:
   # Only ONE beat instance must run — beat is not idempotent. Do NOT scale.
   # ───────────────────────────────────────────────────────────────────────
   beat:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-beat
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-beat
     restart: unless-stopped
     init: true
     environment:
@@ -232,7 +232,7 @@ services:
     command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Flower (Celery monitoring UI)
@@ -242,8 +242,8 @@ services:
   # FLOWER_BIND_ALL=true to expose directly (not recommended).
   # ───────────────────────────────────────────────────────────────────────
   flower:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-flower
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-flower
     restart: unless-stopped
     init: true
     ports:
@@ -265,14 +265,14 @@ services:
       start_period: 30s
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
   # Frontend (Vite preview — production build)
   # ───────────────────────────────────────────────────────────────────────
   frontend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-frontend:${IMAGE_TAG:-latest}
-    container_name: health_assistant-frontend
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}
+    container_name: health-assistant-frontend
     restart: unless-stopped
     init: true
     ports:
@@ -283,7 +283,7 @@ services:
     command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]
     logging: *default-logging
     networks:
-      - health_assistant-network
+      - health-assistant-network
 
 volumes:
   postgres_data:
@@ -291,5 +291,5 @@ volumes:
   uploads:
 
 networks:
-  health_assistant-network:
+  health-assistant-network:
     driver: bridge
