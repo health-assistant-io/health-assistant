@@ -34,17 +34,17 @@ x-backend-env: &backend-env
   DEBUG: "false"
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
   REDIS_URL: redis://redis:6379
-  OPENAI_API_KEY: ${OPENAI_API_KEY}
-  OPENAI_API_BASE: ${OPENAI_API_BASE}
-  OPENAI_MODEL: ${OPENAI_MODEL}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
   SECRET_KEY: ${SECRET_KEY}
-  INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY}
+  INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY:-}
   OCR_PROVIDER: ${OCR_PROVIDER:-openai}
   JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
-  SMTP_HOST: ${SMTP_HOST}
+  SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USER: ${SMTP_USER}
-  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_FROM: ${SMTP_FROM:-noreply@health-assistant.local}
   VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
   VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -111,7 +111,7 @@ services:
   # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
   migrate:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-migrate
     restart: "no"
     environment: *backend-env
@@ -132,7 +132,7 @@ services:
   # BACKEND_BIND_ALL=true and override BACKEND_PORT to expose directly.
   # ───────────────────────────────────────────────────────────────────────
   backend:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-backend
     restart: unless-stopped
     init: true
@@ -173,7 +173,7 @@ services:
   # release memory leaked by ML/OCR libraries.
   # ───────────────────────────────────────────────────────────────────────
   worker:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-worker
     restart: unless-stopped
     init: true
@@ -217,7 +217,7 @@ services:
   # Only ONE beat instance must run — beat is not idempotent. Do NOT scale.
   # ───────────────────────────────────────────────────────────────────────
   beat:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-beat
     restart: unless-stopped
     init: true
@@ -242,7 +242,7 @@ services:
   # FLOWER_BIND_ALL=true to expose directly (not recommended).
   # ───────────────────────────────────────────────────────────────────────
   flower:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-backend:${IMAGE_TAG:-latest}
     container_name: health_assistant-flower
     restart: unless-stopped
     init: true
@@ -271,7 +271,7 @@ services:
   # Frontend (Vite preview — production build)
   # ───────────────────────────────────────────────────────────────────────
   frontend:
-    image: ${REGISTRY}/${REPOSITORY}/health_assistant-frontend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health_assistant-frontend:${IMAGE_TAG:-latest}
     container_name: health_assistant-frontend
     restart: unless-stopped
     init: true

@@ -31,7 +31,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    **Option B: Manual setup**
    If you cannot run the Python script, copy the template manually:
    ```bash
-   cp docker/.env.example .env
+   cp .env.example .env
    ```
    *Note: If you choose manual setup, you **must** generate your own `SECRET_KEY`, `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, and `INTEGRATION_SECRET_KEY` (a base64url-encoded 32-byte Fernet key) and manually paste them into the `.env` file.*
 
@@ -41,11 +41,11 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 5. **Start the application:**
    For development (hot-reloading):
    ```bash
-   docker compose -f docker/docker-compose.yml up -d
+   docker compose --env-file .env -f docker/docker-compose.yml up -d
    ```
    For production:
    ```bash
-   docker compose -f docker/docker-compose.prod.yml up -d
+   docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
    ```
 
 6. **First-Time Data Seeding (Required for Production only):**
@@ -53,19 +53,19 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    
    If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account:
    ```bash
-   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
 
    ```bash
-   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
    ```
    
    ```bash
-   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
    ```
    
    ```bash
-   docker compose -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
    ```
 
 7. **Access the application:**
