@@ -9,6 +9,7 @@
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-lightgrey?logo=github)](https://github.com/sponsors/health-assistant-io)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
 
 <p align="center">
   <img src="assets/screenshots/main-dashboard.png" width="100%" alt="Health Assistant Dashboard">
@@ -30,7 +31,7 @@ If Health Assistant has helped you take control of your health data, or if you b
 
 Your sponsorship directly supports the continued development, maintenance, and improvement of the platform.
 
-[Sponsor on GitHub](https://github.com/sponsors/health-assistant-io)
+[Sponsor on GitHub](https://github.com/sponsors/health-assistant-io) | [Buy Me A Coffee](https://buymeacoffee.com/healthassistant)
 
 ## 📖 Documentation
 
