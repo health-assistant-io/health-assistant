@@ -4,11 +4,6 @@
 
 Using Docker is the easiest and most recommended way to get Health Assistant up and running.
 
-### Prerequisites
-- Docker and Docker Compose
-- 4GB RAM
-- 10GB disk space
-
 ### Setup
 
 1. **Install Docker** and Docker Compose on your system.
