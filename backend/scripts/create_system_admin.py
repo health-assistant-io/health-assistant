@@ -17,80 +17,99 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from app.core.security import get_password_hash
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE, engine
 from app.models.user_model import UserModel
 from app.models.tenant_model import TenantModel
 from app.models.enums import Role
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+import re
 
-async def create_system_admin(email: str, password: str, tenant_name: str = "System Tenant"):
+def generate_slug(text: str) -> str:
+    """Generate a URL-safe slug from text."""
+    # Convert to lowercase, replace spaces and non-alphanumeric chars with hyphens
+    slug = re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
+    return slug or "system-tenant"
+
+async def create_system_admin(email: str, password: str, tenant_name: str = "System Tenant") -> bool:
     """Create system admin user and associated tenant if needed"""
 
     if not DATABASE_AVAILABLE:
         print("❌ Error: Database is not available")
         print("Please check your DATABASE_URL in backend/.env")
-        return
+        return False
 
     try:
         async with AsyncSessionLocal() as session:
-            # 1. Check if user already exists
-            result = await session.execute(
-                select(UserModel).where(UserModel.email == email)
-            )
-            existing_user = result.scalar_one_or_none()
+            try:
+                # 1. Check if user already exists
+                result = await session.execute(
+                    select(UserModel).where(UserModel.email == email)
+                )
+                existing_user = result.scalar_one_or_none()
 
-            if existing_user:
-                if existing_user.role == Role.SYSTEM_ADMIN:
-                    print(f"⚠️  System Admin user already exists: {email}")
-                    return
+                if existing_user:
+                    if existing_user.role == Role.SYSTEM_ADMIN:
+                        print(f"⚠️  System Admin user already exists: {email}")
+                        return True
+                    else:
+                        print(f"🔄 Updating existing user {email} to SYSTEM_ADMIN role...")
+                        existing_user.role = Role.SYSTEM_ADMIN
+                        await session.commit()
+                        print(f"✅ User {email} promoted to SYSTEM_ADMIN.")
+                        return True
+
+                # 2. Check if we have any tenant, otherwise create one
+                # System admins usually belong to a top-level tenant
+                result = await session.execute(select(TenantModel).limit(1))
+                tenant = result.scalar_one_or_none()
+
+                if not tenant:
+                    print(f"🏢 Creating {tenant_name}...")
+                    slug = generate_slug(tenant_name)
+                    tenant = TenantModel(name=tenant_name, slug=slug, settings={"is_system": True})
+                    session.add(tenant)
+                    await session.flush()
                 else:
-                    print(f"🔄 Updating existing user {email} to SYSTEM_ADMIN role...")
-                    existing_user.role = Role.SYSTEM_ADMIN
-                    await session.commit()
-                    print(f"✅ User {email} promoted to SYSTEM_ADMIN.")
-                    return
+                    print(f"🏢 Using existing tenant: {tenant.name}")
 
-            # 2. Check if we have any tenant, otherwise create one
-            # System admins usually belong to a top-level tenant
-            result = await session.execute(select(TenantModel).limit(1))
-            tenant = result.scalar_one_or_none()
+                # 3. Create system admin user
+                hashed_password = get_password_hash(password)
 
-            if not tenant:
-                print(f"🏢 Creating {tenant_name}...")
-                tenant = TenantModel(name=tenant_name, settings={"is_system": True})
-                session.add(tenant)
-                await session.flush()
-            else:
-                print(f"🏢 Using existing tenant: {tenant.name}")
+                admin_user = UserModel(
+                    email=email,
+                    hashed_password=hashed_password,
+                    role=Role.SYSTEM_ADMIN,
+                    tenant_id=tenant.id,
+                    settings={"is_initial_admin": True},
+                )
+                session.add(admin_user)
+                await session.commit()
 
-            # 3. Create system admin user
-            hashed_password = get_password_hash(password)
-
-            admin_user = UserModel(
-                email=email,
-                hashed_password=hashed_password,
-                role=Role.SYSTEM_ADMIN,
-                tenant_id=tenant.id,
-                settings={"is_initial_admin": True},
-            )
-            session.add(admin_user)
-            await session.commit()
-
-            print("✅ System Admin user created successfully!")
-            print()
-            print("=" * 60)
-            print("System Admin Credentials:")
-            print("=" * 60)
-            print(f"Email:    {email}")
-            print(f"Password: {password}")
-            print(f"Role:     SYSTEM_ADMIN")
-            print(f"Tenant:   {tenant.name}")
-            print("=" * 60)
-
-    except Exception as e:
-        print(f"❌ Error creating system admin: {e}")
-        import traceback
-        traceback.print_exc()
+                print("✅ System Admin user created successfully!")
+                print()
+                print("=" * 60)
+                print("System Admin Credentials:")
+                print("=" * 60)
+                print(f"Email:    {email}")
+                print(f"Password: {password}")
+                print(f"Role:     SYSTEM_ADMIN")
+                print(f"Tenant:   {tenant.name}")
+                print("=" * 60)
+                return True
+            except IntegrityError as e:
+                await session.rollback()
+                print(f"❌ Database integrity error: {e.orig}")
+                return False
+            except Exception as e:
+                await session.rollback()
+                print(f"❌ Error creating system admin: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
+    finally:
+        if engine:
+            await engine.dispose()
 
 async def main():
     import argparse
@@ -104,7 +123,9 @@ async def main():
     print("Health Assistant - Creating System Admin")
     print("-" * 40)
     
-    await create_system_admin(args.email, args.password, args.tenant)
+    success = await create_system_admin(args.email, args.password, args.tenant)
+    if not success:
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
