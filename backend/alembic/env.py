@@ -22,17 +22,16 @@ target_metadata = Base.metadata
 
 def get_url():
     """Get database URL from config or environment"""
-    # Try to get from app settings first
-    try:
-        from app.core.config import settings
+    # Use the Pydantic settings model which correctly handles fallbacks,
+    # environment variables, and Docker network hostnames.
+    from app.core.config import settings
 
-        url = settings.DATABASE_URL
-        # Convert async URL to sync for Alembic
-        return url.replace("+asyncpg", "+psycopg2")
-    except Exception:
-        # Fallback to alembic.ini
-        url = config.get_main_option("sqlalchemy.url")
-        return url.replace("+asyncpg", "+psycopg2")
+    if not settings.DATABASE_URL:
+        raise ValueError("DATABASE_URL must be defined to run migrations")
+
+    url = settings.DATABASE_URL
+    # Convert async URL to sync for Alembic
+    return url.replace("+asyncpg", "+psycopg2")
 
 
 def run_migrations_offline() -> None:

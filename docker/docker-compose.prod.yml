@@ -32,6 +32,7 @@ x-logging: &default-logging
 x-backend-env: &backend-env
   APP_ENV: production
   DEBUG: "false"
+  POSTGRES_HOST: postgres
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
   REDIS_URL: redis://redis:6379
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -222,6 +223,7 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      POSTGRES_HOST: postgres
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
       REDIS_URL: redis://redis:6379
     depends_on:
