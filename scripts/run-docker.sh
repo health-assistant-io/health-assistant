@@ -54,4 +54,4 @@ fi
 
 # Build and start services using docker-compose
 echo -e "${GREEN}Building and launching Health Assistant containers...${NC}"
-$DOCKER_COMPOSE_CMD -f docker/docker-compose.yml --env-file docker/.env up --build
+$DOCKER_COMPOSE_CMD -f docker/docker-compose.dev.yml --env-file docker/.env up --build

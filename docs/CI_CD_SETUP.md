@@ -80,7 +80,7 @@ container:
 ```yaml
 cache:
   enabled: true
-  host: "runner"  # Matches the service name in your runner's docker-compose.yml
+  host: "runner"  # Matches the service name in your runner's docker-compose.dev.yml
 ```
 
 ---

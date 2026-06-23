@@ -39,11 +39,17 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    Open the newly created `.env` file in your preferred text editor. While your secure keys are set (if you used Option A), you should review and adjust other configurations like ports, `APP_URL`, or optional settings (email, AI, etc.) according to your environment.
 
 5. **Start the application:**
-   For development (hot-reloading):
+   For development (hot-reloading, mounts local source code):
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.yml up -d
+   docker compose --env-file .env -f docker/docker-compose.dev.yml up -d
    ```
-   For production:
+   For production, choose your deployment flavor (see [Deployment Flavors](#deployment-flavors) for details):
+   
+   **Option A: Standalone (Recommended for fresh servers)** - Includes a built-in Nginx proxy on port 80:
+   ```bash
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+   ```
+   **Option B: Bring-Your-Own-Proxy** - Binds securely to localhost only:
    ```bash
    docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
    ```
@@ -51,21 +57,23 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 6. **First-Time Data Seeding (Required for Production only):**
    *Note: If you started in development mode, this step is handled automatically. Skip to step 7.*
    
-   If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account:
+   If you started in **production mode** (`DEBUG=false`), you must manually seed the database and create your admin account. 
+   *(Note: Replace `docker-compose.standalone.yml` below with `docker-compose.prod.yml` if you chose the Bring-Your-Own-Proxy flavor)*:
+   
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_biomarkers.py
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_biomarkers.py
    ```
    
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_allergies.py
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_allergies.py
    ```
    
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_medications.py
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_medications.py
    ```
 
 7. **Access the application:**
@@ -201,6 +209,35 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ## Production Deployment
 
+When deploying to production, modify the variables within your `.env` file to ensure the system is secure:
+
+- Update `APP_ENV` to `production`
+- Update `DEBUG` to `false`
+- Update `DATABASE_URL` and `REDIS_URL` to point to your production instances rather than `localhost` (if using external databases).
+
+### Deployment Flavors
+
+We provide two different production deployment configurations depending on your infrastructure setup:
+
+#### Flavor 1: Standalone (All-in-One)
+**Recommended for fresh VPS deployments.** 
+This flavor includes a fully configured Nginx reverse proxy running inside a Docker container. It routes traffic securely to the internal services and exposes only port 80 to the public web.
+
+```bash
+# Start the standalone production stack
+docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+```
+*Note: Before running, you may want to edit `docker/nginx.conf` to set your actual `server_name` instead of the default catch-all `_`.*
+
+#### Flavor 2: Bring-Your-Own-Proxy
+**Recommended if you already run a proxy server (Traefik, Nginx Proxy Manager, Cloudflare Tunnel, etc.).**
+This flavor runs the application containers without an internal proxy. By default, the `backend`, `frontend`, and `flower` services bind securely to `127.0.0.1` on the host machine to prevent direct external access. You are responsible for configuring your proxy to route traffic to these local ports.
+
+```bash
+# Start the bring-your-own-proxy production stack
+docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
+```
+
 ### Security Checklist
 
 - [ ] Change `SECRET_KEY` to a secure random value *(handled by `setup_env.py` if used)*
@@ -210,48 +247,12 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
 - [ ] Set `DEBUG=false`
 - [ ] Set `APP_ENV=production`
-- [ ] Set `BACKEND_BIND=127.0.0.1` (default) — backend should NOT be directly internet-facing; place it behind nginx/Traefik for TLS termination.
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
 - [ ] Set up database backups
 - [ ] Configure rate limiting
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
-
-### Production Environment Modifications
-
-When deploying to production, modify the variables within your `.env` file to ensure the system is secure:
-
-- Update `APP_ENV` to `production`
-- Update `DEBUG` to `false`
-- Update `DATABASE_URL` and `REDIS_URL` to point to your production instances rather than `localhost` (if using external databases).
-
-### Reverse Proxy (Nginx)
-
-```nginx
-server {
-    listen 80;
-    server_name health_assistant.example.com;
-    
-    # Frontend
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-    
-    # Backend API
-    location /api/ {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-
-### HTTPS with Let's Encrypt
 
 ```bash
 sudo apt install certbot python3-certbot-nginx
