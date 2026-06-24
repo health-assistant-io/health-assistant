@@ -290,7 +290,7 @@ function App() {
       </Routes>
 
       {/* PWA Update / Offline Toast */}
-      {(offlineReady || needRefresh) && (
+      {(offlineReady || needRefresh) && !window.__HA_SCREENSHOT_CAPTURE__ && (
         <div className="fixed bottom-4 right-4 z-[9999] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-4 max-w-sm flex flex-col gap-2">
           <div className="flex justify-between items-start">
             <span className="text-sm font-medium text-slate-900 dark:text-white">

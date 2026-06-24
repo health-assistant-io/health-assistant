@@ -46,7 +46,7 @@ export function AuthenticatedPdf({ documentId, className, fallbackText }: Authen
 
   return (
     <iframe 
-      src={`${src}#view=FitH`} 
+      src={`${src}#toolbar=0&navpanes=0&view=FitH`} 
       className={`rounded-lg bg-white w-full h-full ${className}`}
       title="PDF Document Viewer"
       style={{ border: 'none', height: '100%', width: '100%', minHeight: '600px' }}
