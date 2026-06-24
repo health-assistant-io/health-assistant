@@ -40,61 +40,67 @@ const DEFAULT_LAYOUT_CONFIG = {
     { i: 'hr', x: 3, y: 0, w: 3, h: 2 },
     { i: 'temp', x: 6, y: 0, w: 3, h: 2 },
     { i: 'sugar', x: 9, y: 0, w: 3, h: 2 },
-    { i: 'trends', x: 0, y: 2, w: 8, h: 4 },
-    { i: 'imaging', x: 8, y: 2, w: 4, h: 5 },
-    { i: 'examination', x: 8, y: 7, w: 4, h: 2 },
-    { i: 'labs', x: 0, y: 6, w: 8, h: 5 }
+    { i: 'calendar', x: 0, y: 2, w: 8, h: 5 },
+    { i: 'alerts', x: 8, y: 2, w: 4, h: 5 },
+    { i: 'trends', x: 0, y: 7, w: 8, h: 4 },
+    { i: 'docs', x: 8, y: 7, w: 4, h: 4 },
+    { i: 'labs', x: 0, y: 11, w: 12, h: 5 }
   ],
   md: [
     { i: 'bp', x: 0, y: 0, w: 5, h: 2 },
     { i: 'hr', x: 5, y: 0, w: 5, h: 2 },
     { i: 'temp', x: 0, y: 2, w: 5, h: 2 },
     { i: 'sugar', x: 5, y: 2, w: 5, h: 2 },
-    { i: 'trends', x: 0, y: 4, w: 10, h: 4 },
-    { i: 'imaging', x: 0, y: 8, w: 10, h: 5 },
-    { i: 'examination', x: 0, y: 13, w: 10, h: 3 },
-    { i: 'labs', x: 0, y: 16, w: 10, h: 5 }
+    { i: 'calendar', x: 0, y: 4, w: 10, h: 5 },
+    { i: 'alerts', x: 0, y: 9, w: 10, h: 4 },
+    { i: 'trends', x: 0, y: 13, w: 10, h: 4 },
+    { i: 'docs', x: 0, y: 17, w: 10, h: 4 },
+    { i: 'labs', x: 0, y: 21, w: 10, h: 5 }
   ],
   sm: [
     { i: 'bp', x: 0, y: 0, w: 3, h: 2 },
     { i: 'hr', x: 3, y: 0, w: 3, h: 2 },
     { i: 'temp', x: 0, y: 2, w: 3, h: 2 },
     { i: 'sugar', x: 3, y: 2, w: 3, h: 2 },
-    { i: 'trends', x: 0, y: 4, w: 6, h: 5 },
-    { i: 'imaging', x: 0, y: 9, w: 6, h: 5 },
-    { i: 'examination', x: 0, y: 14, w: 6, h: 3 },
-    { i: 'labs', x: 0, y: 17, w: 6, h: 5 }
+    { i: 'calendar', x: 0, y: 4, w: 6, h: 5 },
+    { i: 'alerts', x: 0, y: 9, w: 6, h: 4 },
+    { i: 'trends', x: 0, y: 13, w: 6, h: 4 },
+    { i: 'docs', x: 0, y: 17, w: 6, h: 4 },
+    { i: 'labs', x: 0, y: 21, w: 6, h: 5 }
   ],
   xs: [
     { i: 'bp', x: 0, y: 0, w: 4, h: 2 },
     { i: 'hr', x: 0, y: 2, w: 4, h: 2 },
     { i: 'temp', x: 0, y: 4, w: 4, h: 2 },
     { i: 'sugar', x: 0, y: 6, w: 4, h: 2 },
-    { i: 'trends', x: 0, y: 8, w: 4, h: 5 },
-    { i: 'imaging', x: 0, y: 13, w: 4, h: 5 },
-    { i: 'examination', x: 0, y: 18, w: 4, h: 3 },
-    { i: 'labs', x: 0, y: 21, w: 4, h: 5 }
+    { i: 'calendar', x: 0, y: 8, w: 4, h: 5 },
+    { i: 'alerts', x: 0, y: 13, w: 4, h: 4 },
+    { i: 'trends', x: 0, y: 17, w: 4, h: 4 },
+    { i: 'docs', x: 0, y: 21, w: 4, h: 4 },
+    { i: 'labs', x: 0, y: 25, w: 4, h: 5 }
   ],
   xxs: [
     { i: 'bp', x: 0, y: 0, w: 2, h: 2 },
     { i: 'hr', x: 0, y: 2, w: 2, h: 2 },
     { i: 'temp', x: 0, y: 4, w: 2, h: 2 },
     { i: 'sugar', x: 0, y: 6, w: 2, h: 2 },
-    { i: 'trends', x: 0, y: 8, w: 2, h: 6 },
-    { i: 'imaging', x: 0, y: 14, w: 2, h: 5 },
-    { i: 'examination', x: 0, y: 19, w: 2, h: 3 },
-    { i: 'labs', x: 0, y: 22, w: 2, h: 6 }
+    { i: 'calendar', x: 0, y: 8, w: 2, h: 5 },
+    { i: 'alerts', x: 0, y: 13, w: 2, h: 4 },
+    { i: 'trends', x: 0, y: 17, w: 2, h: 4 },
+    { i: 'docs', x: 0, y: 21, w: 2, h: 4 },
+    { i: 'labs', x: 0, y: 25, w: 2, h: 5 }
   ]
 };
 
 const DEFAULT_CARDS = [
-  { id: 'bp', type: 'biomarker', config: { biomarker: 'Blood Pressure', icon: 'Activity' } },
-  { id: 'hr', type: 'biomarker', config: { biomarker: 'Heart Rate', icon: 'Heart' } },
-  { id: 'temp', type: 'biomarker', config: { biomarker: 'Body Temp', icon: 'Thermometer' } },
-  { id: 'sugar', type: 'biomarker', config: { biomarker: 'Blood Sugar', icon: 'Droplets' } },
-  { id: 'trends', type: 'trends', config: { biomarker: 'Cholesterol (Total)' } },
-  { id: 'imaging', type: 'imaging', config: {} },
-  { id: 'examination', type: 'examination', config: {} },
+  { id: 'bp', type: 'biomarker', config: { biomarker: 'Systolic blood pressure', icon: 'Activity' } },
+  { id: 'hr', type: 'biomarker', config: { biomarker: 'Heart rate', icon: 'Heart' } },
+  { id: 'temp', type: 'biomarker', config: { biomarker: 'Body temperature', icon: 'Thermometer' } },
+  { id: 'sugar', type: 'biomarker', config: { biomarker: 'Glucose', icon: 'Droplets' } },
+  { id: 'calendar', type: 'health_calendar', config: { viewType: 'timeline', timelineDays: 3, categories: ['medications', 'allergies', 'examinations'] } },
+  { id: 'alerts', type: 'allergy_alerts', config: {} },
+  { id: 'trends', type: 'trends', config: { biomarker: 'Total Cholesterol' } },
+  { id: 'docs', type: 'latest_documents', config: { viewMode: 'list' } },
   { id: 'labs', type: 'labs', config: {} },
 ];
 
