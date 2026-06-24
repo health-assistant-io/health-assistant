@@ -18,7 +18,7 @@ import {
 } from '../../services/dashboardLayoutService';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { NoPatientState } from '../../components/ui/NoPatientState';
-import { Settings, Plus, Save, ChevronDown, Trash2, Copy, LayoutTemplate, Edit2 } from 'lucide-react';
+import { Settings, Plus, Save, ChevronDown, Trash2, Copy, LayoutTemplate, Edit2, Star, Zap } from 'lucide-react';
 import {
   getCardDefinition,
   resolveCardComponent,
@@ -109,6 +109,123 @@ interface BiomarkerOption {
   slug: string;
   name: string;
 }
+
+
+const generateSmartLayout = (
+  type: string,
+  data: {
+    availableBiomarkers: BiomarkerOption[],
+    medications: any[],
+    allergies: any[],
+    examinations: any[],
+    clinicalEvents: any[],
+    latestImaging: any[],
+    latestLabs: any[],
+    recentDocuments: any[]
+  }
+) => {
+  const cards: any[] = [];
+  const addCard = (cardType: string, config: any) => {
+    // Generate simple ID like string
+    cards.push({ id: `smart-${cards.length}-${Math.random().toString(36).substr(2, 5)}`, type: cardType, config });
+  };
+
+  const hasMeds = data.medications?.length > 0;
+  const hasAllergies = data.allergies?.length > 0;
+  const hasExams = data.examinations?.length > 0;
+  const hasEvents = data.clinicalEvents?.length > 0;
+  const hasImaging = data.latestImaging?.length > 0;
+  const hasLabs = data.latestLabs?.length > 0;
+  const hasDocs = data.recentDocuments?.length > 0;
+
+  const getTopBiomarkers = (count: number) => {
+    // try to get BP, HR, Temp, Sugar first, fallback to others
+    const preferred = ['systolic-blood-pressure', 'heart-rate', 'body-temperature', 'glucose'];
+    const selected: BiomarkerOption[] = [];
+    for (const pref of preferred) {
+      if (selected.length >= count) break;
+      const found = data.availableBiomarkers.find(b => b.slug === pref);
+      if (found && !selected.find(s => s.slug === found.slug)) selected.push(found);
+    }
+    for (const b of data.availableBiomarkers) {
+      if (selected.length >= count) break;
+      if (!selected.find(s => s.slug === b.slug)) selected.push(b);
+    }
+    return selected;
+  };
+
+  if (type === 'vitals') {
+    const bioCards = getTopBiomarkers(4);
+    bioCards.forEach(b => addCard('biomarker', { biomarker: b.slug, icon: 'Activity' }));
+    if (bioCards.length > 0) addCard('trends', { biomarker: bioCards[0].slug });
+  } else if (type === 'clinical') {
+    if (hasLabs) addCard('labs', {});
+    if (hasImaging) addCard('imaging', {});
+    if (hasExams) addCard('examination', {});
+    if (hasDocs) addCard('latest_documents', { viewMode: 'list' });
+    if (hasMeds || hasAllergies) addCard('allergy_alerts', {});
+  } else if (type === 'compact') {
+    // compact overview
+    const bioCards = getTopBiomarkers(2);
+    bioCards.forEach(b => addCard('biomarker', { biomarker: b.slug, icon: 'Activity' }));
+    if (hasMeds || hasExams || hasEvents) addCard('health_calendar', { viewType: 'classic', fitToContainer: true, compactMode: true, hideHeader: true, timelineDays: 3, categories: ['medications', 'allergies', 'examinations'] });
+    if (bioCards.length > 0) addCard('trends', { biomarker: bioCards[0].slug });
+    if (hasAllergies) addCard('allergy_alerts', {});
+    if (hasLabs) addCard('labs', {});
+  } else {
+    // overview
+    const bioCards = getTopBiomarkers(4);
+    bioCards.forEach(b => addCard('biomarker', { biomarker: b.slug, icon: 'Activity' }));
+    if (hasMeds || hasExams || hasEvents) addCard('health_calendar', { viewType: 'timeline', timelineDays: 3, categories: ['medications', 'allergies', 'examinations'] });
+    if (hasAllergies) addCard('allergy_alerts', {});
+    if (bioCards.length > 0) addCard('trends', { biomarker: bioCards[0].slug });
+    if (hasDocs) addCard('latest_documents', { viewMode: 'list' });
+    if (hasLabs) addCard('labs', {});
+  }
+
+  // Fallback if no data
+  if (cards.length === 0) {
+    addCard('biomarker', { biomarker: 'heart-rate', icon: 'Heart' });
+  }
+
+  const newLayout: any = { lg: [], md: [], sm: [], xs: [], xxs: [] };
+  const colsFor: Record<string, number> = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 };
+  
+  // Smart Grid Packing Algorithm (Left-to-Right, Top-to-Bottom)
+  Object.keys(newLayout).forEach(bp => {
+    const cols = colsFor[bp];
+    let currentX = 0;
+    let currentY = 0;
+    let rowMaxH = 0;
+
+    cards.forEach((c) => {
+      let { w, h } = resolveDefaultLayout(c.type);
+      
+      if (type === 'compact') {
+         if (c.type === 'trends') { w = 4; h = 3; }
+         if (c.type === 'health_calendar') { w = 6; h = 4; }
+         if (c.type === 'labs') { h = 3; }
+         if (c.type === 'latest_documents') { h = 2; }
+      }
+      
+      const actualW = Math.min(w, cols);
+
+      // If the card doesn't fit on the current row, wrap to the next row
+      if (currentX + actualW > cols) {
+        currentX = 0;
+        currentY += rowMaxH;
+        rowMaxH = 0;
+      }
+
+      newLayout[bp].push({ i: c.id, x: currentX, y: currentY, w: actualW, h });
+
+      currentX += actualW;
+      rowMaxH = Math.max(rowMaxH, h);
+    });
+  });
+
+  return { cards, layout: newLayout };
+};
 
 function Dashboard() {
   const { t } = useTranslation();
@@ -451,6 +568,53 @@ function Dashboard() {
     setLayouts(allLayouts);
   };
 
+
+  const setDefaultLayout = async (layoutId: string) => {
+    if (!currentPatient?.id) return;
+    try {
+      await updatePatientLayout(currentPatient.id, layoutId, { is_default: true });
+      const updatedList = await getPatientLayouts(currentPatient.id);
+      setLayoutsList(updatedList);
+      const newActive = updatedList.find(l => l.id === activeLayout?.id);
+      if (newActive) setActiveLayout(newActive);
+    } catch (err) {
+      console.error('Failed to set default layout', err);
+    }
+  };
+
+  const generateAndSaveSmartLayout = async (type: string) => {
+    if (!currentPatient?.id) return;
+    try {
+      const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+      
+      // Calculate layout based on current data
+      const { cards: newCards, layout: newLayout } = generateSmartLayout(type, {
+        availableBiomarkers,
+        medications,
+        allergies,
+        examinations,
+        clinicalEvents,
+        latestImaging,
+        latestLabs,
+        recentDocuments
+      });
+
+      // Save to backend as a NORMAL editable layout
+      const savedLayout = await createPatientLayout(currentPatient.id, {
+        name: `Smart Overview (${typeName})`,
+        is_default: false,
+        layout_config: newLayout,
+        cards_config: newCards
+      });
+      
+      const updatedList = await getPatientLayouts(currentPatient.id);
+      setLayoutsList(updatedList);
+      switchLayout(savedLayout);
+    } catch (err: any) {
+      console.error('Failed to create smart layout:', err);
+    }
+  };
+
   const saveCurrentLayout = async () => {
     if (!currentPatient?.id || !activeLayout) return;
     try {
@@ -603,7 +767,7 @@ function Dashboard() {
               onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
               className="w-full sm:w-auto flex items-center justify-between sm:justify-start space-x-2 px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-dark-bg transition-all active:scale-95"
             >
-              <span className="text-sm font-bold text-gray-700 dark:text-dark-text truncate">{activeLayout?.name || t('dashboard.loading_layout')}</span>
+              <span className="text-sm font-bold text-gray-700 dark:text-dark-text truncate">{activeLayout?.name || t('dashboard.loading_layout')} </span>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isLayoutMenuOpen ? 'rotate-180' : ''}`} />
             </button>
             
@@ -613,15 +777,51 @@ function Dashboard() {
                   <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider">{t('dashboard.your_layouts')}</p>
                 </div>
                 {layoutsList.map((l) => (
-                  <button
-                    key={l.id}
-                    onClick={() => switchLayout(l)}
-                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${activeLayout?.id === l.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-border'}`}
-                  >
-                    {l.name} {l.is_default && t('dashboard.default_label')}
-                  </button>
+                  <div key={l.id} className={`flex items-center justify-between w-full px-4 py-2 text-sm transition-colors ${activeLayout?.id === l.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-border'}`}>
+                    <button
+                      onClick={() => switchLayout(l)}
+                      className="flex-1 text-left truncate"
+                    >
+                      {l.name} 
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setDefaultLayout(l.id); }}
+                      className={`ml-2 p-1 rounded-md transition-colors ${l.is_default ? 'text-yellow-400 hover:text-yellow-500' : 'text-gray-300 hover:text-gray-500 dark:text-dark-muted dark:hover:text-gray-300'}`}
+                      title={l.is_default ? t('dashboard.default_label') : 'Set as default'}
+                    >
+                      <Star className={`w-4 h-4 ${l.is_default ? 'fill-current' : ''}`} />
+                    </button>
+                  </div>
                 ))}
                 <div className="border-t border-gray-50 dark:border-dark-border mt-2 pt-2">
+                  <button 
+                    onClick={() => generateAndSaveSmartLayout('overview')}
+                    className="w-full text-left px-4 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center space-x-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Generate Smart Overview</span>
+                  </button>
+                  <button 
+                    onClick={() => generateAndSaveSmartLayout('vitals')}
+                    className="w-full text-left px-4 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center space-x-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Generate Smart Vitals</span>
+                  </button>
+                  <button 
+                    onClick={() => generateAndSaveSmartLayout('clinical')}
+                    className="w-full text-left px-4 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center space-x-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Generate Smart Clinical</span>
+                  </button>
+                  <button 
+                    onClick={() => generateAndSaveSmartLayout('compact')}
+                    className="w-full text-left px-4 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center space-x-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Generate Smart Compact</span>
+                  </button>
                   <button 
                     onClick={createLayoutFromTemplate}
                     className="w-full text-left px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center space-x-2"
