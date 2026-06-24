@@ -3,60 +3,166 @@
     "category": "Getting Started",
     "icon": "Play",
     "items": [
-      { "id": "getting-started", "file": "../README.md", "title": "Introduction" },
-      { "id": "install", "file": "INSTALL.md", "title": "Installation Guide" },
-      { "id": "architecture", "file": "ARCHITECTURE.md", "title": "Architecture Overview" }
+      {
+        "id": "getting-started",
+        "file": "../README.md",
+        "title": "Introduction"
+      },
+      {
+        "id": "visual-tour",
+        "file": "SCREENSHOTS.md",
+        "title": "Visual Tour"
+      },
+      {
+        "id": "install",
+        "file": "INSTALL.md",
+        "title": "Installation Guide"
+      },
+      {
+        "id": "architecture",
+        "file": "ARCHITECTURE.md",
+        "title": "Architecture Overview"
+      }
     ]
   },
   {
     "category": "Core Systems",
     "icon": "Server",
     "items": [
-      { "id": "project-structure", "file": "PROJECT_STRUCTURE.md", "title": "Project Structure" },
-      { "id": "tenancy-and-user-management", "file": "TENANCY_AND_USER_MANAGEMENT.md", "title": "User Management" },
-      { "id": "ontology-catalog", "file": "ONTOLOGY_CATALOG.md", "title": "Ontology & Catalog" },
-      { "id": "notification-system", "file": "NOTIFICATION_SYSTEM.md", "title": "Notification System" },
-      { "id": "telemetry-and-aggregation", "file": "TELEMETRY_AND_AGGREGATION.md", "title": "Telemetry & Aggregation" },
-      { "id": "export-import", "file": "EXPORT_IMPORT.md", "title": "Export & Import (Backup)" }
+      {
+        "id": "project-structure",
+        "file": "PROJECT_STRUCTURE.md",
+        "title": "Project Structure"
+      },
+      {
+        "id": "tenancy-and-user-management",
+        "file": "TENANCY_AND_USER_MANAGEMENT.md",
+        "title": "User Management"
+      },
+      {
+        "id": "ontology-catalog",
+        "file": "ONTOLOGY_CATALOG.md",
+        "title": "Ontology & Catalog"
+      },
+      {
+        "id": "notification-system",
+        "file": "NOTIFICATION_SYSTEM.md",
+        "title": "Notification System"
+      },
+      {
+        "id": "telemetry-and-aggregation",
+        "file": "TELEMETRY_AND_AGGREGATION.md",
+        "title": "Telemetry & Aggregation"
+      },
+      {
+        "id": "export-import",
+        "file": "EXPORT_IMPORT.md",
+        "title": "Export & Import (Backup)"
+      }
     ]
   },
   {
     "category": "AI & Intelligence",
     "icon": "Bot",
     "items": [
-      { "id": "ai-system", "file": "AI_SYSTEM.md", "title": "AI System & Configuration" },
-      { "id": "ai-provider-tests", "file": "AI_PROVIDER_TESTS.md", "title": "Testing AI Providers" }
+      {
+        "id": "ai-system",
+        "file": "AI_SYSTEM.md",
+        "title": "AI System & Configuration"
+      },
+      {
+        "id": "ai-provider-tests",
+        "file": "AI_PROVIDER_TESTS.md",
+        "title": "Testing AI Providers"
+      }
     ]
   },
   {
     "category": "Integrations & API",
     "icon": "Plug",
     "items": [
-      { "id": "api", "file": "API.md", "title": "REST API Reference" },
-      { "id": "fhir-r4-facade", "file": "FHIR_R4_FACADE.md", "title": "FHIR R4 Facade" },
-      { "id": "integrations-framework", "file": "INTEGRATIONS_FRAMEWORK.md", "title": "Integrations Framework" },
-      { "id": "integrations-sdk", "file": "INTEGRATIONS_SDK.md", "title": "Integrations SDK" },
-      { "id": "user-integrations-plan", "file": "USER_INTEGRATIONS_PLAN.md", "title": "Integrations Plan" },
-      { "id": "mobile-sync-app", "file": "MOBILE_SYNC_APP.md", "title": "Mobile Sync App" }
+      {
+        "id": "api",
+        "file": "API.md",
+        "title": "REST API Reference"
+      },
+      {
+        "id": "fhir-r4-facade",
+        "file": "FHIR_R4_FACADE.md",
+        "title": "FHIR R4 Facade"
+      },
+      {
+        "id": "integrations-framework",
+        "file": "INTEGRATIONS_FRAMEWORK.md",
+        "title": "Integrations Framework"
+      },
+      {
+        "id": "integrations-sdk",
+        "file": "INTEGRATIONS_SDK.md",
+        "title": "Integrations SDK"
+      },
+      {
+        "id": "user-integrations-plan",
+        "file": "USER_INTEGRATIONS_PLAN.md",
+        "title": "Integrations Plan"
+      },
+      {
+        "id": "mobile-sync-app",
+        "file": "MOBILE_SYNC_APP.md",
+        "title": "Mobile Sync App"
+      }
     ]
   },
   {
     "category": "Development & Operations",
     "icon": "Wrench",
     "items": [
-      { "id": "development", "file": "DEVELOPMENT.md", "title": "Development Guide" },
-      { "id": "ci-cd-setup", "file": "CI_CD_SETUP.md", "title": "CI/CD Deployment" },
-      { "id": "task-debugging-guide", "file": "TASK_DEBUGGING_GUIDE.md", "title": "Task Debugging Guide" },
-      { "id": "task-debugging", "file": "TASK_DEBUGGING.md", "title": "Task Debugging Internal" },
-      { "id": "task-progress-indicator", "file": "TASK_PROGRESS_INDICATOR.md", "title": "Task Progress Indicator" }
+      {
+        "id": "development",
+        "file": "DEVELOPMENT.md",
+        "title": "Development Guide"
+      },
+      {
+        "id": "ci-cd-setup",
+        "file": "CI_CD_SETUP.md",
+        "title": "CI/CD Deployment"
+      },
+      {
+        "id": "task-debugging-guide",
+        "file": "TASK_DEBUGGING_GUIDE.md",
+        "title": "Task Debugging Guide"
+      },
+      {
+        "id": "task-debugging",
+        "file": "TASK_DEBUGGING.md",
+        "title": "Task Debugging Internal"
+      },
+      {
+        "id": "task-progress-indicator",
+        "file": "TASK_PROGRESS_INDICATOR.md",
+        "title": "Task Progress Indicator"
+      },
+      {
+        "id": "ui-capture-pipeline",
+        "file": "UI_CAPTURE_PIPELINE.md",
+        "title": "UI Capture & Screenshots"
+      }
     ]
   },
   {
     "category": "Project Status",
     "icon": "ListTodo",
     "items": [
-      { "id": "status", "file": "STATUS.md", "title": "Current Status" },
-      { "id": "development-plan", "file": "DEVELOPMENT_PLAN.md", "title": "Development Roadmap" }
+      {
+        "id": "status",
+        "file": "STATUS.md",
+        "title": "Current Status"
+      },
+      {
+        "id": "development-plan",
+        "file": "DEVELOPMENT_PLAN.md",
+        "title": "Development Roadmap"
+      }
     ]
   }
 ]

@@ -86,7 +86,11 @@ config = {
     "APP_ENV": "development",
     "DEBUG": "true",
     "APP_URL": "http://localhost:3000",
-    "CELERY_WORKER_CONCURRENCY": "2"
+    "CELERY_WORKER_CONCURRENCY": "2",
+    # Dev tooling — demo credentials for UI screenshot capture
+    # (see scripts/capture_ui.sh + backend/scripts/seed_demo.py).
+    "HA_DEMO_EMAIL": "demo@healthassistant.local",
+    "HA_DEMO_PASSWORD": "Demo1234!",
 }
 
 # Full interactive overrides

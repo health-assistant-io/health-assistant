@@ -7,7 +7,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "test": "vitest"
+    "test": "vitest",
+    "capture:ui": "node tests-e2e/ui-capture/capture.mjs",
+    "capture:ui:gallery": "node tests-e2e/ui-capture/capture.mjs --gallery-only",
+    "capture:ui:headed": "node tests-e2e/ui-capture/capture.mjs --headed"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
@@ -55,6 +58,7 @@
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "jsdom": "^25.0.1",
+    "playwright": "^1.48.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3",
