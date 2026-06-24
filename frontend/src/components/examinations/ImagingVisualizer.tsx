@@ -70,7 +70,7 @@ export default function ImagingVisualizer({ documents }: Props) {
                 selectedDoc.filename.toLowerCase().endsWith('.pdf') ? (
                   <div className="w-full h-full">
                     <iframe 
-                      src={`${previewUrl}#view=FitH`} 
+                      src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`} 
                       className="w-full h-full border-0" 
                       title="PDF Preview"
                     />

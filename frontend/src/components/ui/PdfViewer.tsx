@@ -48,7 +48,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, filename, onClose }) 
       <div className="flex-1 w-full h-full p-4 sm:p-6 lg:p-8 flex justify-center">
         <div className="w-full max-w-5xl h-full bg-white rounded-xl shadow-2xl overflow-hidden">
           <iframe 
-            src={`${url}#view=FitH`} 
+            src={`${url}#toolbar=0&navpanes=0&view=FitH`} 
             className="w-full h-full border-0"
             title="PDF Document Viewer"
           />
