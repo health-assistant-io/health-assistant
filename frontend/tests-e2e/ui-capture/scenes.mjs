@@ -79,7 +79,7 @@ export const scenes = [
     caption: "Document list — uploaded exams/reports routed through the OCR pipeline.",
     path: "/documents",
     interactions: [
-      { action: "wait", ms: 5000 }
+      { action: "wait", ms: 3000 }
     ],
     viewports: ["desktop"],
     waitForSelector: "main",
@@ -120,9 +120,9 @@ export const scenes = [
     caption: "Agentic AI chat — tools, SSE streaming, and HITL task cards.",
     path: "/ai-assistant",
     interactions: [
-      { action: "fill", selector: "textarea", value: "Can you list my latest biomarker results?" },
+      { action: "fill", selector: "textarea", value: "Provide me with the results of my latest examination" },
       { action: "press", key: "Enter" },
-      { action: "wait", ms: 3000 }
+      { action: "wait", ms: 15000 }
     ],
     viewports: ["desktop"],
     waitForSelector: "main",
