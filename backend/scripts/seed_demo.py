@@ -401,6 +401,28 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
         ]
         await import_service.restore_sidecar("examinations.json", examinations, tenant_id, {})
 
+        # Link observations from 2026-06-10 to the 2026-06-10 examination
+        from sqlalchemy import update
+        
+        exam_id_result = await session.execute(
+            select(ExaminationModel.id).where(
+                ExaminationModel.patient_id == patient_id, 
+                ExaminationModel.examination_date == date(2026, 6, 10)
+            )
+        )
+        exam_id = exam_id_result.scalar_one_or_none()
+        
+        if exam_id:
+            target_dt = datetime(2026, 6, 10, 10, 0, tzinfo=timezone.utc)
+            await session.execute(
+                update(Observation)
+                .where(
+                    Observation.subject["reference"].astext == f"Patient/{patient_id}",
+                    Observation.effective_datetime == target_dt
+                )
+                .values(examination_id=str(exam_id))
+            )
+
 async def seed() -> None:
     if not DATABASE_AVAILABLE:
         print("❌ Database is not available. Check DATABASE_URL in backend/.env")
