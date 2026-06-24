@@ -96,12 +96,7 @@ export const scenes = [
     name: "examination-detail",
     group: "Clinical data",
     caption: "Examination detail view — structured clinical notes and linked entities.",
-    path: "/examinations",
-    interactions: [
-      { action: "waitFor", selector: ".group.relative.bg-white", timeout: 15000 },
-      { action: "click", selector: ".group.relative.bg-white" },
-      { action: "wait", ms: 1000 }
-    ],
+    path: "/examinations/{examinationId}",
     viewports: ["desktop"],
     waitForSelector: "main",
   },
