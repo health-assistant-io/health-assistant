@@ -36,7 +36,7 @@ async def create_system_admin(email: str, password: str, tenant_name: str = "Sys
 
     if not DATABASE_AVAILABLE:
         print("❌ Error: Database is not available")
-        print("Please check your DATABASE_URL in backend/.env")
+        print("Please check your DATABASE_URL in the root .env file")
         return False
 
     try:

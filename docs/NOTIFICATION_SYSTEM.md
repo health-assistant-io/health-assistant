@@ -172,7 +172,7 @@ npx web-push generate-vapid-keys
 ```
 
 ### 2. Update Environment Variables
-Add the generated keys to your `backend/.env` file:
+Add the generated keys to your root `.env` file:
 ```env
 VAPID_PUBLIC_KEY=your_long_public_key_string
 VAPID_PRIVATE_KEY=your_long_private_key_string

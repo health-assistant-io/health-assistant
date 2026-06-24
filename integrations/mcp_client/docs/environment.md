@@ -1,6 +1,6 @@
 # Environment Variables
 
-All configuration for the MCP Client integration is done via environment variables in `backend/.env`. Copy the defaults from `backend/.env.example` and adjust as needed.
+All configuration for the MCP Client integration is done via environment variables in the root `.env` file. Run `python scripts/setup_env.py` to generate one, or copy `.env.example` and adjust as needed.
 
 ## Required
 
