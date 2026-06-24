@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { useDashboardStore } from '../../store/slices/dashboardSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
@@ -18,7 +17,8 @@ import {
   deletePatientLayout
 } from '../../services/dashboardLayoutService';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { Settings, Plus, Save, ChevronDown, Trash2, User, Copy, LayoutTemplate, Edit2 } from 'lucide-react';
+import { NoPatientState } from '../../components/ui/NoPatientState';
+import { Settings, Plus, Save, ChevronDown, Trash2, Copy, LayoutTemplate, Edit2 } from 'lucide-react';
 import {
   getCardDefinition,
   resolveCardComponent,
@@ -106,7 +106,6 @@ interface BiomarkerOption {
 
 function Dashboard() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { 
     setDashboardData, 
     activeLayout, 
@@ -297,7 +296,10 @@ function Dashboard() {
   }, [currentPatient?.id, setDashboardData]);
 
   const loadLayout = useCallback(async () => {
-    if (!currentPatient?.id) return;
+    if (!currentPatient?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const allLayouts = await getPatientLayouts(currentPatient.id);
@@ -572,36 +574,12 @@ function Dashboard() {
     return <Component key={card.id} {...baseProps} {...resolveExtraProps(card.type, card, cardData)} />;
   };
 
-  if (isLoading) {
-    return <LoadingState variant="section" showText={true} message={t('dashboard.assembling_metrics')} />;
+  if (!currentPatient) {
+    return <NoPatientState contextKey="dashboard" />;
   }
 
-  if (!currentPatient) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 max-w-lg mx-auto text-center space-y-6">
-        <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-3xl flex items-center justify-center text-blue-600 shadow-inner">
-          <User className="w-10 h-10" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight">No Patient Context Selected</h2>
-          <p className="text-gray-500 mt-2">Please select a family member or patient from the menu above to view their health dashboard.</p>
-        </div>
-        <div className="flex flex-col w-full gap-3">
-          <button 
-            onClick={() => navigate('/patients')}
-            className="w-full py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none"
-          >
-            Manage Patients
-          </button>
-          <button 
-            onClick={() => navigate('/settings')}
-            className="w-full py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text rounded-2xl font-bold hover:bg-gray-50 transition-all"
-          >
-            Go to Profile Settings
-          </button>
-        </div>
-      </div>
-    );
+  if (isLoading) {
+    return <LoadingState variant="section" showText={true} message={t('dashboard.assembling_metrics')} />;
   }
 
   return (

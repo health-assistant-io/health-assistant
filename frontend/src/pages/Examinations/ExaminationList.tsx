@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getExaminations, getExaminationDocuments, getExaminationStatus, getExamination, getExaminationCategories, bulkDeleteExaminations, getCachedExaminations } from '../../services/examinationService';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { AuthenticatedImageViewer } from '../../components/ui/AuthenticatedImageViewer';
@@ -586,6 +587,10 @@ function ExaminationList() {
       onInfoClick={setSelectedInfo}
     />
   );
+
+  if (!currentPatient) {
+    return <NoPatientState icon={Stethoscope} contextKey="examinations" />;
+  }
 
   return (
     <PageContainer>

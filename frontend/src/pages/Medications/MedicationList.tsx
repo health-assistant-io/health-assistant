@@ -8,6 +8,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import MedicationCard from '../../components/medications/MedicationCard';
 import { MedicationModal } from '../../components/patients/MedicationModal';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
@@ -86,12 +87,7 @@ function MedicationList() {
   const otherMeds = filteredMedications.filter(m => m.status?.toLowerCase() !== 'active');
 
   if (!currentPatient) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 bg-gray-50 dark:bg-dark-bg/30 rounded-[3rem] border-4 border-dashed border-gray-100 dark:border-dark-border">
-        <Pill className="w-16 h-16 text-gray-200 mb-6" />
-        <h2 className="text-xl font-black text-gray-400 uppercase tracking-widest">{t('common.select_patient_to_view')}</h2>
-      </div>
-    );
+    return <NoPatientState icon={Pill} contextKey="medications" />;
   }
 
   return (

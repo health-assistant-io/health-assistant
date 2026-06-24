@@ -4,6 +4,7 @@ import { integrationService, CustomAction } from '../../services/integrationServ
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Trash2, CheckCircle, XCircle, Edit2, Zap, FileText, Bug, ArrowUpDown, ArrowDown, ArrowUp, Server, Cloud, Globe, Upload, Ban } from 'lucide-react';
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
@@ -168,6 +169,10 @@ const IntegrationDetail: React.FC = () => {
       toast.error(error.response?.data?.detail || "Action failed");
     }
   };
+
+  if (!currentPatient) {
+    return <NoPatientState icon={Server} contextKey="integration_detail" />;
+  }
 
   if (loading) {
     return <LoadingState variant="section" />;

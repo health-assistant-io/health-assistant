@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Calendar, 
-  User,
+import {
+  Calendar,
   MapPin,
   Pill
 } from 'lucide-react';
 import { UniversalCalendar } from '../../components/ui/UniversalCalendar';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { CalendarEventType, CalendarEvent } from '../../types/calendar';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -109,12 +109,7 @@ const CalendarPage: React.FC = () => {
   };
 
   if (!currentPatient) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 bg-gray-50 dark:bg-dark-bg/30 rounded-[3rem] border-4 border-dashed border-gray-100 dark:border-dark-border">
-        <Calendar className="w-16 h-16 text-gray-200 mb-6" />
-        <h2 className="text-xl font-black text-gray-400 uppercase tracking-widest">{t('common.select_patient_to_view')}</h2>
-      </div>
-    );
+    return <NoPatientState icon={Calendar} contextKey="calendar" />;
   }
 
   return (
