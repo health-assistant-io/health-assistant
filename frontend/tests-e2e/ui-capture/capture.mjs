@@ -166,6 +166,19 @@ async function resolvePath(path, apiBase, tokens) {
   if (!patient) return path;
 
   const subs = { patientId: patient.id };
+  
+  if (path.includes("{examinationId}")) {
+    const examRes = await fetch(`${apiBase}/examinations?patient_id=${patient.id}&limit=1`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (examRes.ok) {
+      const exams = await examRes.json();
+      if (exams && exams.length > 0) {
+        subs.examinationId = exams[0].id;
+      }
+    }
+  }
+
   return path.replace(/\{(\w+)\}/g, (_, k) => subs[k] ?? `{${k}}`);
 }
 
