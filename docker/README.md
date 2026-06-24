@@ -18,7 +18,7 @@ When you run the app on the host (via `../scripts/run-dev.sh`) rather than entir
 docker compose -f docker-compose.dev-db.yml up -d
 ```
 
-- **Postgres (TimescaleDB)** on host port **5433** (pinned to match `backend/.env`; avoids clashing with a host Postgres on 5432). The init scripts create both `health_assistant` and `health_assistant_test` (the latter is needed by pytest).
+- **Postgres (TimescaleDB)** on host port **5432** (configurable via `POSTGRES_PORT` in the root `.env`). The init scripts create both `health_assistant` and `health_assistant_test` (the latter is needed by pytest).
 - **Redis** on host port **6379** (Celery broker + Stage 2 OAuth state store).
 
 If you already run Redis on the host (port 6379 busy), start Postgres only:

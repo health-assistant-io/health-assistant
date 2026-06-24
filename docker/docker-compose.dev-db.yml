@@ -3,7 +3,7 @@
 #
 #   docker compose -f docker/docker-compose.dev-db.yml up -d
 #
-# Host ports are read from docker/.env via POSTGRES_PORT and REDIS_PORT defaults.
+# Host ports are read from the root .env via POSTGRES_PORT and REDIS_PORT defaults.
 # The init scripts create both the app DB and `health_assistant_test` (for pytest).
 services:
   # PostgreSQL with TimescaleDB
@@ -20,7 +20,7 @@ services:
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./init-test-db.sh:/docker-entrypoint-initdb.d/02-init-test-db.sh
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-health_assistant}"]
       interval: 10s

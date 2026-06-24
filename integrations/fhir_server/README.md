@@ -129,7 +129,7 @@ No Redis or secret key needed for this mode.
 5. **Sync** — hit **Sync** (or wait for the background cadence) / use Pull/Push.
    Toggle **Debug Mode** to inspect raw payloads.
 
-Prerequisites in `backend/.env` (SMART mode only):
+Prerequisites in the root `.env` (SMART mode only):
 ```
 INTEGRATION_SECRET_KEY=<fernet key>     # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 REDIS_URL=redis://localhost:6379        # OAuth state lives here

@@ -83,6 +83,21 @@ if [ ! -f "Procfile.dev" ]; then
     exit 1
 fi
 
+# Load the root .env so every process (backend, worker, frontend, scripts)
+# gets the same config regardless of how it's launched. honcho also loads
+# .env, but exporting here makes direct-uvicorn / IDE / script launches work
+# too. `set -a` auto-exports every variable defined while it's on.
+if [ -f ".env" ]; then
+    set -a
+    . ./.env
+    set +a
+fi
+
+# Tell the backend exactly where its .env lives (absolute path) so Pydantic
+# Settings doesn't have to guess via CWD. The backend's _resolve_env_file()
+# checks HA_ENV_FILE first, then walks up from config.py as a fallback.
+export HA_ENV_FILE="$PWD/.env"
+
 # Function to check if a port is in use
 check_port() {
     if lsof -Pi :$1 -sTCP:LISTEN -t >/dev/null 2>&1 ; then

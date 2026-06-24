@@ -48,7 +48,7 @@ If you prefer to run the entire development stack (including the backend and fro
 ./scripts/run-docker.sh
 
 # Or using docker compose directly:
-docker compose --env-file docker/.env -f docker/docker-compose.dev.yml up --build
+docker compose --env-file .env -f docker/docker-compose.dev.yml up --build
 ```
 *(Note: This approach isolates your environment completely, but hot-reloading may be slightly slower depending on your operating system's file-sharing performance with Docker).*
 

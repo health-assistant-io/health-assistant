@@ -39,19 +39,15 @@ if ! docker compose version &> /dev/null; then
     fi
 fi
 
-# Copy default docker env file if it doesn't exist
-if [ ! -f "docker/.env" ]; then
-    echo -e "${YELLOW}Warning: docker/.env file not found. Creating a default one...${NC}"
-    if [ -f "backend/.env" ]; then
-        cp backend/.env docker/.env
-        # Update PG port for docker internal communication
-        sed -i 's/POSTGRES_PORT=5433/POSTGRES_PORT=5432/g' docker/.env
-    else
-        echo -e "${RED}Error: Could not find backend/.env to use as template.${NC}"
-        exit 1
-    fi
+# Use the root .env directly — docker compose reads it via --env-file.
+# (Previously this copied backend/.env to docker/.env and sed-rewrote the
+#  port; with env consolidation the single root .env is the source of truth.)
+if [ ! -f ".env" ]; then
+    echo -e "${RED}Error: .env file not found in project root.${NC}"
+    echo -e "${YELLOW}Run 'python scripts/setup_env.py' to generate one, or copy .env.example.${NC}"
+    exit 1
 fi
 
 # Build and start services using docker-compose
 echo -e "${GREEN}Building and launching Health Assistant containers...${NC}"
-$DOCKER_COMPOSE_CMD -f docker/docker-compose.dev.yml --env-file docker/.env up --build
+$DOCKER_COMPOSE_CMD -f docker/docker-compose.dev.yml --env-file .env up --build

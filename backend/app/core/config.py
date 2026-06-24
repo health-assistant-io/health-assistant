@@ -1,9 +1,37 @@
 import secrets
+from pathlib import Path
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from typing import Optional, Any, List
 from functools import lru_cache
+
+
+def _resolve_env_file() -> Optional[str]:
+    """Locate the .env file for Pydantic Settings.
+
+    Precedence:
+      1. HA_ENV_FILE env var — explicit path from the launcher (best practice,
+         Twelve-Factor: the orchestrator tells the app where its config lives).
+      2. Walk up from this file's location to find the nearest .env — robust
+         against CWD changes and directory restructuring (no magic depth).
+      3. None — fall back to real env vars only (production-correct; docker
+         and k8s inject env vars directly, no .env file needed).
+
+    Set HA_ENV_FILE in run-dev.sh, docker-compose, systemd, or your IDE to
+    point at a non-default location.
+    """
+    explicit = os.getenv("HA_ENV_FILE")
+    if explicit:
+        return explicit
+
+    here = Path(__file__).resolve().parent
+    for parent in [here, *here.parents]:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return str(candidate)
+
+    return None
 
 
 class Settings(BaseSettings):
@@ -124,7 +152,11 @@ class Settings(BaseSettings):
     FRONTEND_PORT: int = 3000
     FLOWER_PORT: int = 5555
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = SettingsConfigDict(
+        env_file=_resolve_env_file(),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()
