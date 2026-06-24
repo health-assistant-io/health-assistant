@@ -99,8 +99,19 @@ fi
 echo "→ Capturing scenes…"
 ( cd "$FRONTEND" && node tests-e2e/ui-capture/capture.mjs --base "$FRONTEND_URL" --api "$API_URL" "$@" )
 
+# Compress PNGs
+if command -v pngquant >/dev/null 2>&1; then
+    echo "→ Compressing PNGs with pngquant..."
+    # --skip-if-larger prevents writing a file if compression actually increases size
+    # --speed 1 is slower but yields better quality/compression
+    find "$ROOT/docs/images" -name "*.png" -print0 | xargs -0 -I {} pngquant --ext .png --force --skip-if-larger --speed 1 {}
+    echo "✅ PNGs compressed"
+else
+    echo "ℹ 'pngquant' not found. Skipping PNG compression."
+    echo "  To enable, run: sudo apt-get install pngquant (Ubuntu/Debian) or brew install pngquant (macOS)"
+fi
 
-# Generate GIF if ffmpeg is available
+# Generate GIF
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "→ Generating animated GIF tour..."
     
@@ -131,6 +142,20 @@ if command -v ffmpeg >/dev/null 2>&1; then
     
     rm -rf "$TMP_DIR"
     echo "✅ GIF generated at docs/images/visual-tour.gif"
+    
+    # Compress GIF
+    if command -v gifsicle >/dev/null 2>&1; then
+        echo "→ Compressing GIF with gifsicle..."
+        # -O3 turns on max optimization, --lossy=80 applies slight lossy compression for massive size drops
+        gifsicle -O3 --lossy=80 -o "$GIF_OUT" "$GIF_OUT"
+        echo "✅ GIF compressed"
+    else
+        echo "ℹ 'gifsicle' not found. Skipping GIF compression."
+        echo "  To enable, run: sudo apt-get install gifsicle (Ubuntu/Debian) or brew install gifsicle (macOS)"
+    fi
+else
+    echo "ℹ 'ffmpeg' not found. Skipping animated GIF generation."
+    echo "  To enable, run: sudo apt-get install ffmpeg (Ubuntu/Debian) or brew install ffmpeg (macOS)"
 fi
 
 echo "✅ Done — see docs/SCREENSHOTS.md"
