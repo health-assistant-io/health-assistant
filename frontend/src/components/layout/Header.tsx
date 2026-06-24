@@ -97,8 +97,8 @@ function Header() {
           }
 
           // Logic 3: If no patient is selected yet and we are an admin, we don't auto-select random patients
-          // Only auto-select if it's the ONLY patient in the tenant (Home user context)
-          if (!current && items.length === 1) {
+          // Only auto-select if it's the ONLY patient in the tenant (Home user context) or we are capturing screenshots
+          if (!current && (items.length === 1 || window.__HA_SCREENSHOT_CAPTURE__)) {
             setCurrentPatient(items[0]);
           }
           

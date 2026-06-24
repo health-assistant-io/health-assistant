@@ -99,7 +99,7 @@ class Medication(
     # or a MedicationRequest (what was prescribed)? Default is statement.
     # One table serves both FHIR resources via the R4 facade.
     intent = Column(
-        Enum(MedicationIntent),
+        Enum(MedicationIntent, values_callable=lambda obj: [e.value for e in obj]),
         default=MedicationIntent.STATEMENT,
         nullable=False,
         index=True,

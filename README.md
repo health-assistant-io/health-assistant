@@ -1,3 +1,5 @@
+<div align="center">
+
 # Health Assistant
 ### Universal Health Data Platform
 
@@ -7,16 +9,22 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20Self--Hosted-lightgrey.svg)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)<br>
 [![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-lightgrey?logo=github)](https://github.com/sponsors/health-assistant-io)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
 
-<p align="center">
-  <img src="assets/screenshots/main-dashboard.png" width="100%" alt="Health Assistant Dashboard">
-</p>
+<br>
 
-**Official Website**: [health-assistant.io](https://health-assistant.io)  
-**GitHub**: [health-assistant-io/health-assistant](https://github.com/health-assistant-io/health-assistant)
+<a href="docs/SCREENSHOTS.md">
+  <img src="docs/images/visual-tour.gif" width="800" alt="Health Assistant Visual Tour">
+</a>
+
+<br>
+<br>
+
+**Official Website**: [health-assistant.io](https://health-assistant.io) | **GitHub**: [health-assistant-io/health-assistant](https://github.com/health-assistant-io/health-assistant)
+
+</div>
 
 A self-hosted, privacy-first web application for centralizing, monitoring, and analyzing health and wellness data using open healthcare standards.
 
@@ -41,6 +49,7 @@ Your sponsorship directly supports the continued development, maintenance, and i
 - [Development Guide](./docs/DEVELOPMENT.md)
 - [CI/CD Deployment & Setup](./docs/CI_CD_SETUP.md)
 - [API Documentation](http://localhost:8000/docs)
+- [Visual Tour](./docs/SCREENSHOTS.md)
 
 For a detailed breakdown of the codebase, see the [Project Structure](./docs/PROJECT_STRUCTURE.md) document.
 
