@@ -4,6 +4,24 @@ The Health Assistant project uses an automated Playwright-based pipeline to capt
 
 ## 1. Quick Start
 
+### System Dependencies
+
+While Playwright manages the browser, the pipeline uses native tools to heavily optimize the resulting screenshots and generate the animated tour GIF. We highly recommend installing them:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get install pngquant gifsicle ffmpeg
+```
+
+**macOS (Homebrew):**
+```bash
+brew install pngquant gifsicle ffmpeg
+```
+
+*(Note: If these tools are missing, the script will still run and capture the screenshots, but the files will be significantly larger and the animated GIF won't be generated.)*
+
+### Running the Pipeline
+
 To capture all scenes and rebuild the `SCREENSHOTS.md` gallery, ensure your stack is running, and simply execute the wrapper script from the project root:
 
 ```bash
