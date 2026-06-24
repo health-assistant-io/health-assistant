@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock, Save } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
@@ -319,6 +320,10 @@ const BiomarkerDetail: React.FC = () => {
 
     fetchData();
   }, [decodedId, currentPatient?.id, dateRange, aggregation]);
+
+  if (!currentPatient) {
+    return <NoPatientState icon={Activity} contextKey="biomarker_detail" />;
+  }
 
   if (loading) {
     return <LoadingState variant="section" showText={false} />;

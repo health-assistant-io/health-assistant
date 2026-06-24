@@ -4,6 +4,7 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { getBiomarkerTrends } from '../../services/analyticsService';
 import CorrelationChart from '../../components/charts/CorrelationChart';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { getStatusColorClass, isAbnormal } from '../../utils/biomarkerUtils';
 import { filterBiomarkers } from '../../utils/searchUtils';
 import { useLocalStorage } from '../../hooks/useUtils';
@@ -242,6 +243,10 @@ const CorrelativeAnalytics: React.FC = () => {
     if (abs > 0.3) return `Weak ${sign}`;
     return 'No significant correlation';
   };
+
+  if (!currentPatient) {
+    return <NoPatientState icon={TrendingUp} contextKey="correlative_analytics" />;
+  }
 
   return (
     <div className="max-w-[1600px] mx-auto pb-20 px-4 sm:px-6">

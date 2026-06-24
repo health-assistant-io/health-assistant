@@ -10,6 +10,7 @@ import { useBiomarkers, Perspective } from '../../hooks/useBiomarkers';
 import { TimePeriod, TIME_RANGES, DEFAULT_AGGREGATIONS } from '../../config/timeRanges';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { InfoTooltip } from '../../components/ui/InfoTooltip';
 import { BiomarkerList } from '../../components/biomarkers/BiomarkerList';
@@ -336,6 +337,10 @@ function BiomarkerTrends() {
       alerts: activeTab === 'All' && !searchTerm && !showAlertsOnly ? getAbnormal().length : visibleAlerts
     };
   }, [groupedMarkers, totalCount, getAbnormal, activeTab, searchTerm, showAlertsOnly]);
+
+  if (!currentPatient) {
+    return <NoPatientState icon={TrendingUp} contextKey="biomarker_trends" />;
+  }
 
   return (
     <div className="max-w-7xl mx-auto pb-10 sm:pb-20">

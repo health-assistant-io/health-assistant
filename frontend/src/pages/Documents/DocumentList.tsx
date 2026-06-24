@@ -3,6 +3,7 @@ import { Search, Maximize2, ChevronLeft, ChevronRight, ChevronDown, FileText, Fi
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { getDocuments, triggerDocumentDownload } from '../../services/documentService';
 import { getExaminations, getExaminationCategories } from '../../services/examinationService';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -258,6 +259,10 @@ function DocumentList() {
       setSelectedDoc(filteredDocuments[currentIndex - 1]);
     }
   };
+
+  if (!currentPatient) {
+    return <NoPatientState icon={FileText} contextKey="documents" />;
+  }
 
   if (loading) {
     return <LoadingState variant="section" showText={false} />;

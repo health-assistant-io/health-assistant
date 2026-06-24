@@ -19,6 +19,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { el, enUS } from 'date-fns/locale';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 
 export default function NotificationManagement() {
   const { t, i18n } = useTranslation();
@@ -138,6 +139,10 @@ export default function NotificationManagement() {
         <p className="text-gray-500">Loading notification center...</p>
       </div>
     );
+  }
+
+  if (!currentPatient) {
+    return <NoPatientState icon={Bell} contextKey="notifications" />;
   }
 
   return (

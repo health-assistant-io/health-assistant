@@ -7,6 +7,7 @@ import {
   ClinicalEventCategory
 } from '../../services/clinicalEventService';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { 
   Plus, Search, Activity, LayoutGrid, List as ListIcon,
   Edit2, ExternalLink, Calendar, ChevronRight
@@ -122,6 +123,8 @@ export const ClinicalEventList = () => {
     
     return matchesSearch && matchesCategory;
   });
+
+  if (!currentPatient) return <NoPatientState icon={Activity} contextKey="events" />;
 
   if (loading) return <LoadingState variant="section" showText={true} />;
 

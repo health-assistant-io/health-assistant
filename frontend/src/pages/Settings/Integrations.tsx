@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { CheckCircle, XCircle, Plus, Settings, RefreshCw, FileText, Server, Cloud, Globe } from 'lucide-react';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
 import { Link } from 'react-router-dom';
@@ -70,7 +71,7 @@ const Integrations: React.FC = () => {
     }
   };
 
-  if (!currentPatient) return <div className="p-8 text-center text-gray-500">Please select a patient to manage integrations.</div>;
+  if (!currentPatient) return <NoPatientState icon={Server} contextKey="integrations" />;
   if (loading) return <div className="p-8 text-center text-gray-500">Loading Integrations...</div>;
 
   return (

@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { offlineService } from '../../services/offlineService';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { Check, X, FileText, RotateCcw, Sparkles, Plus, Info, Camera } from 'lucide-react';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 import { AIBadge } from '../../components/ui/AIBadge';
 import { AIMagicFillModal } from '../../components/ui/AIMagicFillModal';
 import { AIAssistButton } from '../../components/ui/AIAssistButton';
@@ -397,6 +398,10 @@ function ExaminationUpload() {
   };
 
   const headerIcon = useMemo(() => <FileText className="w-8 h-8" />, []);
+
+  if (!currentPatient) {
+    return <NoPatientState icon={FileText} contextKey="examination_upload" />;
+  }
 
   return (
     <div className={`${isBulkMode ? 'max-w-5xl' : 'max-w-2xl'} mx-auto transition-all duration-500`}>

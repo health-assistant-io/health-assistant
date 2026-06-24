@@ -4,8 +4,10 @@ import { getActiveAllergies, AllergyIntolerance } from '../../services/allergySe
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { NoPatientState } from '../../components/ui/NoPatientState';
 
 interface AllergyWithPatient extends AllergyIntolerance {
   patient_name_display: string;
@@ -13,6 +15,7 @@ interface AllergyWithPatient extends AllergyIntolerance {
 
 function ClinicalAlerts() {
   const { t } = useTranslation();
+  const { currentPatient } = usePatientStore();
   const [allergies, setAllergies] = useState<AllergyWithPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const searchTerm = useUIStore(state => state.pageSearchTerm);
@@ -67,6 +70,10 @@ function ClinicalAlerts() {
         return 'bg-gray-50 dark:bg-dark-bg/50 border-gray-100 dark:border-dark-border text-gray-700 dark:text-dark-text';
     }
   };
+
+  if (!currentPatient) {
+    return <NoPatientState icon={ShieldAlert} contextKey="alerts" />;
+  }
 
   if (loading) {
     return (
