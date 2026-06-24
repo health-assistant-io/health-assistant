@@ -39,7 +39,7 @@ const DEFAULT_GALLERY = join(ROOT, "docs", "SCREENSHOTS.md");
 const ENV_FILE = join(ROOT, ".env");
 
 const VIEWPORTS = {
-  desktop: { width: 1440, height: 1024, deviceScaleFactor: 1 },
+  desktop: { width: 1440, height: 1200, deviceScaleFactor: 1 },
   mobile: { width: 390, height: 844, deviceScaleFactor: 2 },
 };
 
