@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.4] - 2026-06-25
+
 ### Changed
 - **Versioning & changelog workflow is now local-first by default.** `docs/RELEASE_PROCESS.md` and `docs/DEVELOPMENT.md` updated: `version_manager.py --git` (stage + commit + tag locally) is the default stop point; `--push` (publishes to every remote + triggers CI/CD) is opt-in and only used when explicitly requested. A prominent push-policy callout was added to `RELEASE_PROCESS.md`. All examples and quick checklists reordered to show the local-only path first.
 - **Changelog rule made explicit** in `docs/DEVELOPMENT.md` and `docs/RELEASE_PROCESS.md`: every user-visible change must add a bullet under `## [Unreleased]` at commit time, proactively.
