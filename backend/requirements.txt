@@ -33,7 +33,7 @@ fastapi-mail==1.6.5
 fastmcp==3.4.2
 flower==2.0.1
 frozenlist==1.8.0
-greenlet==3.5.1
+greenlet==3.5.2
 h11==0.16.0
 honcho==2.0.0
 http_ece==1.2.1
