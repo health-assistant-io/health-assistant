@@ -158,7 +158,15 @@ The notification framework is modular and event-driven. For detailed instruction
 
 ## Project Versioning
 
-We utilize a centralized semantic versioning manager script located in `scripts/version_manager.py` to synchronize versions across backend configs, APIs, frontend packages, and installation docs. It also automates staging, committing, tagging, and pushing to trigger CI/CD pipelines (such as Gitea Package / Docker Image builds).
+We utilize a centralized semantic versioning manager script located in
+`scripts/version_manager.py` to synchronize versions across backend configs,
+APIs, frontend packages, and installation docs. It also automates staging,
+committing, tagging, and pushing to trigger CI/CD pipelines (Docker image
+builds + GitHub Release automation).
+
+For the full release workflow (commit-time changelog rule, RC/final flow,
+catch-up procedure, GitHub Release automation), see
+[RELEASE_PROCESS.md](RELEASE_PROCESS.md).
 
 ### Versioning Commands:
 - **Show Current Version**:
@@ -167,29 +175,47 @@ We utilize a centralized semantic versioning manager script located in `scripts/
   ```
 - **Set Explicit Version**:
   ```bash
-  python3 scripts/version_manager.py set 1.1.0-rc.1
+  python3 scripts/version_manager.py set 0.3.0-rc.2
   ```
 - **Automatically Bump Version**:
   ```bash
   python3 scripts/version_manager.py bump [major | minor | patch | rc]
   ```
-  *   `major`: Promotes to next major release (e.g. `1.0.0` -> `2.0.0`)
-  *   `minor`: Promotes to next minor release (e.g. `1.0.0` -> `1.1.0`)
-  *   `patch`: Promotes to next patch release or removes release candidate suffix (e.g. `1.0.0` -> `1.0.1`, `1.0.1-rc.2` -> `1.0.1`)
-  *   `rc`: Sets or increments release candidate number on the upcoming release (e.g. `1.0.0` -> `1.0.1-rc.1`, `1.0.1-rc.1` -> `1.0.1-rc.2`)
+  *   `major`: Promotes to next major release (e.g. `0.3.0` -> `1.0.0`)
+  *   `minor`: Promotes to next minor release (e.g. `0.3.0` -> `0.4.0`)
+  *   `patch`: Promotes to next patch release or removes release candidate suffix (e.g. `0.3.0` -> `0.3.1`, `0.3.0-rc.2` -> `0.3.0`)
+  *   `rc`: Sets or increments release candidate number on the upcoming release (e.g. `0.3.0` -> `0.3.1-rc.1`, `0.3.0-rc.1` -> `0.3.0-rc.2`)
+- **Catch-up (commit + tag + push the version already in `config.py`)**:
+  ```bash
+  python3 scripts/version_manager.py release --git --push
+  ```
+  Use this when you ran `set`/`bump` without `--git --push`, or edited
+  `CHANGELOG.md` after the version bump.
 
 ### Git & CI/CD Integration:
 When setting or bumping a version, you can automate staging, committing, and tagging using:
-- `--git` or `-g`: Automatically stages updated files, commits them with `chore(release): bump version to X.Y.Z`, and creates an annotated git tag `vX.Y.Z`.
-- `--push` or `-p`: Pushes both the new commit and the release tag to the remote repository (`origin`), which triggers Gitea Package/Container builds.
+- `--git` or `-g`: Automatically stages updated files (version files +
+  `CHANGELOG.md` + `docs/RELEASE_PROCESS.md`), commits them with
+  `chore(release): bump version to X.Y.Z`, and creates an annotated git tag
+  `vX.Y.Z`.
+- `--push` or `-p`: Pushes both the new commit and the release tag to
+  **every** configured remote (not just `origin`), which triggers:
+  - **Docker image builds** (`.github/workflows/docker-publish.yml`) —
+    publishes backend + frontend images to `ghcr.io`.
+  - **GitHub Release** (`.github/workflows/release.yml`) — creates a
+    GitHub Release with notes extracted from `CHANGELOG.md`, automatically
+    marked as a **prerelease** for RC/beta/alpha versions.
 
 **Examples:**
 ```bash
 # Bump patch version, commit, and tag locally
 python3 scripts/version_manager.py bump patch --git
 
-# Bump minor version, commit, tag, and push to remote (origin)
-python3 scripts/version_manager.py bump minor --git --push
+# Bump RC version, commit, tag, and push to all remotes (triggers CI)
+python3 scripts/version_manager.py bump rc --git --push
+
+# Catch-up: you forgot --git --push earlier, or edited CHANGELOG after bump
+python3 scripts/version_manager.py release --git --push
 ```
 
 ## Key Files
