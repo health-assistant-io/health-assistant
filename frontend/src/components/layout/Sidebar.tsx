@@ -9,8 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   User,
-  ShieldCheck,
-  Settings as SettingsIcon
+  ShieldCheck
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -49,7 +48,7 @@ function Sidebar() {
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
   const theme = useSettingsStore(state => state.theme);
-  const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record', '/clinical-data', '/settings']);
+  const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record', '/clinical-data']);
   const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -169,21 +168,6 @@ function Sidebar() {
         { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/organizations', labelKey: 'common.organizations', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-      ],
-    },
-
-    // 7. Settings (grouped)
-    {
-      path: '/settings',
-      labelKey: 'common.settings',
-      icon: SettingsIcon,
-      subItems: [
-        { path: '/settings/profile', labelKey: 'common.profile' },
-        { path: '/settings/appearance', labelKey: 'settings.appearance_short' },
-        { path: '/settings/integrations', labelKey: 'common.integrations' },
-        { path: '/settings/ai-config', labelKey: 'common.personal_ai_keys' },
-        { path: '/settings/export-import', labelKey: 'backup.title', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
-        { path: '/notifications', labelKey: 'common.notifications' },
       ],
     },
   ], []);
