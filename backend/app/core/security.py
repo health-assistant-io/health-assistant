@@ -1,5 +1,5 @@
 import bcrypt
-from jose import jwt, JWTError
+import jwt
 from datetime import datetime, timezone, timedelta
 from app.core.config import settings
 from fastapi import HTTPException, status, Header, Depends, Request
@@ -46,7 +46,7 @@ def decode_access_token(token: str) -> dict:
             token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 
@@ -154,7 +154,7 @@ def verify_presigned_token(token: str, expected_doc_id: str) -> bool:
         if payload.get("doc_id") != expected_doc_id:
             return False
         return True
-    except JWTError:
+    except jwt.PyJWTError:
         return False
 
 
@@ -208,7 +208,7 @@ def verify_invite_token(
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
-    except JWTError:
+    except jwt.PyJWTError:
         return (False, None)
     if payload.get("sub") != "invite":
         return (False, None)
