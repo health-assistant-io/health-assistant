@@ -1362,6 +1362,20 @@
     "subtitle": "Back up data as FHIR Bundles or full archives; restore from a backup file"
   },
   "settings": {
+    "nav_title": "Settings",
+    "nav_profile": "Profile",
+    "nav_preferences": "Preferences",
+    "nav_security": "Security",
+    "nav_ai": "AI Configuration",
+    "nav_notifications": "Notifications",
+    "section_profile": "Profile Information",
+    "section_preferences": "Preferences",
+    "section_security": "Security",
+    "change_password": "Change Password",
+    "change_password_desc": "Update your account password",
+    "configure_browser_permissions": "Configure browser permissions",
+    "push_subscribed": "Successfully subscribed to push notifications!",
+    "push_failed": "Failed to subscribe. Please check browser permissions.",
     "appearance_short": "Appearance & Visualization",
     "appearance_title": "My Settings",
     "appearance_subtitle": "Personal preferences. Override the defaults set by your organization.",
@@ -1422,5 +1436,24 @@
     "settings.precision_below_1_desc": "Decimal places for very small values under 1 (e.g. troponin, fractions).",
     "precision_below_30": "Precision for values below 30",
     "precision_below_30_desc": "Decimal places for values from 10 up to 30 (e.g. heart rate, blood pressure)."
+  },
+  "account": {
+    "title": "My Account",
+    "subtitle": "Your identity, linked records, and access",
+    "loading": "Loading your profile...",
+    "load_error": "Failed to load account details.",
+    "not_found": "Account not found",
+    "quick_links": "Quick Links",
+    "ai_keys": "AI Configuration",
+    "linked_profiles": "Your Linked Records",
+    "linked_patients": "Patient Profiles",
+    "linked_doctors": "Professional Profiles",
+    "no_linked_patients": "You have no patient records linked to your account. Contact an admin if you need to be linked to one.",
+    "no_linked_doctors": "You have no professional doctor profiles linked to your account.",
+    "mrn": "MRN",
+    "general_practitioner": "General Practitioner",
+    "metadata": "Account Metadata",
+    "user_id": "User Identifier",
+    "tenant_id": "Tenant ID"
   }
 }

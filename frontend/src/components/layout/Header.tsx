@@ -7,7 +7,7 @@ import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useTenantStore } from '../../store/slices/tenantSlice';
 import { listPatients } from '../../services/patientService';
 import { PatientSelect } from '../patients';
-import { Search, ChevronDown, Settings, LogOut, Menu, X, Sparkles, Languages, Sun, Moon, ArrowLeft, Link as LinkIcon, Info } from 'lucide-react';
+import { Search, ChevronDown, Settings, LogOut, Menu, X, Sparkles, Languages, Sun, Moon, ArrowLeft, Link as LinkIcon, Info, UserCircle } from 'lucide-react';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { NotificationBell } from './NotificationBell';
 import { TenantSwitcher } from './TenantSwitcher';
@@ -332,6 +332,15 @@ function Header() {
                       </>
                     )}
                   </button>
+
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsUserMenuOpen(false)}
+                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
+                  >
+                    <UserCircle className="w-4 h-4 mr-3 text-gray-400" />
+                    <span className="font-medium">{t('common.profile')}</span>
+                  </Link>
 
                   <Link 
                     to="/settings" 
