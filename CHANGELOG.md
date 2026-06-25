@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Versioning & changelog workflow is now local-first by default.** `docs/RELEASE_PROCESS.md` and `docs/DEVELOPMENT.md` updated: `version_manager.py --git` (stage + commit + tag locally) is the default stop point; `--push` (publishes to every remote + triggers CI/CD) is opt-in and only used when explicitly requested. A prominent push-policy callout was added to `RELEASE_PROCESS.md`. All examples and quick checklists reordered to show the local-only path first.
+- **Changelog rule made explicit** in `docs/DEVELOPMENT.md` and `docs/RELEASE_PROCESS.md`: every user-visible change must add a bullet under `## [Unreleased]` at commit time, proactively.
+
+### Fixed
+- **Removed all private references from public docs.** `docs/AI_SYSTEM.md`, `docs/API.md`, `docs/STATUS.md`, and `docs/RELEASE_PROCESS.md` no longer reference internal/private tooling; links replaced with public doc cross-references (`INTEGRATIONS_SDK.md`, `AI_SYSTEM.md §4.1`).
+- **`docs/RELEASE_PROCESS.md` cutting-a-release / promote-RC / catch-up sections** no longer default to `--git --push`; they default to `--git` (local) with `--push` shown as an explicit opt-in step.
+- **Stale version string** in project metadata corrected (`0.3.0-alpha` → `0.3.0-rc.3`).
+
 ## [0.3.0-rc.3] - 2026-06-25
 
 ### Security
@@ -134,7 +143,7 @@ cd backend && alembic upgrade head
 - **Unified Catalog Search Service**: A new `catalog_search_service.py` to power all catalog search functions across the backend.
 - **Agent Capabilities Inspector**: A new modal inside the AI Chat Interface (accessible via the Wrench icon) that lists all available LangChain tools to the LLM. Features tool descriptions and dynamically parses the `args_schema` to display the exact input arguments, types, and descriptions required for each tool.
 - **Data Source Inspector ID Visibility**: The raw UUID is now visible at the bottom of the data source inspector mini-cards (DataMiniPage) for precise referencing.
-- **AI Chatbot — human-in-the-loop (HITL) `add_biomarker_to_examination` proposal**: the agentic chat can propose adding a lab-result biomarker to an examination; the user reviews/edits in a card + modal and explicitly confirms before anything is saved. The AI never writes — commit flows through the canonical `POST /fhir/Observation` endpoint, FHIR-validated at write time via `assert_valid_fhir`. The target exam resolves from the open exam in the chat context **or** an explicit `examination_id` the AI resolves via `get_recent_examinations` (hard-fails on unknown / cross-patient exam). Second HITL task type after `create_clinical_event`. See [AI_SYSTEM.md §4](docs/AI_SYSTEM.md) and the `hitl-task-cards` skill.
+- **AI Chatbot — human-in-the-loop (HITL) `add_biomarker_to_examination` proposal**: the agentic chat can propose adding a lab-result biomarker to an examination; the user reviews/edits in a card + modal and explicitly confirms before anything is saved. The AI never writes — commit flows through the canonical `POST /fhir/Observation` endpoint, FHIR-validated at write time via `assert_valid_fhir`. The target exam resolves from the open exam in the chat context **or** an explicit `examination_id` the AI resolves via `get_recent_examinations` (hard-fails on unknown / cross-patient exam). Second HITL task type after `create_clinical_event`. See [AI_SYSTEM.md §4](docs/AI_SYSTEM.md).
 - **Integrations SDK OAuth2 + SMART auth module** (`integrations/sdk/auth.py`): reusable Authorization Code + PKCE primitives, SMART discovery (`.well-known/smart-configuration`), **Dynamic Client Registration** (users enter only the server URL), encrypted `OAuthTokenStore`, Redis-backed `OAuthStateStore`, and a composed `SmartOAuth` (incl. `force_refresh` for refresh-on-401). Foundation for all cloud integrations (FHIR, Fitbit, Withings, …). 23 unit tests. See [INTEGRATIONS_SDK.md §3.8](docs/INTEGRATIONS_SDK.md).
 - **Integrations SDK HTTP + FHIR helpers** (`integrations/sdk/http.py`, `integrations/sdk/fhir.py`): token-aware `http_request` (Bearer inject, retry/backoff, SDK exception mapping) + `paginate_bundle` (follows `link[rel=next]`); and `fhir_search`, `fhir_observation_to_create`, `parse_operation_outcome`. Reused by Stage 2 (client) and the future Stage 3 (facade). 19 unit tests.
 - **FHIR Server integration** (`integrations/fhir_server/`): SMART Patient/Standalone Launch connect + **bounded FHIR search pull**. Each sync runs `Observation?patient=<remote>&_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated` (+ optional `category`), maps each FHIR Observation to the local patient via `ObservationCreate`, and feeds the Biomarker Engine. Push is deferred to Stage 2b.
@@ -184,7 +193,7 @@ cd backend && alembic upgrade head
 - **HITL tasks lost on stream interruption**: tasks were only saved at the END of the `_chat_stream` generator. If the stream was interrupted (LLM error, client disconnect) after the `[HITL_TASK]` SSE chunk but before completion, the task was never persisted — breaking `/resolve` (404) and `/resume`. Tasks are now **proactively saved** the moment they're detected; `update_message_fields` patches the final content when the stream completes normally.
 - **`"object async_generator can't be used in 'await' expression"`**: `resume_after_hitl` is an async generator (uses `yield`) — the `/resume` endpoint was incorrectly awaiting it. Fixed: `async for chunk in service.resume_after_hitl(...)` (no await).
 - **`_general_chat` missing HITL system prompt**: the non-streaming chat path had no HUMAN-IN-THE-LOOP section in its system prompt, despite running the same HITL tool-call branch. Now mirrors `_chat_stream`.
-- **`GET /api/v1/doctors` 500** (`ResponseValidationError: ... 'address' Input should be a valid dictionary ... input: [{...}]`): root-caused to a Pydantic schema / FHIR cardinality mismatch (the schema typed `address` single while stored JSONB + FHIR use a list). Fixed at the schema level (see "Changed") rather than masked by a silent coercing validator. The FHIR cardinality + fail-loud rules are now documented in the `clinical-data` and `backend` skills.
+- **`GET /api/v1/doctors` 500** (`ResponseValidationError: ... 'address' Input should be a valid dictionary ... input: [{...}]`): root-caused to a Pydantic schema / FHIR cardinality mismatch (the schema typed `address` single while stored JSONB + FHIR use a list). Fixed at the schema level (see "Changed") rather than masked by a silent coercing validator. The FHIR cardinality + fail-loud rules are now documented in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **FHIR export abort on `name`/`valueQuantity.code`**: legacy shape drift in stored JSONB. Export is fail-loud by design (`ExportError`); the serializers now normalize via `_coerce_human_name_list` / `_clean_quantity`.
 - **`UniqueViolationError` on `Patient.mrn`**: empty-string `mrn` collided under the UNIQUE constraint (Postgres treats `''` as equal, unlike `NULL`). `create_patient`/`update_patient`/`import_service` now normalize `mrn` → `NULL` for empty/whitespace.
 - **Frontend blank page** (`patient.name.given is undefined`): 3 non-defensive name-access sites (`PatientDetail`, `MedicationList`, `CalendarPage`) hardened with optional chaining.
@@ -206,7 +215,7 @@ cd backend && alembic upgrade head
 - `docs/INSTALL.md` — security checklist updated with `FLOWER_USER`/`FLOWER_PASSWORD`, `BACKEND_BIND`, reverse-proxy requirement.
 - `docs/STATUS.md` — added note that the comprehensive 2026-06-22 re-audit superseded the "29 items resolved" claim (110 new findings: 25C/32H/30M/23L), tracked in the local stabilization plan.
 - `docs/PROJECT_STRUCTURE.md` — clarified `docker-compose.yml` (dev/staging) vs `docker-compose.prod.yml` (prod); added `Procfile.dev`.
-- Project skills — fixed false claim that `main.py` has "celery auto-heal" (`check_and_start_celery()` was removed; celery is managed by the process supervisor). Documented the honcho dev workflow.
+- Project docs — fixed false claim that `main.py` has "celery auto-heal" (`check_and_start_celery()` was removed; celery is managed by the process supervisor). Documented the honcho dev workflow.
 
 ### Operational notes for deploy
 1. **Set `INTEGRATION_SECRET_KEY`** (Fernet key) in `.env`. Generate one with:

@@ -113,7 +113,7 @@ Beyond the single direct write tool (`update_examination_notes`), the chatbot ca
 
 Task statuses use the `HitlTaskStatus(str, Enum)` enum (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod. The frontend mirrors this via `TERMINAL_HITL_STATUSES` in `registry.tsx`.
 
-Adding a task type touches **none** of the protocol, DB, or endpoints — only one `propose_*` tool, one frontend handler, one registry line, and (usually) one extracted headless form. Full recipe + the `[HITL_TASK]`/`__hitl__`/resume contract: see the **`hitl-task-cards`** skill.
+Adding a task type touches **none** of the protocol, DB, or endpoints — only one `propose_*` tool, one frontend handler, one registry line, and (usually) one extracted headless form. The full recipe + the `[HITL_TASK]`/`__hitl__`/resume contract are described in this section.
 
 **Security model:** AI proposes, human discharges; untrusted prefill is re-validated client- *and* server-side; `/resolve` is idempotent (409 on re-resolve) and verifies session ownership; `/resume` reads outcomes from the DB (never trusts the client) and verifies ownership; the full proposed-vs-committed diff is audited in the `ChatMessage.tasks` JSONB column; resume summaries trim large payloads to short identifying fields only (no PHI leakage).
 

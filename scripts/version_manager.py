@@ -245,9 +245,9 @@ def git_operations(new_version, push=False):
     """Saves changes to git, creates a tag, and optionally pushes to remotes.
 
     When ``push=True`` the commit and tag are pushed to **every** configured
-    remote (not just ``origin``) so e.g. a self-hosted Gitea mirror and the
-    public GitHub remote both receive the tag — which is what triggers the
-    CI release workflow.
+    remote (not just ``origin``) so all mirrors receive the tag — which is
+    what triggers the CI release workflow. ``push`` is opt-in; the default
+    (``--git`` without ``--push``) keeps the release local.
     """
     if not check_git_repo():
         print("Warning: Not a git repository or git is not installed. Skipping git operations.")
