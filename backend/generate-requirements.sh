@@ -28,8 +28,7 @@ pytesseract
 pillow
 
 # Authentication and security
-python-jose[cryptography]
-passlib[bcrypt]
+pyjwt[crypto]
 python-dotenv
 bcrypt
 itsdangerous
