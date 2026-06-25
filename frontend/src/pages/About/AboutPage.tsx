@@ -121,7 +121,7 @@ const AboutPage = () => {
         {/* Version Info */}
         <div className="text-center pt-4">
           <p className="text-gray-400 dark:text-dark-muted text-xs">
-            Health Assistant Version 0.3.0-rc.1<br />
+            Health Assistant Version 0.3.0-rc.2<br />
             © 2026 Ilias Chatzopoulos. All rights reserved.
           </p>
         </div>

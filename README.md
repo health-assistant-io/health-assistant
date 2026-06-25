@@ -3,7 +3,7 @@
 # Health Assistant
 ### Universal Health Data Platform
 
-[![Version](https://img.shields.io/badge/version-v0.3.0--rc.1-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
+[![Version](https://img.shields.io/badge/version-v0.3.0--rc.2-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20Self--Hosted-lightgrey.svg)](#)
