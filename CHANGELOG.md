@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Changelog rule made explicit** in `docs/DEVELOPMENT.md` and `docs/RELEASE_PROCESS.md`: every user-visible change must add a bullet under `## [Unreleased]` at commit time, proactively.
 
 ### Fixed
+- **Frontend build broken** — `tsc` failed with `Cannot find namespace 'NodeJS'` on 5 files (`CitationButton.tsx`, `BiomarkerDetail.tsx`, `DocumentList.tsx`, `ExaminationDetail.tsx`, `ExaminationList.tsx`) that used `NodeJS.Timeout` for `setInterval`/`setTimeout` return types. `tsconfig.json` `types` only includes `vite/client` + `vitest/globals` (no `@types/node`), so the namespace was unresolvable. Switched to the browser-idiomatic `ReturnType<typeof setTimeout/setInterval>`, which needs no `@types/node` and is runtime-identical.
 - **Removed all private references from public docs.** `docs/AI_SYSTEM.md`, `docs/API.md`, `docs/STATUS.md`, and `docs/RELEASE_PROCESS.md` no longer reference internal/private tooling; links replaced with public doc cross-references (`INTEGRATIONS_SDK.md`, `AI_SYSTEM.md §4.1`).
 - **`docs/RELEASE_PROCESS.md` cutting-a-release / promote-RC / catch-up sections** no longer default to `--git --push`; they default to `--git` (local) with `--push` shown as an explicit opt-in step.
 - **Stale version string** in project metadata corrected (`0.3.0-alpha` → `0.3.0-rc.3`).
