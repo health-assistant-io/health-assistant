@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.5] - 2026-06-25
+
 ### Fixed
 - **Frontend Docker image build crashed** (`ReferenceError: crypto is not defined` from `serialize-javascript` via `@rollup/plugin-terser`). The frontend Dockerfiles (`frontend/Dockerfile`, `docker/Dockerfile.frontend`) used `node:18-alpine`, where `globalThis.crypto` is still behind the `--experimental-global-webcrypto` flag (unflagged only in Node 20+). Bumped base image to `node:20-alpine`. Node 18 also reached EOL in April 2025.
 
