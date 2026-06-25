@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **People & Access list (`/admin/tenant/users`) is now clickable.** Selecting a person's name/avatar navigates to their detail page instead of using a separate "eye" action button. The link-record (chain) and change-role (shield) row actions were removed from the list — both operations now live on the detail page (`/admin/tenant/users/{id}`): access level is edited inline via an Access Level card, and clinical profiles (patients/doctors) are linked/unlinked from the Linked Clinical Profiles section. Added missing `common.close`, `common.no_patients`, and `common.no_doctors` i18n keys (EN/EL) that were referenced but absent.
+
 ## [0.3.0-rc.5] - 2026-06-25
 
 ### Fixed
