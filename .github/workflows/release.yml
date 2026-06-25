@@ -1,0 +1,84 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create release from (e.g. v0.3.0-rc.2)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Creating release for tag: $TAG"
+
+      - name: Determine prerelease status
+        id: prerelease
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          # Pre-release suffixes: -rc.N, -beta, -alpha, -pre, -dev
+          if [[ "$TAG" =~ -(rc|beta|alpha|pre|dev)(\.|$) ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          # Strip the leading 'v' to match the CHANGELOG version format (0.3.0-rc.2 not v0.3.0-rc.2)
+          VERSION="${TAG#v}"
+
+          # Extract the section for this version from CHANGELOG.md.
+          # Matches: ## [VERSION] - YYYY-MM-DD  ... up to the next ## [ header.
+          # Falls back to the tag name if no entry is found.
+          NOTES=$(awk -v ver="$VERSION" '
+            BEGIN { capture=0 }
+            /^## \[/ {
+              if (capture) exit
+              if (index($0, "[" ver "]") > 0) { capture=1; next }
+            }
+            capture { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $TAG. See CHANGELOG.md for details."
+          fi
+
+          # Write to a file to preserve multi-line content in the action output.
+          echo "$NOTES" > /tmp/release_notes.md
+          echo "Extracted notes for version $VERSION ($(wc -l < /tmp/release_notes.md) lines)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          body_path: /tmp/release_notes.md
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          draft: false
+          generate_release_notes: false

@@ -17,6 +17,14 @@ INSTALL_MD = os.path.join(ROOT_DIR, "docs/INSTALL.md")
 README_MD = os.path.join(ROOT_DIR, "README.md")
 ABOUT_PAGE = os.path.join(ROOT_DIR, "frontend/src/pages/About/AboutPage.tsx")
 
+# Files that should always be staged together with version bumps (the
+# release-scope documentation). These are not version-string files but must
+# ship in the same release commit so the tag points at a consistent tree.
+RELEASE_DOCS = [
+    os.path.join(ROOT_DIR, "CHANGELOG.md"),
+    os.path.join(ROOT_DIR, "docs/RELEASE_PROCESS.md"),
+]
+
 def get_current_version():
     """Reads the current version from the backend core config file"""
     if not os.path.exists(CONFIG_PY):
@@ -224,17 +232,35 @@ def check_git_repo():
     except (RuntimeError, FileNotFoundError):
         return False
 
+def get_git_remotes():
+    """Returns the list of remote names configured in the repository."""
+    try:
+        out, _ = run_cmd(["git", "remote"], check=False)
+        remotes = [r.strip() for r in out.splitlines() if r.strip()]
+        return remotes
+    except (RuntimeError, FileNotFoundError):
+        return []
+
 def git_operations(new_version, push=False):
-    """Saves changes to git, creates a tag, and optionally pushes to remote"""
+    """Saves changes to git, creates a tag, and optionally pushes to remotes.
+
+    When ``push=True`` the commit and tag are pushed to **every** configured
+    remote (not just ``origin``) so e.g. a self-hosted Gitea mirror and the
+    public GitHub remote both receive the tag — which is what triggers the
+    CI release workflow.
+    """
     if not check_git_repo():
         print("Warning: Not a git repository or git is not installed. Skipping git operations.")
         return False
     
     print("Performing Git operations...")
     
-    # Files to add
+    # Files to add: version-string files + release-scope docs
     files_to_add = []
     trackable_files = [CONFIG_PY, FRONTEND_PKG, FRONTEND_LOCK, INSTALL_MD, README_MD, ABOUT_PAGE]
+    # Release docs are staged if they have pending changes (they often do at
+    # release time — that's the whole point of the commit-time changelog rule).
+    trackable_files += RELEASE_DOCS
     for filepath in trackable_files:
         if os.path.exists(filepath):
             rel_path = os.path.relpath(filepath, ROOT_DIR)
@@ -277,20 +303,36 @@ def git_operations(new_version, push=False):
             print(f"  - Tag '{tag_name}' already exists. Skipping tagging.")
         
         if push:
-            # Determine current branch
-            branch, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-            # Push commit if we committed something
-            if res.returncode != 0:
-                print(f"  - Pushing commit to remote branch: {branch}")
-                run_cmd(["git", "push", "origin", branch])
-            print(f"  - Pushing tag to remote: {tag_name}")
-            run_cmd(["git", "push", "origin", tag_name])
-            print("Git push successful! 🚀")
+            remotes = get_git_remotes()
+            if not remotes:
+                print("  - No git remotes configured. Skipping push.")
+            else:
+                branch, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+                for remote in remotes:
+                    print(f"  - Pushing to remote '{remote}' (branch: {branch}, tag: {tag_name})")
+                    # Push commit if we committed something
+                    if res.returncode != 0:
+                        run_cmd(["git", "push", remote, branch])
+                    run_cmd(["git", "push", remote, tag_name])
+                print("Git push successful! 🚀")
             
         print("Git operations complete!")
         return True
     except Exception as e:
         sys.exit(f"Error during Git operations: {e}")
+
+def release_current_version(push=False):
+    """Commit + tag + (optionally) push the version already recorded in
+    ``config.py``.
+
+    This is the catch-up path for when you ran ``set``/``bump`` without
+    ``--git --push`` (or edited ``CHANGELOG.md`` after the version bump).
+    It stages the version files + release docs, commits, tags ``vX.Y.Z``,
+    and pushes to every remote.
+    """
+    version = get_current_version()
+    print(f"Releasing current version: {version}")
+    return git_operations(version, push=push)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -303,6 +345,7 @@ Examples:
   python3 scripts/version_manager.py set 1.2.0-rc.1 --git
   python3 scripts/version_manager.py bump rc
   python3 scripts/version_manager.py bump patch --git --push
+  python3 scripts/version_manager.py release --push
 """
     )
     
@@ -316,7 +359,7 @@ Examples:
     git_parser.add_argument(
         "--push", "-p",
         action="store_true",
-        help="Push the commit and tag to remote repository (implies --git)"
+        help="Push the commit and tag to every configured remote (implies --git)"
     )
     
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -344,6 +387,15 @@ Examples:
         help="Type of bump: major (X.0.0), minor (X.Y.0), patch (X.Y.Z), or rc (X.Y.Z-rc.N)"
     )
     
+    # Release command — catch-up: commit + tag + push the version already in config.py
+    release_parser = subparsers.add_parser(
+        "release",
+        parents=[git_parser],
+        help="Commit, tag, and optionally push the version already recorded in config.py"
+             " — use this when you ran set/bump without --git --push, or edited"
+             " CHANGELOG.md after the bump."
+    )
+    
     args = parser.parse_args()
     
     current_v = get_current_version()
@@ -368,6 +420,9 @@ Examples:
                 git_operations(new_v, push=args.push)
         except ValueError as e:
             sys.exit(f"Error: {e}")
+    
+    elif args.command == "release":
+        release_current_version(push=args.push)
 
 if __name__ == "__main__":
     main()
