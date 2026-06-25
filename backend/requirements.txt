@@ -127,6 +127,6 @@ vine==5.1.0
 watchfiles==1.2.0
 wcwidth==0.8.1
 websockets==15.0.1
-xxhash==3.7.0
+xxhash==3.7.1
 yarl==1.24.2
 zstandard==0.25.0
