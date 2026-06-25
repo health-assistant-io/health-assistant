@@ -73,7 +73,7 @@ const BiomarkerDetail: React.FC = () => {
 
   // Polling for migration status
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     let staleCount = 0;
     let lastProgress = biomarker?.meta_data?.migration_progress ?? 0;
     

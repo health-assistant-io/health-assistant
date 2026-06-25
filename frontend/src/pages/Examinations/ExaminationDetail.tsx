@@ -259,7 +259,7 @@ const ExaminationDetail = () => {
 
   // Polling for extraction status
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     
     // Check if anything is currently processing
     const isExamProcessing = examination && 

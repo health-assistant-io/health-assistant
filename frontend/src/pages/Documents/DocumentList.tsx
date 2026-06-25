@@ -132,7 +132,7 @@ function DocumentList() {
   }, [currentPatient?.id]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     const hasProcessingDocs = documents.some(d => d.status === 'processing');
 
     if (hasProcessingDocs) {
