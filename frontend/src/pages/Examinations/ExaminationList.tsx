@@ -279,7 +279,7 @@ function ExaminationList() {
   }, [selectedExam?.id]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     
     const processingExams = examinations.filter(e => 
       e.extraction_status && !['completed', 'failed'].includes(e.extraction_status)

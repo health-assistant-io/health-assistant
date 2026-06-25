@@ -23,7 +23,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
   const [popupPosition, setPopupPosition] = useState<{ top: number, left: number, placement: 'top' | 'bottom' }>({ top: 0, left: 0, placement: 'top' });
   const buttonRef = useRef<HTMLSpanElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
-  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 
   const isUUIDReference = reference.includes('=');
