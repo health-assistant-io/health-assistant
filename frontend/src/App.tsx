@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import Layout from './components/layout/Layout';
@@ -31,14 +31,17 @@ import DoctorDetail from './pages/Doctors/DoctorDetail';
 import Organizations from './pages/Organizations/OrganizationList';
 import OrganizationDetail from './pages/Organizations/OrganizationDetail';
 import AboutPage from './pages/About/AboutPage';
-import Settings from './pages/Settings/Profile';
+import MyAccount from './pages/Account/MyAccount';
 import AppearanceSettings from './pages/Settings/AppearanceSettings';
+import Preferences from './pages/Settings/Preferences';
+import Security from './pages/Settings/Security';
 import TenantSettingsPage from './pages/Admin/TenantSettings';
 import SystemSettingsPage from './pages/Admin/SystemSettings';
 import Integrations from './pages/Settings/Integrations';
 import IntegrationDetail from './pages/Settings/IntegrationDetail';
 import OAuthConnected from './pages/Settings/OAuthConnected';
 import ExportImport from './pages/Settings/ExportImport';
+import SettingsLayout from './components/settings/SettingsLayout';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import UserManagement from './pages/Admin/UserManagement';
@@ -241,7 +244,6 @@ function App() {
           <Route path="/medications" element={<MedicationList />} />
           <Route path="/medications/catalog" element={<MedicationCatalog />} />
           <Route path="/medications/details/:medicationId" element={<MedicationDetail />} />
-          <Route path="/notifications" element={<NotificationManagement />} />
           <Route path="/doctors" element={<Doctors />} />
           <Route path="/doctors/:doctorId" element={<DoctorDetail />} />
           <Route path="/organizations" element={<Organizations />} />
@@ -274,16 +276,21 @@ function App() {
           <Route path="/telemetry" element={<Telemetry />} />
           <Route path="/ai-assistant" element={<AIChatPage />} />
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/settings/profile" element={<Settings />} />
-          <Route path="/settings/appearance" element={<AppearanceSettings />} />
-          <Route path="/settings/integrations" element={<Integrations />} />
+          <Route path="/profile" element={<MyAccount />} />
+          <Route path="/settings" element={<SettingsLayout />}>
+            <Route index element={<Navigate to="/settings/appearance" replace />} />
+            <Route path="preferences" element={<Preferences />} />
+            <Route path="security" element={<Security />} />
+            <Route path="appearance" element={<AppearanceSettings />} />
+            <Route path="ai-config" element={<AIConfig scope="user" />} />
+            <Route path="integrations" element={<Integrations />} />
+            <Route path="notifications" element={<NotificationManagement />} />
+            {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
+              <Route path="export-import" element={<ExportImport />} />
+            )}
+          </Route>
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
           <Route path="/integrations/:domain/connected" element={<OAuthConnected />} />
-          <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
-          {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
-            <Route path="/settings/export-import" element={<ExportImport />} />
-          )}
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Dashboard />} />
         </Route>

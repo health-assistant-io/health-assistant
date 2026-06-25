@@ -2,26 +2,38 @@
 
 Health Assistant is designed to be "Home-First, Clinic-Ready." This document explains how the system handles multiple users, organizational hierarchies, and identity linking.
 
-## 1. The Hierarchy Model
+## 1. The Data Model
 
-Health Assistant uses a three-tier hierarchy to manage data isolation and clinical context:
+Health Assistant separates **isolation boundaries** (Tenant), **organizational structure** (Organization, recursive), and **clinical identities** (Patient, Doctor) into distinct peer entities rather than a strict containment hierarchy.
 
-### Tier 1: Tenant (The Installation/Group)
-The **Tenant** is the absolute boundary for data isolation. 
+### Tenant — The Isolation Boundary
+The **Tenant** is the absolute boundary for data isolation.
 - **Home Use**: A Tenant represents the entire family or a single installation.
 - **Clinic Use**: A Tenant represents a Medical Group or a SaaS customer.
 - **Isolation**: Users in Tenant A can *never* see data in Tenant B.
 
-### Tier 2: Organization (Household or Facility)
-An **Organization** represents a physical or logical grouping within a Tenant.
+### Organization — Recursive Grouping
+An **Organization** represents a physical or logical grouping within a Tenant. Organizations are **recursive** via a self-referential `part_of_id` foreign key (FHIR `Organization.partOf`), so a tree of arbitrary depth can be modeled — there is no fixed number of tiers.
 - **Household**: In home setups, the system automatically creates a "Default Household" organization. This serves as the primary container for family members.
 - **Clinic/Hospital**: Represents a specific branch or facility.
-- **Org Types**: `HOUSEHOLD`, `CLINIC`, `HOSPITAL`, `DEPARTMENT`, `PROVIDER_GROUP`.
+- **Department**: A Department is simply an Organization whose `part_of_id` points to a parent Organization (typically of type `CLINIC` or `HOSPITAL`). It is not a separate model or table.
+- **Org Types**: `HOUSEHOLD`, `CLINIC`, `HOSPITAL`, `DEPARTMENT`, `PROVIDER_GROUP`, `OTHER`.
 
-### Tier 3: Departments (Clinical Units)
-Organizations can be recursive. A **Department** is simply an Organization that is "part of" another Organization.
-- **Usage**: Use departments to group examinations (e.g., "Cardiology", "Dental").
-- **Clinical Tracking**: Doctors can be associated with multiple departments, allowing them to track their work across the facility.
+### Clinical Identities — Peer Entities, Not Contained
+Users, Patients, and Doctors are **tenant-scoped peers**; they are not nested inside Organizations or Departments:
+- A **User** (login account) belongs to exactly one Tenant and has *no* direct link to any Organization or Department.
+- A **Patient** belongs to a Tenant and may optionally link to one User via `user_id`.
+- A **Doctor** belongs to a Tenant, may optionally link to one User via `user_id`, and is associated to Organizations (including Departments) many-to-many via the `organization_doctors` association table.
+- **Examinations** carry an optional `organization_id`, so they can be grouped by Department (e.g., "Cardiology", "Dental").
+
+### Cardinalities
+| Relationship | Cardinality | Mechanism |
+| :--- | :--- | :--- |
+| User → Patient | 1 : N | `Patient.user_id` (soft, nullable, not unique) |
+| User → Doctor | 1 : N | `Doctor.user_id` (soft, nullable, not unique) |
+| Organization → child Organization | 1 : N | `Organization.part_of_id` (self-ref) |
+| Department ↔ Doctor | N : N | `organization_doctors` association |
+| Organization → Examination | 1 : N | `Examination.organization_id` |
 
 ---
 
@@ -43,14 +55,15 @@ Health Assistant implements a dual-scope Role-Based Access Control (RBAC) system
 A unique feature of Health Assistant is the separation and linking of **Identity** (who logs in) and **Clinical Records** (the data).
 
 ### Why Link?
-In a household, the person who manages the app (the User) is often also a patient (the Patient record) or a caregiver (the Doctor record). Linking allows the system to:
-- Automatically show "My Dashboard" when you log in.
+In a household, the person who manages the app (the User) is often also a patient (the Patient record) or a caregiver (the Doctor record). In a clinic, a doctor's login maps to their professional Doctor profile. Linking allows the system to:
+- Automatically show "My Dashboard" when you log in (when a single Patient is linked).
 - Associate login accounts with professional licenses for doctors.
 
-### How it Works:
-- **`DoctorModel`** and **`Patient`** models both contain an optional `user_id`.
-- When a `user_id` is present, the clinical profile is "owned" by that login account.
-- **Home Setup**: Usually, you will create a Patient record for yourself and link it to your User account.
+### How it Works — One-to-Many
+Linking is **one-to-many**, not one-to-one:
+- **`DoctorModel`** and **`Patient`** both contain an optional `user_id` foreign key. Neither column is unique-constrained, so a single User can be linked to **multiple** Patient records *and* **multiple** Doctor records simultaneously (e.g., a parent who is both a patient and a caregiver for several family members).
+- When a `user_id` is present on a clinical record, that record is "owned" by the login account.
+- **Home Setup**: Usually, you will create a Patient record for yourself and link it to your User account. A caregiver may additionally create Doctor records for themselves and link them.
 
 ### Unlinking:
 - Links can be removed at any time from the **User Detail** page.
@@ -60,11 +73,11 @@ In a household, the person who manages the app (the User) is often also a patien
 
 ## 4. Smart Patient Context
 
-To ensure data security and a smooth user experience, Health Assistant uses a "Smart Context" engine:
+Because one User may be linked to multiple Patient records (see §3), the system needs a way to decide which patient's data to display. Health Assistant uses a "Smart Context" engine:
 
-1. **Automatic Context**: If a User is linked to exactly one Patient record, that patient is automatically selected as the "active context" upon login.
+1. **Automatic Context**: If a User is linked to *exactly one* Patient record, that patient is automatically selected as the "active context" upon login.
 2. **Single-Patient Default**: In new home installations with only one patient, that patient is selected by default.
-3. **Secure Switching**: If an Admin manages multiple patients, they must manually select the context. The system will never show data from a random patient.
+3. **Secure Switching**: If a User is linked to two or more patients (or an Admin manages multiple patients), they must manually select the context. The system will never show data from a random patient.
 4. **Session Cleanup**: Logging out explicitly wipes the patient context from the browser to prevent data residue for the next user.
 
 ---
@@ -121,10 +134,16 @@ a short-lived **invite token** minted by that tenant's admin.
 ### Clinical Setup
 1. **Tenant Admin**: Registers via the bootstrap path (becomes `ADMIN` of
    their new tenant) OR is invited by a `SYSTEM_ADMIN` cross-tenant.
-2. **Create Departments**: The Admin creates child Organizations of type `DEPARTMENT`.
+2. **Create Facilities & Departments**: The Admin creates Organizations of
+   type `CLINIC` or `HOSPITAL`, then creates child Organizations of type
+   `DEPARTMENT` with `part_of_id` pointing to the parent facility.
 3. **Invite Staff**: Admin mints invite tokens (see above) for doctors and
-   staff, assigning them to the relevant Departments.
-4. **Link Doctors**: Clinical `Doctor` records are created and linked to the staff's `User` accounts via `user_id`.
+   staff, who join as tenant-level Users. Note: Users themselves are not
+   assigned to Departments — see step 4.
+4. **Link Doctors & Assign to Departments**: Clinical `Doctor` records are
+   created, linked to the staff's `User` accounts via `user_id`, and
+   associated to one or more Departments via the `organization_doctors`
+   association table (many-to-many).
 
 ---
 
