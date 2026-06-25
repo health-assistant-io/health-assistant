@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **All 58 Dependabot alerts resolved** (1 critical, 26 high, 28 moderate, 3 low) across backend (pip) and frontend (npm). `npm audit` now reports 0 vulnerabilities.
+- **Backend: replaced unmaintained `python-jose` with `PyJWT`** (CVE-2024-33664/33663 — algorithm confusion, DoS). `ecdsa`, `rsa`, and `passlib` (transitive deps of python-jose, unused in code) removed entirely. `security.py` updated: `JWTError` → `jwt.PyJWTError`.
+- **Backend: bumped vulnerable packages** — `cryptography` 47→49 (vulnerable OpenSSL wheels), `starlette` 1.3.0→1.3.1 (`request.form()` DoS), `langsmith` 0.8.14→0.9.1 (TracingMiddleware file read), `langchain` 1.3.7→1.3.11 (path traversal/sandbox escape), `pydantic-settings` 2.14.1→2.14.2 (symlink secrets_dir bypass), `fastapi-mail` 1.6.4→1.6.5 (cryptography 49 compat).
+- **Frontend: bumped `axios` → 1.18.1** — fixes 22 CVEs including SSRF, prototype pollution, credential leak, header injection, and CRLF injection.
+- **Frontend: bumped `vitest` 1.1→4.1.9** (critical CVE — arbitrary file read/execute when UI server is listening). Required major bump of `vite` 5.4→6.4.3, `@vitejs/plugin-react` → 4.7.0, `vite-plugin-pwa` → 1.3.0.
+- **Frontend: bumped `i18next-http-backend` → 3.0.6** (path traversal/URL injection), `react-router-dom` → 6.30.4 (open redirect), `postcss` → 8.5.15 (XSS via `</style>`), `@typescript-eslint/*` 6→7.18.0 (transitive `minimatch` ReDoS).
+- **Frontend: pinned `react-quill-new` ~3.7.0 + npm `overrides` for `quill` 2.0.2** (Quill XSS via HTML export).
+- **Frontend: `npm audit fix` patched transitive deps** — `flatted`, `lodash`, `picomatch`, `brace-expansion`, `follow-redirects`, `form-data`, `serialize-javascript`, `fast-uri`, `js-yaml`, `@babel/*`, `esbuild`.
+- **Added `.github/dependabot.yml`** — weekly automated dependency checks with auto-PR for direct deps across `pip` (backend), `npm` (frontend + integrations TS SDK), `docker`, and `github-actions` ecosystems.
+
 ## [0.3.0-rc.2] - 2026-06-25
 
 **Release candidate — tenant administration, deployment hardening, UI overhaul.**
