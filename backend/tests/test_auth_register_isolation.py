@@ -228,7 +228,7 @@ def test_create_invite_token_refuses_system_admin():
 def test_verify_invite_token_downgrades_system_admin_to_user():
     """Defense in depth: even a hand-crafted SYSTEM_ADMIN token is
     downgraded to USER on verify."""
-    from jose import jwt
+    import jwt
     from app.core.config import settings
 
     tenant_id = str(uuid.uuid4())
