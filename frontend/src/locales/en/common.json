@@ -132,7 +132,10 @@
     "view_details": "View Details",
     "clinical_details": "Clinical Details",
     "retry": "Retry",
-    "other": "Other"
+    "other": "Other",
+    "close": "Close",
+    "no_patients": "No patients found",
+    "no_doctors": "No doctors found"
   },
   "dashboard": {
     "title": "Patient Health Overview",
@@ -1286,6 +1289,14 @@
     "unlink": "Unlink",
     "unlink_confirm_patient": "Are you sure you want to unlink this patient profile from this user?",
     "unlink_confirm_doctor": "Are you sure you want to unlink this professional profile from this user?",
+    "access_level": "Access Level",
+    "access_level_help": "Determine what {{email}} can do in this installation.",
+    "linked_patients_empty": "No patient records linked to this account.",
+    "linked_doctors_empty": "No professional doctor profiles linked to this account.",
+    "link_new_record": "Link a Profile",
+    "link_new_record_help": "Associate {{email}} with a clinical patient or doctor record.",
+    "role_updated": "Access level updated.",
+    "role_update_failed": "Failed to update access level.",
     "system_settings": "System Settings",
     "tenant_settings": "Tenant Settings",
     "tenants": {
