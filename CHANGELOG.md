@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-rc.3] - 2026-06-25
+
 ### Security
 - **All 58 Dependabot alerts resolved** (1 critical, 26 high, 28 moderate, 3 low) across backend (pip) and frontend (npm). `npm audit` now reports 0 vulnerabilities.
 - **Backend: replaced unmaintained `python-jose` with `PyJWT`** (CVE-2024-33664/33663 — algorithm confusion, DoS). `ecdsa`, `rsa`, and `passlib` (transitive deps of python-jose, unused in code) removed entirely. `security.py` updated: `JWTError` → `jwt.PyJWTError`.
