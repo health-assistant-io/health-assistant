@@ -160,9 +160,18 @@ The notification framework is modular and event-driven. For detailed instruction
 
 We utilize a centralized semantic versioning manager script located in
 `scripts/version_manager.py` to synchronize versions across backend configs,
-APIs, frontend packages, and installation docs. It also automates staging,
-committing, tagging, and pushing to trigger CI/CD pipelines (Docker image
-builds + GitHub Release automation).
+APIs, frontend packages, and installation docs.
+
+> **Changelog rule:** every user-visible change adds **one bullet** under
+> `## [Unreleased]` in `CHANGELOG.md` at commit time (see
+> [RELEASE_PROCESS.md](RELEASE_PROCESS.md)). Do this proactively — do not wait
+> to be asked.
+
+> **Push policy:** the version manager defaults to **local-only**. Use `--git`
+> to stage + commit + tag locally, and **stop there**. Do **not** add `--push`
+> unless you explicitly want to publish to the online repository (it pushes to
+> **every** configured remote and triggers CI/CD — Docker image builds + GitHub
+> Release automation). When in doubt, ask before pushing.
 
 For the full release workflow (commit-time changelog rule, RC/final flow,
 catch-up procedure, GitHub Release automation), see
@@ -185,36 +194,40 @@ catch-up procedure, GitHub Release automation), see
   *   `minor`: Promotes to next minor release (e.g. `0.3.0` -> `0.4.0`)
   *   `patch`: Promotes to next patch release or removes release candidate suffix (e.g. `0.3.0` -> `0.3.1`, `0.3.0-rc.2` -> `0.3.0`)
   *   `rc`: Sets or increments release candidate number on the upcoming release (e.g. `0.3.0` -> `0.3.1-rc.1`, `0.3.0-rc.1` -> `0.3.0-rc.2`)
-- **Catch-up (commit + tag + push the version already in `config.py`)**:
-  ```bash
-  python3 scripts/version_manager.py release --git --push
-  ```
-  Use this when you ran `set`/`bump` without `--git --push`, or edited
-  `CHANGELOG.md` after the version bump.
 
-### Git & CI/CD Integration:
-When setting or bumping a version, you can automate staging, committing, and tagging using:
-- `--git` or `-g`: Automatically stages updated files (version files +
-  `CHANGELOG.md` + `docs/RELEASE_PROCESS.md`), commits them with
+### Git flags (local-first by default):
+- `--git` or `-g` (**default stop point**): stages updated files (version files
+  + `CHANGELOG.md` + `docs/RELEASE_PROCESS.md`), commits them with
   `chore(release): bump version to X.Y.Z`, and creates an annotated git tag
-  `vX.Y.Z`.
-- `--push` or `-p`: Pushes both the new commit and the release tag to
-  **every** configured remote (not just `origin`), which triggers:
+  `vX.Y.Z` — **locally only**. No push.
+- `--push` or `-p` (**opt-in — only when you explicitly want to publish**):
+  pushes both the new commit and the release tag to **every** configured remote,
+  which triggers:
   - **Docker image builds** (`.github/workflows/docker-publish.yml`) —
     publishes backend + frontend images to `ghcr.io`.
   - **GitHub Release** (`.github/workflows/release.yml`) — creates a
     GitHub Release with notes extracted from `CHANGELOG.md`, automatically
     marked as a **prerelease** for RC/beta/alpha versions.
+- **Catch-up (commit + tag the version already in `config.py`)**:
+  ```bash
+  python3 scripts/version_manager.py release --git
+  ```
+  Use this when you ran `set`/`bump` without `--git`, or edited
+  `CHANGELOG.md` after the version bump. Add `--push` only if you want to
+  publish.
 
 **Examples:**
 ```bash
-# Bump patch version, commit, and tag locally
+# Bump patch version, local commit + local tag (DEFAULT — no push)
 python3 scripts/version_manager.py bump patch --git
 
-# Bump RC version, commit, tag, and push to all remotes (triggers CI)
-python3 scripts/version_manager.py bump rc --git --push
+# Bump RC version, local commit + local tag (DEFAULT — no push)
+python3 scripts/version_manager.py bump rc --git
 
-# Catch-up: you forgot --git --push earlier, or edited CHANGELOG after bump
+# Catch-up: you forgot --git earlier, or edited CHANGELOG after bump (local only)
+python3 scripts/version_manager.py release --git
+
+# ONLY when you explicitly want to publish to the online repository + trigger CI:
 python3 scripts/version_manager.py release --git --push
 ```
 

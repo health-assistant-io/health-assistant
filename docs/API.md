@@ -815,8 +815,8 @@ integration clients. **Auth:**
   preserved for backward compatibility but is not recommended for new
   deployments.
 
-See the integrations skill for the `webhook_secret` / `api_secret`
-configuration flow.
+See [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for the `webhook_secret` /
+`api_secret` configuration flow.
 
 ## Error Handling
 

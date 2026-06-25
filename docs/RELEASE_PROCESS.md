@@ -22,6 +22,22 @@ assembled retroactively by diffing branches.
    `docs/INSTALL.md`, `AboutPage.tsx`). The version is **not** set via `.env` —
    `.env` holds deployment configuration, not code version.
 
+> ### ⚠️ Push policy — local-first by default
+>
+> The version manager's `--git` flag stages, commits, and tags **locally
+> only**. That is the **default stop point** for every release. Do **not** add
+> `--push` unless you explicitly intend to publish to the online repository.
+>
+> `--push` pushes the commit **and** tag to **every** configured remote,
+> which triggers CI/CD: Docker image builds (`docker-publish.yml`) + a public
+> GitHub Release (`release.yml`). A mistaken push publishes artifacts that
+> are hard to un-publish. **When in doubt, ask before pushing.**
+>
+> | Goal | Command |
+> |------|---------|
+> | Cut a release locally (default) | `version_manager.py bump <type> --git` |
+> | Publish to remotes + trigger CI (opt-in) | `version_manager.py release --git --push` |
+
 ## Changelog format
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
@@ -77,18 +93,24 @@ git diff v0.3.0-rc.1..HEAD --stat         # files touched
 # 2. In CHANGELOG.md: rename ## [Unreleased] → ## [vX.Y.Z-rc.N] - YYYY-MM-DD
 #    and insert a fresh ## [Unreleased] block above it.
 
-# 3. Bump the version string everywhere via the manager (commit + tag + push)
-python3 scripts/version_manager.py bump rc --git --push
-#    (or set explicitly:)  python3 scripts/version_manager.py set X.Y.Z-rc.N --git --push
+# 3. Bump the version string everywhere via the manager (local commit + tag — DEFAULT)
+python3 scripts/version_manager.py bump rc --git
+#    (or set explicitly:)  python3 scripts/version_manager.py set X.Y.Z-rc.N --git
+
+# 4. Confirm the tag exists locally
+git tag --list 'vX.Y.Z*'
+
+# 5. ONLY when you explicitly want to publish to the online repository:
+#    python3 scripts/version_manager.py release --git --push
 ```
 
 `version_manager.py` updates: `backend/app/core/config.py`,
 `frontend/package.json`, `frontend/package-lock.json`, `docs/INSTALL.md`,
 `README.md` badge, `frontend/src/pages/About/AboutPage.tsx`, `CHANGELOG.md`,
-`docs/RELEASE_PROCESS.md`. It then commits
+`docs/RELEASE_PROCESS.md`. With `--git` it commits
 (`chore(release): bump version to X.Y.Z-rc.N`) and creates an annotated git
-tag `vX.Y.Z-rc.N`. With `--push`, the commit + tag are pushed to **every**
-configured remote (see [GitHub Release automation](#github-release-automation)
+tag `vX.Y.Z-rc.N` **locally**. Adding `--push` pushes the commit + tag to
+**every** configured remote (see [GitHub Release automation](#github-release-automation)
 below for what happens next).
 
 ## Promoting a release candidate to a final release
@@ -97,22 +119,26 @@ below for what happens next).
 # 1. In CHANGELOG.md: rename ## [vX.Y.Z-rc.N] → ## [vX.Y.Z] - YYYY-MM-DD
 #    (drop the -rc.N suffix). Leave the body intact.
 
-# 2. Bump patch → promotes rc to final (strips the -rc.N suffix)
-python3 scripts/version_manager.py bump patch --git --push
+# 2. Bump patch → promotes rc to final (strips the -rc.N suffix), local commit + tag
+python3 scripts/version_manager.py bump patch --git
+
+# 3. ONLY when you explicitly want to publish:
+#    python3 scripts/version_manager.py release --git --push
 ```
 
 ## Catch-up: the `release` subcommand
 
-If you ran `set`/`bump` **without** `--git --push`, or edited `CHANGELOG.md`
+If you ran `set`/`bump` **without** `--git`, or edited `CHANGELOG.md`
 after the version bump, run:
 
 ```bash
-python3 scripts/version_manager.py release --git --push
+python3 scripts/version_manager.py release --git
 ```
 
 This reads the version already recorded in `config.py`, stages the version
-files + release docs, commits, tags `vX.Y.Z`, and pushes to every remote —
-catching up to a fully released state without re-bumping the version.
+files + release docs, commits, and tags `vX.Y.Z` locally — catching up to a
+fully released state without re-bumping the version. Add `--push` only when
+you explicitly want to publish to the online repository.
 
 ## GitHub Release automation
 
@@ -130,9 +156,10 @@ Pushing a `v*` tag triggers two GitHub workflows (in
      suffix) are published as full releases.
 
 So the complete release flow is: edit `CHANGELOG.md` → run
-`version_manager.py ... --git --push` → both workflows fire → Docker images
+`version_manager.py ... --git` (local commit + tag) → **stop**. Only when you
+explicitly want to publish: add `--push` → both workflows fire → Docker images
 land on GHCR + GitHub Release appears with notes, marked as prerelease for
-RCs. **No manual GitHub UI action needed.**
+RCs. **No manual GitHub UI action needed** (when pushing).
 
 The release workflow can also be triggered manually from the GitHub Actions
 UI (`workflow_dispatch`) with a tag name input — useful for backfilling a
@@ -178,8 +205,10 @@ history, is lost across machines, and cannot be diffed against tags.
 - [ ] Reviewed `git log <last-tag>..HEAD --oneline` against `## [Unreleased]`.
 - [ ] Renamed `## [Unreleased]` → `## [vX.Y.Z(-rc.N)?] - YYYY-MM-DD`.
 - [ ] Added a fresh `## [Unreleased]` block above it.
-- [ ] Ran `python3 scripts/version_manager.py bump {rc|patch|minor|major} --git --push`.
+- [ ] Ran `python3 scripts/version_manager.py bump {rc|patch|minor|major} --git`.
 - [ ] Confirmed the new tag exists: `git tag --list 'vX.Y.Z*'`.
-- [ ] (If you forgot `--git --push`) Ran `python3 scripts/version_manager.py release --git --push`.
-- [ ] Confirmed the GitHub Release appeared (Actions tab → "Create GitHub Release" workflow).
-- [ ] Confirmed Docker images published (Packages tab on GitHub).
+- [ ] (If you forgot `--git`) Ran `python3 scripts/version_manager.py release --git`.
+- [ ] **Did NOT push** unless explicitly publishing to the online repository.
+- [ ] (Only if publishing) Ran `python3 scripts/version_manager.py release --git --push`.
+- [ ] (Only if pushed) Confirmed the GitHub Release appeared (Actions tab → "Create GitHub Release" workflow).
+- [ ] (Only if pushed) Confirmed Docker images published (Packages tab on GitHub).
