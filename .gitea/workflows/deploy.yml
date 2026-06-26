@@ -98,6 +98,7 @@ jobs:
     name: Build & Push Docker Images
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
+    if: ${{ secrets.REGISTRY_HOST != '' && secrets.REGISTRY_TOKEN != '' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -130,6 +131,7 @@ jobs:
     name: Deploy to Target Server
     needs: build-and-push
     runs-on: ubuntu-latest
+    if: ${{ secrets.VM_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -186,6 +188,7 @@ jobs:
             APP_ENV=production
             DEBUG=false
             SECRET_KEY=${{ secrets.SECRET_KEY }}
+            INTEGRATION_SECRET_KEY=${{ secrets.INTEGRATION_SECRET_KEY }}
             JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS || '24' }}
             
             # PostgreSQL Secrets
@@ -201,6 +204,8 @@ jobs:
             BACKEND_PORT=${{ secrets.BACKEND_PORT || '8000' }}
             FRONTEND_PORT=${{ secrets.FRONTEND_PORT || '3000' }}
             FLOWER_PORT=${{ secrets.FLOWER_PORT || '5555' }}
+            FLOWER_USER=${{ secrets.FLOWER_USER || 'admin' }}
+            FLOWER_PASSWORD=${{ secrets.FLOWER_PASSWORD }}
             
             # Host/Interface Binds
             BACKEND_BIND=${{ secrets.BACKEND_BIND || '127.0.0.1' }}

@@ -40,22 +40,31 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    *(Note: This uses the recommended "Standalone" flavor with a built-in Nginx proxy on port 80. If you already run a reverse proxy like Traefik/Nginx, or if you want to set up a development environment, see the advanced sections below).*
 
 6. **First-Time Data Seeding:**
-   You must manually seed the database and create your initial admin account:
+   You must manually create your initial admin account:
    
+   For Standalone (all-in-one with proxy):
    ```bash
    docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
+   
+   Or for Prod (bring-your-own-proxy):
+   ```bash
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   ```
 
+   **Clinical Catalogs (Optional but Recommended):**
+   The application automatically seeds basic elements (medications, clinical event types, allergies, body parts) on startup. However, some installations may also want to import the default comprehensive clinical biomarker ontology (which includes standard lab tests like Fasting Glucose, Cholesterol, Blood Pressure, etc.).
+   
+   If you want to initialize the system with the default catalog, you can import it by running:
+   
+   For Standalone (all-in-one with proxy):
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_biomarkers.py
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_default_catalog.py
    ```
    
+   Or for Prod (bring-your-own-proxy):
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_allergies.py
-   ```
-   
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_medications.py
+   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_default_catalog.py
    ```
 
 7. **Access the application:**

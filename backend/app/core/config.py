@@ -99,7 +99,24 @@ class Settings(BaseSettings):
         return self
 
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
+    # SECRET_KEY signs JWTs. It must be explicitly provided in production.
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    
+    @model_validator(mode="after")
+    def _validate_secret_key(self) -> "Settings":
+        """Ensure a valid SECRET_KEY is provided, falling back to an ephemeral one in dev only."""
+        if not self.SECRET_KEY:
+            if self.APP_ENV in ("development", "test", "testing"):
+                import logging
+                logging.warning("No SECRET_KEY provided; generating an ephemeral one for development. Logins will not survive restarts.")
+                self.SECRET_KEY = secrets.token_urlsafe(32)
+            else:
+                raise ValueError(
+                    f"A strong SECRET_KEY must be provided via environment variables for APP_ENV={self.APP_ENV!r}. "
+                    "Refusing to boot without one."
+                )
+        return self
+
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
     
@@ -119,7 +136,24 @@ class Settings(BaseSettings):
     AI_AGENT_MAX_ITERATIONS: int = 20
 
     # MCP Client integration (see integrations/mcp_client/)
-    INTEGRATION_SECRET_KEY: Optional[str] = None
+    INTEGRATION_SECRET_KEY: str = os.getenv("INTEGRATION_SECRET_KEY", "")
+
+    @model_validator(mode="after")
+    def _validate_integration_secret_key(self) -> "Settings":
+        """Ensure INTEGRATION_SECRET_KEY is provided in production."""
+        if not self.INTEGRATION_SECRET_KEY:
+            if self.APP_ENV in ("development", "test", "testing"):
+                from cryptography.fernet import Fernet
+                import logging
+                logging.warning("No INTEGRATION_SECRET_KEY provided; generating an ephemeral one for development. Connected integrations will break on restart.")
+                self.INTEGRATION_SECRET_KEY = Fernet.generate_key().decode()
+            else:
+                raise ValueError(
+                    f"A valid INTEGRATION_SECRET_KEY must be provided via environment variables for APP_ENV={self.APP_ENV!r}. "
+                    "Refusing to boot without one."
+                )
+        return self
+
     MCP_STDIO_ALLOWED_COMMANDS: str = "npx,uvx,python,python3,node"
     MCP_MAX_SERVERS_PER_USER: int = 5
     MCP_MAX_TOTAL_STDIO: int = 20

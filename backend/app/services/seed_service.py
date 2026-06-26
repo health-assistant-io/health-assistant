@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class SeedService:
     def __init__(self):
-        self.seeds_dir = Path(__file__).parent.parent / "core" / "seeds"
+        self.seeds_dir = Path(__file__).parent.parent.parent / "data" / "seeds"
 
     async def seed_clinical_event_types(
         self, session: AsyncSession = None
