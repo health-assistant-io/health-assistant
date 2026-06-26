@@ -58,6 +58,9 @@ jobs:
           REDIS_URL: redis://redis:6379
         run: |
           cd backend
+          # Mirror production Docker PYTHONPATH (/app/backend:/app) so the
+          # top-level `integrations` package is importable during tests.
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
           pytest
 
   test-frontend:
