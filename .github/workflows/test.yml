@@ -48,10 +48,10 @@ jobs:
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
           POSTGRES_USER: admin
           POSTGRES_PASSWORD: password
-          POSTGRES_HOST: postgres
+          POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_DB: health_assistant_test
-          REDIS_URL: redis://redis:6379
+          REDIS_URL: redis://localhost:6379
         run: |
           cd backend
           # Mirror production Docker PYTHONPATH (/app/backend:/app) so the
