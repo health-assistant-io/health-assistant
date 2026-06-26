@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Customizable bind addresses for deployment.** Gitea ``deploy.yml`` now supports ``BACKEND_BIND``, ``FRONTEND_BIND``, and ``FLOWER_BIND`` via Gitea Repo Secrets (defaulting to ``127.0.0.1`` for local-only security). This allows multi-VM architectures where a reverse proxy on a different VM connects to the application services over a private interface.
 - **Reusable test workflow (``.github/workflows/test.yml``).** The backend pytest suite and frontend lint+build test are now defined once in a reusable workflow (``on: workflow_call``) and called from the GitHub ``docker-publish.yml`` pipeline. The workflow includes the TimescaleDB + Redis service containers, the ``PYTHONPATH`` fix for the top-level ``integrations`` package, and bumps the frontend Node version to 20 (matching the frontend Dockerfiles). The Gitea ``deploy.yml`` keeps its test jobs inline (``test-backend`` + ``test-frontend`` as separate top-level jobs) because Gitea's ``act_runner`` collapses reusable-workflow jobs into a single "Set up job" node with no step-level visibility — inlining preserves separate job nodes and full step visibility on Gitea.
 
 ### Fixed
