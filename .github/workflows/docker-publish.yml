@@ -13,7 +13,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    name: Run Test Suite
+    uses: ./.github/workflows/test.yml
+
   build-and-push-backend:
+    name: Build & Push Backend Docker Image
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,6 +58,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-and-push-frontend:
+    name: Build & Push Frontend Docker Image
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
