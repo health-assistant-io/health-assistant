@@ -23,6 +23,7 @@ import { isAbnormal } from '../../utils/biomarkerUtils';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
+import { DatePicker } from '../../components/ui/DatePicker';
 import { useTabScroll } from '../../hooks/useTabScroll';
 import { Biomarker } from '../../types/biomarker';
 import { DoctorSelector } from '../../components/ui/DoctorSelector';
@@ -850,11 +851,11 @@ const ExaminationDetail = () => {
                      <div className="flex-1 min-w-0">
                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">{t('common.date')}</p>
                         {isGlobalEditing ? (
-                           <input 
-                             type="date" 
+                           <DatePicker 
+                             variant="unstyled"
                              className="w-full py-2 bg-transparent text-sm font-bold outline-none dark:text-dark-text"
                              value={tempDate}
-                             onChange={(e) => setTempDate(e.target.value)}
+                             onChange={setTempDate}
                            />
                         ) : (
                            <p className="font-bold text-[#1a2b4b] dark:text-dark-text">

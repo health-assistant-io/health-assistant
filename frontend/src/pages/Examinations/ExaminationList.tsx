@@ -26,6 +26,7 @@ import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { CategoryDropdown } from '../../components/ui/CategoryDropdown';
 import { ExaminationPreview } from '../../components/examinations/ExaminationPreview';
 import { PageContainer } from '../../components/ui/PageContainer';
+import { DatePicker } from '../../components/ui/DatePicker';
 
 function ExaminationList() {
   const { t } = useTranslation();
@@ -676,20 +677,20 @@ function ExaminationList() {
         <div className="flex flex-wrap items-center gap-4 mb-6 bg-gray-50 dark:bg-dark-bg p-4 rounded-xl border border-gray-100 dark:border-dark-border animate-in slide-in-from-top-2 duration-300">
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.from', 'From:')}</span>
-            <input 
-              type="date" 
-              className="px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
+            <DatePicker 
+              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
               value={customRange.start}
-              onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })}
+              onChange={(date) => setCustomRange({ ...customRange, start: date })}
+              variant="unstyled"
             />
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.to', 'To:')}</span>
-            <input 
-              type="date" 
-              className="px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
+            <DatePicker 
+              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
               value={customRange.end}
-              onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })}
+              onChange={(date) => setCustomRange({ ...customRange, end: date })}
+              variant="unstyled"
             />
           </div>
           <button 

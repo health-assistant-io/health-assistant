@@ -10,6 +10,7 @@ import { calculateAge, formatAge } from '../../utils/dateUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
+import { DatePicker } from '../../components/ui/DatePicker';
 
 function Patients() {
   const { t } = useTranslation();
@@ -335,11 +336,10 @@ function Patients() {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.dob')}</label>
-                <input
-                  type="date"
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
+                <DatePicker
                   value={formData.birthDate}
-                  onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                  onChange={(date) => setFormData({ ...formData, birthDate: date })}
+                  placeholder={t('patients.dob_placeholder', 'Select Date of Birth')}
                 />
               </div>
 
