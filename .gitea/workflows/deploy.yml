@@ -202,6 +202,11 @@ jobs:
             FRONTEND_PORT=${{ secrets.FRONTEND_PORT || '3000' }}
             FLOWER_PORT=${{ secrets.FLOWER_PORT || '5555' }}
             
+            # Host/Interface Binds
+            BACKEND_BIND=${{ secrets.BACKEND_BIND || '127.0.0.1' }}
+            FRONTEND_BIND=${{ secrets.FRONTEND_BIND || '127.0.0.1' }}
+            FLOWER_BIND=${{ secrets.FLOWER_BIND || '127.0.0.1' }}
+            
             # AI / OCR API Key and Model Customization
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             OPENAI_API_BASE=${{ secrets.OPENAI_API_BASE || 'https://api.openai.com/v1' }}
