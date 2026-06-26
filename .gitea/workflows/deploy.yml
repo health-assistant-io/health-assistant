@@ -54,7 +54,13 @@ jobs:
 
       - name: Run Pytest Suite
         env:
-          DATABASE_URL: postgresql+asyncpg://admin:password@postgres:5432/health_assistant_test
+          # Configure via parts (not DATABASE_URL) so config.py assembles the
+          # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_HOST: postgres
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: health_assistant_test
           REDIS_URL: redis://redis:6379
         run: |
           cd backend
