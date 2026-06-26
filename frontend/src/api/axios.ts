@@ -61,6 +61,11 @@ api.interceptors.response.use(
 
     // Check if error is 401 and not already retried
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't intercept 401s for auth endpoints to prevent infinite refresh loops and let components handle the error
+      if (originalRequest.url?.includes('auth/login') || originalRequest.url?.includes('auth/register')) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
       
       const refreshToken = localStorage.getItem('refreshToken');

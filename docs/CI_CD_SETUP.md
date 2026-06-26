@@ -52,7 +52,9 @@ Go to **Settings -> Actions -> Secrets** in your Gitea repository and configure 
 | **`VM_HOST`** | IP address or domain of your target deployment server host. | `<DEPLOY_SERVER_IP>` |
 | **`SSH_PRIVATE_KEY`** | The raw SSH private key authorized to connect as user `deploy` on the target server. | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | **`SECRET_KEY`** | Secret key for JWT hashing and session security. | *Any secure random string* |
+| **`INTEGRATION_SECRET_KEY`** | Fernet key for encrypting integration configurations and tokens. | *Base64 32-byte string* |
 | **`POSTGRES_PASSWORD`** | Production database password. | *Secure password* |
+| **`FLOWER_PASSWORD`** | Password for the Celery Flower monitoring dashboard. | *Secure password* |
 | **`OPENAI_API_KEY`** *(Optional)* | OpenAI API key for intelligent OCR and AI diagnostic features. | `sk-proj-...` |
 
 ---

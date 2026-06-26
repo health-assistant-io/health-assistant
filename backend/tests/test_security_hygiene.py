@@ -141,15 +141,25 @@ def test_b13_production_rejects_weak_password(weak):
     from app.core.config import Settings
 
     with pytest.raises(ValidationError) as exc_info:
-        Settings(APP_ENV="production", POSTGRES_PASSWORD=weak)
-    assert "POSTGRES_PASSWORD" in str(exc_info.value) or "insecure" in str(exc_info.value)
+        Settings(
+            APP_ENV="production",
+            POSTGRES_PASSWORD=weak,
+            SECRET_KEY="a-strong-secret-key-for-test-purposes",
+            INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+        )
+    assert "insecure database credentials" in str(exc_info.value)
 
 
 def test_b13_production_accepts_strong_password():
     """B13: a non-default strong password boots fine in production."""
     from app.core.config import Settings
 
-    s = Settings(APP_ENV="production", POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ")
+    s = Settings(
+        APP_ENV="production",
+        POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
+        SECRET_KEY="a-strong-secret-key-for-test-purposes",
+        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+    )
     assert s.POSTGRES_PASSWORD == "a-strong-unique-passphrase-9f3kQ"
 
 

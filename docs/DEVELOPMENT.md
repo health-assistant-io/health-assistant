@@ -141,7 +141,7 @@ npm run lint
 
 The clinical events system is metadata-driven. To add new clinical event categories or types:
 
-1.  **Edit the Seed File**: Add the new configuration to `backend/app/core/seeds/clinical_event_types.json`.
+1.  **Edit the Seed File**: Add the new configuration to `backend/data/seeds/clinical_event_types.json`.
     -   Each category contains a list of types.
     -   Each type can define a `metadata_schema` with specific fields (text, number, date, boolean).
 2.  **Sync with Database**:

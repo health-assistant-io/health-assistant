@@ -183,14 +183,8 @@ class TestSecretCipher:
         assert c.decrypt_value({"k": "v"}) == {"k": "v"}
 
     def test_missing_key_raises(self, monkeypatch):
-        from app.core.config import get_settings
-        monkeypatch.setenv("INTEGRATION_SECRET_KEY", "")
-        get_settings.cache_clear()
-        with pytest.raises(RuntimeError):
-            SecretCipher.from_settings()
-        # Restore for other tests
-        monkeypatch.setenv("INTEGRATION_SECRET_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=")
-        get_settings.cache_clear()
+        with pytest.raises(RuntimeError, match="INTEGRATION_SECRET_KEY is not configured"):
+            SecretCipher(None)
 
 
 class TestMaskFields:
