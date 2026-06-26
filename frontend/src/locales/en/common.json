@@ -1466,5 +1466,17 @@
     "metadata": "Account Metadata",
     "user_id": "User Identifier",
     "tenant_id": "Tenant ID"
+  },
+  "auth": {
+    "sign_in_title": "Sign in to your account",
+    "email_label": "Email address",
+    "password_label": "Password",
+    "signing_in": "Signing in...",
+    "sign_in_button": "Sign in",
+    "no_account": "Don't have an account?",
+    "sign_up": "Sign up",
+    "error_invalid_credentials": "Invalid credentials. Please check your email and password.",
+    "error_invalid_format": "Invalid request format. Please try again.",
+    "error_server_down": "Login failed. Please check if the server is running."
   }
 }
