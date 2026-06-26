@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity, Calendar, Info, MapPin, Zap, Target } from 'lucide-react';
 import { BodyPartSelector } from '../ui/BodyPartSelector';
+import { DatePicker } from '../ui/DatePicker';
 
 interface Field {
   name: string;
@@ -101,14 +102,14 @@ export const DynamicMetadataForm: React.FC<Props> = ({ schema, value, onChange, 
               )}
 
               {field.type === 'date' && (
-                <input
-                  type="date"
-                  required={field.required}
-                  className="w-full pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all"
-                  style={{ '--tw-ring-color': `${color}40` } as any}
-                  value={value[field.name] || ''}
-                  onChange={e => handleChange(field.name, e.target.value)}
-                />
+                <div className="w-full relative">
+                  <DatePicker
+                    required={field.required}
+                    className="pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all"
+                    value={value[field.name] || ''}
+                    onChange={date => handleChange(field.name, date)}
+                  />
+                </div>
               )}
 
               {field.type === 'creatable-select' && field.source === 'body-parts' && (

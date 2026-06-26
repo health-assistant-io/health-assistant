@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Search, Plus, Save, AlertCircle, History } from 'lucide-react';
+import { DatePicker } from '../ui/DatePicker';
 import { 
   searchAllergyCatalog, 
   AllergyCatalogEntry, 
@@ -297,30 +298,24 @@ export const AllergyModal: React.FC<Props> = ({ isOpen, onClose, patientId, alle
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{t('allergies.modal.onset_date')}</label>
-                <input 
-                  type="date"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                <DatePicker 
                   value={onsetDate}
-                  onChange={(e) => setOnsetDate(e.target.value)}
+                  onChange={setOnsetDate}
                 />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{t('allergies.modal.resolved_date')}</label>
-                <input 
-                  type="date"
+                <DatePicker 
                   disabled={clinicalStatus === 'active'}
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg text-sm disabled:opacity-50 focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
                   value={resolvedDate}
-                  onChange={(e) => setResolvedDate(e.target.value)}
+                  onChange={setResolvedDate}
                 />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{t('allergies.modal.last_occurrence')}</label>
-                <input 
-                  type="date"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                <DatePicker 
                   value={lastOccurrence}
-                  onChange={(e) => setLastOccurrence(e.target.value)}
+                  onChange={setLastOccurrence}
                 />
               </div>
             </div>

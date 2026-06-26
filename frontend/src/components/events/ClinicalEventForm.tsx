@@ -17,6 +17,7 @@ import { DynamicMetadataForm } from './DynamicMetadataForm';
 import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorModal';
 import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
 import { BodyPartSelector } from '../ui/BodyPartSelector';
+import { DatePicker } from '../ui/DatePicker';
 
 export type ClinicalEventCodingSystem = 'loinc' | 'snomed' | 'custom';
 
@@ -476,21 +477,17 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] ml-1">{t('events.onset_date')}</label>
-                  <input
-                    type="date"
-                    className={fieldInput}
+                  <label className="block text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] ml-1 mb-2">{t('events.onset_date')}</label>
+                  <DatePicker
                     value={formData.onset_date}
-                    onChange={e => setFormData({ ...formData, onset_date: e.target.value })}
+                    onChange={date => setFormData({ ...formData, onset_date: date })}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] ml-1">{t('events.resolved_date')}</label>
-                  <input
-                    type="date"
-                    className={fieldInput}
+                  <label className="block text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em] ml-1 mb-2">{t('events.resolved_date')}</label>
+                  <DatePicker
                     value={formData.resolved_date}
-                    onChange={e => setFormData({ ...formData, resolved_date: e.target.value })}
+                    onChange={date => setFormData({ ...formData, resolved_date: date })}
                   />
                 </div>
               </div>
@@ -857,13 +854,13 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3 flex-1">
                           <div className="flex items-center space-x-1">
-                            <input
-                              type="date"
+                            <DatePicker
+                              variant="unstyled"
                               className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-28 dark:text-dark-text"
                               value={occ.date}
-                              onChange={e => {
+                              onChange={date => {
                                 const updated = [...formData.occurrences];
-                                updated[i] = { ...updated[i], date: e.target.value };
+                                updated[i] = { ...updated[i], date: date };
                                 setFormData({ ...formData, occurrences: updated });
                               }}
                             />

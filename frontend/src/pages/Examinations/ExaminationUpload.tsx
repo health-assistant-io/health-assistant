@@ -25,6 +25,7 @@ import { FilePreviewManager } from '../../components/ui/FilePreviewManager';
 import { FileCard } from '../../components/ui/FileCard';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { DatePicker } from '../../components/ui/DatePicker';
 
 function ExaminationUpload() {
   const { t } = useTranslation();
@@ -508,19 +509,10 @@ function ExaminationUpload() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
                     Examination Date
                   </label>
-                  <input
-                    type="date"
+                  <DatePicker
                     required
                     value={examinationDate}
-                    onChange={(e) => setExaminationDate(e.target.value)}
-                    onClick={(e) => {
-                      if (e.nativeEvent.offsetX > 120) {
-                        try {
-                          (e.currentTarget as any).showPicker();
-                        } catch (err) {}
-                      }
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text cursor-pointer"
+                    onChange={setExaminationDate}
                   />
                 </div>
               </div>

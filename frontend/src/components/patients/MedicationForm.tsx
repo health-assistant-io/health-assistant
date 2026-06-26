@@ -2,6 +2,7 @@ import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'rea
 import { useTranslation } from 'react-i18next';
 import { Search, Plus, Save, Info, Calendar, Pill, Clock, X } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
+import { DatePicker } from '../ui/DatePicker';
 import { 
   searchMedicationCatalog, 
   MedicationCatalogEntry, 
@@ -688,29 +689,25 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 flex items-center">
                 <Calendar className="w-3 h-3 mr-2" />
                 {t('medications.modal.start_date')}
               </label>
-              <input
-                type="date"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none"
+              <DatePicker
                 value={formData.start_date}
-                onChange={e => setFormData({...formData, start_date: e.target.value})}
+                onChange={date => setFormData({...formData, start_date: date})}
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 flex items-center">
                 <Calendar className="w-3 h-3 mr-2" />
                 {t('medications.modal.end_date_opt')}
               </label>
-              <input
-                type="date"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none"
+              <DatePicker
                 value={formData.end_date}
-                onChange={e => setFormData({...formData, end_date: e.target.value})}
+                onChange={date => setFormData({...formData, end_date: date})}
               />
             </div>
           </div>

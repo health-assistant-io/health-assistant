@@ -13,6 +13,7 @@ import { Doctor } from '../../services/doctorService';
 import { DoctorSelector } from '../../components/ui/DoctorSelector';
 import { DynamicIcon } from '../../components/ui/DynamicIcon';
 import { isMobileDevice } from '../../utils/deviceUtils';
+import { DatePicker } from '../../components/ui/DatePicker';
 
 export interface ExamGroup {
   id: string;
@@ -361,12 +362,12 @@ const ExaminationBubble: React.FC<{
               {!isSmartMode && (
                 <>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-900/20">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <input 
-                      type="date" 
+                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                    <DatePicker 
+                      variant="unstyled"
                       value={group.date}
-                      onChange={(e) => onUpdate({ date: e.target.value })}
-                      className="bg-transparent border-none outline-none text-[10px] font-black uppercase p-0 focus:ring-0 cursor-pointer"
+                      onChange={(date) => onUpdate({ date })}
+                      className="bg-transparent border-none outline-none text-[10px] font-black uppercase p-0 focus:ring-0 cursor-pointer min-w-[70px]"
                     />
                   </div>
                   
