@@ -41,7 +41,7 @@
     "tailwind-merge": "^2.0.0",
     "vite-plugin-pwa": "^1.3.0",
     "zod": "^3.22.4",
-    "zustand": "^4.4.7"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
