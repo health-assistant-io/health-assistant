@@ -134,7 +134,7 @@ def test_b13_password_default_is_empty():
 
 
 @pytest.mark.parametrize("weak", ["", "admin123", "password", "postgres", "secret", "changeme"])
-def test_b13_production_rejects_weak_password(weak, monkeypatch):
+def test_b13_production_rejects_weak_password(weak):
     """B13: booting with a known-weak DB password outside development fails."""
     from pydantic import ValidationError
 
