@@ -122,8 +122,8 @@ services:
   # Frontend
   frontend:
     build:
-      context: ../frontend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
     container_name: health-assistant-frontend
     restart: unless-stopped
     init: true

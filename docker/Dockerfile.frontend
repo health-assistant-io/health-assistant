@@ -2,12 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
+# Install dependencies (repo-root context: paths are relative to repo root)
+COPY frontend/package*.json ./
 RUN npm install
 
 # Copy application code
-COPY . .
+COPY frontend/ .
 
 # Build application
 RUN npm run build
