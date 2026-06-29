@@ -1,5 +1,5 @@
 import asyncio
-from app.workers.tasks import cumulative_extraction, ocr_document
+from app.workers.ai_tasks import cumulative_extraction, ocr_document
 from sqlalchemy import select
 from app.models.document_model import DocumentModel
 from app.workers.tasks import AsyncSessionFactory

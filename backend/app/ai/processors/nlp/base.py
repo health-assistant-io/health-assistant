@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
-from app.schemas.ai_nlp import (
+from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,
     NewBiomarkerDefinitions,
     NewMedicationDefinitions,

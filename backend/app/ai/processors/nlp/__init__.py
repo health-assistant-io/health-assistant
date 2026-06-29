@@ -38,7 +38,7 @@ async def get_nlp_extractor_from_db(
     db: AsyncSession, task_type: str = "nlp", tenant_id: Optional[UUID] = None
 ) -> NLPExtractor:
     """Get NLP extractor configured from database"""
-    from app.services.ai_provider_service import AIProviderService
+    from app.ai.providers.service import AIProviderService
 
     service = AIProviderService(db)
     return await service.get_nlp_extractor(tenant_id)

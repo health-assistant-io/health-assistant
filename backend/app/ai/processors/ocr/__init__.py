@@ -1,12 +1,10 @@
-from typing import Optional, Dict, Any
+from typing import Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from .base import OCRProcessor
 from .langchain_vision import LangChainOCRProcessor
 from .tesseract import TesseractOCRProcessor
-from app.models.ai_provider_model import AIProviderModel, AIModel
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
@@ -42,7 +40,7 @@ async def get_ocr_processor_from_db(
     db: AsyncSession, task_type: str = "ocr", tenant_id: Optional[UUID] = None
 ) -> OCRProcessor:
     """Get OCR processor configured from database"""
-    from app.services.ai_provider_service import AIProviderService
+    from app.ai.providers.service import AIProviderService
 
     service = AIProviderService(db)
     return await service.get_ocr_processor(tenant_id)

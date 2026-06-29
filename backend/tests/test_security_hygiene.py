@@ -24,24 +24,34 @@ import pytest
 
 def test_b7_no_print_calls_in_ai_assistance_service():
     """B7: the debug ``print()`` statements that leaked user input + LLM
-    output to stdout must be gone from the two define_* methods."""
+    output to stdout must be gone from the AI assistance code.
+
+    The assistance logic now spans the whole ``app.ai.assistance`` package
+    (the define_* handlers moved to ``definitions.py`` in Phase 6c), so we
+    scan every module in the package — not just ``service`` — to keep the
+    invariant honest after the split.
+    """
     import ast
+    import pathlib
 
-    from app.services import ai_assistance_service
+    import app.ai.assistance as pkg
 
-    source = inspect.getsource(ai_assistance_service)
-    tree = ast.parse(source)
+    pkg_dir = pathlib.Path(pkg.__file__).parent
 
-    print_calls = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "print"
-    ]
+    print_calls = []
+    for mod_path in sorted(pkg_dir.glob("*.py")):
+        tree = ast.parse(mod_path.read_text())
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "print"
+            ):
+                print_calls.append((mod_path.name, node.lineno))
+
     assert print_calls == [], (
-        f"ai_assistance_service.py still contains {len(print_calls)} top-level "
-        "print() call(s) — debug stdout leaks."
+        f"app/ai/assistance/ still contains {len(print_calls)} print() call(s) "
+        f"— debug stdout leaks: {print_calls}"
     )
 
 
@@ -51,7 +61,7 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
     import logging
     from unittest.mock import AsyncMock, MagicMock
 
-    from app.services.ai_assistance_service import AIAssistanceService
+    from app.ai.assistance.service import AIAssistanceService
 
     svc = AIAssistanceService.__new__(AIAssistanceService)
 
@@ -67,7 +77,7 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
 
     monkeypatch.setattr("builtins.print", lambda *a, **k: captured.setdefault("printed", a))
 
-    with caplog.at_level(logging.DEBUG, logger="app.services.ai_assistance_service"):
+    with caplog.at_level(logging.DEBUG, logger="app.ai.assistance.service"):
         out = await svc._define_biomarker(llm, "Hemoglobin A1c", {})
 
     assert out["success"] is True

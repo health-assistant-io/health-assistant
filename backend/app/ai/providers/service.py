@@ -4,8 +4,12 @@ from uuid import UUID
 from sqlalchemy import select, update, delete, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_openai import ChatOpenAI
 
+from app.ai.providers import factories
+from app.ai.providers.enums import ProviderType, TaskType
+from app.ai.providers.registry import get_llm_builder
+from app.ai.providers.resolution import resolve_active_assignment
+from app.ai.providers.workflows import build_workflows
 from app.core.config import settings
 from app.models.ai_provider_model import (
     AIProviderModel,
@@ -15,7 +19,7 @@ from app.models.ai_provider_model import (
 )
 from app.models.tenant_model import TenantModel
 from app.models.system_setting import SystemSetting
-from app.schemas.ai_config import (
+from app.ai.schemas.config import (
     AIProviderCreate,
     AIProviderUpdate,
     AIProviderResponse,
@@ -336,45 +340,12 @@ class AIProviderService:
         Resolution Order:
         1. Specific Task (User -> Tenant -> Global)
         2. Default Task (User -> Tenant -> Global)
+
+        Delegates to ``app.ai.providers.resolution.resolve_active_assignment``
+        so the scope/priority/fallback rule is unit-testable without the
+        service's CRUD surface.
         """
-        # 1. Try specific task
-        query = select(AITaskAssignment).where(
-            AITaskAssignment.task_type == task_type, AITaskAssignment.is_active == True
-        )
-
-        conditions = [AITaskAssignment.scope == AIScope.SYSTEM]
-        if tenant_id:
-            conditions.append(
-                (AITaskAssignment.scope == AIScope.TENANT)
-                & (AITaskAssignment.tenant_id == tenant_id)
-            )
-        if user_id:
-            conditions.append(
-                (AITaskAssignment.scope == AIScope.USER)
-                & (AITaskAssignment.user_id == user_id)
-            )
-
-        query = query.where(or_(*conditions))
-
-        # Order by specificity: User > Tenant > System
-        query = query.order_by(
-            AITaskAssignment.scope.desc(),  # USER (U) > TENANT (T) > SYSTEM (S) alphabetical desc works
-            AITaskAssignment.priority.desc(),
-        )
-
-        result = await self.db.execute(query)
-        assignment = result.scalars().first()
-
-        if assignment:
-            return assignment
-
-        # 2. Try default fallback
-        if task_type != "default":
-            return await self.get_active_assignment_for_task(
-                "default", tenant_id, user_id
-            )
-
-        return None
+        return await resolve_active_assignment(self.db, task_type, tenant_id, user_id)
 
     async def get_config_summary(
         self,
@@ -398,22 +369,10 @@ class AIProviderService:
             tenant_id=tenant_id, user_id=user_id, scope=scope
         )
 
-        # Get task type assignments
-        task_types = [
-            "default",
-            "ocr",
-            "nlp",
-            "medication_interaction",
-            "anomaly_detection",
-            "fill_biomarker_form",
-            "fill_medication_form",
-            "magic_fill_examination",
-            "define_biomarker",
-            "define_medication",
-            "suggest_category_icon",
-            "generate_category_icon",
-            "chat",
-        ]
+        # Get task type assignments. The canonical list of task types now lives
+        # in app.ai.providers.enums.TaskType (single source of truth) — previously
+        # this was a hard-coded inline list that silently drifted from the enum.
+        task_types = TaskType.all_values()
         task_assignments = {}
 
         for task_type in task_types:
@@ -438,17 +397,9 @@ class AIProviderService:
                     assignment_id=assignment.id,
                 )
 
-        # Define abstract workflows for the frontend
-        workflows = {
-            "full_reconstruction": [ta for ta in [task_assignments.get("ocr"), task_assignments.get("nlp")] if ta],
-            "fast_extraction": [ta for ta in [task_assignments.get("nlp")] if ta],
-            "smart_extraction_upload": [ta for ta in [task_assignments.get("ocr")] if ta],
-            "magic_fill": [ta for ta in [task_assignments.get("magic_fill_examination")] if ta],
-            "clinical_chat": [ta for ta in [task_assignments.get("chat")] if ta],
-            "medication_audit": [ta for ta in [task_assignments.get("medication_interaction")] if ta],
-            "biomarker_definition": [ta for ta in [task_assignments.get("define_biomarker")] if ta],
-            "medication_definition": [ta for ta in [task_assignments.get("define_medication")] if ta],
-        }
+        # Define abstract workflows for the frontend (composition table lives
+        # in app.ai.providers.workflows so it can be unit-tested standalone).
+        workflows = build_workflows(task_assignments)
 
         # Get max iterations
         max_iterations = settings.AI_AGENT_MAX_ITERATIONS
@@ -581,10 +532,14 @@ class AIProviderService:
             )
 
             if provider:
-                return ChatOpenAI(
+                # Resolve the LLM builder for this provider_type via the registry.
+                # Unknown/unwired provider types fall back to the OpenAI-compatible
+                # builder (with a logged warning) instead of 500ing.
+                builder = get_llm_builder(provider.provider_type)
+                return builder(
                     api_key=provider.get_api_key_plaintext(),
                     base_url=provider.api_base or "https://api.openai.com/v1",
-                    model=model.model_name if model else "gpt-4o-mini",
+                    model_name=model.model_name if model else "gpt-4o-mini",
                     temperature=model.temperature if model else 0.7,
                     max_tokens=model.max_tokens if model else 65536,
                 )
@@ -594,10 +549,10 @@ class AIProviderService:
             f"AI Resolution [{task_type}]: No DB assignment found. Falling back to ENV settings. "
             f"Model: {settings.OPENAI_MODEL or 'gpt-4o-mini'}"
         )
-        return ChatOpenAI(
+        return factories.build_openai(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
-            model=settings.OPENAI_MODEL or "gpt-4o-mini",
+            model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
             temperature=0.7,
             max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
         )
@@ -606,7 +561,7 @@ class AIProviderService:
         self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
     ):
         """Get a configured OCR processor for the tenant/user"""
-        from app.processors.ocr import get_ocr_processor
+        from app.ai.processors.ocr import get_ocr_processor
 
         assignment = await self.get_active_assignment_for_task(
             "ocr", tenant_id, user_id
@@ -629,11 +584,13 @@ class AIProviderService:
 
             if provider:
                 llm = None
-                if provider.provider_type == "openai":
-                    llm = ChatOpenAI(
+                # OCR is LLM-backed only when the provider is OpenAI-compatible
+                # today (vision models). Tesseract/etc. skip the LLM entirely.
+                if provider.provider_type == ProviderType.OPENAI.value:
+                    llm = factories.build_openai(
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
-                        model=model.model_name if model else "gpt-4o",
+                        model_name=model.model_name if model else "gpt-4o",
                         temperature=model.temperature if model else 0.0,
                         max_tokens=model.max_tokens if model else 65536,
                     )
@@ -655,7 +612,7 @@ class AIProviderService:
         return get_ocr_processor(
             provider=settings.OCR_PROVIDER,
             api_key=settings.OPENAI_API_KEY
-            if settings.OCR_PROVIDER == "openai"
+            if settings.OCR_PROVIDER == ProviderType.OPENAI.value
             else None,
         )
 
@@ -663,7 +620,7 @@ class AIProviderService:
         self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
     ):
         """Get a configured NLP extractor for the tenant/user"""
-        from app.processors.nlp import get_nlp_extractor
+        from app.ai.processors.nlp import get_nlp_extractor
 
         assignment = await self.get_active_assignment_for_task(
             "nlp", tenant_id, user_id
@@ -686,11 +643,13 @@ class AIProviderService:
 
             if provider:
                 llm = None
-                if provider.provider_type == "openai":
-                    llm = ChatOpenAI(
+                # NLP structured extraction is LLM-backed only for OpenAI-
+                # compatible providers today; spaCy is the rule-based fallback.
+                if provider.provider_type == ProviderType.OPENAI.value:
+                    llm = factories.build_openai(
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
-                        model=model.model_name if model else "gpt-4o-mini",
+                        model_name=model.model_name if model else "gpt-4o-mini",
                         temperature=model.temperature if model else 0.7,
                         max_tokens=model.max_tokens if model else 65536,
                     )
@@ -710,7 +669,7 @@ class AIProviderService:
                 "AI Resolution [nlp]: No DB assignment found, but OPENAI_API_KEY is present in environment. Falling back to OpenAI extractor."
             )
             return get_nlp_extractor(
-                provider="openai",
+                provider=ProviderType.OPENAI.value,
                 api_key=settings.OPENAI_API_KEY,
                 api_base=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
                 model=settings.OPENAI_MODEL or "gpt-4o-mini",
@@ -720,4 +679,4 @@ class AIProviderService:
         logger.warning(
             "AI Resolution [nlp]: No DB assignment found and no API keys in environment. Falling back to standard SPACY extractor."
         )
-        return get_nlp_extractor(provider="spacy")
+        return get_nlp_extractor(provider=ProviderType.SPACY.value)

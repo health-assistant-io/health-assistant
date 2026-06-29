@@ -12,7 +12,7 @@ from app.main import app
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.enums import AIScope
-from app.schemas.ai_config import (
+from app.ai.schemas.config import (
     AIProviderResponse,
     AIModelResponse,
     AITaskAssignmentResponse,
@@ -269,7 +269,7 @@ def test_models_import():
 
 def test_schemas_import():
     """Test that AI schemas can be imported"""
-    from app.schemas.ai_config import (
+    from app.ai.schemas.config import (
         AIProviderCreate,
         AIProviderResponse,
         AIModelCreate,
@@ -288,8 +288,8 @@ def test_schemas_import():
 
 def test_processor_import():
     """Test that AI processor functions can be imported"""
-    from app.processors.ocr import get_ocr_processor, get_ocr_processor_from_db
-    from app.processors.nlp import get_nlp_extractor, get_nlp_extractor_from_db
+    from app.ai.processors.ocr import get_ocr_processor, get_ocr_processor_from_db
+    from app.ai.processors.nlp import get_nlp_extractor, get_nlp_extractor_from_db
 
     # Test basic OCR processor creation
     ocr = get_ocr_processor(

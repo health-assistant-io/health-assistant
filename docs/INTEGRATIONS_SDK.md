@@ -301,7 +301,7 @@ class MyProvider(BaseHealthProvider):
         return [my_tool_1, my_tool_2]
 ```
 
-The platform tool aggregator (`app/services/integration_tool_aggregator.py`) iterates all active integrations, calls `supports_tools()` on each, and merges `get_tools()` results with the built-in `ChatbotTools` before `llm.bind_tools()`. **No platform code references any specific integration domain** — any integration that opts in is picked up automatically.
+The platform tool aggregator (`app/ai/tools/aggregator.py`) iterates all active integrations, calls `supports_tools()` on each, and merges `get_tools()` results with the built-in `app/ai/tools` (assembled by `get_tools`) before `llm.bind_tools()`. **No platform code references any specific integration domain** — any integration that opts in is picked up automatically.
 
 `INTEGRATION_MAX_TOOLS_PER_SESSION` (default 20) bounds the total number of integration tools per chat turn.
 

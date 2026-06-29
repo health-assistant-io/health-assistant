@@ -314,9 +314,9 @@ class ImportService:
                         if use_ai:
                             unmapped = [o for o in obs_to_map if not o.biomarker_id]
                             if unmapped:
-                                from app.services.medical_processing_service import MedicalProcessingService
-                                from app.services.ai_provider_service import AIProviderService
-                                from app.schemas.ai_nlp import UnknownBiomarkerExtract
+                                from app.ai.pipeline.service import MedicalProcessingService
+                                from app.ai.providers.service import AIProviderService
+                                from app.ai.schemas.nlp import UnknownBiomarkerExtract
 
                                 logger.info(
                                     "AI normalization: resolving %d unmapped observation(s) via NLP task",
@@ -1444,7 +1444,7 @@ class ImportService:
         model: Optional[str] = None,
     ) -> ImportResult:
         try:
-            from app.processors.ocr import get_ocr_processor
+            from app.ai.processors.ocr import get_ocr_processor
 
             config = config or OCRImportConfig()
             ocr_processor = get_ocr_processor(

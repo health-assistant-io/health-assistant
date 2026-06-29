@@ -2,7 +2,7 @@ import pytest
 import json
 from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
-from app.processors.ocr.langchain_vision import LangChainOCRProcessor
+from app.ai.processors.ocr.langchain_vision import LangChainOCRProcessor
 from langchain_core.messages import AIMessage
 
 

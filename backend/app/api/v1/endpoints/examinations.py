@@ -9,7 +9,7 @@ from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
 from app.models.doctor_model import DoctorModel
 from app.models.examination_category import ExaminationCategory
-from app.services.medical_processing_service import MedicalProcessingService
+from app.ai.pipeline.service import MedicalProcessingService
 from sqlalchemy.orm import selectinload
 from app.schemas.examination import (
     ExaminationCreate,

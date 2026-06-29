@@ -13,8 +13,8 @@ from app.schemas.medication import (
 )
 
 
-from app.processors.nlp import get_nlp_extractor_from_db
-from app.schemas.ai_nlp import UnknownMedicationExtract
+from app.ai.processors.nlp import get_nlp_extractor_from_db
+from app.ai.schemas.nlp import UnknownMedicationExtract
 
 
 async def get_medication_catalog(

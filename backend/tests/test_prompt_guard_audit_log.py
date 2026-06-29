@@ -133,7 +133,7 @@ def test_b6_defense_preamble_is_substantive():
 def test_b6_assist_calls_guard_before_llm():
     """B6 regression: the assist dispatcher must invoke the guard before
     constructing the LLM (so the LLM never runs without the scan)."""
-    src = inspect.getsource(__import__("app.services.ai_assistance_service", fromlist=["x"]))
+    src = inspect.getsource(__import__("app.ai.assistance.service", fromlist=["x"]))
     # Find the assist method body.
     idx = src.index("async def assist(")
     body = src[idx : idx + 1500]
@@ -150,8 +150,10 @@ def test_b6_assist_calls_guard_before_llm():
 
 def test_b6_chat_system_prompts_include_defense_preamble():
     """B6: the chat system prompts must prepend the DEFENSE_PREAMBLE."""
-    src = inspect.getsource(__import__("app.services.ai_assistance_service", fromlist=["x"]))
-    # The defense preamble must be referenced at least twice (streaming + general chat).
+    src = inspect.getsource(__import__("app.ai.agents.prompts", fromlist=["x"]))
+    # The defense preamble must be referenced at least twice (streaming + resume
+    # chat prompts) plus its import — the prompts moved here from
+    # app.ai.assistance.service in Phase 2.
     count = src.count("DEFENSE_PREAMBLE")
     assert count >= 3, (
         f"Expected DEFENSE_PREAMBLE in chat prompts + import (found {count} refs)."

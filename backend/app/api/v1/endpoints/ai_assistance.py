@@ -2,15 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timezone
 
 from app.core.database import get_db
-from app.services.ai_assistance_service import AIAssistanceService
+from app.ai.assistance.service import AIAssistanceService
 from app.services.chat_session_service import ChatSessionService
 from app.models.enums import HitlTaskStatus
-from app.schemas.ai_assistance import (
+from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
     ChatSessionSchema,
@@ -23,6 +23,55 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
+
+
+# ---------------------------------------------------------------------------
+# Streaming error classification
+# ---------------------------------------------------------------------------
+# The chat stream endpoints catch exceptions and forward them to the client as
+# an SSE ``{"error": ..., "error_type": ...}`` payload. We never forward raw
+# provider SDK strings (e.g. OpenAI's "Connection error.") because they leak
+# the upstream vendor and aren't localized. Instead we classify the exception
+# into a short, stable code that the frontend maps to a translated message.
+# ValueError is the channel for *intentional* client-facing guard violations
+# (ownership/no-tasks/pending-task checks); its message is already user-facing
+# and is forwarded verbatim with error_type="guard".
+
+_STREAM_ERROR_TYPES = ("connection", "auth", "rate_limit", "timeout", "generic", "guard")
+
+
+def _classify_stream_error(exc: Exception) -> tuple[str, str]:
+    """Return ``(error_type, user_message)`` for a streaming exception.
+
+    The ``error_type`` is a stable lowercase code the frontend localizes.
+    ``user_message`` is non-empty only for soft guard messages (ValueError);
+    for provider errors it is empty so the frontend MUST localize from the
+    code (no raw SDK text leaves the server).
+    """
+    if isinstance(exc, ValueError):
+        # Intentional guard violation — message is already user-facing.
+        return ("guard", str(exc))
+
+    # Map known LLM/provider errors to non-leaky codes.
+    try:
+        from openai import (
+            APIConnectionError,
+            APITimeoutError,
+            AuthenticationError,
+            RateLimitError,
+        )
+    except ImportError:
+        return ("generic", "")
+
+    if isinstance(exc, APITimeoutError):
+        return ("timeout", "")
+    if isinstance(exc, APIConnectionError):
+        return ("connection", "")
+    if isinstance(exc, AuthenticationError):
+        return ("auth", "")
+    if isinstance(exc, RateLimitError):
+        return ("rate_limit", "")
+    return ("generic", "")
 
 
 @router.post("/assist", response_model=AIAssistanceResponse)
@@ -96,7 +145,10 @@ async def assist_user_stream(
             import logging
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
-            error_payload = json.dumps({"error": str(e)})
+            error_type, user_message = _classify_stream_error(e)
+            error_payload = json.dumps(
+                {"error": user_message, "error_type": error_type}
+            )
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -148,16 +200,15 @@ async def list_tools(
     current_user: TokenData = Depends(get_current_user),
 ):
     """List all available tools for the current context (including integrations)"""
-    from app.services.ai_chatbot_tools import ChatbotTools
-    from app.services.integration_tool_aggregator import aggregate as integration_aggregate
-    
-    chatbot_tools = ChatbotTools(
-        db, 
-        current_user.tenant_id, 
-        patient_id, 
-        examination_id=examination_id
+    from app.ai.tools import get_tools
+    from app.ai.tools.aggregator import aggregate as integration_aggregate
+
+    built_in_tools = get_tools(
+        db,
+        current_user.tenant_id,
+        patient_id,
+        examination_id=examination_id,
     )
-    built_in_tools = chatbot_tools.get_tools()
     
     result = []
     for t in built_in_tools:
@@ -315,13 +366,19 @@ async def resume_hitl_session(
             import logging
 
             logging.getLogger(__name__).warning(f"HITL resume rejected: {e}")
-            error_payload = json.dumps({"error": str(e)})
+            error_type, user_message = _classify_stream_error(e)
+            error_payload = json.dumps(
+                {"error": user_message, "error_type": error_type}
+            )
             yield f"data: {error_payload}\n\n"
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
-            error_payload = json.dumps({"error": str(e)})
+            error_type, user_message = _classify_stream_error(e)
+            error_payload = json.dumps(
+                {"error": user_message, "error_type": error_type}
+            )
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

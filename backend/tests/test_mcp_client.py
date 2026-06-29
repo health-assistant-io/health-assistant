@@ -482,11 +482,11 @@ class TestAggregator:
         fake_registry.get_provider.side_effect = lambda d: providers.get(d)
         monkeypatch.setattr(reg_mod, "integration_registry", fake_registry)
         # Also patch the aggregator's own import site.
-        from app.services import integration_tool_aggregator as agg_mod
+        from app.ai.tools import aggregator as agg_mod
         monkeypatch.setattr(agg_mod, "integration_registry", fake_registry)
 
     def test_no_instances_returns_empty(self, monkeypatch):
-        from app.services import integration_tool_aggregator
+        from app.ai.tools import aggregator as integration_tool_aggregator
 
         db = MagicMock()
         result = MagicMock()
@@ -500,7 +500,7 @@ class TestAggregator:
 
     def test_skips_non_tool_integrations(self, monkeypatch):
         """Integrations whose provider doesn't support tools are ignored."""
-        from app.services import integration_tool_aggregator
+        from app.ai.tools import aggregator as integration_tool_aggregator
 
         mcp_inst = self._make_integration("mcp_client", "MCP")
         webhook_inst = self._make_integration("webhook", "WH")
@@ -533,7 +533,7 @@ class TestAggregator:
         webhook_provider.supports_tools.assert_called_once()
 
     def test_skips_failing_instance(self, monkeypatch):
-        from app.services import integration_tool_aggregator
+        from app.ai.tools import aggregator as integration_tool_aggregator
 
         good = self._make_integration("mcp_client", "Good")
         bad = self._make_integration("mcp_client", "Bad")
@@ -561,7 +561,7 @@ class TestAggregator:
         assert len(out) == 1
 
     def test_caps_total_tools(self, monkeypatch):
-        from app.services import integration_tool_aggregator
+        from app.ai.tools import aggregator as integration_tool_aggregator
 
         monkeypatch.setattr(integration_tool_aggregator.settings, "INTEGRATION_MAX_TOOLS_PER_SESSION", 1)
 
@@ -589,7 +589,7 @@ class TestAggregator:
 
     def test_domain_agnostic_picks_up_hypothetical_integration(self, monkeypatch):
         """A non-MCP integration that implements supports_tools is picked up."""
-        from app.services import integration_tool_aggregator
+        from app.ai.tools import aggregator as integration_tool_aggregator
 
         # Hypothetical future 'web_search' integration
         ws_inst = self._make_integration("web_search", "WebSearch")

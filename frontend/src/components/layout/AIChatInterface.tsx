@@ -37,6 +37,38 @@ export interface AIChatHandlers {
   toggleToolsModal: () => void;
 }
 
+/**
+ * Map a streamed AI error to a localized, user-facing message.
+ *
+ * The backend classifies LLM/provider errors into a stable ``errorType`` code
+ * (connection / timeout / auth / rate_limit / generic) and intentionally
+ * leaves ``error`` EMPTY so raw SDK text (e.g. OpenAI's "Connection error.")
+ * never reaches the user. Soft guard violations use ``errorType === 'guard'``
+ * with the user-facing message in ``error``.
+ *
+ * Falls back to the raw ``error`` text (legacy/unguarded) or a generic
+ * localized message so we never render an empty bubble.
+ */
+function resolveStreamErrorMessage(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  msg: AIStreamMessage,
+): string {
+  if (msg.errorType === 'guard' && msg.error) {
+    return msg.error;
+  }
+  switch (msg.errorType) {
+    case 'connection':
+    case 'timeout':
+      return t('ai_chat.errors.connection');
+    case 'auth':
+      return t('ai_chat.errors.auth');
+    case 'rate_limit':
+      return t('ai_chat.errors.rate_limit');
+    default:
+      return msg.error || t('ai_chat.errors.generic');
+  }
+}
+
 export const AIChatInterface: React.FC<Props> = ({ 
   isFullScreen = false, 
   onClose, 
@@ -329,6 +361,11 @@ export const AIChatInterface: React.FC<Props> = ({
             }
           }
 
+          if (msg.error || msg.errorType) {
+            // LLM/provider error (localized by code) or soft guard violation.
+            accumulatedContent = resolveStreamErrorMessage(t, msg);
+          }
+
           setMessages(prev => {
             const updated = [...prev];
             const lastIdx = updated.length - 1;
@@ -448,9 +485,11 @@ export const AIChatInterface: React.FC<Props> = ({
               accumulatedTasks[idx] = msg.task;
             }
           }
-          if (msg.error) {
-            // Surface server-side guard violations (e.g. pending tasks).
-            accumulatedContent = msg.error;
+          if (msg.error || msg.errorType) {
+            // LLM/provider error (localized by code) or soft guard violation.
+            // Previously this only forwarded raw ``msg.error`` text (which was
+            // empty for provider errors) and never localized.
+            accumulatedContent = resolveStreamErrorMessage(t, msg);
           }
           setMessages(prev => {
             const updated = [...prev];

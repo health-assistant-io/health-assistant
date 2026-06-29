@@ -159,7 +159,7 @@ def test_looks_masked():
 def test_response_masks_encrypted_api_key(monkeypatch):
     _set_fernet_key(monkeypatch)
     from app.core.encryption import encrypt_secret
-    from app.schemas.ai_config import AIProviderResponse
+    from app.ai.schemas.config import AIProviderResponse
 
     encrypted = encrypt_secret("sk-prod-DEADBEEF")
     resp = AIProviderResponse(
@@ -185,7 +185,7 @@ def test_response_masks_encrypted_api_key(monkeypatch):
 def test_response_masks_plaintext_api_key(monkeypatch):
     """Legacy plaintext rows must also be masked on read."""
     _set_fernet_key(monkeypatch)
-    from app.schemas.ai_config import AIProviderResponse
+    from app.ai.schemas.config import AIProviderResponse
 
     resp = AIProviderResponse(
         id=uuid4(),
@@ -204,7 +204,7 @@ def test_response_masks_plaintext_api_key(monkeypatch):
 
 def test_response_none_api_key(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.schemas.ai_config import AIProviderResponse
+    from app.ai.schemas.config import AIProviderResponse
 
     resp = AIProviderResponse(
         id=uuid4(),
@@ -223,7 +223,7 @@ def test_response_none_api_key(monkeypatch):
 def test_with_models_response_also_masks(monkeypatch):
     _set_fernet_key(monkeypatch)
     from app.core.encryption import encrypt_secret
-    from app.schemas.ai_config import AIProviderWithModelsResponse
+    from app.ai.schemas.config import AIProviderWithModelsResponse
 
     encrypted = encrypt_secret("sk-abcdef-XX-SECRET")
     resp = AIProviderWithModelsResponse(
@@ -250,8 +250,8 @@ def test_with_models_response_also_masks(monkeypatch):
 async def test_create_provider_encrypts_api_key(monkeypatch):
     _set_fernet_key(monkeypatch)
     from app.core.encryption import decrypt_secret, is_encrypted
-    from app.services.ai_provider_service import AIProviderService
-    from app.schemas.ai_config import AIProviderCreate
+    from app.ai.providers.service import AIProviderService
+    from app.ai.schemas.config import AIProviderCreate
     from app.models.enums import AIScope
 
     db = MagicMock()
@@ -284,8 +284,8 @@ async def test_create_provider_encrypts_api_key(monkeypatch):
 async def test_update_provider_preserves_key_when_masked_sent(monkeypatch):
     _set_fernet_key(monkeypatch)
     from app.core.encryption import encrypt_secret
-    from app.services.ai_provider_service import AIProviderService
-    from app.schemas.ai_config import AIProviderUpdate
+    from app.ai.providers.service import AIProviderService
+    from app.ai.schemas.config import AIProviderUpdate
 
     encrypted_existing = encrypt_secret("sk-real-key-XYZ")
 
@@ -329,8 +329,8 @@ async def test_update_provider_preserves_key_when_masked_sent(monkeypatch):
 async def test_update_provider_encrypts_new_plaintext(monkeypatch):
     _set_fernet_key(monkeypatch)
     from app.core.encryption import decrypt_secret
-    from app.services.ai_provider_service import AIProviderService
-    from app.schemas.ai_config import AIProviderUpdate
+    from app.ai.providers.service import AIProviderService
+    from app.ai.schemas.config import AIProviderUpdate
 
     captured = {}
 
@@ -369,8 +369,8 @@ async def test_update_provider_encrypts_new_plaintext(monkeypatch):
 @pytest.mark.asyncio
 async def test_update_provider_clears_key_when_none_explicitly(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.services.ai_provider_service import AIProviderService
-    from app.schemas.ai_config import AIProviderUpdate
+    from app.ai.providers.service import AIProviderService
+    from app.ai.schemas.config import AIProviderUpdate
 
     captured = {}
 
@@ -460,7 +460,7 @@ def test_provider_service_never_reads_plaintext_attr():
     All reads must go through ``provider.get_api_key_plaintext()``. Catches
     a future regression at source level.
     """
-    src = (BACKEND / "app" / "services" / "ai_provider_service.py").read_text()
+    src = (BACKEND / "app" / "ai" / "providers" / "service.py").read_text()
     # 'provider.api_key' is allowed inside the model itself (to_dict), but
     # not in the service. The encrypted value is fine to read for storage
     # paths, but anything that needs the actual key must use the getter.

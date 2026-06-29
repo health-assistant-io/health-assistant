@@ -5,8 +5,8 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.services.ai_provider_service import AIProviderService
-from app.schemas.ai_config import (
+from app.ai.providers.service import AIProviderService
+from app.ai.schemas.config import (
     AIProviderCreate,
     AIProviderUpdate,
     AIProviderResponse,

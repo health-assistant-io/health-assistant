@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.main import app
 from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
-from app.schemas.ai_config import (
+from app.ai.schemas.config import (
     AIProviderCreate,
     AIModelCreate,
     AITaskAssignmentCreate,

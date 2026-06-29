@@ -1,6 +1,6 @@
 """Aggregate tools from all integrations that expose them, for the chat.
 
-Called from :mod:`app.services.ai_assistance_service` when a patient context
+Called from :mod:`app.ai.assistance.service` when a patient context
 is active. Discovers the user's active integrations, asks each integration's
 provider (via the SDK ``supports_tools`` / ``get_tools`` contract) for its
 LangChain tools, and merges them with the built-in ``ChatbotTools``.

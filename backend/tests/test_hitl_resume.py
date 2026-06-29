@@ -18,7 +18,7 @@ from app.main import app
 from app.core.security import get_current_user
 from app.models.enums import HitlTaskStatus
 from app.schemas.user import TokenData
-from app.services.ai_assistance_service import (
+from app.ai.assistance.service import (
     _hitl_resolution_summary,
     _hitl_resolved_brief,
 )

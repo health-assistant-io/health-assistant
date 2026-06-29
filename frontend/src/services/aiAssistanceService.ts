@@ -127,9 +127,20 @@ export const resumeHitlSession = async (
         if (line.trim().startsWith('data: ')) {
           const content = line.trim().replace('data: ', '');
           try {
-            const data = JSON.parse(content);
-            if (data.error) {
-              onMessage({ error: data.error });
+              const data = JSON.parse(content);
+            if (data.error || data.error_type) {
+              // Server-side error. The backend classifies LLM/provider errors
+              // into a stable ``error_type`` code (connection/auth/rate_limit/
+              // timeout/generic) and leaves ``error`` empty so no raw SDK text
+              // leaks. For soft guard violations ``error_type`` is "guard" and
+              // ``error`` carries the user-facing message.
+              //
+              // We MUST call onComplete() before returning: the chat UI resets
+              // its loading state only in the onComplete/onError callbacks, and
+              // a bare return here (the old behaviour) left it stuck spinning
+              // forever after a connection error.
+              onMessage({ error: data.error, errorType: data.error_type });
+              onComplete();
               return;
             }
             const rawContent = data.content;
@@ -200,6 +211,7 @@ export interface AIStreamMessage {
   citation?: string;
   task?: TaskInfo;
   error?: string;
+  errorType?: string;
 }
 
 export const streamAIAssistance = async (
@@ -245,9 +257,20 @@ export const streamAIAssistance = async (
         if (line.trim().startsWith('data: ')) {
           const content = line.trim().replace('data: ', '');
           try {
-            const data = JSON.parse(content);
-            if (data.error) {
-              onMessage({ error: data.error });
+              const data = JSON.parse(content);
+            if (data.error || data.error_type) {
+              // Server-side error. The backend classifies LLM/provider errors
+              // into a stable ``error_type`` code (connection/auth/rate_limit/
+              // timeout/generic) and leaves ``error`` empty so no raw SDK text
+              // leaks. For soft guard violations ``error_type`` is "guard" and
+              // ``error`` carries the user-facing message.
+              //
+              // We MUST call onComplete() before returning: the chat UI resets
+              // its loading state only in the onComplete/onError callbacks, and
+              // a bare return here (the old behaviour) left it stuck spinning
+              // forever after a connection error.
+              onMessage({ error: data.error, errorType: data.error_type });
+              onComplete();
               return;
             }
             
