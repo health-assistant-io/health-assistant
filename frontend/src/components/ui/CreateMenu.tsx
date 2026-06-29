@@ -293,7 +293,7 @@ const CreateMenu: React.FC<CreateMenuProps> = ({
             ref={menuRef}
             role="menu"
             style={dropdownStyle}
-            className="z-[200] bg-white dark:bg-dark-surface rounded-2xl shadow-[0_8px_30px_-4px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.6)] border border-gray-100 dark:border-dark-border py-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 dark:ring-white/5 max-h-[60vh] overflow-y-auto custom-scrollbar"
+            className="z-[1000] bg-white dark:bg-dark-surface rounded-2xl shadow-[0_8px_30px_-4px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.6)] border border-gray-100 dark:border-dark-border py-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 dark:ring-white/5 max-h-[60vh] overflow-y-auto custom-scrollbar"
           >
             {collapsed && (
               <div className="px-4 py-2 border-b border-gray-100 dark:border-dark-border mb-1">
