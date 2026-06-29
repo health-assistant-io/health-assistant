@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, ListTree, Tag, Info, Activity, Plus, Sparkles, X, ChevronDown } from 'lucide-react';
+import { Save, ListTree, Tag, Info, Activity, Plus, X, ChevronDown } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
+import { AIBadge } from '../ui/AIBadge';
 import { UnitSelector } from '../ui/UnitSelector';
 import biomarkerService from '../../services/biomarkerService';
 import { Unit } from '../../types/biomarker';
@@ -354,11 +355,11 @@ export const BiomarkerDefinitionForm: React.FC<BiomarkerDefinitionFormProps> = (
             </label>
 
             {discoveredUnit && (
-              <div className="mb-2 p-2 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-indigo-500" />
-                  <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                    {t('examination_detail.repository.ai_suggested_unit', 'AI Suggested Unit')}: {discoveredUnit}
+              <div className="mb-2 p-2 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AIBadge size="sm" label={t('examination_detail.repository.suggested_unit_label', 'Suggested Unit')} workflow="define_biomarker" />
+                  <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 truncate">
+                    {discoveredUnit}
                   </span>
                 </div>
                 <button

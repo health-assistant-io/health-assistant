@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sparkles, Wand2, Loader2 } from 'lucide-react';
 import { getAIAssistance } from '../../services/aiAssistanceService';
+import { AIBadge } from './AIBadge';
 
 interface Props {
   isOpen: boolean;
@@ -68,7 +69,10 @@ export const AIMagicFillModal: React.FC<Props> = ({
               <Sparkles className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase">{title}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase">{title}</h2>
+                <AIBadge taskType={taskType} />
+              </div>
               <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-[0.2em] mt-1">{subtitle}</p>
             </div>
           </div>

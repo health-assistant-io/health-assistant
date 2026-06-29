@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Plus, Edit2, Trash2, Save, X, 
-  ChevronLeft, LayoutGrid, Palette, Search, Sparkles, Loader2, Wand2,
+  ChevronLeft, LayoutGrid, Palette, Search, Sparkles, Loader2,
   Image as ImageIcon, Upload, Check, ChevronDown
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
@@ -473,10 +473,10 @@ export function ExaminationCategoryManager() {
                         }`}
                       >
                         <div className={`p-1.5 rounded-lg transition-all group-hover:scale-110 ${isAiMenuOpen ? 'bg-blue-600 text-white' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
-                          <Wand2 className="w-4 h-4" />
+                          <Sparkles className="w-4 h-4" />
                         </div>
                         <span className={`text-[10px] font-black uppercase tracking-tighter transition-colors ${isAiMenuOpen ? 'text-blue-600' : 'text-gray-500'}`}>
-                          {formData.icon.type === 'custom_svg' ? 'AI Refine' : 'AI Create'}
+                          {formData.icon.type === 'custom_svg' ? t('ai_labels.ai_refine', 'AI Refine') : t('ai_labels.ai_create', 'AI Create')}
                         </span>
                         <ChevronDown className={`w-3 h-3 text-blue-400 transition-transform duration-300 ${isAiMenuOpen ? 'rotate-180' : ''}`} />
                       </button>
@@ -502,7 +502,7 @@ export function ExaminationCategoryManager() {
                             className="w-full px-4 py-3 text-[10px] bg-white dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-1 focus:ring-blue-500 outline-none transition-all resize-none h-20 italic text-gray-600 dark:text-dark-text shadow-sm"
                           />
                           <div className="absolute right-3 bottom-3 pointer-events-none opacity-20 group-hover:opacity-100 transition-opacity">
-                            <Wand2 className="w-3 h-3 text-blue-500" />
+                            <Sparkles className="w-3 h-3 text-blue-500" />
                           </div>
                         </div>
 

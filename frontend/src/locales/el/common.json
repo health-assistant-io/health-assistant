@@ -402,6 +402,7 @@
       "category_placeholder": "π.χ. Αιματολογία",
       "preferred_unit": "Προτιμώμενη Μονάδα",
       "ai_suggested_unit": "Προτεινόμενη Μονάδα AI: {{unit}}",
+      "suggested_unit_label": "Προτεινόμενη Μονάδα",
       "add_unit": "Προσθήκη Μονάδας",
       "range_min": "Εύρος Αναφοράς (Ελάχ.)",
       "range_max": "Εύρος Αναφοράς (Μέγ.)",
@@ -815,8 +816,17 @@
   },
   "ai_labels": {
     "ai_analysis": "Ανάλυση AI",
+    "transparency_title": "Προβολή Πληροφοριών Διαφάνειας AI",
     "magic_fill_ai": "Magic Fill AI",
-    "smart_extraction_ai": "Έξυπνη Εξαγωγή AI"
+    "smart_extraction_ai": "Έξυπνη Εξαγωγή AI",
+    "agent_capabilities": "Δυνατότητες AI Agent",
+    "ai_interpretation": "Ερμηνεία AI",
+    "ai_create": "Δημιουργία AI",
+    "ai_refine": "Βελτίωση AI",
+    "smart_extraction_hint": "Το AI θα συμπληρώσει αυτόματα ημερομηνία, γιατρούς και σημειώσεις από έγγραφα",
+    "assistant": "Βοηθός AI",
+    "definition_builder": "Κατασκευαστής Ορισμών",
+    "get_assistance": "Λήψη Βοήθειας AI"
   },
   "ai_disclaimer": {
     "medical_warning_title": "Ιατρική Αποποίηση Ευθύνης",
@@ -845,7 +855,7 @@
       "resize": "Σύρετε για αλλαγή μεγέθους"
     },
     "hitl": {
-      "proposal_label": "Πρόταση AI",
+      "proposal_label": "Πρόταση",
       "default_title": "Επιβεβαίωση προτεινόμενης ενέργειας",
       "confirm_create": "Επιβεβαίωση & Δημιουργία",
       "review_and_edit": "Επισκόπηση & Επεξεργασία",

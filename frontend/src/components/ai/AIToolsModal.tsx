@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { X, Wrench, Search, Activity, Pill, Stethoscope, FileText, Bot, Box, CheckCircle2 } from 'lucide-react';
 import { AIToolInfo, getAvailableTools } from '../../services/aiAssistanceService';
+import { AIBadge } from '../ui/AIBadge';
 
 interface Props {
   isOpen: boolean;
@@ -18,6 +20,7 @@ interface ToolCategory {
 }
 
 export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, examinationId }) => {
+  const { t } = useTranslation();
   const [tools, setTools] = useState<AIToolInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,7 +111,10 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">AI Agent Capabilities</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('ai_labels.agent_capabilities', 'AI Agent Capabilities')}</h2>
+                <AIBadge taskType="chat" />
+              </div>
               <p className="text-xs text-gray-500 dark:text-dark-muted font-medium mt-0.5">Explore the tools and actions available to the LLM</p>
             </div>
           </div>

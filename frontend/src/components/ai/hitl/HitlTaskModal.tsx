@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Bot } from 'lucide-react';
+import { X } from 'lucide-react';
 import { TaskInfo } from '../../../types/ai';
 import { HitlTaskHandler, HITL_STATUS_META } from './registry';
+import { AIBadge } from '../../ui/AIBadge';
 
 interface Props {
   isOpen: boolean;
@@ -73,12 +74,7 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
               <HandlerIcon className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <Bot className="w-3 h-3 text-gray-400 dark:text-dark-muted" />
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-dark-muted">
-                  {t('ai_chat.hitl.proposal_label', 'AI Proposal')}
-                </span>
-              </div>
+              <AIBadge size="sm" label={t('ai_chat.hitl.proposal_label', 'Proposal')} workflow="chat" />
               <h2 className="text-base font-bold text-gray-900 dark:text-dark-text tracking-tight truncate">
                 {task.title || t('ai_chat.hitl.default_title', 'Review proposed action')}
               </h2>

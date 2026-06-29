@@ -5,6 +5,7 @@ import { TaskInfo } from '../../../types/ai';
 import { getHitlHandler, HITL_STATUS_META } from './registry';
 import { HitlTaskModal } from './HitlTaskModal';
 import { resolveHitlTask } from '../../../services/aiAssistanceService';
+import { AIBadge } from '../../ui/AIBadge';
 
 interface Props {
   task: TaskInfo;
@@ -93,12 +94,7 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
               <HandlerIcon className="w-3.5 h-3.5" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <Bot className="w-3 h-3 text-gray-400 dark:text-dark-muted flex-shrink-0" />
-                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-dark-muted truncate">
-                  {t('ai_chat.hitl.proposal_label', 'AI Proposal')}
-                </span>
-              </div>
+              <AIBadge size="sm" label={t('ai_chat.hitl.proposal_label', 'Proposal')} workflow="chat" />
               <div className="text-sm font-bold text-gray-800 dark:text-dark-text break-words leading-snug">
                 {task.title || t('ai_chat.hitl.default_title', 'Review proposed action')}
               </div>

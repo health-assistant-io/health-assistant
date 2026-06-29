@@ -12,6 +12,8 @@ interface Props {
   taskType?: string | string[]; // Added back for backward compatibility with existing components
   label?: string;
   variant?: 'default' | 'white';
+  /** Visual size — `sm` for tight headers/inline contexts, `md` (default) otherwise. */
+  size?: 'sm' | 'md';
 }
 
 export const AIBadge: React.FC<Props> = ({ 
@@ -20,7 +22,8 @@ export const AIBadge: React.FC<Props> = ({
   workflow,
   taskType,
   label,
-  variant = 'default'
+  variant = 'default',
+  size = 'md',
 }) => {
   const { t } = useTranslation();
   
@@ -28,13 +31,10 @@ export const AIBadge: React.FC<Props> = ({
   const resolvedWorkflow = workflow || (typeof taskType === 'string' ? taskType : (Array.isArray(taskType) ? taskType[0] : undefined));
   const tasks = useActiveAIWorkflow(resolvedWorkflow);
   const isMultipleTasks = tasks.length > 1;
-  
-  // Check if ANY of the tasks uses a local model (for the badge indicator itself)
-  const isLocal = tasks.some(t => t.model?.is_local ?? t.provider?.is_local ?? false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, height: 0 });
-  const triggerRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const updateCoords = () => {
@@ -71,6 +71,19 @@ export const AIBadge: React.FC<Props> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Close on Escape and return focus to the trigger
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen]);
 
   const renderTaskInfo = (task: ActiveAITask, index: number) => {
     const taskIsLocal = task.model?.is_local ?? task.provider?.is_local ?? false;
@@ -205,20 +218,30 @@ export const AIBadge: React.FC<Props> = ({
     ? "text-white/70 group-hover:text-white"
     : "text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300";
 
+  const sizeClasses = size === 'sm'
+    ? "px-2.5 py-0.5 text-xs"
+    : "px-3.5 py-1.5 text-sm";
+
+  const iconSize = size === 'sm' ? "w-3.5 h-3.5" : "w-4 h-4";
+
   return (
     <>
-      <span 
+      <button
+        type="button"
         ref={triggerRef}
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen(!isOpen);
         }}
-        className={`inline-flex items-center space-x-2 px-3.5 py-1.5 text-sm font-bold rounded-full transition-all active:scale-95 group ${variantClasses} ${className}`}
-        title="View AI Transparency Info"
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-label={t('ai_labels.transparency_title', 'View AI Transparency Info')}
+        title={t('ai_labels.transparency_title', 'View AI Transparency Info')}
+        className={`inline-flex items-center space-x-1.5 ${sizeClasses} font-bold rounded-full transition-all active:scale-95 group ${variantClasses} ${className}`}
       >
         {showText && <span className={`tracking-tight ${aiTextClasses}`}>{label || 'AI'}</span>}
-        <Info className={`w-4 h-4 transition-colors shrink-0 ${infoIconClasses}`} />
-      </span>
+        <Info className={`${iconSize} transition-colors shrink-0 ${infoIconClasses}`} aria-hidden="true" />
+      </button>
       {popover}
     </>
   );

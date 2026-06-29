@@ -412,6 +412,7 @@
       "category_placeholder": "e.g. Hematology",
       "preferred_unit": "Preferred Unit",
       "ai_suggested_unit": "AI Suggested Unit: {{unit}}",
+      "suggested_unit_label": "Suggested Unit",
       "add_unit": "Add Unit",
       "range_min": "Ref Range (Min)",
       "range_max": "Ref Range (Max)",
@@ -856,8 +857,17 @@
   },
   "ai_labels": {
     "ai_analysis": "AI Analysis",
+    "transparency_title": "View AI Transparency Info",
     "magic_fill_ai": "Magic Fill AI",
-    "smart_extraction_ai": "Smart Extraction AI"
+    "smart_extraction_ai": "Smart Extraction AI",
+    "agent_capabilities": "AI Agent Capabilities",
+    "ai_interpretation": "AI Interpretation",
+    "ai_create": "AI Create",
+    "ai_refine": "AI Refine",
+    "smart_extraction_hint": "AI will auto-fill date, doctors, and notes from documents",
+    "assistant": "AI Assistant",
+    "definition_builder": "Definition Builder",
+    "get_assistance": "Get AI Assistance"
   },
   "ai_disclaimer": {
     "medical_warning_title": "Medical Disclaimer",
@@ -886,7 +896,7 @@
       "resize": "Drag to resize"
     },
     "hitl": {
-      "proposal_label": "AI Proposal",
+      "proposal_label": "Proposal",
       "default_title": "Review proposed action",
       "confirm_create": "Confirm & Create",
       "review_and_edit": "Review & Edit",

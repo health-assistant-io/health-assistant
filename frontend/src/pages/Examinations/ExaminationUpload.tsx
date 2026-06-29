@@ -444,10 +444,10 @@ function ExaminationUpload() {
             <div className="flex flex-col">
               <span className="text-sm font-bold text-gray-900 dark:text-dark-text flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-500" />
-                Smart Extraction AI
-                <AIBadge taskType="ocr" label="Extraction" showText={false} className="ml-2 bg-blue-100 dark:bg-blue-900/50" />
+                {t('ai_labels.smart_extraction_ai', 'Smart Extraction AI')}
+                <AIBadge taskType="ocr" className="ml-2" />
               </span>
-              <span className="text-[10px] text-gray-500 dark:text-dark-muted">AI will auto-fill date, doctors, and notes from documents</span>
+              <span className="text-[10px] text-gray-500 dark:text-dark-muted">{t('ai_labels.smart_extraction_hint', 'AI will auto-fill date, doctors, and notes from documents')}</span>
             </div>
             <button
               type="button"

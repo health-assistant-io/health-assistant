@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getDocumentDownloadUrl } from '../../services/documentService';
 import { AuthenticatedPdfViewer } from '../ui/AuthenticatedPdfViewer';
+import { AIBadge } from '../ui/AIBadge';
 
 interface Props {
   documents: any[];
@@ -42,6 +44,7 @@ const Thumbnail = ({ doc, isSelected, onClick }: { doc: any, isSelected: boolean
 };
 
 export default function ImagingVisualizer({ documents }: Props) {
+  const { t } = useTranslation();
   const [selectedDoc, setSelectedDoc] = useState(documents[0] || null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isPdfFullscreen, setIsPdfFullscreen] = useState(false);
@@ -123,9 +126,12 @@ export default function ImagingVisualizer({ documents }: Props) {
 
         {/* Right side: Findings */}
         <div className="lg:w-1/3 p-8 flex flex-col bg-white dark:bg-dark-surface">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text tracking-tight">AI Interpretation</h3>
-            <Link to={`/documents/${selectedDoc.id}`} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-6 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('ai_labels.ai_interpretation', 'AI Interpretation')}</h3>
+              <AIBadge workflow="full_reconstruction" />
+            </div>
+            <Link to={`/documents/${selectedDoc.id}`} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase tracking-wider shrink-0">
               Full Data
             </Link>
           </div>

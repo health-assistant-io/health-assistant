@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Send, X, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { getAIAssistance } from '../../services/aiAssistanceService';
 import { AIBadge } from './AIBadge';
 
@@ -20,6 +21,7 @@ export const AIAssistButton: React.FC<Props> = ({
   placeholder,
   showLabel = true
 }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -77,10 +79,10 @@ export const AIAssistButton: React.FC<Props> = ({
         type="button"
         onClick={() => setIsOpen(true)}
         className={`flex items-center space-x-2 p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all group ${className}`}
-        title="Get AI Assistance"
+        title={t('ai_labels.get_assistance', 'Get AI Assistance')}
       >
         <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">Magic Fill AI</span>}
+        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">{t('ai_labels.magic_fill_ai', 'Magic Fill AI')}</span>}
       </button>
     );
   }
@@ -92,7 +94,7 @@ export const AIAssistButton: React.FC<Props> = ({
           <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400">
             <Sparkles className="w-3.5 h-3.5" />
             <span className="text-[10px] font-black uppercase tracking-widest">
-              {taskType === 'define_biomarker' || taskType === 'define_medication' ? 'Definition Builder' : 'AI Assistant'}
+              {taskType === 'define_biomarker' || taskType === 'define_medication' ? t('ai_labels.definition_builder', 'Definition Builder') : t('ai_labels.assistant', 'AI Assistant')}
             </span>
             <AIBadge taskType={taskType} showText={false} className="ml-1" />
           </div>

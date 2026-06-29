@@ -23,6 +23,7 @@ import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import LineChart from '../../components/charts/LineChart';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
+import { AIBadge } from '../../components/ui/AIBadge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -739,11 +740,12 @@ const BiomarkerDetail: React.FC = () => {
               {activeTab === 'insights' && (
                 <div className="p-8 animate-in fade-in duration-300">
                   <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-8 text-white shadow-xl shadow-blue-200 dark:shadow-none">
-                    <div className="flex items-center space-x-3 mb-6">
+                    <div className="flex items-center space-x-3 mb-6 flex-wrap">
                       <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
                         <Activity className="w-6 h-6 text-white" />
                       </div>
                       <h3 className="text-xl font-black uppercase tracking-tight">{t('biomarkers.smart_analysis')}</h3>
+                      <AIBadge variant="white" taskType="anomaly_detection" />
                     </div>
                     <p className="text-blue-50 leading-relaxed mb-8 font-medium">
                       Based on the longitudinal data for {biomarker.name}, the trend appears to be stable. 
