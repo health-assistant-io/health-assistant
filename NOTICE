@@ -6,3 +6,19 @@ Official Website: https://health-assistant.io
 GitHub Repository: https://github.com/health-assistant-io/health-assistant
 Specifically, the Health-Assistant platform for universal health data management.
 Inspired by the privacy-first philosophy of the open-source community.
+
+--------------------------------------------------------------------------------
+Third-party assets
+--------------------------------------------------------------------------------
+
+This product includes the following third-party assets:
+
+Anatomy body surface diagrams (backend/data/seeds/anatomy_figures/*.webp):
+  - "Man surface diagram ahead-behind.svg" / "Woman surface diagram ahead-behind.svg"
+    by Jmarchn, licensed under CC BY-SA 3.0
+  - Source: https://commons.wikimedia.org/wiki/File:Man_surface_diagram_ahead-behind.svg
+             https://commons.wikimedia.org/wiki/File:Woman_surface_diagram_ahead-behind.svg
+  - License: https://creativecommons.org/licenses/by-sa/3.0/
+  - Derivative works (rasterized to WebP, cropped per view) are distributed
+    under the same CC BY-SA 3.0 license.
+

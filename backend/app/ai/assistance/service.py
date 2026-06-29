@@ -36,7 +36,11 @@ from app.ai.agents.prompts import (
     build_general_chat_system_prompt,
     session_title_prompt,
 )
-from app.ai.assistance.definitions import define_biomarker, define_medication
+from app.ai.assistance.definitions import (
+    define_anatomy_graph,
+    define_biomarker,
+    define_medication,
+)
 from app.ai.assistance.form_fillers import (
     fill_biomarker_form,
     fill_medication_form,
@@ -136,6 +140,8 @@ class AIAssistanceService:
             return await self._define_biomarker(llm, user_input, context)
         elif task_type == "define_medication":
             return await self._define_medication(llm, user_input, context)
+        elif task_type == "define_anatomy_graph":
+            return await self._define_anatomy_graph(llm, user_input, context)
         elif task_type == "suggest_category_icon":
             return await self._suggest_category_icon(llm, user_input, context)
         elif task_type == "generate_category_icon":
@@ -353,6 +359,11 @@ class AIAssistanceService:
         self, llm, user_input: str, context: Dict[str, Any]
     ) -> Dict[str, Any]:
         return await define_medication(llm, user_input, context)
+
+    async def _define_anatomy_graph(
+        self, llm, user_input: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        return await define_anatomy_graph(llm, user_input, context)
 
     async def _magic_fill_examination(
         self, llm, user_input: str, context: Dict[str, Any]

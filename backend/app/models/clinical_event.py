@@ -310,3 +310,16 @@ class ClinicalEvent(
             "meta": build_meta(str(self.id) if self.id else None),
         }
         return build_fhir_resource("Condition", data)
+
+class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "event_anatomy_links"
+
+    event_id = Column(PG_UUID(as_uuid=True), ForeignKey("clinical_events.id", ondelete="CASCADE"), nullable=False)
+    anatomy_id = Column(PG_UUID(as_uuid=True), ForeignKey("anatomy_structures.id", ondelete="CASCADE"), nullable=False)
+    
+    # E.g., 'primary_site', 'radiates_to'
+    relation_type = Column(String(50), nullable=True) 
+
+    __table_args__ = (
+        Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),
+    )

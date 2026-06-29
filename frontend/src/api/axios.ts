@@ -20,6 +20,14 @@ api.interceptors.request.use(
       console.warn('No access token found for request:', config.url);
     }
 
+    // Let the browser set the correct multipart Content-Type (with boundary)
+    // when sending FormData — the default 'application/json' header would
+    // otherwise override it and the server would reject the form fields.
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
+
     // Check if offline for modification requests
     const isModification = ['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '');
     if (!navigator.onLine && isModification) {

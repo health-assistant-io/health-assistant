@@ -104,6 +104,10 @@ async def lifespan(app: FastAPI):
             logger.info("Syncing body parts catalog...")
             stats_body_parts = await seed_service.seed_body_parts()
             logger.info(f"Body parts sync complete: {stats_body_parts}")
+
+            logger.info("Syncing anatomy figures...")
+            stats_figures = await seed_service.seed_anatomy_figures()
+            logger.info(f"Anatomy figures sync complete: {stats_figures}")
         except Exception as e:
             logger.error(f"Failed to seed catalogs: {e}")
             

@@ -2,7 +2,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 
-from app.models.enums import HitlTaskStatus
+from app.models.enums import (
+    AnatomyCategory,
+    AnatomyRelationType,
+    CodingSystem,
+    HitlTaskStatus,
+)
 
 
 class AIAssistanceRequest(BaseModel):
@@ -190,4 +195,40 @@ class CategoryIconGenerationOutput(BaseModel):
     svg_content: str = Field(..., description="Clean, minimalist SVG code for the icon")
     justification: Optional[str] = Field(
         None, description="Short explanation of why this icon design was chosen"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Anatomy graph generation (backs the ``define_anatomy_graph`` task type).
+# ---------------------------------------------------------------------------
+
+
+class AnatomyImportNode(BaseModel):
+    slug: str = Field(
+        ..., description="Unique kebab-case identifier (e.g., 'left-ventricle')"
+    )
+    name: str = Field(..., description="Human readable name")
+    category: AnatomyCategory = Field(
+        ..., description="Category like ORGAN, SYSTEM, REGION, ORGAN_PART"
+    )
+    standard_system: Optional[CodingSystem] = Field(
+        None, description="Typically LOINC, SNOMED, or CUSTOM"
+    )
+    standard_code: Optional[str] = Field(None, description="The official identifier code")
+    description: Optional[str] = Field(None, description="Brief description")
+    is_custom: bool = Field(True, description="Always true for AI-generated")
+
+
+class AnatomyImportEdge(BaseModel):
+    source_slug: str = Field(..., description="Source node slug")
+    target_slug: str = Field(..., description="Target node slug")
+    relation_type: AnatomyRelationType = Field(..., description="Type of relationship")
+
+
+class AnatomyGraphDefinitionOutput(BaseModel):
+    nodes: List[AnatomyImportNode] = Field(
+        ..., description="List of anatomical structures"
+    )
+    edges: List[AnatomyImportEdge] = Field(
+        ..., description="List of relationships between those structures"
     )

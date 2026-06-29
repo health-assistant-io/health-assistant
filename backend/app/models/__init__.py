@@ -51,9 +51,10 @@ from .clinical_event import (
     ClinicalEventType,
     EventExaminationLink,
     EventObservationLink,
+    EventAnatomyLink,
     ClinicalEventStatus,
 )
-from .body_part import BodyPartModel
+from .anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
 from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
@@ -106,8 +107,11 @@ __all__ = [
     "ClinicalEventType",
     "EventExaminationLink",
     "EventObservationLink",
+    "EventAnatomyLink",
     "ClinicalEventStatus",
-    "BodyPartModel",
+    "AnatomyStructure",
+    "AnatomyRelation",
+    "AnatomyFigure",
     "BiomarkerEventCorrelation",
     "NotificationTrigger",
     "Notification",

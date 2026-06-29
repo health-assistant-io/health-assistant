@@ -9,7 +9,8 @@ import {
   ChevronRight,
   ChevronDown,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Network
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -137,6 +138,7 @@ function Sidebar() {
       subItems: [
         { path: '/examinations', labelKey: 'common.examinations' },
         { path: '/documents', labelKey: 'common.documents_explorer' },
+        { path: '/anatomy', labelKey: 'common.anatomy_explorer' },
         { path: '/telemetry', labelKey: 'common.telemetry' },
       ],
     },
