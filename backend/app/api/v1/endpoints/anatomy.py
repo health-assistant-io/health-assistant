@@ -11,6 +11,7 @@ from app.schemas.anatomy import (
     AnatomyStructureCreate,
     AnatomyStructureUpdate,
     AnatomyRelationCreate,
+    AnatomyRelationResponse,
     AnatomyGraphNode,
     AnatomyListResponse,
     AnatomyRelatedResponse,
@@ -300,7 +301,7 @@ async def get_anatomy_structure(
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
     return structure
 
-@router.post("/relations")
+@router.post("/relations", response_model=AnatomyRelationResponse)
 async def create_anatomy_relation(
     relation_in: AnatomyRelationCreate,
     db: AsyncSession = Depends(get_db),

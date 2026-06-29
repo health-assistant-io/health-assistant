@@ -41,6 +41,7 @@ class TestTaskType:
             "magic_fill_examination",
             "define_biomarker",
             "define_medication",
+            "define_anatomy_graph",
             "suggest_category_icon",
             "generate_category_icon",
             "chat",
