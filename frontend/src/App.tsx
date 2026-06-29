@@ -8,6 +8,7 @@ import ClinicalAlerts from './pages/Dashboard/ClinicalAlerts';
 import { BiomarkerTrends, CorrelativeAnalytics } from './pages/Analytics';
 import Documents from './pages/Documents/DocumentList';
 import DocumentDetail from './pages/Documents/DocumentDetail';
+import { AnatomyExplorer } from './pages/Anatomy/AnatomyExplorer';
 import Examinations from './pages/Examinations/ExaminationList';
 import ExaminationUpload from './pages/Examinations/ExaminationUpload';
 import ExaminationDetail from './pages/Examinations/ExaminationDetail';
@@ -50,6 +51,7 @@ import TenantManagement from './pages/Admin/TenantManagement';
 import TenantDetail from './pages/Admin/TenantDetail';
 import CatalogManagement from './pages/Admin/CatalogManagement';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
+import AtlasManager from './pages/Admin/AtlasManager';
 
 import { AIConfig } from './pages/Settings/AIConfig';
 import { useProtectedRoute } from './hooks/useProtectedRoute';
@@ -241,6 +243,8 @@ function App() {
           <Route path="/patients/:patientId/:activeTab" element={<PatientDetail />} />
           <Route path="/events" element={<ClinicalEventList />} />
           <Route path="/events/:eventId" element={<ClinicalEventDetail />} />
+          <Route path="/anatomy" element={<AnatomyExplorer />} />
+          <Route path="/anatomy/:slug" element={<AnatomyExplorer />} />
           <Route path="/medications" element={<MedicationList />} />
           <Route path="/medications/catalog" element={<MedicationCatalog />} />
           <Route path="/medications/details/:medicationId" element={<MedicationDetail />} />
@@ -259,6 +263,7 @@ function App() {
               <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
               <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
               <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
+              <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
               <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
             </>
           )}

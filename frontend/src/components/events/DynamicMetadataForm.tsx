@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity, Calendar, Info, MapPin, Zap, Target } from 'lucide-react';
-import { BodyPartSelector } from '../ui/BodyPartSelector';
+import { DynamicAnatomyField } from './DynamicAnatomyField';
 import { DatePicker } from '../ui/DatePicker';
 
 interface Field {
@@ -113,9 +113,9 @@ export const DynamicMetadataForm: React.FC<Props> = ({ schema, value, onChange, 
               )}
 
               {field.type === 'creatable-select' && field.source === 'body-parts' && (
-                <BodyPartSelector
-                  selectedId={value[field.name]}
-                  onSelect={(part) => handleChange(field.name, part.id)}
+                <DynamicAnatomyField
+                  value={value[field.name]}
+                  onChange={(val) => handleChange(field.name, val)}
                   placeholder={`Select ${field.label}...`}
                 />
               )}

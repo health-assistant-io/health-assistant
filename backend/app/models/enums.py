@@ -196,3 +196,23 @@ class JobStatus(str, enum.Enum):
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
 
+
+class AnatomyCategory(str, enum.Enum):
+    SYSTEM = "SYSTEM"
+    REGION = "REGION"
+    ORGAN = "ORGAN"
+    ORGAN_PART = "ORGAN_PART"
+    TISSUE = "TISSUE"
+    CELL = "CELL"
+    SUBSTANCE = "SUBSTANCE"
+    JOINT = "JOINT"
+    OTHER = "OTHER"
+
+class AnatomyRelationType(str, enum.Enum):
+    PART_OF = "PART_OF"
+    BRANCH_OF = "BRANCH_OF"
+    DRAINS_INTO = "DRAINS_INTO"
+    ARTICULATES_WITH = "ARTICULATES_WITH"
+    INNERVATED_BY = "INNERVATED_BY"
+    SUPPLIED_BY = "SUPPLIED_BY"
+    CONTINUOUS_WITH = "CONTINUOUS_WITH"

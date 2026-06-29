@@ -50,15 +50,12 @@ export const BodyPartSelector: React.FC<Props> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredParts = bodyParts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredParts = bodyParts.filter(p =>
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.slug.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const selectedPart = bodyParts.find(p => p.id === selectedId);
-
-  // If we have a selectedId but bodyParts is empty (initial load), we might need to fetch the specific part
-  // However, for simplicity here, we assume the list will be loaded when the user interacts.
-  // In a real app, you might want to fetch the selectedPart details if not in list.
 
   const handleCreate = async () => {
     if (!searchTerm.trim()) return;
@@ -80,7 +77,7 @@ export const BodyPartSelector: React.FC<Props> = ({
 
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
-      <div 
+      <div
         className={`w-full ${innerClassName} bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 cursor-pointer flex items-center justify-between transition-all hover:bg-white dark:hover:bg-dark-surface`}
         onClick={() => setIsOpen(!isOpen)}
       >
@@ -108,7 +105,7 @@ export const BodyPartSelector: React.FC<Props> = ({
               />
             </div>
           </div>
-          
+
           <div className="max-h-64 overflow-y-auto custom-scrollbar">
             {isLoading ? (
               <div className="p-8 flex justify-center">

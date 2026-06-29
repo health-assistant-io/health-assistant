@@ -1,13 +1,15 @@
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Dict, Any
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.allergy import AllergyCatalog, AllergyCategory
 from app.models.clinical_event import ClinicalEventCategory, ClinicalEventType
-from app.models.body_part import BodyPartModel
+from app.models.anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
+from app.models.enums import AnatomyCategory, AnatomyRelationType, CodingSystem
 from app.core.database import AsyncSessionLocal
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -175,64 +177,216 @@ class SeedService:
 
     async def seed_body_parts(self, session: AsyncSession = None) -> Dict[str, int]:
         """
-        Sync body parts from JSON to Database.
+        Sync anatomy structures and relations from JSON to Database.
         """
-        file_path = self.seeds_dir / "body_parts.json"
+        file_path = self.seeds_dir / "anatomy_base.json"
         if not file_path.exists():
-            logger.warning(f"Body parts seed file not found: {file_path}")
+            logger.warning(f"Anatomy seed file not found: {file_path}")
             return {"added": 0, "updated": 0, "errors": 0}
 
         try:
             with open(file_path, "r") as f:
-                body_parts_data = json.load(f)
+                anatomy_data = json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load body parts seeds: {e}")
+            logger.error(f"Failed to load anatomy seeds: {e}")
             return {"added": 0, "updated": 0, "errors": 1}
 
         if session:
-            return await self._process_body_parts(session, body_parts_data)
+            return await self._process_body_parts(session, anatomy_data)
         else:
             async with AsyncSessionLocal() as new_session:
-                result = await self._process_body_parts(new_session, body_parts_data)
+                result = await self._process_body_parts(new_session, anatomy_data)
                 await new_session.commit()
                 return result
 
     async def _process_body_parts(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
+        self, session: AsyncSession, data: Dict[str, Any]
     ) -> Dict[str, int]:
         stats = {"added": 0, "updated": 0, "errors": 0}
 
-        if not await self._table_exists(session, "body_parts"):
-            logger.error("Table 'body_parts' does not exist. Skipping seeding.")
-            return {"added": 0, "updated": 0, "errors": len(data)}
+        if not await self._table_exists(session, "anatomy_structures"):
+            logger.error("Table 'anatomy_structures' does not exist. Skipping seeding.")
+            return {"added": 0, "updated": 0, "errors": len(data.get("nodes", []))}
 
-        for item in data:
+        slug_to_id = {}
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+
+        for item in nodes:
             try:
-                stmt = select(BodyPartModel).where(BodyPartModel.slug == item["slug"])
+                stmt = select(AnatomyStructure).where(AnatomyStructure.slug == item["slug"])
                 result = await session.execute(stmt)
                 db_part = result.scalar_one_or_none()
 
+                category_val = AnatomyCategory.OTHER
+                try:
+                    category_val = AnatomyCategory(item.get("category", "OTHER"))
+                except ValueError:
+                    pass
+
+                standard_sys = None
+                if item.get("standard_system"):
+                    try:
+                        standard_sys = CodingSystem(item["standard_system"])
+                    except ValueError:
+                        pass
+
                 if db_part:
                     db_part.name = item.get("name", db_part.name)
-                    db_part.snomed_code = item.get("snomed_code", db_part.snomed_code)
+                    db_part.category = category_val
+                    db_part.standard_system = standard_sys
+                    db_part.standard_code = item.get("standard_code", db_part.standard_code)
+                    db_part.description = item.get("description", db_part.description)
+                    db_part.display = item.get("display", db_part.display)
                     stats["updated"] += 1
+                    slug_to_id[db_part.slug] = db_part.id
                 else:
-                    new_part = BodyPartModel(
+                    new_part = AnatomyStructure(
                         id=uuid4(),
                         name=item["name"],
                         slug=item["slug"],
-                        snomed_code=item.get("snomed_code"),
+                        category=category_val,
+                        standard_system=standard_sys,
+                        standard_code=item.get("standard_code"),
+                        description=item.get("description"),
+                        display=item.get("display"),
                         is_custom=False,
                         tenant_id=None,
                         created_at=datetime.now(timezone.utc),
                     )
                     session.add(new_part)
+                    await session.flush()
                     stats["added"] += 1
+                    slug_to_id[new_part.slug] = new_part.id
             except Exception as e:
-                logger.error(f"Error seeding body part {item.get('slug')}: {e}")
+                logger.error(f"Error seeding anatomy node {item.get('slug')}: {e}")
+                stats["errors"] += 1
+
+        all_nodes_result = await session.execute(select(AnatomyStructure.slug, AnatomyStructure.id))
+        for slug, node_id in all_nodes_result.all():
+            slug_to_id[slug] = node_id
+
+        for edge in edges:
+            try:
+                source_id = slug_to_id.get(edge["source_slug"])
+                target_id = slug_to_id.get(edge["target_slug"])
+                if not source_id or not target_id:
+                    logger.warning(f"Skipping edge: missing slug {edge.get('source_slug')} -> {edge.get('target_slug')}")
+                    stats["errors"] += 1
+                    continue
+
+                rel_type_val = AnatomyRelationType.PART_OF
+                try:
+                    rel_type_val = AnatomyRelationType(edge["relation_type"])
+                except ValueError:
+                    pass
+
+                existing_edge = await session.execute(
+                    select(AnatomyRelation).where(
+                        and_(
+                            AnatomyRelation.source_id == source_id,
+                            AnatomyRelation.target_id == target_id,
+                            AnatomyRelation.relation_type == rel_type_val,
+                        )
+                    )
+                )
+                if not existing_edge.scalar_one_or_none():
+                    new_relation = AnatomyRelation(
+                        id=uuid4(),
+                        source_id=source_id,
+                        target_id=target_id,
+                        relation_type=rel_type_val,
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    session.add(new_relation)
+            except Exception as e:
+                logger.error(f"Error seeding anatomy edge {edge.get('source_slug')} -> {edge.get('target_slug')}: {e}")
                 stats["errors"] += 1
 
         return stats
+
+    async def seed_anatomy_figures(self, session: AsyncSession = None) -> Dict[str, int]:
+        """
+        Seed the four default body figures (man/woman x front/back) from WebP
+        files under data/seeds/anatomy_figures/. Each file is copied into
+        UPLOAD_DIR/anatomy_figures/ and the DB row records its path + pixel
+        dimensions. Wikimedia surface diagrams, CC BY-SA 3.0 (see NOTICE).
+
+        Idempotent: inserts missing rows and refreshes the image file when the
+        seed changes. Markers are normalized 0-1 against pixel dimensions.
+        """
+        spec = [
+            ("man-front",   "man-front.webp",   "Male \u2014 Front",   "man",   "front", 0),
+            ("man-back",    "man-back.webp",    "Male \u2014 Back",    "man",   "back",  1),
+            ("woman-front", "woman-front.webp", "Female \u2014 Front", "woman", "front", 2),
+            ("woman-back",  "woman-back.webp",  "Female \u2014 Back",  "woman", "back",  3),
+        ]
+        seeds_dir = self.seeds_dir / "anatomy_figures"
+        from app.services.anatomy_service import _figures_base_dir, FIGURES_DIR
+        from app.core.config import settings
+
+        async def _do(s: AsyncSession) -> Dict[str, int]:
+            local = {"added": 0, "updated": 0, "errors": 0}
+            if not await self._table_exists(s, "anatomy_figures"):
+                logger.error("Table 'anatomy_figures' does not exist. Skipping figure seeding.")
+                local["errors"] = 1
+                return local
+            dest_dir = _figures_base_dir()
+            for slug, fname, label, fkey, vkey, order in spec:
+                try:
+                    src = seeds_dir / fname
+                    if not src.exists():
+                        logger.warning(f"Figure seed not found: {src}")
+                        local["errors"] += 1
+                        continue
+                    data = src.read_bytes()
+                    from PIL import Image as PILImage
+                    import io
+                    with PILImage.open(io.BytesIO(data)) as img:
+                        w, h = img.size
+                    rel_path = f"{FIGURES_DIR}/{fname}"
+                    dest = Path(str(settings.UPLOAD_DIR)) / rel_path
+                    need_write = (not dest.exists()) or (dest.read_bytes() != data)
+                    if need_write:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        dest.write_bytes(data)
+                    existing_res = await s.execute(
+                        select(AnatomyFigure).where(AnatomyFigure.slug == slug)
+                    )
+                    existing = existing_res.scalar_one_or_none()
+                    if existing:
+                        if (existing.image_path != rel_path
+                                or existing.width != w or existing.height != h):
+                            existing.image_path = rel_path
+                            existing.width, existing.height = w, h
+                            existing.label = label
+                            existing.sort_order = order
+                            local["updated"] += 1
+                        continue
+                    s.add(AnatomyFigure(
+                        id=uuid4(),
+                        slug=slug,
+                        label=label,
+                        figure_key=fkey,
+                        view_key=vkey,
+                        image_path=rel_path,
+                        width=w,
+                        height=h,
+                        sort_order=order,
+                        is_active=True,
+                        created_at=datetime.now(timezone.utc),
+                    ))
+                    local["added"] += 1
+                except Exception as e:
+                    logger.error(f"Error seeding figure {slug}: {e}")
+                    local["errors"] += 1
+            await s.commit()
+            return local
+
+        if session:
+            return await _do(session)
+        async with AsyncSessionLocal() as new_session:
+            return await _do(new_session)
 
     async def _table_exists(self, session: AsyncSession, table_name: str) -> bool:
         def check(sync_session):

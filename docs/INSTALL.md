@@ -53,7 +53,9 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    ```
 
    **Clinical Catalogs (Optional but Recommended):**
-   The application automatically seeds basic elements (medications, clinical event types, allergies, body parts) on startup. However, some installations may also want to import the default comprehensive clinical biomarker ontology (which includes standard lab tests like Fasting Glucose, Cholesterol, Blood Pressure, etc.).
+   The application automatically seeds basic elements (medications, clinical event types, allergies, **anatomy graph**) on startup. The anatomy graph seed (`backend/data/seeds/anatomy_base.json`) includes 54 body structures (systems, organs, regions, joints) with SNOMED CT codes and 67 graph relationships — this powers the Anatomy Explorer UI and body-location selection in clinical events. No manual action is required for the base catalog.
+
+   However, some installations may also want to import the default comprehensive clinical biomarker ontology (which includes standard lab tests like Fasting Glucose, Cholesterol, Blood Pressure, etc.).
    
    If you want to initialize the system with the default catalog, you can import it by running:
    
@@ -66,6 +68,49 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    ```bash
    docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_default_catalog.py
    ```
+
+   **Anatomy Graph Expansion Packs (Optional):**
+   The base anatomy catalog (54 nodes) ships with the application and is seeded automatically. For specialized deployments (e.g., ophthalmology clinics, neurology practices), you can import custom anatomy expansion packs:
+
+   ```bash
+   # Standalone (all-in-one with proxy)
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py --file /path/to/my-anatomy-pack.json
+
+   # Or from a URL
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py --url https://example.com/anatomy-pack.json
+   ```
+
+   You can also re-seed the base catalog at any time:
+   ```bash
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py
+   ```
+
+   The JSON format is:
+   ```json
+   {
+     "nodes": [
+       {
+         "slug": "left-ventricle",
+         "name": "Left Ventricle",
+         "category": "ORGAN_PART",
+         "standard_system": "snomed",
+         "standard_code": "87878005",
+         "description": "The lower left chamber of the heart"
+       }
+     ],
+     "edges": [
+       {
+         "source_slug": "left-ventricle",
+         "target_slug": "heart",
+         "relation_type": "PART_OF"
+       }
+     ]
+   }
+   ```
+
+   Nodes are upserted by `slug` (existing nodes are updated, never deleted). Edges are deduplicated by `(source, target, relation_type)`. The REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_ADMIN token) accepts the same JSON format if you prefer to import programmatically. See [Seeding and Demos](./SEEDING_AND_DEMOS.md) for full details.
+
+   You can also ask the AI Assistant to generate anatomy sub-graphs on demand (e.g., "Generate the detailed anatomy of the cardiovascular system"). The AI will create a human-in-the-loop review card with the proposed nodes and edges for your approval before importing.
 
 7. **Access the application:**
    Once the services are running, open your web browser and navigate to:

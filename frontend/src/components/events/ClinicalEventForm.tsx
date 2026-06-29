@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Info, Plus, Activity, Baby, AlertTriangle, Zap, Scissors, Smile, Eye, Sparkles, CheckCircle, Stethoscope, Filter, Calendar as CalendarIcon, Clock, ChevronDown, Save, X
+  Info, Plus, Activity, Baby, AlertTriangle, Zap, Scissors, Smile, Eye, Sparkles, CheckCircle, Stethoscope, Filter, Calendar as CalendarIcon, Clock, ChevronDown, Save, X, Network
 } from 'lucide-react';
 import {
   getEventTypes,
@@ -16,7 +16,7 @@ import { listObservations } from '../../services/observationService';
 import { DynamicMetadataForm } from './DynamicMetadataForm';
 import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorModal';
 import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
-import { BodyPartSelector } from '../ui/BodyPartSelector';
+import { AnatomySearchPopup } from '../anatomy/AnatomySearchPopup';
 import { DatePicker } from '../ui/DatePicker';
 
 export type ClinicalEventCodingSystem = 'loinc' | 'snomed' | 'custom';
@@ -180,6 +180,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
             setSelectedTypeId(typeId);
             const type = typesData.find(ty => ty.id === typeId);
             if (type && type.category_id) setActiveCategoryId(type.category_id);
+
           } else if (prefill) {
             const base = buildInitialFormData();
             setFormData({
@@ -895,11 +896,11 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                               </span>
                             </div>
                             <div className="w-1/3">
-                              <BodyPartSelector
+                              <AnatomySearchPopup
                                 selectedId={occ.location}
-                                onSelect={part => {
+                                onSelect={(s) => {
                                   const updated = [...formData.occurrences];
-                                  updated[i] = { ...updated[i], location: part.id };
+                                  updated[i] = { ...updated[i], location: s.id };
                                   setFormData({ ...formData, occurrences: updated });
                                 }}
                                 placeholder={t('events.location_placeholder')}

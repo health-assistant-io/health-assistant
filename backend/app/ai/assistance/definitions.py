@@ -16,9 +16,11 @@ from typing import Any, Dict
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ai.schemas.assistance import (
+    AnatomyGraphDefinitionOutput,
     BiomarkerDefinitionOutput,
     MedicationDefinitionOutput,
 )
+from app.utils.prompt_guard import DEFENSE_PREAMBLE
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +96,42 @@ async def define_medication(
     logger.debug("AI medication definition generated for %r", user_input)
 
     return {"suggested_data": result.model_dump(), "success": True}
+
+
+async def define_anatomy_graph(
+    llm, user_input: str, context: Dict[str, Any]
+) -> Dict[str, Any]:
+    """AI-driven anatomy graph expansion.
+
+    Generates a list of nodes (``AnatomyImportNode``) and edges
+    (``AnatomyImportEdge``) describing the anatomical hierarchy of the structure
+    named in ``user_input``. The output is fed into the same JSON import pipeline
+    as ``POST /api/v1/anatomy/import``.
+    """
+    system_prompt = """You are an expert anatomical ontologist assisting in building a modular graph database of the human body.
+
+    The user wants to generate the anatomical hierarchy and components for a specific body part, organ, or system.
+    You must output a list of nodes (AnatomyImportNode) and edges (AnatomyImportEdge) that represent this anatomical structure.
+
+    Guidelines:
+    - The `slug` must be globally unique, kebab-case (e.g., 'left-ventricle').
+    - `is_custom` should be true.
+    - Ensure all `source_slug` and `target_slug` in the edges exist in the nodes you provide, OR refer to major known systems (like 'heart', 'brain', 'cardiovascular-system').
+    - Be highly accurate with relation types (PART_OF, BRANCH_OF, DRAINS_INTO, etc.).
+    """
+
+    chain = (
+        ChatPromptTemplate.from_messages(
+            [
+                ("system", DEFENSE_PREAMBLE + system_prompt),
+                ("human", "Generate the anatomy graph for: {input}"),
+            ]
+        )
+        | llm.with_structured_output(AnatomyGraphDefinitionOutput)
+    )
+    try:
+        result = await chain.ainvoke({"input": user_input})
+        return {"suggested_data": result.model_dump(), "success": True}
+    except Exception as e:
+        logger.error("Error defining anatomy graph: %s", e)
+        return {"success": False, "message": str(e)}

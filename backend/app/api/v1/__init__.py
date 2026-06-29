@@ -22,7 +22,7 @@ from app.api.v1.endpoints.ai_config import router as ai_config_router
 from app.api.v1.endpoints.task_monitor import router as task_monitor_router
 from app.api.v1.endpoints.ai_assistance import router as ai_assistance_router
 from app.api.v1.endpoints.clinical_events import router as clinical_events_router
-from app.api.v1.endpoints.body_parts import router as body_parts_router
+from app.api.v1.endpoints.anatomy import router as anatomy_router
 from app.api.v1.endpoints.examination_categories import (
     router as examination_categories_router,
 )
@@ -61,7 +61,7 @@ api_router.include_router(ai_config_router)
 api_router.include_router(task_monitor_router)
 api_router.include_router(ai_assistance_router)
 api_router.include_router(clinical_events_router)
-api_router.include_router(body_parts_router, prefix="/body-parts", tags=["Body Parts"])
+api_router.include_router(anatomy_router, prefix="/anatomy", tags=["Anatomy Graph"])
 api_router.include_router(examination_categories_router)
 api_router.include_router(admin_router)
 api_router.include_router(admin_tenants_router)

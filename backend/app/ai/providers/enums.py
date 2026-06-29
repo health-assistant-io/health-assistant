@@ -90,6 +90,7 @@ class TaskType(str, enum.Enum):
     MAGIC_FILL_EXAMINATION = "magic_fill_examination"
     DEFINE_BIOMARKER = "define_biomarker"
     DEFINE_MEDICATION = "define_medication"
+    DEFINE_ANATOMY_GRAPH = "define_anatomy_graph"
     SUGGEST_CATEGORY_ICON = "suggest_category_icon"
     GENERATE_CATEGORY_ICON = "generate_category_icon"
     CHAT = "chat"

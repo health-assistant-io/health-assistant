@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { 
-  Clock, 
-  Activity, 
-  Edit2, 
-  Trash2, 
-  FileText, 
+import {
+  Clock,
+  Activity,
+  Edit2,
+  Trash2,
+  FileText,
   ChevronRight,
   Info,
   Calendar,
   Target,
-  Zap
+  Zap,
+  Network
 } from 'lucide-react';
 import { 
   getEvent, 
@@ -20,6 +21,11 @@ import {
   ClinicalEvent
 } from '../../services/clinicalEventService';
 import { listBodyParts, BodyPart } from '../../services/bodyPartService';
+import { anatomyService } from '../../services/anatomyService';
+import type { AnatomyStructure } from '../../types/anatomy';
+import { OrganPreview } from '../../components/anatomy/OrganPreview';
+import { AnatomyGraphModal } from '../../components/anatomy/AnatomyGraphModal';
+import { markerForStructure, useAnatomyAtlas } from '../../components/anatomy/atlas';
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -35,9 +41,15 @@ const ClinicalEventDetail: React.FC = () => {
   const navigate = useNavigate();
   const [event, setEvent] = useState<ClinicalEvent | null>(null);
   const [bodyParts, setBodyParts] = useState<BodyPart[]>([]);
+  const [bodyStructure, setBodyStructure] = useState<AnatomyStructure | null>(null);
+  const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const showConfirmation = useUIStore(state => state.showConfirmation);
+  const figureOrder = useAnatomyAtlas((s) => s.figureOrder);
+  const ensureLoaded = useAnatomyAtlas((s) => s.ensureLoaded);
+
+  useEffect(() => { ensureLoaded(); }, [ensureLoaded]);
 
   const fetchEventData = async () => {
     if (!eventId) return;
@@ -49,6 +61,16 @@ const ClinicalEventDetail: React.FC = () => {
       ]);
       setEvent(eventData);
       setBodyParts(bodyPartsData);
+
+      const metaBodyPartId = eventData.event_metadata?.body_part_id as string | undefined;
+      if (metaBodyPartId) {
+        try {
+          const struct = await anatomyService.get(metaBodyPartId);
+          setBodyStructure(struct);
+        } catch { setBodyStructure(null); }
+      } else {
+        setBodyStructure(null);
+      }
     } catch (err) {
       console.error("Failed to fetch event details", err);
     } finally {
@@ -293,6 +315,64 @@ const ClinicalEventDetail: React.FC = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Body Location Visualization (all event types) */}
+            {bodyStructure && (
+              <div className="pt-6 border-t border-gray-100 dark:border-dark-border">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Network className="w-4 h-4 text-blue-500" />
+                  <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-tight">{t('events.body_location')}</h3>
+                </div>
+                <div className="flex items-start gap-6">
+                  <div className="w-32 flex-shrink-0">
+                    <OrganPreview
+                      {...markerForStructure(bodyStructure, figureOrder)}
+                      label={bodyStructure?.name}
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Target className="w-3.5 h-3.5 text-blue-500" />
+                      <p className="text-sm font-bold text-gray-900 dark:text-dark-text">{bodyStructure.name}</p>
+                      <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded text-gray-400 font-medium uppercase">
+                        {bodyStructure.category}
+                      </span>
+                    </div>
+                    {bodyStructure.description && (
+                      <p className="text-xs text-gray-500 dark:text-dark-muted leading-relaxed">{bodyStructure.description}</p>
+                    )}
+                    {bodyStructure.standard_code && (
+                      <span className="inline-block text-[9px] bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded text-blue-500 font-medium uppercase">
+                        {bodyStructure.standard_system}: {bodyStructure.standard_code}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-4 mt-3 pt-2 border-t border-gray-50 dark:border-dark-border">
+                      <button
+                        onClick={() => setIsGraphModalOpen(true)}
+                        className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-500 hover:text-indigo-600 transition-colors"
+                      >
+                        <Network className="w-3.5 h-3.5" />
+                        View Relations Graph
+                      </button>
+                      <button
+                        onClick={() => navigate('/anatomy')}
+                        className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:text-blue-600 transition-colors"
+                      >
+                        Open Anatomy Explorer →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {bodyStructure && (
+              <AnatomyGraphModal 
+                isOpen={isGraphModalOpen} 
+                onClose={() => setIsGraphModalOpen(false)} 
+                initialStructure={bodyStructure} 
+              />
             )}
 
             {/* Pain Episode Details */}

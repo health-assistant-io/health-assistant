@@ -425,10 +425,39 @@ def build(ctx: ToolContext) -> List[Any]:
         }
         return json.dumps({"__hitl__": True, "task": task})
 
+    @tool
+    async def propose_anatomy_graph_generation(target_structure: str) -> str:
+        """Propose generating an anatomical graph expansion (nodes and edges) for a
+        specific body part, organ, or system (e.g., 'Heart', 'Cardiovascular System').
+
+        This does NOT generate the graph immediately. It renders a human-in-the-loop
+        review card which will trigger the AI graph orchestrator if the user confirms.
+
+        Args:
+            target_structure: The name of the anatomical structure to generate (e.g. 'Heart').
+        """
+        task = {
+            "schema_version": 1,
+            "proposal_id": str(uuid4()),
+            "task_type": "generate_anatomy_graph",
+            "title": f"Generate Anatomy Graph: {target_structure}",
+            "status": HitlTaskStatus.PROPOSED,
+            "proposed_payload": {
+                "target_structure": target_structure,
+            },
+            "context": {
+                "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
+            },
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "resolved": None,
+        }
+        return json.dumps({"__hitl__": True, "task": task})
+
     return [
         propose_create_clinical_event,
         propose_add_biomarker_to_examination,
         propose_add_medication,
         propose_create_biomarker_definition,
         propose_create_medication_definition,
+        propose_anatomy_graph_generation,
     ]

@@ -372,6 +372,8 @@ class AIProviderService:
         # Get task type assignments. The canonical list of task types now lives
         # in app.ai.providers.enums.TaskType (single source of truth) — previously
         # this was a hard-coded inline list that silently drifted from the enum.
+        # ``define_anatomy_graph`` is a member of that enum and is included
+        # automatically via ``TaskType.all_values()``.
         task_types = TaskType.all_values()
         task_assignments = {}
 

@@ -1,6 +1,8 @@
 dev
 mypy_report.txt
 
+# MCP / browser-debug artifacts
+.playwright-mcp/
 # Python
 __pycache__/
 *.py[cod]
