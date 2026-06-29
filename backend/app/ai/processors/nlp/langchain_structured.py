@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from .base import NLPExtractor
-from app.schemas.ai_nlp import (
+from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,
     NewBiomarkerDefinitions,
     NewMedicationDefinitions,

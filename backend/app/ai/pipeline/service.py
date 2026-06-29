@@ -1,61 +1,27 @@
-import json
 import datetime
 import logging
-import sqlalchemy as sa
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
-from typing import List, Dict, Any, Optional, Tuple
 
-from sqlalchemy import select, update, delete, or_
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.document_model import DocumentModel
-from app.models.examination_model import ExaminationModel
-from app.models.biomarker_model import BiomarkerDefinition, Unit
-from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
-from app.models.fhir.patient import Observation
-from app.models.enums import QuantityType, CodingSystem
-from app.models.doctor_model import DoctorModel
-from app.models.examination_category import ExaminationCategory
-from app.schemas.ai_nlp import (
-    DocumentEntitiesExtract,
-    KnownBiomarkerExtract,
-    ExaminationMetadataExtract,
+from app.ai.pipeline.ontology import (
+    process_unknown_biomarkers,
+    process_unknown_medications,
 )
-from app.services.ai_provider_service import AIProviderService
-from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
+from app.ai.pipeline.persistence import persist_results
+from app.ai.providers.service import AIProviderService
+from app.ai.schemas.nlp import ExaminationMetadataExtract
+from app.models.biomarker_model import BiomarkerDefinition
+from app.models.doctor_model import DoctorModel
+from app.models.document_model import DocumentModel
+from app.models.examination_category import ExaminationCategory
+from app.models.examination_model import ExaminationModel
+from app.models.fhir.medication import MedicationCatalog
 from app.workers.task_logger import TaskLogger, TaskProgressTracker
 
 logger = logging.getLogger(__name__)
-
-# Maps BiomarkerDefinition.category (internal taxonomy) to the canonical FHIR
-# observation-category code (http://terminology.hl7.org/CodeSystem/observation-category).
-# FHIR Observation.category is 0..* (a list of CodeableConcept); OCR-sourced
-# observations are stamped with the mapped category so they carry proper FHIR
-# semantics and round-trip cleanly through export/import. Unknown/missing -> laboratory.
-_BIOMARKER_TO_FHIR_CATEGORY = {
-    "blood_laboratory": "laboratory",
-    "urine": "laboratory",
-    "vital_signs": "vital-signs",
-    "imaging": "imaging",
-    "ophthalmology": "exam",
-}
-_OBS_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/observation-category"
-
-
-def _fhir_observation_category(bio_category: Optional[str]) -> List[Dict[str, Any]]:
-    """Build a canonical FHIR ``category`` list from a biomarker category."""
-    code = _BIOMARKER_TO_FHIR_CATEGORY.get((bio_category or "").strip(), "laboratory")
-    return [
-        {
-            "coding": [
-                {
-                    "system": _OBS_CATEGORY_SYSTEM,
-                    "code": code,
-                    "display": code.replace("-", " ").title(),
-                }
-            ]
-        }
-    ]
 
 
 class MedicalProcessingService:
@@ -368,282 +334,41 @@ class MedicalProcessingService:
 
         return {"status": "completed"}
 
+    # ------------------------------------------------------------------
+    # Phase 5b delegates.
+    #
+    # The ontology + persistence implementations live in ontology.py and
+    # persistence.py. These stay as thin methods so the orchestrator's
+    # ``self._process_unknown_biomarkers(...)`` / ``self._persist_results(...)``
+    # calls keep working unchanged, AND so the savepoint regression tests
+    # (``inst._persist_results(...)`` on a ``__new__`` instance with only
+    # ``db`` set) keep passing. ``_find_source_doc`` / ``_save_observation``
+    # are internal to ``persist_results`` and are NOT exposed as delegates.
+    # ------------------------------------------------------------------
+
     async def _process_unknown_biomarkers(
         self, unknown_bios, nlp_extractor, tenant_id, slug_map
     ):
-        new_bio_defs = await nlp_extractor.parse_document_pass_2_biomarkers(
-            unknown_bios
+        await process_unknown_biomarkers(
+            self.db, unknown_bios, nlp_extractor, tenant_id, slug_map
         )
-
-        # Pre-fetch units
-        unit_res = await self.db.execute(select(Unit))
-        unit_map = {u.symbol.lower(): u for u in unit_res.scalars().all()}
-
-        for def_data in new_bio_defs.definitions:
-            slug_map[def_data.raw_name_match] = def_data.proposed_slug
-
-            existing = await self.db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.slug == def_data.proposed_slug
-                )
-            )
-            if not existing.scalar_one_or_none():
-                preferred_unit_id = None
-                if def_data.preferred_unit_symbol:
-                    u_lower = def_data.preferred_unit_symbol.lower()
-                    if u_lower in unit_map:
-                        preferred_unit_id = unit_map[u_lower].id
-                    else:
-                        new_unit = Unit(
-                            symbol=def_data.preferred_unit_symbol,
-                            name=def_data.preferred_unit_symbol,
-                            quantity_type=QuantityType.OTHER,
-                            conversion_multiplier=1.0,
-                        )
-                        self.db.add(new_unit)
-                        await self.db.flush()
-                        unit_map[u_lower] = new_unit
-                        preferred_unit_id = new_unit.id
-
-                self.db.add(
-                    BiomarkerDefinition(
-                        slug=def_data.proposed_slug,
-                        coding_system=def_data.proposed_coding_system,
-                        code=def_data.proposed_code,
-                        name=def_data.name,
-                        category=def_data.category,
-                        aliases=def_data.suggested_aliases,
-                        reference_range_min=def_data.reference_range_min,
-                        reference_range_max=def_data.reference_range_max,
-                        preferred_unit_id=preferred_unit_id,
-                        info=def_data.info,
-                        is_telemetry=def_data.is_telemetry,
-                        tenant_id=tenant_id,
-                    )
-                )
 
     async def _process_unknown_medications(
         self, unknown_meds, nlp_extractor, tenant_id, name_map
     ):
-        new_med_defs = await nlp_extractor.parse_document_pass_2_medications(
-            unknown_meds
+        await process_unknown_medications(
+            self.db, unknown_meds, nlp_extractor, tenant_id, name_map
         )
-        for def_data in new_med_defs.definitions:
-            name_map[def_data.raw_name_match] = def_data.name
-            existing = await self.db.execute(
-                select(MedicationCatalog).where(
-                    MedicationCatalog.name.ilike(def_data.name)
-                )
-            )
-            if not existing.scalar_one_or_none():
-                self.db.add(
-                    MedicationCatalog(
-                        name=def_data.name,
-                        description=def_data.description,
-                        indications=def_data.indications,
-                        side_effects=def_data.side_effects,
-                        contraindications=def_data.contraindications,
-                        dosage_info=def_data.dosage_info,
-                        tenant_id=tenant_id,
-                    )
-                )
 
     async def _persist_results(
         self, exam, parsed_data, docs_with_text, slug_map, med_name_map
     ):
-        """Persist the LLM extraction results for an examination.
+        """Persist LLM extraction results (Observations + Medications).
 
-        Audit item C2 (data loss): the previous implementation deleted
-        ALL of the exam's existing Observations + Medications BEFORE
-        running the LLM re-extraction. If re-extraction produced fewer
-        or invalid observations, previously-correct data was permanently
-        gone — no savepoint, no provenance, no audit log. We now wrap
-        the delete + recreate in a nested transaction (savepoint) so
-        any failure during re-extraction rolls back to the pre-delete
-        state. The caller's outer transaction is unaffected.
+        Delegates to :func:`app.ai.pipeline.persistence.persist_results`, which
+        wraps the delete + recreate in a SAVEPOINT (audit item C2) so a failure
+        during re-extraction rolls back to the pre-delete state.
         """
-        # Savepoint: any exception inside this block releases the
-        # savepoint with a rollback, restoring the prior Observations +
-        # Medications. The outer transaction stays open for the caller
-        # to handle the error.
-        async with self.db.begin_nested():
-            # Clear existing
-            await self.db.execute(
-                delete(Observation).where(Observation.examination_id == exam.id)
-            )
-            await self.db.execute(
-                delete(Medication).where(Medication.examination_id == exam.id)
-            )
-
-            # Refresh maps
-            bio_res = await self.db.execute(select(BiomarkerDefinition))
-            bio_map = {b.slug: b for b in bio_res.scalars().all()}
-            med_res = await self.db.execute(select(MedicationCatalog))
-            med_map = {m.name.lower(): m for m in med_res.scalars().all()}
-            unit_res = await self.db.execute(select(Unit))
-            unit_map = {u.symbol.lower(): u for u in unit_res.scalars().all()}
-
-            patient_ref = f"Patient/{exam.patient_id}"
-
-            # Examination date is guaranteed to be set at the start of the pipeline
-            eff_date = datetime.datetime.combine(
-                exam.examination_date or datetime.date.today(),
-                datetime.time.min,
-                tzinfo=datetime.timezone.utc,
-            )
-
-            # Save Biomarkers
-            for b in parsed_data.known_biomarkers:
-                source_doc_id = self._find_source_doc(b.name, docs_with_text)
-                await self._save_observation(
-                    b,
-                    bio_map.get(b.matched_slug),
-                    unit_map,
-                    exam,
-                    patient_ref,
-                    eff_date,
-                    source_doc_id,
-                )
-
-            for b in parsed_data.unknown_biomarkers:
-                slug = slug_map.get(b.raw_name)
-                target = bio_map.get(slug) or next(
-                    (
-                        bio
-                        for bio in bio_map.values()
-                        if bio.name.lower() == b.raw_name.lower()
-                    ),
-                    None,
-                )
-                source_doc_id = self._find_source_doc(b.raw_name, docs_with_text)
-
-                wrapped = KnownBiomarkerExtract(
-                    name=b.raw_name,
-                    matched_slug=target.slug if target else "unknown",
-                    value=b.value,
-                    unit_symbol=b.unit_symbol,
-                    method=b.method,
-                    reference_range_min=b.reference_range_min,
-                    reference_range_max=b.reference_range_max,
-                    interpretation_flag=b.interpretation_flag,
-                )
-                await self._save_observation(
-                    wrapped, target, unit_map, exam, patient_ref, eff_date, source_doc_id
-                )
-
-            # Save Medications
-            for m in parsed_data.known_medications + parsed_data.unknown_medications:
-                name = m.name if hasattr(m, "name") else m.raw_name
-                mapped_name = med_name_map.get(name, name)
-                catalog_item = med_map.get(mapped_name.lower())
-                self.db.add(
-                    Medication(
-                        patient_id=exam.patient_id,
-                        tenant_id=exam.tenant_id,
-                        examination_id=exam.id,
-                        status=MedicationStatus.ACTIVE,
-                        code={
-                            "text": name,
-                            "catalog_id": str(catalog_item.id) if catalog_item else None,
-                        },
-                        dosage=m.dosage,
-                        reason=m.reason,
-                        subject={"reference": patient_ref},
-                        start_date=exam.examination_date,
-                    )
-                )
-        # end begin_nested — savepoint released cleanly, outer txn continues
-
-    def _find_source_doc(
-        self, text_to_find: str, docs: List[DocumentModel]
-    ) -> Optional[str]:
-        if not docs:
-            return None
-        for d in docs:
-            if text_to_find.lower() in str(d.extracted_text).lower():
-                return str(d.id)
-        return None
-
-    async def _save_observation(
-        self,
-        b: KnownBiomarkerExtract,
-        target_bio: Optional[BiomarkerDefinition],
-        units_by_symbol: Dict[str, Unit],
-        exam: ExaminationModel,
-        patient_ref: str,
-        effective_date: datetime.datetime,
-        document_id: Optional[str] = None,
-    ):
-        val_float = b.value
-        biomarker_id = target_bio.id if target_bio else None
-        unit_symbol = b.unit_symbol
-        raw_unit_id = None
-        normalized_val = val_float
-
-        if unit_symbol:
-            unit_lower = unit_symbol.lower()
-            if unit_lower in units_by_symbol:
-                matched_unit = units_by_symbol[unit_lower]
-                raw_unit_id = matched_unit.id
-                if (
-                    target_bio
-                    and target_bio.preferred_unit_id
-                    and str(target_bio.preferred_unit_id) != str(matched_unit.id)
-                ):
-                    normalized_val = val_float * matched_unit.conversion_multiplier
-            else:
-                new_unit = Unit(
-                    symbol=unit_symbol,
-                    name=unit_symbol,
-                    quantity_type=QuantityType.OTHER,
-                    conversion_multiplier=1.0,
-                )
-                self.db.add(new_unit)
-                await self.db.flush()
-                units_by_symbol[unit_lower] = new_unit
-                raw_unit_id = new_unit.id
-
-        lab_ref_range = (
-            {"min": b.reference_range_min, "max": b.reference_range_max}
-            if b.reference_range_min or b.reference_range_max
-            else None
+        await persist_results(
+            self.db, exam, parsed_data, docs_with_text, slug_map, med_name_map
         )
-        coding = []
-        if target_bio:
-            coding.append({
-                "system": target_bio.coding_system.fhir_system if target_bio.coding_system else CodingSystem.CUSTOM.fhir_system,
-                "code": target_bio.code or target_bio.slug,
-                "display": target_bio.name
-            })
-            
-        obs = Observation(
-            examination_id=exam.id,
-            document_id=document_id,
-            tenant_id=exam.tenant_id,
-            status="final",
-            code={"coding": coding, "text": b.name},
-            subject={"reference": patient_ref},
-            effective_datetime=effective_date,
-            value_quantity={"value": val_float, "unit": unit_symbol},
-            biomarker_id=biomarker_id,
-            raw_value=val_float,
-            raw_unit_id=raw_unit_id,
-            normalized_value=normalized_val,
-            lab_reference_range=lab_ref_range,
-            method=b.method,
-            interpretation=b.interpretation_flag,
-            category=_fhir_observation_category(
-                target_bio.category if target_bio else None
-            ),
-        )
-        # Write-time FHIR gate: never persist an Observation that cannot be
-        # projected to valid FHIR. Skip-and-log so one bad row can't abort the
-        # whole document extraction.
-        try:
-            assert_valid_fhir(obs)
-        except FhirSerializationError as e:
-            logger.warning(
-                "Skipping invalid OCR observation for %s: %s", b.name, e
-            )
-            return
-        self.db.add(obs)

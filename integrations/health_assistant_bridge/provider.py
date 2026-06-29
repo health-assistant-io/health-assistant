@@ -4,7 +4,7 @@ from typing import List, Any, Dict, Optional, Literal
 from integrations.sdk import BaseHealthProvider
 from integrations.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
-from app.schemas.ai_nlp import MapResponsePayload, MetricMappingRequest
+from app.ai.schemas.nlp import MapResponsePayload, MetricMappingRequest
 from app.models.user_integration import UserIntegration
 from pydantic import BaseModel, Field
 import json
@@ -208,7 +208,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from sqlalchemy import select
         from app.models.biomarker_model import BiomarkerDefinition
-        from app.services.ai_provider_service import AIProviderService
+        from app.ai.providers.service import AIProviderService
 
         async with AsyncSessionLocal() as db:
             # 1. Fetch existing biomarkers

@@ -20,7 +20,7 @@ from app.services.document_service_db import (
     delete_document,
     update_document,
 )
-from app.workers.tasks import process_document, process_document_sync
+from app.workers.ai_tasks import process_document, process_document_sync
 import logging
 from typing import Any
 from uuid import UUID
@@ -96,7 +96,7 @@ async def upload_document_endpoint(
     # and avoid "processing" status confusion.
     if include_in_extraction:
         try:
-            from app.workers.tasks import ocr_document
+            from app.workers.ai_tasks import ocr_document
 
             logger.info(f"Triggering OCR task for document {document.id}")
             task = cast(Any, ocr_document).apply_async(
@@ -401,7 +401,7 @@ async def upload_temp_preview(
     """Temporary upload for previewing DICOM/PDF before saving examination. Supports multiple pages/frames via 'page' query param."""
     import os
     import uuid
-    from app.processors.ocr.utils import convert_to_images
+    from app.ai.processors.ocr.utils import convert_to_images
     from fastapi.responses import Response
     from pathlib import Path
 
@@ -611,7 +611,7 @@ async def get_document_preview_endpoint(
             # 404 (not 403) so we don't leak that the doc exists in another tenant.
             raise HTTPException(status_code=404, detail="Document not found")
 
-    from app.processors.ocr.utils import convert_to_images
+    from app.ai.processors.ocr.utils import convert_to_images
     from fastapi.responses import Response
     from pathlib import Path
 

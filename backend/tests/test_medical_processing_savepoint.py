@@ -17,8 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services import medical_processing_service as svc
-from app.services.medical_processing_service import MedicalProcessingService
+from app.ai.pipeline.service import MedicalProcessingService
 
 
 def _exam():

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.user_integration import UserIntegration
-from app.schemas.ai_nlp import MapResponsePayload, MappedMetric
+from app.ai.schemas.nlp import MapResponsePayload, MappedMetric
 
 @pytest.fixture
 def integration_mock():
@@ -170,7 +170,7 @@ async def test_parse_records(provider, integration_mock):
 @patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider")
 async def test_handle_map_request_internal(mock_provider, provider, integration_mock):
     from integrations.health_assistant_bridge.provider import MapRequestPayload
-    from app.schemas.ai_nlp import MetricMappingRequest
+    from app.ai.schemas.nlp import MetricMappingRequest
     
     # We will mock the DB call internally
     with patch("app.core.database.AsyncSessionLocal") as mock_session_local:
@@ -185,7 +185,7 @@ async def test_handle_map_request_internal(mock_provider, provider, integration_
         mock_db_execute.return_value.scalars = MagicMock(return_value=mock_scalars)
         
         # Mock AI Service and NLP Extractor
-        with patch("app.services.ai_provider_service.AIProviderService") as mock_ai_service:
+        with patch("app.ai.providers.service.AIProviderService") as mock_ai_service:
             mock_ai_service_instance = MagicMock()
             mock_ai_service.return_value = mock_ai_service_instance
             mock_nlp_extractor = AsyncMock()
@@ -204,7 +204,7 @@ async def test_handle_map_request_internal(mock_provider, provider, integration_
             
             # The provider imports AIProviderService locally inside the method, 
             # so we mock the global module attribute instead of the provider attribute.
-            with patch.dict('sys.modules', {'app.services.ai_provider_service': MagicMock(AIProviderService=mock_ai_service)}):
+            with patch.dict('sys.modules', {'app.ai.providers.service': MagicMock(AIProviderService=mock_ai_service)}):
                 result = await provider._handle_map_request(integration_mock, map_request)
             
             assert mock_ai_service_instance.get_nlp_extractor.called

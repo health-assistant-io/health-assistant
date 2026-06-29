@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, cast
 from app.core.database import AsyncSessionLocal
 from app.models.document_model import DocumentModel
-from app.workers.tasks import process_document
+from app.workers.ai_tasks import process_document
 from sqlalchemy import select
 
 

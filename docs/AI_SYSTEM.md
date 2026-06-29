@@ -10,13 +10,13 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 
 | Component | Responsibility |
 |-----------|----------------|
-| `AIProviderService` | Central "Brain" for model resolution. Handles multitenancy, priorities, and model instantiation. |
-| `LangChainOCRProcessor` | Generic vision processor that converts images/PDFs/DICOMs into Markdown text. |
-| `LangChainStructuredExtractor` | Generic NLP extractor that maps Markdown text to structured FHIR medical entities. |
-| `AIAssistanceService` | Orchestrator for the Agentic Chatbot and "Magic Fill" features. Manages session context and routing. |
-| `ChatbotTools` | Defines the LangChain tools (DB queries, document retrieval) that the AI assistant can invoke. |
-| `MedicalProcessingService` | Orchestrator for complex clinical logic (unit conversion, ontology matching, persistence). |
-| `tasks.py` | Celery worker task definitions that delegate to the above services. |
+| `AIProviderService` (`app/ai/providers/service.py`) | Central "Brain" for model resolution. Handles multitenancy, priorities, and model instantiation. |
+| `LangChainOCRProcessor` (`app/ai/processors/ocr/`) | Generic vision processor that converts images/PDFs/DICOMs into Markdown text. |
+| `LangChainStructuredExtractor` (`app/ai/processors/nlp/`) | Generic NLP extractor that maps Markdown text to structured FHIR medical entities. |
+| `AIAssistanceService` (`app/ai/assistance/service.py`) | Orchestrator for the Agentic Chatbot and "Magic Fill" features. Manages session context and routing. |
+| `app/ai/tools/` | LangChain tools (DB queries, document retrieval) that the AI assistant can invoke via `get_tools(db, tenant_id, patient_id, examination_id=None)`. |
+| `MedicalProcessingService` (`app/ai/pipeline/service.py`) | Orchestrator for complex clinical logic (unit conversion, ontology matching, persistence). |
+| `app/workers/ai_tasks.py` | Celery worker task definitions that delegate to the above services. |
 
 ---
 
@@ -76,7 +76,7 @@ Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are designed to 
 Health Assistant features a deeply integrated Agentic AI Copilot designed to provide interactive clinical insights. 
 
 ### Tool-Calling Capabilities
-The `ChatbotTools` class dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id`. These tools allow the LLM to:
+The `app/ai/tools/` package dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id` (via `get_tools(db, tenant_id, patient_id, examination_id=None)`). Individual tools are registered with the `@register_chat_tool` decorator and receive a `ToolContext`. These tools allow the LLM to:
 - **Search Available Biomarkers:** Discover metrics, IDs, and data types (Telemetry vs Clinical) using trigram similarity search.
 - **Search Medications:** Discover drugs in the medication catalog using trigram similarity search.
 - **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling using UUIDs.
@@ -122,7 +122,7 @@ Adding a task type touches **none** of the protocol, DB, or endpoints — only o
 ## 5. How to Create New AI Functionalities
 
 ### Step 1: Define the Schema
-All structured AI outputs must be defined as Pydantic models in `backend/app/schemas/ai_nlp.py`.
+All structured AI outputs must be defined as Pydantic models in `backend/app/ai/schemas/nlp.py`.
 
 ```python
 class RadiologySummary(BaseModel):
@@ -135,7 +135,7 @@ class RadiologySummary(BaseModel):
 Add the task type to the `task_types` list in `AIProviderService.get_config_summary` so it appears in the UI.
 
 ### Step 3: Implement the Service Logic
-Add a method to `MedicalProcessingService` to handle the specific clinical logic.
+Add a method to `MedicalProcessingService` (`backend/app/ai/pipeline/service.py`) to handle the specific clinical logic.
 
 ```python
 async def process_radiology(self, text: str, tenant_id: UUID):
@@ -145,7 +145,7 @@ async def process_radiology(self, text: str, tenant_id: UUID):
 ```
 
 ### Step 4: Create the Celery Task
-Define the background task in `backend/app/workers/tasks.py` using the `@async_task` decorator.
+Define the background task in `backend/app/workers/ai_tasks.py` using the `@async_task` decorator.
 
 ```python
 @celery_app.task(bind=True)

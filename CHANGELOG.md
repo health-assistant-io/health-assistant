@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **AI subsystem reorganized under `backend/app/ai/`.** All AI/LLM code (previously scattered across `app/services/ai_*.py`, `app/processors/`, and `app/schemas/ai_*.py`) now lives under a single `app/ai/` package, split by concern: `providers/` (config + factory + enums/registry), `processors/{ocr,nlp}/`, `pipeline/` (extraction orchestration + persistence + ontology), `agents/` (the agentic-chat reasoning loop, HITL helpers, prompts), `tools/` (the 24 chatbot tools split by domain + the integration aggregator), `assistance/` (form-fillers/definitions/icons), and `schemas/`. The three near-duplicate chat reasoning loops (`_chat_stream`, `resume_after_hitl`, `_general_chat`) collapsed into one `run_reasoning_loop(...)` in `agents/chat_agent.py`; AI Celery tasks moved to `workers/ai_tasks.py`. Internal refactor — no user-facing behaviour change and no public API break — but developers should update import paths. Notable mappings: `services/ai_assistance_service` → `ai/assistance/service`, `services/medical_processing_service` → `ai/pipeline/service`, `services/ai_chatbot_tools.ChatbotTools(...).get_tools()` → `ai.tools.get_tools(...)`, `services/integration_tool_aggregator` → `ai/tools/aggregator`, `schemas/ai_{nlp,assistance,config}.py` → `ai/schemas/{nlp,assistance,config}.py`. Branch `refactor/ai-services`.
+
 ## [0.3.0-rc.6] - 2026-06-26
 
 ### Added

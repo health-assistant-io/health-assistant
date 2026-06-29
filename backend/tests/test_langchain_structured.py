@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.processors.nlp.langchain_structured import LangChainStructuredExtractor
-from app.schemas.ai_nlp import (
+from app.ai.processors.nlp.langchain_structured import LangChainStructuredExtractor
+from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,
     NewBiomarkerDefinitions,
     NewMedicationDefinitions,
@@ -11,7 +11,7 @@ from app.schemas.ai_nlp import (
 @pytest.fixture
 def mock_llm():
     # Patch the ChatOpenAI in the NEW file location
-    with patch("app.processors.nlp.langchain_structured.ChatOpenAI") as mock_chat:
+    with patch("app.ai.processors.nlp.langchain_structured.ChatOpenAI") as mock_chat:
         mock_llm_instance = MagicMock()
         mock_chat.return_value = mock_llm_instance
         yield mock_llm_instance
@@ -92,7 +92,7 @@ async def test_parse_document_pass_2_medications(mock_llm):
 
 @pytest.mark.asyncio
 async def test_map_external_metrics(mock_llm):
-    from app.schemas.ai_nlp import MapResponsePayload, MetricMappingRequest, MappedMetric
+    from app.ai.schemas.nlp import MapResponsePayload, MetricMappingRequest, MappedMetric
     extractor = LangChainStructuredExtractor(api_key="test-key")
 
     mock_parsed_response = MagicMock(spec=MapResponsePayload)

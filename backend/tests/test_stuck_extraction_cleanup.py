@@ -32,7 +32,7 @@ def test_a5_cleanup_threshold_is_greater_than_celery_hard_limit():
     """The threshold in cleanup_stuck_extractions must be > 900s with a
     safety margin. Currently 20 min = 1200s; that gives a 5-min margin
     beyond the 15-min Celery hard kill."""
-    from app.workers import tasks as worker_tasks
+    from app.workers import ai_tasks as worker_tasks
 
     src = inspect.getsource(worker_tasks.cleanup_stuck_extractions)
     # The threshold is `timedelta(minutes=20)`.
@@ -45,7 +45,7 @@ def test_a5_cleanup_threshold_is_greater_than_celery_hard_limit():
 def test_a5_cleanup_filters_by_updated_at():
     """A5 also requires that the cleanup actually filters by updated_at —
     otherwise the threshold bump is meaningless."""
-    from app.workers import tasks as worker_tasks
+    from app.workers import ai_tasks as worker_tasks
 
     src = inspect.getsource(worker_tasks.cleanup_stuck_extractions)
     assert "ExaminationModel.updated_at" in src, (
@@ -116,7 +116,7 @@ async def test_a6_startup_cleanup_does_not_target_fresh_exams(monkeypatch):
 @pytest.mark.asyncio
 async def test_a5_threshold_values():
     """Direct check of the threshold values used by both cleanup paths."""
-    from app.workers import tasks as worker_tasks
+    from app.workers import ai_tasks as worker_tasks
     from app.workers.celery_app import celery_app
 
     # Celery hard time limit

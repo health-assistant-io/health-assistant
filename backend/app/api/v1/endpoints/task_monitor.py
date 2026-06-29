@@ -174,7 +174,7 @@ async def retry_document_ocr(
     await db.commit()
 
     # Trigger Celery OCR task
-    from app.workers.tasks import ocr_document
+    from app.workers.ai_tasks import ocr_document
 
     ocr_document.delay(str(document_id), doc.file_path, str(doc.tenant_id))
 

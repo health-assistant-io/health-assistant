@@ -190,6 +190,25 @@ async def test_a9_no_score_uses_range():
 # ---------------------------------------------------------------------------
 
 
+def _ai_assistance_package_source():
+    """Combined source of all modules in ``app.ai.assistance``.
+
+    The Magic-Fill handler moved from ``service.py`` to ``form_fillers.py`` in
+    Phase 6c, so source-level prompt assertions must scan the whole package
+    rather than a single module.
+    """
+    import pathlib
+
+    import app.ai.assistance as pkg
+
+    pkg_dir = pathlib.Path(pkg.__file__).parent
+    parts = []
+    for mod_path in sorted(pkg_dir.glob("*.py")):
+        parts.append(f"# === {mod_path.name} ===\n")
+        parts.append(mod_path.read_text())
+    return "".join(parts)
+
+
 def test_a10_no_hardcoded_date_in_source():
     """A10: the stale hardcoded date string must be gone from the prompt body.
 
@@ -197,20 +216,16 @@ def test_a10_no_hardcoded_date_in_source():
     the system message), not the explanatory audit comment which intentionally
     documents the old behaviour.
     """
-    import inspect
-
-    from app.services import ai_assistance_service
-
-    src = inspect.getsource(ai_assistance_service)
+    code = _ai_assistance_package_source()
     # Strip comment lines so the audit changelog note doesn't false-trigger.
-    code_lines = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
+    code_lines = [ln for ln in code.splitlines() if not ln.strip().startswith("#")]
     code = "\n".join(code_lines)
 
     assert "Today's date is 2026-03-22" not in code, (
-        "ai_assistance_service prompt body still hardcodes the 2026-03-22 date."
+        "ai_assistance prompt body still hardcodes the 2026-03-22 date."
     )
     assert "assume 2026" not in code, (
-        "ai_assistance_service prompt body still hardcodes the year 2026."
+        "ai_assistance prompt body still hardcodes the year 2026."
     )
     # And the live injection variables must be present.
     assert "today_iso" in code, "Missing live today_iso injection."
@@ -220,7 +235,7 @@ def test_a10_no_hardcoded_date_in_source():
 @pytest.mark.asyncio
 async def test_a10_magic_fill_prompt_contains_today(monkeypatch):
     """A10: the rendered Magic Fill prompt embeds the real current date."""
-    from app.services.ai_assistance_service import AIAssistanceService
+    from app.ai.assistance.service import AIAssistanceService
 
     svc = AIAssistanceService.__new__(AIAssistanceService)
     svc.db = MagicMock()
@@ -264,11 +279,7 @@ async def test_a10_magic_fill_prompt_contains_today(monkeypatch):
 
 def test_a10_date_is_current():
     """A10: the injected date matches today (within a small tolerance)."""
-    import inspect
-
-    from app.services import ai_assistance_service
-
-    src = inspect.getsource(ai_assistance_service)
+    src = _ai_assistance_package_source()
     # The code computes datetime.now(timezone.utc) and strftime — confirm
     # those calls exist so the prompt can never serve a stale date.
     assert "datetime.now(timezone.utc)" in src, (

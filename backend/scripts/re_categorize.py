@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.core.config import settings
 from app.models.document_model import DocumentModel
-from app.workers.tasks import process_document
+from app.workers.ai_tasks import process_document
 import logging
 
 logging.basicConfig(level=logging.INFO)

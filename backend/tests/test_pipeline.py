@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 import datetime
-from app.workers.tasks import ocr_document, cumulative_extraction
+from app.workers.ai_tasks import ocr_document, cumulative_extraction
 async def _ocr_document_async(document_id: str, file_path: str, tenant_id: str):
     return await ocr_document.__wrapped__.__wrapped__(None, document_id, file_path, tenant_id)
 
@@ -74,19 +74,19 @@ async def test_ocr_document_async():
 
     with (
         patch(
-            "app.workers.tasks.get_async_session",
+            "app.workers.ai_tasks.get_async_session",
             return_value=(mock_db, mock_engine),
         ),
         patch(
-            "app.services.ai_provider_service.AIProviderService.get_ocr_processor",
+            "app.ai.providers.service.AIProviderService.get_ocr_processor",
             AsyncMock(return_value=mock_ocr),
         ),
         patch(
-            "app.processors.ocr.utils.convert_to_images",
+            "app.ai.processors.ocr.utils.convert_to_images",
             AsyncMock(return_value=[MagicMock()]),
         ),
         patch("os.path.exists", return_value=True),
-        patch("app.workers.tasks.cumulative_extraction") as mock_cum_task,
+        patch("app.workers.ai_tasks.cumulative_extraction") as mock_cum_task,
     ):
         result = await _ocr_document_async(str(doc_id), file_path, tenant_id)
 
@@ -180,11 +180,11 @@ async def test_cumulative_extraction_async():
 
     with (
         patch(
-            "app.workers.tasks.get_async_session",
+            "app.workers.ai_tasks.get_async_session",
             return_value=(mock_db, mock_engine),
         ),
         patch(
-            "app.services.ai_provider_service.AIProviderService.get_nlp_extractor",
+            "app.ai.providers.service.AIProviderService.get_nlp_extractor",
             AsyncMock(return_value=mock_nlp),
         ),
     ):

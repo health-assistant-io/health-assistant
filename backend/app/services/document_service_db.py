@@ -225,7 +225,7 @@ async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
 
     # Trigger Celery task (OCR only)
     try:
-        from app.workers.tasks import ocr_document
+        from app.workers.ai_tasks import ocr_document
 
         cast(Any, ocr_document).apply_async(
             args=[
@@ -301,7 +301,7 @@ async def trigger_cumulative_extraction(examination_id: str, db: AsyncSession) -
     await db.commit()
 
     try:
-        from app.workers.tasks import cumulative_extraction
+        from app.workers.ai_tasks import cumulative_extraction
 
         # Use the owner of the first included document or similar as the user context
         # In a multi-user exam, we assume the person triggering it wants their config used

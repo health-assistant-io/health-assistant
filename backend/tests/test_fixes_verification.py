@@ -107,7 +107,7 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_cumulative_extraction_error_logging():
     """Verify that cumulative extraction task logs errors to the database"""
-    from app.workers.tasks import cumulative_extraction
+    from app.workers.ai_tasks import cumulative_extraction
     async def _cumulative_extraction_async(examination_id: str):
         return await cumulative_extraction.__wrapped__.__wrapped__(None, examination_id)
 
@@ -161,10 +161,10 @@ async def test_cumulative_extraction_error_logging():
     db_mock.execute.side_effect = mock_exec
 
     # Mock get_async_session to return our mock session and engine
-    with patch("app.workers.tasks.get_async_session", return_value=(db_mock, AsyncMock())):
+    with patch("app.workers.ai_tasks.get_async_session", return_value=(db_mock, AsyncMock())):
         # Mock NLP extractor to raise an error
         with patch(
-            "app.services.ai_provider_service.AIProviderService.get_nlp_extractor",
+            "app.ai.providers.service.AIProviderService.get_nlp_extractor",
             new_callable=AsyncMock,
         ) as mock_nlp:
             mock_nlp.side_effect = Exception("AI Provider Timeout")

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.workers import tasks as worker_tasks
+from app.workers import ai_tasks as worker_tasks
 
 
 def _doc(exam_id=None, owner_id=None):

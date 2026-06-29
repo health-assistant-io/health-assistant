@@ -12,7 +12,7 @@ celery_app = Celery(
     "health_assistant_workers",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.workers.tasks"],
+    include=["app.workers.tasks", "app.workers.ai_tasks"],
 )
 
 celery_app.conf.update(
@@ -26,7 +26,7 @@ celery_app.conf.update(
     task_soft_time_limit=840,  # Warning at 14 minutes
     beat_schedule={
         "cleanup-stuck-extractions-every-5-minutes": {
-            "task": "app.workers.tasks.cleanup_stuck_extractions",
+            "task": "app.workers.ai_tasks.cleanup_stuck_extractions",
             "schedule": 300.0,  # 5 minutes
         },
         "check-notification-triggers-every-minute": {

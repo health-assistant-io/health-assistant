@@ -233,7 +233,7 @@ async def test_retry_document_ocr_same_tenant_succeeds(monkeypatch):
     fake_ocr.delay = delayed
     monkeypatch.setitem(
         __import__("sys").modules,
-        "app.workers.tasks",
+        "app.workers.ai_tasks",
         MagicMock(ocr_document=fake_ocr),
     )
 
