@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`GET /api/v1/anatomy` supports `?search=`** (ilike on name/slug/standard_code/description) and now orders by name. Added `PATCH`/`DELETE` `/api/v1/anatomy/{id}` for editing/removing structures (global structures require SYSTEM_ADMIN).
 
 ### Fixed
+- **"Create New" dropdown hidden behind the sidebar.** The CreateMenu popup (New Examination / New Medication / etc.) is rendered via a portal at `document.body`, but its `z-index` (200) was lower than the sidebar container's (`z-[950]` in `Layout.tsx`). Since the layout root doesn't establish its own stacking context, the sidebar painted over the portaled dropdown. Bumped the dropdown to `z-[1000]` so it now correctly floats above the navigation sidebar.
 - **Anatomy SVG assets failed to open in XML editors** with "XML declaration allowed only at the start of the document" and undeclared namespace-prefix errors. The `<?xml ?>` declaration was moved above the license comment, and orphaned Inkscape/RDF metadata blocks (using stripped `sodipodi:`/`rdf:`/`cc:`/`dc:` prefixes) were removed. Both files now validate as well-formed XML with zero errors.
 
 
