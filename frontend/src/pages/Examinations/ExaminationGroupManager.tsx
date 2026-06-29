@@ -14,6 +14,7 @@ import { DoctorSelector } from '../../components/ui/DoctorSelector';
 import { DynamicIcon } from '../../components/ui/DynamicIcon';
 import { isMobileDevice } from '../../utils/deviceUtils';
 import { DatePicker } from '../../components/ui/DatePicker';
+import { AIBadge } from '../../components/ui/AIBadge';
 
 export interface ExamGroup {
   id: string;
@@ -171,7 +172,10 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
         >
           <div className="flex items-center justify-between mb-4 px-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col">
-              <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Unassigned Documents</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Unassigned Documents</h3>
+                <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+              </div>
               <p className="text-[10px] text-gray-500">Click anywhere or drag documents to add to staging area</p>
             </div>
             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -245,7 +249,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
             key={group.id}
             group={group}
             index={index}
-            files={files.filter(f => f.groupId === group.id)}
+            files={isSingleMode ? files : files.filter(f => f.groupId === group.id)}
             onDrop={(e) => handleDrop(e, group.id)}
             onDragStart={handleDragStart}
             onUpdate={(updates) => updateGroup(group.id, updates)}
@@ -412,7 +416,10 @@ const ExaminationBubble: React.FC<{
           <div className="space-y-3">
             {!isSingleMode && (
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Assigned Documents ({files.length})</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Assigned Documents ({files.length})</span>
+                  <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+                </div>
               </div>
             )}
             
@@ -527,9 +534,12 @@ const ExaminationBubble: React.FC<{
           </div>
 
           {isSmartMode && isSingleMode && (
-            <div className="flex items-center gap-1.5 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 rounded-2xl border border-blue-100 dark:border-blue-900/20 text-xs font-bold animate-in fade-in duration-300">
-              <Sparkles className="w-4 h-4" />
-              <span>Health Assistant AI will automatically extract examination date, category, doctors, and clinical notes from these documents.</span>
+            <div className="flex items-center justify-between gap-2 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 rounded-2xl border border-blue-100 dark:border-blue-900/20 text-xs font-bold animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" />
+                <span>Health Assistant AI will automatically extract examination date, category, doctors, and clinical notes from these documents.</span>
+              </div>
+              <AIBadge workflow="full_reconstruction" size="sm" showText={false} className="shrink-0" />
             </div>
           )}
 

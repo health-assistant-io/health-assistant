@@ -519,9 +519,12 @@ function ExaminationUpload() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-                Documents
-              </label>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">
+                  Documents
+                </label>
+                <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+              </div>
               
               {files.length > 0 && (
                 <div className="mb-6 flex flex-wrap gap-4">
@@ -667,14 +670,6 @@ function ExaminationUpload() {
               </div>
             )}
 
-            {isSmartMode && !isBulkMode && (
-              <div className="p-4 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 rounded-2xl mb-6">
-                <p className="text-sm text-blue-800 dark:text-blue-300">
-                  <strong>Smart Mode Active:</strong> You don't need to fill out the form. Health Assistant will automatically extract the date, category, doctors, and clinical notes from the documents you upload.
-                </p>
-              </div>
-            )}
-            
             {(!isBulkMode) && (
               <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6">
                 <div>
@@ -691,6 +686,22 @@ function ExaminationUpload() {
               </div>
             )}
           </>
+        )}
+
+        {isSmartMode && !isBulkMode && (
+          <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
+                Patient Notes (Optional)
+              </label>
+              <textarea
+                value={patientNotes}
+                onChange={(e) => setPatientNotes(e.target.value)}
+                placeholder="How do you feel? Why did you visit the doctor?"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-none min-h-[80px]"
+              />
+            </div>
+          </div>
         )}
 
         <div className="flex space-x-4 pt-2">

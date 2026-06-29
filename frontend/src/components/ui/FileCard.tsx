@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  FileText, X, Hospital, Eye, GripVertical, Cpu 
+  FileText, X, Hospital, Eye, GripVertical, Sparkles 
 } from 'lucide-react';
 
 interface FileCardProps {
@@ -35,7 +35,7 @@ export const FileCard: React.FC<FileCardProps> = ({
       draggable={draggable}
       onDragStart={onDragStart}
       onClick={(e) => { e.stopPropagation(); onPreview(); }}
-      className="group relative w-32 h-40 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer overflow-hidden"
+      className="group relative w-40 h-40 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer overflow-hidden"
     >
       <div className="h-24 w-full bg-gray-50 dark:bg-dark-bg flex items-center justify-center relative overflow-hidden">
         {isImage && previewUrl ? (
@@ -99,16 +99,22 @@ export const FileCard: React.FC<FileCardProps> = ({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleInclusion(); }}
+            aria-pressed={includeInExtraction}
+            aria-label={includeInExtraction ? 'Disable AI extraction for this document' : 'Enable AI extraction for this document'}
+            title={includeInExtraction ? 'AI extraction enabled — click to disable' : 'AI extraction disabled — click to enable'}
             className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all border ${
-              includeInExtraction 
-                ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' 
-                : 'bg-gray-500/5 border-transparent text-gray-300 hover:text-gray-400'
+              includeInExtraction
+                ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm hover:bg-indigo-500/20'
+                : 'bg-gray-500/5 border-transparent hover:bg-gray-500/10 hover:border-gray-300/30'
             }`}
-            title={includeInExtraction ? "Included in AI analysis" : "Excluded from AI analysis"}
           >
-            <Cpu className="w-3 h-3" />
-            <span className="text-[9px] font-black uppercase tracking-tighter">
-              {includeInExtraction ? 'Selected' : 'Analyze'}
+            <Sparkles className={`w-3 h-3 shrink-0 transition-colors ${includeInExtraction ? 'text-indigo-500' : 'text-gray-400'}`} />
+            <span className={`text-[9px] font-black uppercase tracking-tighter transition-colors ${
+              includeInExtraction
+                ? 'bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
+                : 'text-gray-400'
+            }`}>
+              {includeInExtraction ? 'AI Extract' : 'AI Off'}
             </span>
           </button>
         </div>
