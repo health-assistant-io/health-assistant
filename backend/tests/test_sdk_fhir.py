@@ -47,7 +47,8 @@ def test_observation_to_create_maps_fields_and_localizes_subject():
     assert created.subject == {"reference": f"Patient/{local_patient}"}
     assert "REMOTE-999" not in created.subject["reference"]
     assert created.interpretation == "Normal"
-    assert created.lab_reference_range == {"min": 70, "max": 99}
+    # H6: referenceRange is now preserved as the canonical FHIR list (was flattened to {min, max})
+    assert created.reference_range == [{"low": {"value": 70}, "high": {"value": 99}}]
 
 
 def test_observation_to_create_none_without_code():

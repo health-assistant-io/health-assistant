@@ -38,7 +38,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.models.user_integration import UserIntegration
-from .exceptions import IntegrationAuthError, IntegrationDataError
+from .exceptions import IntegrationAuthError, IntegrationDataError, IntegrationRateLimitError
 from .secrets import SecretCipher
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 OAUTH_CONFIG_KEY = "_oauth"
 STATE_TTL_SECONDS = 600
 DEFAULT_SCOPES = "openid fhirUser launch patient/*.read offline_access"
+PUSH_SCOPES = "openid fhirUser launch patient/*.read patient/*.write offline_access"
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ async def _request_json(
     if response.status_code in (401, 403):
         raise IntegrationAuthError(f"Auth endpoint {url} returned {response.status_code}.")
     if response.status_code == 429:
-        raise IntegrationAuthError(f"Rate limited by {url}.")
+        raise IntegrationRateLimitError(f"Rate limited by {url}.")
     if response.status_code >= 400:
         raise IntegrationDataError(
             f"{method} {url} -> {response.status_code}: {response.text[:300]}"
@@ -267,6 +268,7 @@ _CONNECTION_FIELDS = (
     "patient",
     "scope",
     "token_endpoint",
+    "revocation_endpoint",
     "client_id",
     "fhir_base_url",
 )
@@ -417,13 +419,33 @@ class OAuthStateStore:
         )
 
     async def consume(self, state: str) -> Optional[Dict[str, Any]]:
-        """One-shot read: returns the payload and deletes the key, or ``None``."""
+        """One-shot atomic read: returns the payload and deletes the key, or ``None``.
+
+        Uses ``GETDEL`` (Redis ≥ 6.2) so the read-and-delete is a single atomic
+        operation — no TOCTOU window where two concurrent callbacks could both
+        read the same state. Falls back to a Lua-script ``GETDEL`` polyfill for
+        older Redis versions.
+        """
         client = self._client()
         key = f"{self.KEY_PREFIX}{state}"
-        raw = await client.get(key)
+        try:
+            raw = await client.execute_command("GETDEL", key)
+        except Exception:
+            # GETDEL not supported (Redis < 6.2) — fall back to a Lua polyfill.
+            try:
+                raw = await client.eval(
+                    "local v=redis.call('GET',KEYS[1]);"
+                    "if v then redis.call('DEL',KEYS[1]) end;"
+                    "return v",
+                    1, key,
+                )
+            except Exception:
+                # Last resort: non-atomic GET + DELETE (the historical path).
+                raw = await client.get(key)
+                if raw is not None:
+                    await client.delete(key)
         if raw is None:
             return None
-        await client.delete(key)
         try:
             return json.loads(raw)
         except (ValueError, TypeError) as e:
@@ -462,6 +484,7 @@ class SmartOAuth:
         client_name: str,
         *,
         scopes: str = DEFAULT_SCOPES,
+        push_enabled: bool = False,
         extra_state: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, str]:
         """Discover + DCR-register + build the authorize URL.
@@ -471,7 +494,13 @@ class SmartOAuth:
         (merged with ``extra_state`` so the platform can correlate the callback
         to its own context — e.g. ``integration_id``/``user_id``). The ``state``
         is returned so the caller knows which key was used.
+
+        When ``push_enabled`` is True, ``PUSH_SCOPES`` is used instead of
+        ``DEFAULT_SCOPES`` so the SMART consent screen includes
+        ``patient/*.write`` (H1).
         """
+        if push_enabled and scopes == DEFAULT_SCOPES:
+            scopes = PUSH_SCOPES
         config = await discover_smart(fhir_base_url, self.http)
         client_id: Optional[str] = None
         client_secret: Optional[str] = None
@@ -482,6 +511,11 @@ class SmartOAuth:
             )
             client_id = reg.get("client_id")
             client_secret = reg.get("client_secret")
+            if not client_id:
+                raise IntegrationAuthError(
+                    f"Server advertised a registration_endpoint ({reg_endpoint}) but "
+                    "DCR returned no client_id. The SMART server may be misconfigured."
+                )
         state = generate_state()
         verifier, challenge, _ = generate_pkce()
         payload: Dict[str, Any] = {
@@ -490,6 +524,7 @@ class SmartOAuth:
             "fhir_base_url": fhir_base_url.rstrip("/"),
             "authorization_endpoint": config["authorization_endpoint"],
             "token_endpoint": config["token_endpoint"],
+            "revocation_endpoint": config.get("revocation_endpoint"),
             "client_id": client_id,
             "client_secret": client_secret,
             "redirect_uri": redirect_uri,
@@ -536,6 +571,8 @@ class SmartOAuth:
         if pending.get("client_secret"):
             token["client_secret"] = pending["client_secret"]
         token["fhir_base_url"] = pending.get("fhir_base_url")
+        if pending.get("revocation_endpoint"):
+            token["revocation_endpoint"] = pending["revocation_endpoint"]
         self.tokens.store(integration, token)
         return token
 
@@ -584,3 +621,47 @@ class SmartOAuth:
         )
         self.tokens.store(integration, token)
         return token["access_token"]
+
+    async def revoke(self, integration: UserIntegration) -> None:
+        """Best-effort token revocation (RFC 7009).
+
+        Reads the ``revocation_endpoint`` from the stored ``_oauth`` blob
+        (captured during ``begin_connect`` from the SMART discovery config) and
+        POSTs the ``refresh_token`` + ``access_token`` to it. Network errors
+        and missing endpoints are swallowed — the integration is deleted
+        regardless. This prevents stale tokens from lingering on the remote
+        server after the user disconnects.
+        """
+        try:
+            oauth = self.tokens._read(integration)
+            revoke_url = oauth.get("revocation_endpoint")
+            if not revoke_url:
+                return  # Server didn't advertise a revocation endpoint.
+            form_data: Dict[str, str] = {}
+            if oauth.get("refresh_token"):
+                form_data["token"] = oauth["refresh_token"]
+                form_data["token_type_hint"] = "refresh_token"
+            elif oauth.get("access_token"):
+                form_data["token"] = oauth["access_token"]
+                form_data["token_type_hint"] = "access_token"
+            else:
+                return  # No tokens to revoke.
+            if oauth.get("client_id"):
+                form_data["client_id"] = oauth["client_id"]
+            if oauth.get("client_secret"):
+                form_data["client_secret"] = oauth["client_secret"]
+            resp = await self.http.post(revoke_url, data=form_data)
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Token revocation for %s returned HTTP %s — tokens may "
+                    "remain live on the remote server.",
+                    integration.id, resp.status_code,
+                )
+            else:
+                logger.info("Token revocation successful for %s", integration.id)
+        except Exception as e:
+            logger.warning(
+                "Token revocation failed for %s (best-effort — integration "
+                "will still be deleted): %s",
+                integration.id, e,
+            )

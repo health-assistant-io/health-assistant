@@ -151,9 +151,13 @@ Define the background task in `backend/app/workers/ai_tasks.py` using the `@asyn
 @celery_app.task(bind=True)
 @async_task
 async def summarize_radiology(self, document_id: str):
-    async with AsyncSessionFactory() as db:
-        service = MedicalProcessingService(db)
-        # ... fetch doc, run service, update DB ...
+    db, engine = get_async_session()  # session is fresh; engine is worker-scoped singleton
+    try:
+        async with db:
+            service = MedicalProcessingService(db)
+            # ... fetch doc, run service, update DB ...
+    finally:
+        await db.close()  # never call engine.dispose() per task — it's shared
 ```
 
 ---
@@ -164,7 +168,7 @@ We use an `@async_task` decorator to bridge Celery's synchronous execution with 
 
 ```python
 def async_task(func):
-    """Handles event loop management and database session safety."""
+    """Handles event loop management."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         loop = asyncio.new_event_loop()
@@ -175,4 +179,6 @@ def async_task(func):
     return wrapper
 ```
 
-This ensures that every background task has its own clean event loop and doesn't leak database connections.
+**DB engine pattern (important)**: `get_async_engine()` returns a **worker-scoped singleton** `AsyncEngine` (lazy-init, thread-safe) using `poolclass=NullPool`. `get_async_session()` binds a fresh session to that shared engine. Each task creates its own session and closes it in a `finally` block (`await db.close()`); the engine is **never** disposed per-task — it's disposed only on Celery's `worker_process_shutdown` signal.
+
+`NullPool` is what makes this safe alongside per-task event loops: every session checks out a fresh DB connection and closes it on session close, so no asyncpg connection ever outlives the loop that created it. Without this, asyncpg protocol transports bound to a previous task's closed loop would resurface in the next task via the shared pool as `RuntimeError: Event loop is closed` / `Future attached to a different loop`.

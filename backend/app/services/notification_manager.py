@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 import json
 from sqlalchemy import select, update, delete, and_, or_
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import (
     NotificationTrigger,
     Notification,
@@ -346,61 +347,137 @@ class NotificationManager:
             return new_sub
 
     @classmethod
-    async def process_due_triggers(cls):
-        """Finds and processes all triggers that are due for execution."""
+    async def process_due_triggers(cls, session: Optional[AsyncSession] = None):
+        """Finds and processes all triggers that are due for execution.
+
+        ``session`` lets the Celery periodic task inject a worker-scoped
+        session bound to the ``NullPool`` engine (see
+        ``app.workers.tasks.get_async_session``). Without it the global app
+        engine is used, which is correct for request-path callers but breaks
+        inside a prefork worker: an asyncpg connection whose transport is
+        tied to a different (or closed) event loop gets handed to the task
+        loop, raising ``RuntimeError: Future ... attached to a different
+        loop``.
+        """
         if not DATABASE_AVAILABLE:
             return
 
+        if session is None:
+            async with AsyncSessionLocal() as own:
+                await cls._run_due_triggers(own)
+            return
+        await cls._run_due_triggers(session)
+
+    @classmethod
+    async def _run_due_triggers(cls, session: AsyncSession):
+        """Process due triggers against ``session`` (caller owns lifecycle)."""
         now = datetime.now(timezone.utc)
-        async with AsyncSessionLocal() as session:
-            # Select triggers where next_trigger <= now and enabled=True
-            query = select(NotificationTrigger).where(
-                and_(
-                    NotificationTrigger.enabled == True,
-                    NotificationTrigger.next_trigger <= now,
-                )
+        # Select triggers where next_trigger <= now and enabled=True
+        query = select(NotificationTrigger).where(
+            and_(
+                NotificationTrigger.enabled == True,
+                NotificationTrigger.next_trigger <= now,
             )
-            result = await session.execute(query)
-            due_triggers = result.scalars().all()
+        )
+        result = await session.execute(query)
+        due_triggers = result.scalars().all()
 
-            for trigger in due_triggers:
-                try:
-                    await cls.fire_notification(trigger)
+        for trigger in due_triggers:
+            try:
+                await cls.fire_notification(trigger, session)
 
-                    # Update trigger state
-                    trigger.last_triggered = now
+                # Update trigger state
+                trigger.last_triggered = now
 
-                    # Calculate next trigger if recurring
-                    if trigger.trigger_type == TriggerType.RECURRING:
-                        at_str = trigger.config.get("at")
-                        if at_str:
-                            trigger.next_trigger = cls.calculate_next_occurrence(
-                                at_str, trigger.config.get("days")
-                            )
-                        else:
-                            # Simple interval logic fallback
-                            interval_mins = trigger.config.get("interval_minutes", 1440)
-                            trigger.next_trigger = now + timedelta(
-                                minutes=interval_mins
-                            )
+                # Calculate next trigger if recurring
+                if trigger.trigger_type == TriggerType.RECURRING:
+                    at_str = trigger.config.get("at")
+                    if at_str:
+                        trigger.next_trigger = cls.calculate_next_occurrence(
+                            at_str, trigger.config.get("days")
+                        )
                     else:
-                        # Non-recurring triggers should be disabled after firing
-                        trigger.enabled = False
-                        trigger.next_trigger = None
-                except Exception as e:
-                    logger.error(f"Failed to process trigger {trigger.id}: {e}")
+                        # Simple interval logic fallback
+                        interval_mins = trigger.config.get("interval_minutes", 1440)
+                        trigger.next_trigger = now + timedelta(
+                            minutes=interval_mins
+                        )
+                else:
+                    # Non-recurring triggers should be disabled after firing
+                    trigger.enabled = False
+                    trigger.next_trigger = None
+            except Exception as e:
+                logger.error(f"Failed to process trigger {trigger.id}: {e}")
+                # Clear any half-applied changes so the shared session stays
+                # usable for the remaining triggers in this cycle.
+                await session.rollback()
 
-            await session.commit()
+        await session.commit()
 
     @staticmethod
-    async def fire_notification(trigger: NotificationTrigger):
-        """Creates Notification instances and enqueues delivery."""
+    async def fire_notification(
+        trigger: NotificationTrigger,
+        session: Optional[AsyncSession] = None,
+    ):
+        """Creates Notification instances and enqueues delivery.
+
+        ``session`` may be injected by the Celery worker (see
+        ``process_due_triggers``); when omitted a fresh session bound to the
+        app engine is used (request/event path).
+        """
+        if session is None:
+            async with AsyncSessionLocal() as own:
+                await NotificationManager._create_and_queue(own, trigger)
+            return
+        await NotificationManager._create_and_queue(session, trigger)
+
+    @staticmethod
+    async def _create_and_queue(
+        session: AsyncSession, trigger: NotificationTrigger
+    ):
+        """Insert IN_APP (+PUSH) notifications on ``session`` and queue delivery."""
         from app.workers.tasks import deliver_notification
         from app.models.user_model import UserModel
+        # 1. Always create an IN_APP notification record
+        in_app_notif = Notification(
+            patient_id=trigger.patient_id,
+            tenant_id=trigger.tenant_id,
+            trigger_id=trigger.id,
+            type=trigger.notification_type,
+            title=trigger.title,
+            body=trigger.body,
+            status=NotificationStatus.PENDING,
+            channel=NotificationChannel.IN_APP,
+            payload={
+                "reference_id": str(trigger.reference_id)
+                if trigger.reference_id
+                else None,
+                "trigger_config": trigger.config,
+            },
+        )
+        session.add(in_app_notif)
 
-        async with AsyncSessionLocal() as session:
-            # 1. Always create an IN_APP notification record
-            in_app_notif = Notification(
+        # 2. Check if we should also create a PUSH notification record
+        # Find users in the tenant
+        users_res = await session.execute(
+            select(UserModel.id).where(UserModel.tenant_id == trigger.tenant_id)
+        )
+        user_ids = [u[0] for u in users_res.all()]
+
+        # Check for push subscriptions
+        subs_res = await session.execute(
+            select(NotificationSubscription.id).where(
+                and_(
+                    NotificationSubscription.user_id.in_(user_ids),
+                    NotificationSubscription.is_active == True,
+                )
+            )
+        )
+        has_push = subs_res.first() is not None
+
+        push_notif = None
+        if has_push:
+            push_notif = Notification(
                 patient_id=trigger.patient_id,
                 tenant_id=trigger.tenant_id,
                 trigger_id=trigger.id,
@@ -408,7 +485,7 @@ class NotificationManager:
                 title=trigger.title,
                 body=trigger.body,
                 status=NotificationStatus.PENDING,
-                channel=NotificationChannel.IN_APP,
+                channel=NotificationChannel.PUSH,
                 payload={
                     "reference_id": str(trigger.reference_id)
                     if trigger.reference_id
@@ -416,61 +493,25 @@ class NotificationManager:
                     "trigger_config": trigger.config,
                 },
             )
-            session.add(in_app_notif)
+            session.add(push_notif)
 
-            # 2. Check if we should also create a PUSH notification record
-            # Find users in the tenant
-            users_res = await session.execute(
-                select(UserModel.id).where(UserModel.tenant_id == trigger.tenant_id)
+        # Commit so the rows exist before we enqueue delivery — the
+        # delivery worker looks them up by id in its own transaction.
+        await session.commit()
+        await session.refresh(in_app_notif)
+
+        # Offload delivery to Celery for both
+        deliver_notification.delay(str(in_app_notif.id))
+        if push_notif:
+            await session.refresh(push_notif)
+            deliver_notification.delay(str(push_notif.id))
+            logger.info(
+                f"Notifications {in_app_notif.id} (IN_APP) and {push_notif.id} (PUSH) created and queued"
             )
-            user_ids = [u[0] for u in users_res.all()]
-
-            # Check for push subscriptions
-            subs_res = await session.execute(
-                select(NotificationSubscription.id).where(
-                    and_(
-                        NotificationSubscription.user_id.in_(user_ids),
-                        NotificationSubscription.is_active == True,
-                    )
-                )
+        else:
+            logger.info(
+                f"Notification {in_app_notif.id} (IN_APP) created and queued"
             )
-            has_push = subs_res.first() is not None
-
-            push_notif = None
-            if has_push:
-                push_notif = Notification(
-                    patient_id=trigger.patient_id,
-                    tenant_id=trigger.tenant_id,
-                    trigger_id=trigger.id,
-                    type=trigger.notification_type,
-                    title=trigger.title,
-                    body=trigger.body,
-                    status=NotificationStatus.PENDING,
-                    channel=NotificationChannel.PUSH,
-                    payload={
-                        "reference_id": str(trigger.reference_id)
-                        if trigger.reference_id
-                        else None,
-                        "trigger_config": trigger.config,
-                    },
-                )
-                session.add(push_notif)
-
-            await session.commit()
-            await session.refresh(in_app_notif)
-
-            # Offload delivery to Celery for both
-            deliver_notification.delay(str(in_app_notif.id))
-            if push_notif:
-                await session.refresh(push_notif)
-                deliver_notification.delay(str(push_notif.id))
-                logger.info(
-                    f"Notifications {in_app_notif.id} (IN_APP) and {push_notif.id} (PUSH) created and queued"
-                )
-            else:
-                logger.info(
-                    f"Notification {in_app_notif.id} (IN_APP) created and queued"
-                )
 
     @classmethod
     async def trigger_event(

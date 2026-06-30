@@ -62,6 +62,19 @@ class DocumentModel(
         index=True,
     )
     is_edited = Column(Boolean, default=False, nullable=False)
+    # F11: resolved Practitioner (DoctorModel) id for FHIR
+    # DocumentReference.author. Backfilled from owner_id at migration time;
+    # set on new uploads via owner→doctor lookup. Nullable because not every
+    # owner is a practitioner (some are admins/managers without a doctor row).
+    # When NULL, to_fhir_dict() omits the `author` element rather than emit
+    # a wrong `Practitioner/<owner_id>` (owner_id is a User FK, not a Doctor
+    # FK — emitting it caused external clients to 404 on resolution).
+    practitioner_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("doctors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # updated_at is now handled by TimestampMixin
 
     __table_args__ = (
@@ -85,6 +98,7 @@ class DocumentModel(
             "filename": self.filename,
             "file_path": self.file_path,
             "owner_id": str(self.owner_id) if self.owner_id else None,
+            "practitioner_id": str(self.practitioner_id) if getattr(self, "practitioner_id", None) else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "patient_id": str(self.patient_id) if self.patient_id else None,
             "examination_id": str(self.examination_id)
@@ -169,8 +183,11 @@ class DocumentModel(
 
         if self.patient_id:
             data["subject"] = {"reference": f"Patient/{self.patient_id}"}
-        if self.owner_id:
-            data["author"] = [{"reference": f"Practitioner/{self.owner_id}"}]
+        # F11: emit Practitioner/<practitioner_id> when we have a resolved
+        # Practitioner; otherwise omit `author` entirely rather than emit a
+        # wrong `Practitioner/<owner_id>` (owner_id is a User FK — would 404).
+        if self.practitioner_id:
+            data["author"] = [{"reference": f"Practitioner/{self.practitioner_id}"}]
         if self.examination_id:
             data["context"] = {
                 "encounter": [{"reference": f"Encounter/{self.examination_id}"}]

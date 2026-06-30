@@ -25,6 +25,7 @@ def build_search_bundle(
     *,
     include_resources: Optional[List[Dict[str, Any]]] = None,
     meta: Optional[Dict[str, Any]] = None,
+    include_total: bool = True,
 ) -> Dict[str, Any]:
     """Build a FHIR Bundle for a search response.
 
@@ -39,10 +40,13 @@ def build_search_bundle(
         include_resources: optional additional resources fetched via ``_include``
             (appended after the primary matches; not counted in ``total``).
         meta: optional Bundle-level meta block.
+        include_total: whether to include the ``total`` key in the Bundle
+            (``False`` when ``_total=none`` was requested, per FHIR spec —
+            the COUNT is also skipped at the dispatcher level).
 
     Returns:
-        A FHIR R4 Bundle dict with ``type=searchset``, ``total``, ``entry[]``,
-        and ``link[]`` for self/first/previous/next/last.
+        A FHIR R4 Bundle dict with ``type=searchset``, optional ``total``,
+        ``entry[]``, and ``link[]`` for self/first/previous/next/last.
     """
     # Parse the raw query string so we can mutate it for pagination links.
     raw_qs = query_string.decode("utf-8") if isinstance(query_string, bytes) else query_string
@@ -52,19 +56,31 @@ def build_search_bundle(
     total_pages = max(1, math.ceil(total / count)) if count > 0 else 1
     current_page = (offset // count) + 1 if count > 0 else 1
 
-    # Build the entry list.
+    # Build the entry list. F15: every primary entry carries
+    # ``search.mode = "match"`` and every ``_include`` entry carries
+    # ``search.mode = "include"`` (spec-required once _include ships; strict
+    # clients expect it today).
     entries: List[Dict[str, Any]] = []
     for r in resources:
         rt = r.get("resourceType")
         rid = r.get("id")
         full_url = f"{base_url}{path}/{rid}" if rid else f"{base_url}{path}/_search"
-        entries.append({"fullUrl": full_url, "resource": r})
+        entries.append(
+            {
+                "fullUrl": full_url,
+                "resource": r,
+                "search": {"mode": "match"},
+            }
+        )
     if include_resources:
         for r in include_resources:
             rid = r.get("id")
             rt = r.get("resourceType")
             full_url = f"{base_url}/{rt}/{rid}" if rid and rt else None
-            entry: Dict[str, Any] = {"resource": r}
+            entry: Dict[str, Any] = {
+                "resource": r,
+                "search": {"mode": "include"},
+            }
             if full_url:
                 entry["fullUrl"] = full_url
             entries.append(entry)
@@ -82,10 +98,14 @@ def build_search_bundle(
     bundle: Dict[str, Any] = {
         "resourceType": "Bundle",
         "type": "searchset",
-        "total": total,
         "link": links,
         "entry": entries,
     }
+    # F16: ``total`` is omitted entirely when the client passes ``_total=none``
+    # (so the dispatcher skips the COUNT(*) too) and is ALWAYS included
+    # otherwise, including for ``_summary=count`` (which still wants the total).
+    if include_total:
+        bundle["total"] = total
     if meta is not None:
         bundle["meta"] = meta
     else:
@@ -119,11 +139,19 @@ def _build_url(base_url: str, path: str, pairs: List[tuple]) -> str:
 
 
 def _with_page(pairs: List[tuple], offset: int, count: int) -> List[tuple]:
-    """Replace any existing ``_offset``/``page`` param with the given offset.
+    """Replace any existing pagination param with a ``page`` cursor for ``offset``.
 
-    We emit ``_offset`` (non-standard but unambiguous) and remove any ``page``
-    param to avoid conflicting pagination instructions.
+    The FHIR R4 spec does not mandate a specific pagination cursor param —
+    pagination is driven by the Bundle's ``link[]`` relations
+    (self/first/last/previous/next). We emit ``page=N`` (1-based) because
+    it's the most common convention (Vonk/Firely, and most REST APIs).
+    The parser also accepts ``_page`` (HAPI style) and ``_offset``
+    (0-based legacy) on input, so clients using any of these forms can
+    follow our pagination links correctly.
+
+    Passing ``offset=0`` emits ``page=1`` (the first page).
     """
+    page = (offset // count) + 1 if count > 0 else 1
     filtered = [(k, v) for k, v in pairs if k not in ("_offset", "page")]
-    filtered.append(("_offset", str(offset)))
+    filtered.append(("page", str(page)))
     return filtered

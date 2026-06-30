@@ -136,9 +136,10 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
     value_string = Column(String, nullable=True)
     value_codeableConcept = Column(JSONB, nullable=True)
     reference_range = Column(JSONB, nullable=True)
-    interpretation = Column(String, nullable=True)
+    interpretation = Column(JSONB, nullable=True)
     comment = Column(String, nullable=True)
     performer = Column(JSONB, nullable=True)
+    component = Column(JSONB, nullable=True)  # FHIR R4 0..* component (BP, panels)
 
     # New Biomarker Engine Fields
     biomarker_id = Column(
@@ -171,6 +172,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
     raw_unit = relationship("Unit", lazy="selectin")
 
     def to_dict(self):
+        from app.services.fhir_helpers import _flatten_interpretation
         return {
             "id": str(self.id),
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
@@ -185,7 +187,8 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
             "value_string": self.value_string,
             "value_codeable_concept": self.value_codeableConcept,
             "reference_range": self.reference_range,
-            "interpretation": self.interpretation,
+            "interpretation": _flatten_interpretation(self.interpretation),
+            "component": self.component,
             "comment": self.comment,
             "performer": self.performer,
             "biomarker_id": str(self.biomarker_id) if self.biomarker_id else None,
@@ -212,11 +215,8 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B Observation resource via fhir.resources (validated)."""
-        from app.services.fhir_helpers import fhir_isoformat
+        from app.services.fhir_helpers import _normalize_interpretation, fhir_isoformat
 
-        interpretation = self.interpretation
-        if isinstance(interpretation, str) and interpretation:
-            interpretation = [{"text": interpretation}]
         return build_fhir_resource(
             "Observation",
             {
@@ -231,7 +231,8 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
                 "valueString": self.value_string,
                 "valueCodeableConcept": self.value_codeableConcept,
                 "referenceRange": self.reference_range,
-                "interpretation": interpretation,
+                "interpretation": _normalize_interpretation(self.interpretation),
+                "component": self.component,
                 "note": [{"text": self.comment}] if self.comment else None,
                 "performer": self.performer,
                 "method": {"text": self.method} if self.method else None,

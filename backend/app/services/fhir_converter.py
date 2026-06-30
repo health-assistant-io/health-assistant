@@ -6,7 +6,7 @@ from app.schemas.backup import PROVENANCE_SYSTEM
 from app.services.fhir_helpers import (
     _clean,
     _extract_patient_id,
-    _flatten_interpretation,
+    _normalize_interpretation,
     parse_fhir_resource,
 )
 
@@ -141,7 +141,8 @@ def fhir_to_observation_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             "value_string": f.get("valueString"),
             "value_codeable_concept": f.get("valueCodeableConcept"),
             "reference_range": f.get("referenceRange"),
-            "interpretation": _flatten_interpretation(f.get("interpretation")),
+            "interpretation": _normalize_interpretation(f.get("interpretation")),
+            "component": f.get("component"),
             "comment": f.get("comment"),
             "performer": f.get("performer"),
             "method": (f.get("method") or {}).get("text")
@@ -508,7 +509,10 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     - status → status (default 'current'; map to app status vocabulary)
     - docStatus → ignored (no column for draft/final)
     - subject → patient_id
-    - author[0] → owner_id (REQUIRED on DocumentModel)
+    - author[0] → practitioner_id (F11: was owner_id, but owner_id is a User
+      FK and the FHIR `author` reference must point to a Practitioner — so we
+      preserve it as practitioner_id; owner_id must be set separately by the
+      application layer since it's not a FHIR concept)
     - content[0].attachment.title → filename (REQUIRED)
     - content[0].attachment.url → file_path (relative path or urn)
     - context.encounter[0] → examination_id
@@ -527,7 +531,10 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     }.get(fhir_status, "uploaded")
 
     author_list = f.get("author") or []
-    owner_id = _extract_patient_id(author_list[0]) if author_list else None
+    # F11: preserve the resolved Practitioner reference; the application layer
+    # is responsible for setting owner_id (User FK) since that's not a FHIR
+    # concept.
+    practitioner_id = _extract_patient_id(author_list[0]) if author_list else None
 
     context = f.get("context") or {}
     encounter_list = context.get("encounter") or []
@@ -540,7 +547,7 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             "id": f.get("id"),
             "filename": filename,
             "file_path": file_path,
-            "owner_id": owner_id,
+            "practitioner_id": practitioner_id,
             "patient_id": _extract_patient_id(f.get("subject")),
             "examination_id": examination_id,
             "status": app_status,

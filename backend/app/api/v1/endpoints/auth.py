@@ -19,6 +19,7 @@ Post-fix contract:
    7-day token scoped to the caller's tenant.
 """
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
+    RoleChecker,
     create_access_token,
     create_invite_token,
     decode_access_token,
@@ -62,11 +64,17 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Authenticate user and return tokens"""
     user = await get_user_by_email(form_data.username)
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, getattr(user, "hashed_password", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if getattr(user, "is_service_account", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service accounts cannot use password login.",
         )
 
     access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
@@ -284,3 +292,64 @@ async def refresh_token(token_data: TokenRefresh):
         token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
     )
+
+
+# ---------------------------------------------------------------------------
+# F19: Service-account token minting (tenant bridge for non-SMART clients)
+# ---------------------------------------------------------------------------
+
+@router.post("/service-account")
+async def create_service_account(
+    instance_name: str,
+    tenant_id: Optional[str] = None,
+    expires_days: int = 90,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),
+):
+    """Mint a long-lived service-account JWT for external system interop (F19).
+
+    Creates a ``UserModel`` row with ``is_service_account=True`` (no password)
+    and returns a JWT carrying ``is_service_account=True`` +
+    ``client_id=<instance_name>``. The token works as a Bearer against the
+    FHIR facade (``/fhir/R4/*``) and the REST API for the service account's
+    tenant. SYSTEM_ADMIN can override the tenant via the ``X-Tenant`` header
+    (see Phase 8 commit 8.2).
+
+    ADMIN/MANAGER can only mint for their own tenant; SYSTEM_ADMIN can mint
+    for any tenant by passing ``tenant_id``.
+    """
+    from uuid import uuid4
+
+    target_tenant = tenant_id or str(current_user.tenant_id)
+    sa_email = f"sa-{uuid4()}@service-account.local"
+
+    sa_user = UserModel(
+        email=sa_email,
+        hashed_password=None,
+        role=Role.USER,
+        tenant_id=target_tenant,
+        is_active=True,
+        is_service_account=True,
+    )
+    db.add(sa_user)
+    await db.flush()
+
+    expires_delta = timedelta(days=min(max(expires_days, 1), 365))
+    claims = {
+        "sub": sa_email,
+        "user_id": str(sa_user.id),
+        "tenant_id": target_tenant,
+        "role": Role.USER.value,
+        "is_service_account": True,
+        "client_id": instance_name,
+    }
+    access_token = create_access_token(claims, expires_delta=expires_delta)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "tenant_id": target_tenant,
+        "client_id": instance_name,
+        "expires_in_days": min(max(expires_days, 1), 365),
+    }

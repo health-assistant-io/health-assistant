@@ -2,11 +2,18 @@ import asyncio
 import datetime
 import functools
 import logging
+import threading
 from uuid import UUID
-from typing import Any
+from typing import Any, Optional, Tuple
 
-from sqlalchemy import select, delete, and_
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import select, delete, and_, update
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+    AsyncEngine,
+)
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.workers.celery_app import celery_app
@@ -18,9 +25,69 @@ from celery.utils.log import get_task_logger
 logger = get_task_logger(__name__)
 
 
-def get_async_session():
-    """Returns a new session with a fresh engine to avoid loop affinity issues"""
-    engine = create_async_engine(settings.DATABASE_URL)
+# ---------------------------------------------------------------------------
+# Worker-scoped async DB engine.
+#
+# Each Celery worker process gets exactly one AsyncEngine, created lazily on
+# first use and disposed when the worker process shuts down. Two reasons this
+# is critical:
+#
+# 1. Per-task engines (the old pattern) produced asyncpg connections bound to
+#    the task's event loop. When that loop closed (end of task) and the next
+#    task reused a pooled connection via SQLAlchemy's pool, the connection's
+#    asyncpg protocol transport was still tied to the closed loop →
+#    ``RuntimeError: Event loop is closed`` / ``Future attached to a different
+#    loop``. Celery periodic tasks (check_notification_triggers,
+#    sync_active_integrations) crashed intermittently depending on which
+#    connection the pool handed out.
+#
+# 2. ``poolclass=NullPool`` makes each session check out a fresh DB connection
+#    and close it on session close, so no connection ever outlives the loop
+#    that created it. This trades the small per-task connection-setup cost
+#    for correctness. Celery prefork already limits concurrency to one task
+#    per child process, so connection pooling inside the worker buys little.
+# ---------------------------------------------------------------------------
+
+_worker_engine: Optional[AsyncEngine] = None
+_worker_engine_lock = threading.Lock()
+
+
+def get_async_engine() -> AsyncEngine:
+    """Return the worker-scoped ``AsyncEngine`` (lazy singleton).
+
+    Thread-safe; idempotent. The engine lives for the lifetime of the worker
+    process and is disposed by ``dispose_worker_engine()`` wired to Celery's
+    ``worker_process_shutdown`` signal.
+    """
+    global _worker_engine
+    if _worker_engine is None:
+        with _worker_engine_lock:
+            if _worker_engine is None:
+                _worker_engine = create_async_engine(
+                    settings.DATABASE_URL,
+                    poolclass=NullPool,
+                )
+                logger.debug("Created worker-scoped AsyncEngine (NullPool)")
+    return _worker_engine
+
+
+async def dispose_worker_engine() -> None:
+    """Dispose the worker-scoped engine. Called on worker process shutdown."""
+    global _worker_engine
+    if _worker_engine is not None:
+        await _worker_engine.dispose()
+        _worker_engine = None
+        logger.debug("Disposed worker-scoped AsyncEngine")
+
+
+def get_async_session() -> Tuple[AsyncSession, AsyncEngine]:
+    """Return ``(session, engine)`` for a new task.
+
+    The session is fresh per call; the engine is the worker-scoped singleton.
+    Callers must ``await db.close()`` in a ``finally`` block but must NOT
+    dispose the engine (it is shared across tasks).
+    """
+    engine = get_async_engine()
     session_factory = async_sessionmaker(
         bind=engine, class_=AsyncSession, expire_on_commit=False
     )
@@ -28,7 +95,13 @@ def get_async_session():
 
 
 def async_task(func):
-    """Decorator to run async functions in a thread and handle DB session cleanup"""
+    """Decorator to run async functions in a thread and handle DB session cleanup.
+
+    Each task gets its own event loop (closed in ``finally``). Because
+    ``get_async_engine()`` uses ``NullPool``, no DB connection is ever reused
+    across loops, so the historical "Future attached to a different loop"
+    failure mode is impossible.
+    """
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -41,6 +114,33 @@ def async_task(func):
     return wrapper
 
 
+# Dispose the worker-scoped engine when the Celery worker process exits.
+try:
+    from celery.signals import worker_process_shutdown
+
+    @worker_process_shutdown.connect
+    def _on_worker_shutdown(**kwargs):
+        """Best-effort engine disposal on worker shutdown.
+
+        Runs in a fresh loop because the task loop has already closed by the
+        time the signal fires.
+        """
+        global _worker_engine
+        if _worker_engine is None:
+            return
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_worker_engine.dispose())
+        except Exception as exc:
+            logger.warning("Engine disposal on shutdown failed: %s", exc)
+        finally:
+            loop.close()
+            _worker_engine = None
+except ImportError:
+    # Celery not installed (e.g. minimal test env) — skip signal wiring.
+    pass
+
+
 @celery_app.task
 @async_task
 async def deliver_notification(notification_id: str):
@@ -49,7 +149,6 @@ async def deliver_notification(notification_id: str):
     Handles PUSH, EMAIL, and potentially SMS channels.
     """
     logger.info(f"Worker picking up delivery for notification {notification_id}")
-    from app.services.webpush_service import send_web_push
     from app.models.notification import (
         Notification,
         NotificationStatus,
@@ -109,21 +208,33 @@ async def deliver_notification(notification_id: str):
                     f"Targeting {len(user_ids)} users in tenant {notif.tenant_id} for notification {notification_id}"
                 )
 
-                # 3. Web Push Delivery
+                # 3. Web Push Delivery.
+                # Fetch the subscription row id alongside the subscription_data
+                # so we can deactivate dead subscriptions (HTTP 410/404) on
+                # the fly instead of polling them forever.
                 subs_res = await db.execute(
-                    select(NotificationSubscription.subscription_data).where(
+                    select(
+                        NotificationSubscription.id,
+                        NotificationSubscription.subscription_data,
+                    ).where(
                         and_(
                             NotificationSubscription.user_id.in_(user_ids),
                             NotificationSubscription.is_active == True,
                         )
                     )
                 )
-                subscriptions = subs_res.scalars().all()
+                subscriptions = subs_res.all()
                 logger.info(
                     f"Found {len(subscriptions)} active Web Push subscriptions for notification {notification_id}"
                 )
 
-                for i, sub_data in enumerate(subscriptions):
+                from app.services.webpush_service import (
+                    send_web_push,
+                    SubscriptionExpired,
+                )
+
+                deactivated_count = 0
+                for i, (sub_id, sub_data) in enumerate(subscriptions):
                     try:
                         push_ok = send_web_push(sub_data, payload)
                         if push_ok:
@@ -135,8 +246,29 @@ async def deliver_notification(notification_id: str):
                             logger.warning(
                                 f"Failed to send Web Push #{i + 1} for notification {notification_id}"
                             )
+                    except SubscriptionExpired as ex:
+                        # Per RFC 8030 the subscription is permanently dead.
+                        # Mark it inactive in the DB so subsequent deliveries
+                        # skip it; otherwise dead rows accumulate and every
+                        # PUSH cycle pays the HTTP cost of re-discovering
+                        # they're still dead.
+                        logger.info(
+                            f"Deactivating dead subscription {sub_id} "
+                            f"(HTTP {ex.status_code}): {ex}"
+                        )
+                        await db.execute(
+                            update(NotificationSubscription)
+                            .where(NotificationSubscription.id == sub_id)
+                            .values(is_active=False)
+                        )
+                        deactivated_count += 1
                     except Exception as e:
                         logger.error(f"Error sending Web Push #{i + 1}: {e}")
+                if deactivated_count:
+                    logger.info(
+                        f"Deactivated {deactivated_count} dead subscription(s) "
+                        f"during notification {notification_id} delivery."
+                    )
             else:
                 # For non-push channels (like IN_APP), we consider it delivered to the DB
                 success = True
@@ -161,7 +293,7 @@ async def deliver_notification(notification_id: str):
         )
         raise
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 @celery_app.task
@@ -170,7 +302,16 @@ async def check_notification_triggers():
     """Periodic task to process scheduled and recurring triggers."""
     from app.services.notification_manager import NotificationManager
 
-    await NotificationManager.process_due_triggers()
+    db, engine = get_async_session()
+    try:
+        async with db:
+            # Inject the worker-scoped NullPool session so NotificationManager
+            # never reaches for the global pooled engine (whose asyncpg
+            # connections are bound to a different/closed event loop in a
+            # prefork worker → "Future attached to a different loop").
+            await NotificationManager.process_due_triggers(session=db)
+    finally:
+        await db.close()
 
 
 @celery_app.task(name="app.workers.tasks.sync_active_integrations", bind=True, max_retries=1)
@@ -206,36 +347,6 @@ async def sync_active_integrations(self):
             logger.info(f"Found {len(active_integrations)} active integrations to sync.")
 
             for integration in active_integrations:
-                # Per-integration lock (audit C4). ``NX`` = set-if-not-exists,
-                # ``EX`` = expire-after. ``redis_client.set`` returns True iff
-                # the lock was acquired.
-                lock_key = f"sync_lock:{integration.id}"
-                try:
-                    from app.core.redis import redis_client
-
-                    acquired = await redis_client.set(lock_key, "1", nx=True, ex=600)
-                except Exception as lock_err:
-                    # Redis unavailable — degrade to "always sync" (legacy
-                    # behaviour) but log the gap loudly.
-                    logger.warning(
-                        "Could not acquire Redis lock for integration %s (Redis down? %s); "
-                        "proceeding without dedup guard. This may cause duplicate writes under "
-                        "overlapping beats (audit C4).",
-                        integration.id,
-                        lock_err,
-                    )
-                    acquired = True  # legacy mode
-
-                if not acquired:
-                    logger.info(
-                        "Skipping sync for integration %s (provider=%s) — another worker "
-                        "holds the sync_lock (audit C4).",
-                        integration.id,
-                        integration.provider,
-                    )
-                    continue
-
-                try:
                     start_time = datetime.datetime.now(datetime.timezone.utc)
 
                     # Check if it's time to sync based on user config interval (default to 15 if missing)
@@ -257,172 +368,34 @@ async def sync_active_integrations(self):
 
                     logger.info(f"Syncing integration {integration.provider} for user {integration.user_id}")
 
-                    from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
+                    # Delegate to the shared sync pipeline (acquires the Redis
+                    # dedup lock internally, handles the 3-tier error contract,
+                    # writes the IntegrationSyncLog).
+                    from app.services.integration_sync_service import run_sync
 
-                    # Pull data
-                    observations_data = await provider.pull_data(integration)
-
-                    observations = []
-                    dropped_invalid = 0
-                    if observations_data:
-                        logger.info(f"Pulled {len(observations_data)} observations from {integration.provider}")
-
-                        from app.models.fhir import Observation
-
-                        # Convert to ORM models BEFORE passing to mapping
-                        for obs_data in observations_data:
-                            obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
-                            obs = Observation(**obs_dict)
-                            observations.append(obs)
-
-                        from app.services.fhir_service import map_observations_to_biomarkers
-                        map_result = await map_observations_to_biomarkers(db, observations)
-                        dropped_invalid = (
-                            map_result.get("dropped_invalid", 0)
-                            if isinstance(map_result, dict)
-                            else 0
+                    result = await run_sync(db, integration, provider, source="background")
+                    if result.status == "skipped":
+                        logger.debug(
+                            "Sync skipped (lock held) for %s (user %s)",
+                            integration.provider, integration.user_id,
                         )
-
-                    # Route telemetry-class observations to the TimescaleDB
-                    # hypertable. The split is shared with manual sync, webhook,
-                    # and the bridge provider via ``apply_telemetry_split``.
-                    telemetry_count = 0
-                    fhir_count = 0
-                    if observations:
-                        from app.services.integration_sync_service import (
-                            apply_telemetry_split,
+                    elif result.status == "failed":
+                        logger.warning(
+                            "Sync failed for %s (user %s): %s",
+                            integration.provider, integration.user_id, result.error,
                         )
-                        telemetry_records, fhir_records = await apply_telemetry_split(
-                            db,
-                            observations,
-                            tenant_id=integration.tenant_id,
-                            instance_name=integration.instance_name,
-                            provider_name=integration.provider,
-                            integration_id=integration.id,
+                    else:
+                        logger.info(
+                            "Sync %s for %s: pulled=%d fhir=%d telemetry=%d dropped=%d",
+                            result.status, integration.provider,
+                            result.pulled, result.fhir_persisted,
+                            result.telemetry_persisted, result.dropped_invalid,
                         )
-                        telemetry_count = len(telemetry_records)
-                        fhir_count = len(fhir_records)
-
-                    # Push data (for dev dummy)
-                    await provider.push_data(integration, {"status": "sync_started"})
-
-                    # Update sync time
-                    integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-
-                    # If validation dropped observations, surface it in the
-                    # sync log so the UI/admin can see partial-success.
-                    sync_status = "success" if dropped_invalid == 0 else "partial"
-                    error_msg = (
-                        f"{dropped_invalid} of {len(observations_data) if observations_data else 0} "
-                        "pulled observations failed FHIR validation and were dropped"
-                        if dropped_invalid
-                        else None
-                    )
-
-                    # Log sync
-                    from app.models.user_integration import IntegrationSyncLog
-                    sync_log = IntegrationSyncLog(
-                        integration_id=integration.id,
-                        tenant_id=integration.tenant_id,
-                        status=sync_status,
-                        records_synced=telemetry_count + fhir_count,
-                        started_at=start_time,
-                        completed_at=integration.last_synced_at,
-                        error_message=error_msg,
-                    )
-                    db.add(sync_log)
-
-                    await db.commit()
-
-                except IntegrationAuthError as e:
-                    logger.warning(f"Auth error for integration {integration.provider} (user {integration.user_id}): {e}")
-
-                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-                        try:
-                            await provider.log_debug_payload(integration, "Auth Error (Background)", {"error": str(e)}, level="error")
-                        except Exception:
-                            pass
-
-                    # Update integration status to ERROR so we stop hammering it until user fixes it
-                    integration.status = IntegrationStatus.ERROR
-
-                    from app.models.user_integration import IntegrationSyncLog
-                    sync_log = IntegrationSyncLog(
-                        integration_id=integration.id,
-                        tenant_id=integration.tenant_id,
-                        status="failed",
-                        records_synced=0,
-                        started_at=start_time,
-                        completed_at=datetime.datetime.now(datetime.timezone.utc),
-                        error_message=str(e)
-                    )
-                    db.add(sync_log)
-                    await db.commit()
-
-                except IntegrationRateLimitError as e:
-                    logger.warning(f"Rate limit hit for {integration.provider} (user {integration.user_id}): {e}")
-
-                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-                        try:
-                            await provider.log_debug_payload(integration, "Rate Limit Error (Background)", {"error": str(e)}, level="warning")
-                        except Exception:
-                            pass
-
-                    # Log the delay but don't mark as error so we try again later
-                    from app.models.user_integration import IntegrationSyncLog
-                    sync_log = IntegrationSyncLog(
-                        integration_id=integration.id,
-                        tenant_id=integration.tenant_id,
-                        status="failed",
-                        records_synced=0,
-                        started_at=start_time,
-                        completed_at=datetime.datetime.now(datetime.timezone.utc),
-                        error_message="Rate Limit Exceeded. Will retry later."
-                    )
-                    db.add(sync_log)
-                    await db.commit()
-
-                except Exception as e:
-                    logger.error(f"Error syncing integration {integration.provider} for user {integration.user_id}: {e}")
-
-                    if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-                        try:
-                            await provider.log_debug_payload(integration, "Sync Error (Background)", {"error": str(e)}, level="error")
-                        except Exception:
-                            pass
-
-                    # Log failure
-                    from app.models.user_integration import IntegrationSyncLog
-                    sync_log = IntegrationSyncLog(
-                        integration_id=integration.id,
-                        tenant_id=integration.tenant_id,
-                        status="failed",
-                        records_synced=0,
-                        started_at=datetime.datetime.now(datetime.timezone.utc),
-                        completed_at=datetime.datetime.now(datetime.timezone.utc),
-                        error_message=str(e)
-                    )
-                    db.add(sync_log)
-                    await db.commit()
-
-                finally:
-                    # Release the lock. We use ``delete`` (not a Lua compare-
-                    # and-delete) for simplicity; the EX=600 fallback handles
-                    # the case where this finally block never runs (worker
-                    # crash mid-sync).
-                    if acquired:
-                        try:
-                            from app.core.redis import redis_client
-
-                            await redis_client.delete(lock_key)
-                        except Exception:
-                            # Lock will expire via TTL — safe to ignore.
-                            pass
 
     except Exception as e:
         logger.error(f"Critical error during integration sync cycle: {e}")
     finally:
-        await engine.dispose()
+        await db.close()
 @celery_app.task(bind=True)
 @async_task
 async def migrate_biomarker_data(
@@ -768,7 +741,7 @@ async def migrate_biomarker_data(
                 await db.commit()
         raise
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 @celery_app.task(bind=True, max_retries=0)
@@ -789,7 +762,7 @@ async def export_backup(self, job_id_str: str):
         logger.exception(f"export_backup {job_id_str} failed: {e}")
         return {"job_id": job_id_str, "status": "failed", "error": str(e)}
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 @celery_app.task(bind=True, max_retries=0)
@@ -822,7 +795,7 @@ async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: 
         logger.exception(f"import_backup {job_id_str} failed: {e}")
         return {"job_id": job_id_str, "status": "failed", "error": str(e)}
     finally:
-        await engine.dispose()
+        await db.close()
         try:
             from pathlib import Path as _Path
 

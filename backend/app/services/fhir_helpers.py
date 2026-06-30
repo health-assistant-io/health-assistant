@@ -7,7 +7,7 @@ call time rather than breaking module import.
 """
 
 import datetime as dt
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.models.enums import ExportScope  # noqa: F401  (re-exported for callers)
 from app.schemas.backup import PROVENANCE_SYSTEM, PROVENANCE_CODE
@@ -84,15 +84,19 @@ def assert_valid_fhir(obj: Any) -> Dict[str, Any]:
     return obj.to_fhir_dict()
 
 
-def validate_and_filter_observations(observations: list, logger=None) -> int:
+def validate_and_filter_observations(observations: list, logger=None) -> Tuple[List[Any], int]:
     """Drop observations that cannot be projected to valid FHIR (skip-and-log).
 
     The write-time gate for the integration data path: every Observation is run
     through :func:`assert_valid_fhir` (which validates the whole resource via
     ``fhir.resources``). Invalid ones are dropped and counted so a single bad
-    resource can never abort a whole sync; valid ones are kept. The list is
-    mutated **in place** (so callers that hold the reference keep the filtered
-    set) and the dropped count is returned for sync logging.
+    resource can never abort a whole sync; valid ones are kept.
+
+    Returns ``(valid, dropped_count)``. Does **not** mutate the input list —
+    callers that want the filtered set must use the returned ``valid`` list
+    (I5: previously mutated the caller's list in place via ``observations[:] =
+    valid``, which was a fragile contract — callers holding a reference saw a
+    shorter list with no signal that items were removed).
     """
     valid: List[Any] = []
     dropped = 0
@@ -108,8 +112,7 @@ def validate_and_filter_observations(observations: list, logger=None) -> int:
                     getattr(obs, "id", "?"),
                     e,
                 )
-    observations[:] = valid
-    return dropped
+    return valid, dropped
 
 
 def _enum_value(v: Any, default: Optional[str] = None) -> Optional[str]:
@@ -296,6 +299,10 @@ def _flatten_interpretation(interpretation: Any) -> Optional[str]:
     Accepts a string (passed through) or a FHIR list of CodeableConcepts
     ([{coding:[{display,code}], text}]) and returns the first non-empty
     display/code/text. None for empty/None input.
+
+    Read-side helper for the frontend / analytics contract (which expect a
+    single string). The ORM column itself stores the canonical FHIR list
+    shape (JSONB) as of I6 — this helper flattens on read.
     """
     if not interpretation:
         return None
@@ -313,4 +320,26 @@ def _flatten_interpretation(interpretation: Any) -> Optional[str]:
             text = first.get("text")
             if text:
                 return text
+    return None
+
+
+def _normalize_interpretation(value: Any) -> Optional[List[Dict[str, Any]]]:
+    """Normalize any interpretation input to the canonical FHIR R4 list shape.
+
+    The ORM column is JSONB (``0..* CodeableConcept``). This helper accepts:
+    - ``None`` → ``None``
+    - a canonical FHIR list ``[{...}]`` → passed through unchanged
+    - a bare string ``"High"`` → wrapped as ``[{"text": "High"}]`` (backward
+      compat for REST callers + the OCR pipeline that emit display strings)
+
+    Used at every write path (REST create, OCR persistence, FHIR import) so
+    the column always holds the canonical shape regardless of input form.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value if value else None
+    if isinstance(value, str):
+        s = value.strip()
+        return [{"text": s}] if s else None
     return None

@@ -5,6 +5,7 @@ the facade endpoints. Per-resource CRUD lives in :mod:`app.services.fhir_service
 (reused); this module is only concerned with the R4 conformance surface.
 """
 
+import datetime as _dt
 import os
 import re
 from typing import Any, Dict, List
@@ -34,11 +35,16 @@ def get_software_version() -> str:
 
 
 def build_capability_statement(base_url: str) -> Dict[str, Any]:
-    """Build a FHIR R4B CapabilityStatement for the facade.
+    """Build a FHIR R4 CapabilityStatement for the facade.
 
     The statement is built dynamically from the :data:`RESOURCE_REGISTRY` so
     adding a new resource automatically advertises it. Per-resource
     interactions + search params come from the registered entry.
+
+    Advertises ``fhirVersion = "4.0.1"`` (R4) to match the ``/fhir/R4/`` path.
+    Validation of the resources we emit is done by ``fhir.resources`` (R4B
+    subpackage — see ``app.schemas.backup.FHIR_VERSION`` for rationale); R4B
+    is a superset of R4 for every field our models project.
 
     Args:
         base_url: the absolute base URL of the facade (e.g.
@@ -46,7 +52,7 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
             and to compute per-resource paths.
 
     Returns:
-        A FHIR R4B CapabilityStatement dict (validated by ``fhir.resources``
+        A FHIR R4 CapabilityStatement dict (validated by ``fhir.resources``
         on the way out — the caller may call ``parse_fhir_resource`` to verify).
     """
     software_version = get_software_version()
@@ -71,9 +77,16 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
                 "type": entry.resource_type,
                 "interaction": interactions,
                 "searchParam": search_param_block,
-                "versioning": "versioned" if entry.versioned else "no-version",
-                "readHistory": entry.versioned,
-                "updateCreate": True,
+                # Honest versioning: VersionedMixin bumps `version` in place but
+                # we don't implement vread / history-instance / version history
+                # yet. Declare no-version so clients don't try to dereference
+                # the versionId we put in the ETag/Location. When vread lands,
+                # flip back to "versioned".
+                "versioning": "no-version",
+                "readHistory": False,
+                # PUT to a missing id returns 404 (not update-as-create), so
+                # advertise that honestly. Toggle to True if/when implemented.
+                "updateCreate": False,
                 "conditionalCreate": False,
                 "conditionalRead": "not-supported",
                 "conditionalUpdate": False,
@@ -84,7 +97,7 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
     return {
         "resourceType": "CapabilityStatement",
         "status": "active",
-        "date": "2026-06-21T00:00:00Z",
+        "date": _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z"),
         "publisher": "Health Assistant",
         "kind": "instance",
         "fhirVersion": FHIR_VERSION,
@@ -102,36 +115,25 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
         "rest": [
             {
                 "mode": "server",
-                "documentation": "Health Assistant FHIR R4 facade. Tenant-scoped; SMART-on-FHIR scopes deferred to Stage 4.",
+                "documentation": "Health Assistant FHIR R4 facade. Tenant-scoped. Two auth modes: (1) platform user JWT (login), (2) service-account JWT (admin-minted, long-lived, for external systems — POST /auth/service-account). SYSTEM_ADMIN can override tenant scope via the X-Tenant header. SMART-on-FHIR (OAuth2 + scopes) is deferred to Stage 4.",
                 "security": {
                     "cors": True,
-                    "description": "Bearer JWT auth via the existing app token (SMART scopes deferred).",
+                    "description": "Bearer JWT auth. Two modes: (1) platform user JWT via /auth/login; (2) service-account JWT via /auth/service-account (for external systems). SMART-on-FHIR deferred to Stage 4.",
                 },
                 "resource": resources,
-                "interaction": [
-                    {"code": "search-system"},
-                    {"code": "history-system"},
-                    {"code": "batch"},
-                    {"code": "transaction"},
-                ],
-                "searchParam": [
-                    {
-                        "name": "_id",
-                        "type": "token",
-                        "documentation": "Logical id of the resource",
-                    },
-                    {
-                        "name": "_lastUpdated",
-                        "type": "date",
-                        "documentation": "When resource was last updated",
-                    },
-                ],
-                "operation": [
-                    {
-                        "name": "validate",
-                        "definition": f"{base_url}/OperationDefinition/-s-validate",
-                    }
-                ],
+                # System-wide interactions: only advertise what the root /fhir/R4
+                # endpoint actually supports. POST to /fhir/R4 is treated as a
+                # 404/405 (no batch/transaction dispatch), there is no
+                # /fhir/R4/_history (history-system), and /fhir/R4/_search is not
+                # implemented (search-system). Leave the list empty rather than
+                # falsely advertising batch/transaction/history-system/search-system.
+                "interaction": [],
+                # System-wide search params (_id, _lastUpdated) are advertised
+                # per-resource above; no need to duplicate at the system level.
+                "searchParam": [],
+                # /$validate operation (POST /fhir/R4/$validate) is not
+                # implemented. Don't advertise it until it lands.
+                "operation": [],
             }
         ],
     }

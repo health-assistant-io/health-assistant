@@ -248,7 +248,8 @@ async def test_sync_active_integrations_degrades_when_redis_down():
     with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
          patch.object(worker_tasks, "integration_registry"), \
          patch("app.core.redis.redis_client", fake_redis), \
-         patch.object(worker_tasks.logger, "warning", _warn):
+         patch.object(worker_tasks.logger, "warning", _warn), \
+         patch("app.services.integration_sync_service.logger.warning", _warn):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 

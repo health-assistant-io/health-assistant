@@ -6,7 +6,13 @@ from app.models.enums import ExportScope, ExportType, JobStatus
 
 PROVENANCE_SYSTEM = "https://healthassistant.local/fhir/export"
 PROVENANCE_CODE = "ha-export"
-FHIR_VERSION = "4.3.0"
+# Advertise R4 (4.0.1) — the FHIR version the /fhir/R4/* facade targets.
+# Note on the validator: fhir.resources 8.x dropped its R4 subpackage and ships
+# R4B (4.3.0) as its primary version. R4B is a backward-compatible superset of
+# R4 for every field our models emit, so the R4B validator (used inside
+# fhir_helpers.build_fhir_resource) accepts exactly the FHIR JSON we produce;
+# what we advertise to clients is R4 4.0.1 because the path is /fhir/R4/.
+FHIR_VERSION = "4.0.1"
 BACKUP_SCHEMA_VERSION = "1.0.0"
 
 

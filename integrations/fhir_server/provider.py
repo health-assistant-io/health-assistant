@@ -74,8 +74,13 @@ class FhirServerProvider(BaseHealthProvider):
         fhir_base_url = (integration.user_config or {}).get("fhir_base_url")
         if not fhir_base_url:
             raise IntegrationAuthError("Instance has no fhir_base_url configured.")
+        # H1: request write scopes when push is enabled so the SMART consent
+        # screen includes patient/*.write. The user must re-authorize if the
+        # sync_direction was changed to push after initial authorization.
+        push_enabled = self._direction(integration) in ("both", "push_only")
         return await self._smart.begin_connect(
-            fhir_base_url, redirect_uri, "Health Assistant", extra_state=extra_state
+            fhir_base_url, redirect_uri, "Health Assistant",
+            push_enabled=push_enabled, extra_state=extra_state,
         )
 
     async def complete_oauth(self, integration, pending, code):
@@ -83,6 +88,10 @@ class FhirServerProvider(BaseHealthProvider):
 
     async def get_live_token(self, integration: UserIntegration) -> str:
         return await self._smart.get_live_token(integration)
+
+    async def revoke(self, integration: UserIntegration) -> None:
+        """Best-effort token revocation (RFC 7009) — delegates to SmartOAuth."""
+        await self._smart.revoke(integration)
 
     # ---------------------------------------------------- config / resolution
 
@@ -325,16 +334,29 @@ class FhirServerProvider(BaseHealthProvider):
         )
 
         created = updated = skipped = errors = 0
+        insufficient_scope = False
+        prov_counters: Dict[str, int] = {}
+        device_id = await self._resolve_device_id(integration)
+        max_pushed_at = None  # tracks the latest updated_at among successful rows
         for obs in pushable:
             outcome = await self._push_one(
-                integration, fhir_base_url, auth_mode, remote_patient, obs
+                integration, fhir_base_url, auth_mode, remote_patient, obs,
+                device_id=device_id, prov_counters=prov_counters,
             )
             if outcome == "created":
                 created += 1
+                if obs.updated_at and (max_pushed_at is None or obs.updated_at > max_pushed_at):
+                    max_pushed_at = obs.updated_at
             elif outcome == "updated":
                 updated += 1
+                if obs.updated_at and (max_pushed_at is None or obs.updated_at > max_pushed_at):
+                    max_pushed_at = obs.updated_at
             elif outcome == "skipped":
                 skipped += 1
+            elif outcome == "insufficient_scope":
+                insufficient_scope = True
+                errors += 1
+                break
             else:
                 errors += 1
 
@@ -346,8 +368,21 @@ class FhirServerProvider(BaseHealthProvider):
             "errors": errors,
             "candidates": len(pushable),
             "at": now.isoformat(),
+            "provenance_created": prov_counters.get("provenance_created", 0),
+            "provenance_failed": prov_counters.get("provenance_failed", 0),
         }
-        self.set_sync_cursor(integration, "last_pushed_at", now.isoformat())
+        if insufficient_scope:
+            result["warning"] = (
+                "Push stopped — the authorization token lacks write scope "
+                "(patient/*.write). Re-authorize the integration to request "
+                "write permissions (the SMART consent screen will appear)."
+            )
+        # Push resilience: only advance the cursor past successfully-pushed
+        # rows. If ALL rows failed, the cursor stays unchanged → full retry
+        # next cycle (was: advanced to `now` unconditionally → failed rows
+        # were never retried → silent data loss on transient failures).
+        if max_pushed_at is not None:
+            self.set_sync_cursor(integration, "last_pushed_at", max_pushed_at.isoformat())
         self.set_sync_cursor(integration, "last_push_result", result)
         await self.log_debug_payload(
             integration,
@@ -358,9 +393,15 @@ class FhirServerProvider(BaseHealthProvider):
         return result
 
     async def _push_one(
-        self, integration, fhir_base_url, auth_mode, remote_patient, obs
+        self, integration, fhir_base_url, auth_mode, remote_patient, obs,
+        *, device_id=None, prov_counters=None,
     ) -> str:
-        """Push a single Observation. Returns ``created``/``updated``/``skipped``/``error``."""
+        """Push a single Observation. Returns ``created``/``updated``/``skipped``/``error``.
+
+        H3: after a successful PUT, POSTs a Provenance to the remote server
+        (best-effort — never aborts the push). ``prov_counters`` (a mutable
+        dict) is incremented for tracking.
+        """
         local_id = str(obs.id)
         try:
             body = obs.to_fhir_dict()
@@ -396,8 +437,33 @@ class FhirServerProvider(BaseHealthProvider):
                 self._http_client, fhir_base_url, "Observation", body,
                 search_params=search_params, access_token=token,
             )
-        except IntegrationAuthError:
-            raise
+        except IntegrationAuthError as e:
+            # H1: detect 403 insufficient_scope — the token lacks write
+            # permissions. Surface an actionable signal.
+            if "insufficient_scope" in str(e).lower() or (
+                "scope" in str(e).lower() and "403" in str(e)
+            ):
+                return "insufficient_scope"
+            # Push resilience: 401-race retry. The token was valid when
+            # get_live_token checked, but expired between the check and the
+            # PUT (a race). Force-refresh and retry once — mirrors the pull
+            # path's _authorized_search pattern. If it still fails, count
+            # this row as an error and continue the batch (don't abort).
+            try:
+                token = await self._smart.force_refresh(integration)
+            except IntegrationAuthError:
+                return "error"
+            try:
+                status, _resp = await fhir_conditional_update(
+                    self._http_client, fhir_base_url, "Observation", body,
+                    search_params=search_params, access_token=token,
+                )
+            except IntegrationError as retry_err:
+                logger.warning(
+                    "fhir_server %s push still failing after token refresh for %s: %s",
+                    integration.id, local_id, retry_err,
+                )
+                return "error"
         except IntegrationError as e:
             logger.warning("fhir_server %s push failed for %s: %s", integration.id, local_id, e)
             await self.log_debug_payload(
@@ -415,9 +481,75 @@ class FhirServerProvider(BaseHealthProvider):
         )
         if status == 412:
             return "skipped"
+
+        # H3: POST a Provenance to the remote server after a successful push
+        # (hospitals require this for regulatory audit). Best-effort — a
+        # Provenance failure (404/405 = server doesn't support Provenance,
+        # network error, etc.) is logged and never aborts the push.
+        remote_id = (_resp or {}).get("id") if isinstance(_resp, dict) else None
+        if remote_id and prov_counters is not None:
+            await self._post_remote_provenance(
+                integration, fhir_base_url, auth_mode, remote_id, device_id, prov_counters,
+            )
+
         if status == 201:
             return "created"
         return "updated"
+
+    async def _post_remote_provenance(
+        self, integration, fhir_base_url, auth_mode, remote_obs_id, device_id, counters,
+    ):
+        """H3: POST a Provenance resource for the just-pushed Observation."""
+        from integrations.sdk.fhir import fhir_create
+        from integrations.sdk.exceptions import IntegrationError
+
+        instance_name = (integration.user_config or {}).get("instance_name") or integration.provider
+        agent_who = {"reference": f"Device/{device_id}"} if device_id else {"display": "Health Assistant"}
+        prov_body = {
+            "resourceType": "Provenance",
+            "target": [{"reference": f"Observation/{remote_obs_id}"}],
+            "recorded": datetime.now(timezone.utc).isoformat(),
+            "activity": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3/ProvenanceEventType", "code": "CREATE"}]},
+            "agent": [{
+                "who": agent_who,
+                "onBehalfOf": {"display": f"Health Assistant (integration: {instance_name})"},
+            }],
+        }
+        try:
+            token = await self._smart.get_live_token(integration) if auth_mode == "smart" else None
+            await fhir_create(
+                self._http_client, fhir_base_url, "Provenance", prov_body,
+                access_token=token,
+            )
+            counters["provenance_created"] = counters.get("provenance_created", 0) + 1
+        except IntegrationError as e:
+            logger.debug("Remote Provenance POST failed for %s: %s", integration.id, e)
+            counters["provenance_failed"] = counters.get("provenance_failed", 0) + 1
+        except Exception:
+            counters["provenance_failed"] = counters.get("provenance_failed", 0) + 1
+
+    async def _resolve_device_id(self, integration) -> Optional[str]:
+        """H3: resolve the DeviceModel id for this integration (for Provenance agent.who).
+
+        Mirrors ``provenance_service._resolve_device_ref`` — looks up
+        ``DeviceModel.owner_integration_id == integration.id``. Returns the
+        device id as a string, or None if no Device row exists.
+        """
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.fhir.device import DeviceModel
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db:
+                res = await db.execute(
+                    select(DeviceModel.id).where(
+                        DeviceModel.owner_integration_id == integration.id
+                    )
+                )
+                row = res.first()
+                return str(row[0]) if row else None
+        except Exception:
+            return None
 
     async def _load_push_candidates(self, integration, since) -> list:
         from app.core.database import AsyncSessionLocal

@@ -363,11 +363,21 @@ def test_capability_statement_structure():
     assert cs["resourceType"] == "CapabilityStatement"
     assert cs["status"] == "active"
     assert cs["kind"] == "instance"
-    assert cs["fhirVersion"] == "4.3.0"
+    assert cs["fhirVersion"] == "4.0.1"
     assert "json" in cs["format"]
     assert cs["software"]["name"] == "Health Assistant"
     assert "rest" in cs
     assert cs["rest"][0]["mode"] == "server"
+
+
+def test_capability_statement_advertises_r4_not_r4b():
+    """F2: the path is /fhir/R4/ so the CapabilityStatement must advertise
+    R4 (4.0.1), not R4B (4.3.0). A strict R4 validator (Inferno/Touchstone)
+    fails any server whose advertised fhirVersion doesn't match the path.
+    """
+    cs = build_capability_statement("https://host/api/v1/fhir/R4")
+    assert cs["fhirVersion"] == "4.0.1"
+    assert cs["fhirVersion"] != "4.3.0"
 
 
 def test_capability_statement_validates_against_fhir_resources():
@@ -378,12 +388,53 @@ def test_capability_statement_validates_against_fhir_resources():
     assert parsed.__resource_type__ == "CapabilityStatement"
 
 
-def test_capability_statement_lists_system_interactions():
+def test_capability_statement_does_not_advertise_unimplemented_system_interactions():
+    """F4: the system-level interaction list must only contain interactions
+    the root /fhir/R4 endpoint actually supports. Previously it falsely
+    advertised batch / transaction / history-system / search-system (none of
+    which were implemented); POST to /fhir/R4 is treated as create-one and
+    there is no /fhir/R4/_history or /fhir/R4/_search.
+    """
     cs = build_capability_statement("https://host/api/v1/fhir/R4")
     interactions = {i["code"] for i in cs["rest"][0]["interaction"]}
-    assert "search-system" in interactions
-    assert "batch" in interactions
-    assert "transaction" in interactions
+    assert "search-system" not in interactions
+    assert "history-system" not in interactions
+    assert "batch" not in interactions
+    assert "transaction" not in interactions
+
+
+def test_capability_statement_does_not_advertise_validate_operation():
+    """F4: /$validate is not implemented, so the operation block must be
+    empty (previously advertised a validate operation with a definition URL
+    that returned 404)."""
+    cs = build_capability_statement("https://host/api/v1/fhir/R4")
+    assert cs["rest"][0].get("operation", []) == []
+
+
+def test_capability_statement_per_resource_no_version_no_update_create():
+    """F4 sub-points: per-resource versioning must be 'no-version' (we don't
+    implement vread/history-instance), and updateCreate must be False (PUT to
+    a missing id returns 404, not update-as-create)."""
+    cs = build_capability_statement("https://host/api/v1/fhir/R4")
+    for rsc in cs["rest"][0]["resource"]:
+        assert rsc["versioning"] == "no-version", rsc["type"]
+        assert rsc["readHistory"] is False, rsc["type"]
+        assert rsc["updateCreate"] is False, rsc["type"]
+
+
+def test_capability_statement_date_is_current():
+    """F18: the CapabilityStatement.date must be the current time, not a
+    hardcoded constant."""
+    from datetime import datetime, timezone, timedelta
+
+    # Allow a small skew between the build_capability_statement call and `now`
+    # to tolerate test latency.
+    before = datetime.now(timezone.utc) - timedelta(seconds=5)
+    cs = build_capability_statement("https://host/api/v1/fhir/R4")
+    after = datetime.now(timezone.utc) + timedelta(seconds=5)
+
+    parsed_date = datetime.fromisoformat(cs["date"].replace("Z", "+00:00"))
+    assert before <= parsed_date <= after
 
 
 # ---------------------------------------------------------------------------
@@ -444,7 +495,7 @@ def test_metadata_endpoint_returns_200(app_with_facade):
     assert r.status_code == 200
     body = r.json()
     assert body["resourceType"] == "CapabilityStatement"
-    assert body["fhirVersion"] == "4.3.0"
+    assert body["fhirVersion"] == "4.0.1"
     assert body["software"]["name"] == "Health Assistant"
 
 
@@ -467,12 +518,12 @@ def test_unknown_facade_route_returns_404(app_with_facade):
     """Unknown resource type now returns 404 OperationOutcome (was 501 in the
     initial Phase 1 scaffold — Phase 5 replaced the catch-all with proper
     resource-type dispatch via RESOURCE_REGISTRY)."""
-    from app.core.security import get_current_user
+    from app.core.security import get_current_user_with_tenant_override
     from app.schemas.user import TokenData
     from uuid import uuid4
 
     fake_user = TokenData(user_id=uuid4(), tenant_id=uuid4(), role="USER", sub="test")
-    app_with_facade.dependency_overrides[get_current_user] = lambda: fake_user
+    app_with_facade.dependency_overrides[get_current_user_with_tenant_override] = lambda: fake_user
     try:
         client = TestClient(app_with_facade)
         r = client.get("/api/v1/fhir/R4/NotARealResource")

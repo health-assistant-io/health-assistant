@@ -3,7 +3,7 @@ import logging
 import re
 from pathlib import Path
 from typing import List, Dict, Any
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.allergy import AllergyCatalog, AllergyCategory
@@ -412,7 +412,7 @@ class SeedService:
             try:
                 # Check if medication exists by name (case-insensitive search)
                 stmt = select(MedicationCatalog).where(
-                    MedicationCatalog.name.ilike(item["name"])
+                    func.lower(MedicationCatalog.name) == func.lower(item["name"])
                 )
                 result = await session.execute(stmt)
                 db_med = result.scalar_one_or_none()
@@ -484,7 +484,7 @@ class SeedService:
         for item in data:
             try:
                 stmt = select(AllergyCatalog).where(
-                    AllergyCatalog.name.ilike(item["name"])
+                    func.lower(AllergyCatalog.name) == func.lower(item["name"])
                 )
                 result = await session.execute(stmt)
                 db_allergy = result.scalar_one_or_none()

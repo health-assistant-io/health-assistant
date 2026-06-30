@@ -260,27 +260,38 @@ async def test_split_telemetry_long_tail_goes_into_data_jsonb():
 # ---------------------------------------------------------------------------
 
 
-def test_sync_active_integrations_imports_apply_telemetry_split():
-    """A4 regression: the background task must call the split helper.
+def test_sync_active_integrations_uses_run_sync():
+    """A4 regression: the background task must delegate to the shared run_sync
+    pipeline (which calls apply_telemetry_split internally).
 
-    Catches the bug regressing at source level — if a future edit removes
-    the import/call, this test fails.
+    Catches the bug regressing at source level — if a future edit removes the
+    delegation, this test fails.
     """
     from app.workers import tasks
 
     src = inspect.getsource(tasks.sync_active_integrations)
-    assert "apply_telemetry_split" in src, (
-        "sync_active_integrations does not invoke apply_telemetry_split — "
-        "regression regressed (telemetry would again land in fhir_observations)"
+    assert "run_sync" in src, (
+        "sync_active_integrations does not invoke run_sync — "
+        "the shared pipeline (which calls apply_telemetry_split) is missing"
     )
 
 
-def test_manual_sync_endpoint_uses_shared_helper():
-    """A4: the manual sync endpoint should also use the shared helper (DRY)."""
+def test_run_sync_calls_apply_telemetry_split():
+    """The shared pipeline must call apply_telemetry_split."""
+    from app.services import integration_sync_service
+
+    src = inspect.getsource(integration_sync_service.run_sync)
+    assert "apply_telemetry_split" in src, (
+        "run_sync does not invoke apply_telemetry_split — telemetry would "
+        "again land in fhir_observations"
+    )
+
+
+def test_manual_sync_endpoint_uses_run_sync():
+    """A4: the manual sync endpoint should delegate to the shared pipeline (DRY)."""
     from app.api.v1.endpoints import integrations
 
-    # The manual_sync_endpoint function name in integrations.py
     src = inspect.getsource(integrations)
-    assert "apply_telemetry_split" in src, (
-        "manual sync endpoint should also use apply_telemetry_split for DRY"
+    assert "run_sync" in src, (
+        "manual sync endpoint should use run_sync for DRY"
     )

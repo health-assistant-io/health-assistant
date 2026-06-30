@@ -28,32 +28,25 @@ async def list_doctors_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        from app.models.doctor_model import DoctorModel
+    from app.models.doctor_model import DoctorModel
 
-        # Enforce tenant isolation for non-system admins
-        final_tenant_id = current_user.tenant_id
-        if current_user.role == Role.SYSTEM_ADMIN.value and tenant_id:
-            final_tenant_id = tenant_id
-        elif current_user.role == Role.SYSTEM_ADMIN.value and not tenant_id and user_id:
-            final_tenant_id = None
+    # Enforce tenant isolation for non-system admins
+    final_tenant_id = current_user.tenant_id
+    if current_user.role == Role.SYSTEM_ADMIN.value and tenant_id:
+        final_tenant_id = tenant_id
+    elif current_user.role == Role.SYSTEM_ADMIN.value and not tenant_id and user_id:
+        final_tenant_id = None
 
-        query = select(DoctorModel)
-        if final_tenant_id:
-            query = query.where(DoctorModel.tenant_id == final_tenant_id)
-        
-        if user_id:
-            query = query.where(DoctorModel.user_id == user_id)
-            
-        result = await db.execute(query)
-        doctors = result.scalars().unique().all()
-        return [d.to_dict() for d in doctors]
-    except Exception as e:
-        print(f"ERROR IN DOCTORS ENDPOINT: {e}")
-        import traceback
+    query = select(DoctorModel)
+    if final_tenant_id:
+        query = query.where(DoctorModel.tenant_id == final_tenant_id)
 
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    if user_id:
+        query = query.where(DoctorModel.user_id == user_id)
+
+    result = await db.execute(query)
+    doctors = result.scalars().unique().all()
+    return [d.to_dict() for d in doctors]
 
 
 @router.get("/{doctor_id}", response_model=DoctorResponse)

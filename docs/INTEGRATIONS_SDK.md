@@ -337,12 +337,16 @@ in `integrations/sdk/auth.py`. It provides:
 - **Token exchange + refresh** (`exchange_code`, `refresh_token`).
 - **`OAuthTokenStore`** — persists tokens in `user_config["_oauth"]` with
   `access_token` / `refresh_token` / `client_secret` Fernet-encrypted; stores
-  connection metadata (`token_endpoint`, `client_id`, `fhir_base_url`) so refresh
-  works later; `refresh_if_needed()`.
+  connection metadata (`token_endpoint`, `revocation_endpoint`, `client_id`,
+  `scope`, `patient`, `fhir_base_url`, `expires_at`) so refresh + revoke work later.
 - **`OAuthStateStore`** — Redis-backed short-lived `state` + PKCE verifier
-  (reuses `app/core/redis.py`), one-shot consume (CSRF).
+  (reuses `app/core/redis.py`), one-shot **atomic** consume via `GETDEL`
+  (Redis ≥ 6.2) — no TOCTOU window for duplicate callbacks.
 - **`SmartOAuth`** — composes discovery → DCR → authorize → exchange, with
-  refresh-on-use (`get_live_token`).
+  refresh-on-use (`get_live_token`), force-refresh on a 401 race (`force_refresh`),
+  and best-effort token revocation on disconnect (`revoke`, RFC 7009). When DCR
+  is advertised but returns no `client_id`, raises an actionable
+  `IntegrationAuthError` instead of producing a broken authorize URL.
 
 The connect flow is **decoupled from the config modal** — config creates a
 `PENDING` instance, then a separate Authorize action runs the OAuth round-trip:
@@ -368,9 +372,22 @@ The connect flow is **decoupled from the config modal** — config creates a
 For **inbound FHIR data** (pull), use `sdk/fhir.py` — `fhir_search(http_client,
 base_url, resource_type, params, *, access_token=None)` (tokenless when
 `access_token` is `None`) and `fhir_observation_to_create(fhir_obs, tenant_id=,
-patient_id=)` → `ObservationCreate` attached to the local patient. The provider
+patient_id=)` → `ObservationCreate` attached to the local patient. Multi-component
+observations (blood pressure, panels) and `note[]` are preserved (H2). Multi-range
+`referenceRange[]` is preserved as the canonical FHIR list (H6). The provider
 owns the token lifecycle for SMART (`SmartOAuth.get_live_token` +
 `force_refresh` on a 401 race); see `integrations/fhir_server/provider.py`.
+
+For **outbound FHIR data** (push), use `fhir_conditional_update(http_client,
+base_url, resource_type, body, *, search_params=, access_token=)` — FHIR
+conditional update via PUT. Returns `(status, response_body)`; `412` is returned
+(not raised) so the caller can treat it as "skipped". Raises the standard
+exception hierarchy (`IntegrationAuthError` / `IntegrationRateLimitError` /
+`IntegrationDataError`) with **OperationOutcome-parsed diagnostics** in the
+error message (H8). Use `fhir_create(http_client, base_url, resource_type, body,
+*, access_token=)` for a simple POST (e.g. remote Provenance after a push, H3).
+`parse_operation_outcome(response_json)` extracts the first `issue[].diagnostics`
+from a FHIR error body.
 
 ```python
 from integrations.sdk import BaseHealthProvider, SmartOAuth
@@ -394,8 +411,9 @@ class MyProvider(BaseHealthProvider):
 On use, refresh-on-access: `await provider.get_live_token(integration)` returns a
 valid token, refreshing first if expired (raises `IntegrationAuthError` if the
 refresh token is gone). Reference implementation:
-`integrations/fhir_server/provider.py` (SMART standalone launch, pull-only in
-Stage 2).
+`integrations/fhir_server/provider.py` (SMART standalone launch, two-way pull +
+push with conditional update, remote Provenance, push resilience, and write-scope
+detection).
 
 Requires: `INTEGRATION_SECRET_KEY` (Fernet) + Redis (`REDIS_URL`) configured.
 

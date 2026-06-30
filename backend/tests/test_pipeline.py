@@ -252,5 +252,5 @@ async def test_create_observation_persists_orm_shape_input():
     assert obs.value_quantity == {"value": 110, "unit": "mg/dL"}
     # raw_value falls back to value_quantity.value
     assert obs.raw_value == 110
-    # FHIR interpretation list is flattened to a single display string
-    assert obs.interpretation == "High"
+    # I6: the canonical FHIR interpretation list is preserved (was collapsed to "High")
+    assert obs.interpretation == [{"coding": [{"display": "High"}]}]

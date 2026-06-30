@@ -32,8 +32,12 @@ with no app-table analog.
 
 ## HTTP surface
 
-All routes require Bearer JWT auth (existing `get_current_user` dependency),
-**except** `GET /metadata` (no auth per FHIR spec).
+All routes require Bearer JWT auth via `get_current_user_with_tenant_override`
+(two modes: platform user JWT from `/auth/login`, or service-account JWT from
+`/auth/service-account`), **except** `GET /metadata` (no auth per FHIR spec).
+
+SYSTEM_ADMIN can override the tenant scope via the `X-Tenant: <uuid>` header.
+Service accounts are bound to their JWT's tenant and cannot override.
 
 | Method | Path | Behavior |
 |--------|------|----------|
@@ -275,7 +279,7 @@ backend/tests/                              # 131 new tests across 6 files
 |------|-------|--------|
 | `POST /fhir/R4/{Resource}/_search` | Phase 8 | Useful for long query strings; no users asking yet. |
 | `_format=xml` | Phase 8 | Adds `lxml` dependency; JSON is sufficient for interop. |
-| Transaction/batch Bundle (`POST /fhir/R4` with `type=transaction\|batch`) | Phase 8 | Complex; low priority, deferred. |
+| Transaction/batch Bundle (`POST /fhir/R4` with `type=transaction\|batch`) | Phase 8 | Complex; low priority, deferred. Note: the **import path** (`/import/*`, see `docs/EXPORT_IMPORT.md` §6) already honors `entry.request.method` (`PUT`/`POST`/`DELETE`/`ifNoneExist`) for round-tripping third-party transaction Bundles — this deferred item is specifically the facade's *system-level* `POST /fhir/R4` endpoint (audit G4), a separate surface. |
 | SMART-on-FHIR scopes (`/.well-known/smart-configuration`, `patient/*.read`) | Stage 4 | Facade uses existing JWT auth + tenant scoping for now. |
 | US Core profile validation | Stage 4 | Profiles are an internal-best-practice, not required for interop. |
 | `_include` / `_revinclude` chained search params | Phase 8 | Default to depth=1; no recursion for v1. |

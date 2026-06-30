@@ -170,9 +170,22 @@ def test_validate_and_filter_observations_drops_invalid_keeps_valid():
     good = _obs_with_category([{"coding": [{"code": "laboratory"}]}])
     bad = _obs_with_category({"coding": [{"code": "laboratory"}]})  # dict, not list
     observations = [good, bad]
-    dropped = validate_and_filter_observations(observations)
+    valid, dropped = validate_and_filter_observations(observations)
     assert dropped == 1
-    assert observations == [good]  # mutated in place; only the valid one kept
+    assert valid == [good]  # only the valid one is in the returned list
+
+
+def test_validate_and_filter_observations_does_not_mutate_input():
+    """I5: the input list is no longer mutated in place."""
+    good = _obs_with_category([{"coding": [{"code": "laboratory"}]}])
+    bad = _obs_with_category({"coding": [{"code": "laboratory"}]})
+    observations = [good, bad]
+    valid, dropped = validate_and_filter_observations(observations)
+    assert dropped == 1
+    assert valid == [good]
+    # The original list is unchanged — callers holding a reference still see both
+    assert observations == [good, bad]
+    assert len(observations) == 2
 
 
 def test_validate_and_filter_observations_all_valid_drops_none():
@@ -182,8 +195,9 @@ def test_validate_and_filter_observations_all_valid_drops_none():
         subject={"reference": f"Patient/{_pid()}"},
     )
     observations = [a, b]
-    assert validate_and_filter_observations(observations) == 0
-    assert observations == [a, b]
+    valid, dropped = validate_and_filter_observations(observations)
+    assert dropped == 0
+    assert valid == [a, b]
 
 
 def test_validate_and_filter_observations_logs_when_logger_given():
@@ -194,7 +208,8 @@ def test_validate_and_filter_observations_logs_when_logger_given():
             records.append(fmt % args)
 
     bad = _obs_with_category({"coding": [{"code": "laboratory"}]})
-    dropped = validate_and_filter_observations([bad], logger=CaptureLogger())
+    valid, dropped = validate_and_filter_observations([bad], logger=CaptureLogger())
     assert dropped == 1
+    assert valid == []
     assert len(records) == 1
     assert "Skipping invalid Observation" in records[0]

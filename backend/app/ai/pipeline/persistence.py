@@ -29,7 +29,7 @@ from app.models.enums import CodingSystem, QuantityType
 from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
 from app.models.fhir.patient import Observation
 from app.models.document_model import DocumentModel
-from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
+from app.services.fhir_helpers import FhirSerializationError, _normalize_interpretation, assert_valid_fhir
 
 logger = logging.getLogger(__name__)
 
@@ -196,19 +196,55 @@ async def save_observation(
     biomarker_id = target_bio.id if target_bio else None
     unit_symbol = b.unit_symbol
     raw_unit_id = None
+    # Default normalized_value to the raw value; refined below if we have
+    # enough unit information to convert. The previous code only normalized
+    # when the biomarker had a preferred unit *different* from the matched
+    # unit, leaving auto-created biomarkers (no preferred unit) with mixed-
+    # unit trends across labs. Now we always normalize at least to the
+    # base SI unit so trends are consistent.
     normalized_val = val_float
+
+    # --- relative_score ---------------------------------------------------
+    # Mirror ObservationBuilder.build() (integrations path): the value's
+    # position within the reference range as a [0.0, 1.0] float. The
+    # previous OCR path never set relative_score, leaving the biomarker
+    # engine's flagship scoring feature silently disabled for OCR data.
+    relative_score: Optional[float] = None
+    ref_min = b.reference_range_min
+    ref_max = b.reference_range_max
+    if val_float is not None and ref_min is not None and ref_max is not None and ref_max > ref_min:
+        relative_score = (val_float - ref_min) / (ref_max - ref_min)
+        relative_score = max(0.0, min(1.0, relative_score))
+    elif ref_min is not None or ref_max is not None:
+        # Incomplete range — middle score, matches ObservationBuilder.
+        relative_score = 0.5
 
     if unit_symbol:
         unit_lower = unit_symbol.lower()
         if unit_lower in units_by_symbol:
             matched_unit = units_by_symbol[unit_lower]
             raw_unit_id = matched_unit.id
-            if (
-                target_bio
-                and target_bio.preferred_unit_id
-                and str(target_bio.preferred_unit_id) != str(matched_unit.id)
-            ):
-                normalized_val = val_float * matched_unit.conversion_multiplier
+            # Convert raw value -> base SI unit. matched_unit.conversion_multiplier
+            # is "multiply this unit's value by this number to get the base unit".
+            base_value = val_float * matched_unit.conversion_multiplier
+            # Express normalized_value in the biomarker's preferred unit
+            # (fall back to base SI when no preferred unit is set, so trends
+            # are at least consistent across labs reporting in different raw
+            # units). The previous code skipped normalization entirely when
+            # no preferred_unit_id was set, AND used the wrong direction
+            # (raw * raw_mult = base, then labeled it as-preferred).
+            preferred_unit: Optional[Unit] = None
+            if target_bio and target_bio.preferred_unit_id:
+                # Look up the preferred Unit object. units_by_symbol is the
+                # only Unit collection passed in; scan it once (small set).
+                for u in units_by_symbol.values():
+                    if str(u.id) == str(target_bio.preferred_unit_id):
+                        preferred_unit = u
+                        break
+            if preferred_unit is not None and preferred_unit.conversion_multiplier:
+                normalized_val = base_value / preferred_unit.conversion_multiplier
+            else:
+                normalized_val = base_value
         else:
             new_unit = Unit(
                 symbol=unit_symbol,
@@ -247,9 +283,10 @@ async def save_observation(
         raw_value=val_float,
         raw_unit_id=raw_unit_id,
         normalized_value=normalized_val,
+        relative_score=relative_score,
         lab_reference_range=lab_ref_range,
         method=b.method,
-        interpretation=b.interpretation_flag,
+        interpretation=_normalize_interpretation(b.interpretation_flag),
         category=_fhir_observation_category(
             target_bio.category if target_bio else None
         ),

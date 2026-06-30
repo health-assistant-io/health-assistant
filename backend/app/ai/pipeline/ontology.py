@@ -10,7 +10,7 @@ forward to the functions here.
 import logging
 from typing import Any, Dict
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biomarker_model import BiomarkerDefinition, Unit
@@ -81,7 +81,7 @@ async def process_unknown_medications(
         name_map[def_data.raw_name_match] = def_data.name
         existing = await db.execute(
             select(MedicationCatalog).where(
-                MedicationCatalog.name.ilike(def_data.name)
+                func.lower(MedicationCatalog.name) == func.lower(def_data.name)
             )
         )
         if not existing.scalar_one_or_none():

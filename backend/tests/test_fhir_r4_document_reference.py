@@ -108,11 +108,24 @@ def test_doc_ref_subject_absent_when_no_patient():
     assert "subject" not in fhir
 
 
-def test_doc_ref_author_from_owner():
+def test_doc_ref_author_omitted_when_practitioner_id_unset():
+    """F11: DocumentReference.author must NOT be emitted as Practitioner/<owner_id>
+    (owner_id is a User FK, not a Doctor FK — would 404 on resolution). When
+    practitioner_id is unset, author is omitted entirely rather than wrong."""
     oid = str(uuid4())
     doc = _make_doc(owner_id=oid)
     fhir = doc.to_fhir_dict()
-    assert fhir["author"][0]["reference"] == f"Practitioner/{oid}"
+    assert "author" not in fhir
+
+
+def test_doc_ref_author_from_resolved_practitioner_id():
+    """F11: when practitioner_id is set (resolved owner→Practitioner at upload
+    time), DocumentReference.author emits Practitioner/<practitioner_id> —
+    a reference external clients can actually resolve."""
+    pid = str(uuid4())
+    doc = _make_doc(owner_id=str(uuid4()), practitioner_id=pid)
+    fhir = doc.to_fhir_dict()
+    assert fhir["author"][0]["reference"] == f"Practitioner/{pid}"
 
 
 def test_doc_ref_context_encounter():
@@ -164,7 +177,10 @@ def test_fhir_to_doc_ref_orm_basic():
 
     assert orm["filename"] == "report.pdf"
     assert orm["file_path"] == "urn:ha-document:abc"
-    assert orm["owner_id"] == "u1"
+    # F11: author reference is preserved as practitioner_id (not owner_id,
+    # which is an internal User FK set by the upload path).
+    assert orm["practitioner_id"] == "u1"
+    assert "owner_id" not in orm
     assert orm["patient_id"] == "p1"
     assert orm["examination_id"] == "e1"
     assert orm["status"] == "uploaded"  # current → uploaded
@@ -201,13 +217,18 @@ def test_fhir_to_doc_ref_orm_no_content_uses_defaults():
 # ---------------------------------------------------------------------------
 
 def test_round_trip_orm_to_fhir_to_orm():
+    """F11: round-trip ORM → FHIR → ORM preserves practitioner_id (the FHIR
+    `author` reference target). owner_id is an internal-only User FK and is
+    not preserved by the FHIR round-trip (it's set separately by the upload
+    path via owner→practitioner lookup)."""
     pid = str(uuid4())
-    oid = str(uuid4())
+    pid2 = str(uuid4())
     eid = str(uuid4())
     doc = _make_doc(
         filename="my.pdf",
         patient_id=pid,
-        owner_id=oid,
+        owner_id=str(uuid4()),  # owner_id doesn't survive FHIR round-trip
+        practitioner_id=pid2,   # this is the FHIR-canonical Practitioner ref
         examination_id=eid,
         status="extracted",
     )
@@ -216,11 +237,17 @@ def test_round_trip_orm_to_fhir_to_orm():
 
     assert orm["filename"] == "my.pdf"
     assert orm["patient_id"] == pid
-    assert orm["owner_id"] == oid
+    assert orm["practitioner_id"] == pid2  # preserved via FHIR author
+    # owner_id is not in the ORM dict (it's not a FHIR concept — set by
+    # the upload path from the user, not from the FHIR resource).
+    assert "owner_id" not in orm
     assert orm["examination_id"] == eid
 
 
 def test_round_trip_fhir_to_orm_to_fhir():
+    """F11: FHIR → ORM → FHIR preserves the author reference. The owner_id
+    (User FK) is set to a synthetic value for the DocumentModel constructor
+    since it's required by the column but not part of the FHIR resource."""
     fhir_in = _canonical_doc_ref()
     orm = fhir_to_document_reference_orm(fhir_in)
 
@@ -228,8 +255,9 @@ def test_round_trip_fhir_to_orm_to_fhir():
         id=orm.get("id"),
         filename=orm["filename"],
         file_path=orm["file_path"],
-        owner_id=orm["owner_id"],
+        owner_id=str(uuid4()),  # owner_id is not part of FHIR — synthetic here
         tenant_id=str(uuid4()),
+        practitioner_id=orm.get("practitioner_id"),  # preserved from FHIR author
         patient_id=orm.get("patient_id"),
         examination_id=orm.get("examination_id"),
         status=orm["status"],

@@ -58,6 +58,8 @@ class TokenData(BaseModel):
     tenant_id: UUID
     role: str
     sub: Optional[str] = None
+    is_service_account: bool = False
+    client_id: Optional[str] = None
     original_tenant_id: Optional[UUID] = None
     original_user_id: Optional[UUID] = None
     switched: bool = False

@@ -54,8 +54,8 @@ def fake_user():
 
 @pytest.fixture
 def override_auth(app_with_facade, fake_user):
-    from app.core.security import get_current_user
-    app_with_facade.dependency_overrides[get_current_user] = lambda: fake_user
+    from app.core.security import get_current_user_with_tenant_override
+    app_with_facade.dependency_overrides[get_current_user_with_tenant_override] = lambda: fake_user
     yield
     app_with_facade.dependency_overrides = {}
 
@@ -81,7 +81,7 @@ def test_metadata(client):
     assert r.status_code == 200
     body = r.json()
     assert body["resourceType"] == "CapabilityStatement"
-    assert body["fhirVersion"] == "4.3.0"
+    assert body["fhirVersion"] == "4.0.1"
     # Every registered resource should be advertised.
     advertised = {rsc["type"] for rsc in body["rest"][0]["resource"]}
     for entry in RESOURCE_REGISTRY.all():

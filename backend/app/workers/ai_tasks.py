@@ -111,7 +111,7 @@ async def ocr_document(
             await db.commit()
         raise
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 async def _check_trigger_cumulative(db, document_id: UUID):
@@ -188,10 +188,26 @@ async def _check_trigger_cumulative(db, document_id: UUID):
         )
         cumulative_extraction.delay(str(doc.examination_id), user_id)
     else:
+        # All docs finished OCR but none produced any text (blank pages,
+        # OCR failures, image-only PDFs that tesseract couldn't read, etc.).
+        # Skip the LLM call — it would consume tokens and time to produce
+        # an empty / hallucinated impressions string. Mark the exam
+        # completed so the UI shows it done. The advisory lock and outer
+        # transaction commit this update.
         logger.warning(
-            f"All docs for exam {doc.examination_id} finished but no text was extracted. Triggering cumulative extraction anyway to handle metadata if needed."
+            f"Exam {doc.examination_id} finished but no text was extracted "
+            f"across {len(docs)} docs; marking completed without invoking LLM."
         )
-        cumulative_extraction.delay(str(doc.examination_id), user_id)
+        from app.models.examination_model import ExaminationModel
+
+        await db.execute(
+            update(ExaminationModel)
+            .where(ExaminationModel.id == doc.examination_id)
+            .values(
+                extraction_status="completed",
+                impressions="",
+            )
+        )
 
 
 @celery_app.task(bind=True, max_retries=3)
@@ -249,7 +265,7 @@ async def cumulative_extraction(
         await progress_tracker.mark_failed(str(e))
         raise
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 @celery_app.task(bind=True)
@@ -296,7 +312,7 @@ async def detect_anomalies(self, patient_id: str, biomarker_code: str = None):
                 "anomalies": result.get("anomalies", []),
             }
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 @celery_app.task
@@ -337,7 +353,7 @@ async def cleanup_stuck_extractions():
             )
             await db.commit()
     finally:
-        await engine.dispose()
+        await db.close()
 
 
 # Helper for direct calls from API

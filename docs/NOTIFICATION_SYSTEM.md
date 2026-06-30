@@ -163,16 +163,27 @@ The system supports broadcasting to multiple devices. If a user is logged into t
 
 ## Configuration & Setup (VAPID)
 
-Native browser notifications require **VAPID** (Voluntary Application Server Identification) keys to securely communicate with browser push services (Google, Apple, Mozilla).
+Native browser notifications require **VAPID** (Voluntary Application Server Identification) keys to securely communicate with browser push services (Google, Apple, Mozilla). VAPID keys are **required in production** — the app refuses to boot without them when `APP_ENV != "development"` (in development they're optional and Web Push is silently skipped when missing).
 
-### 1. Generate Keys
-If you are setting up the project for the first time, generate a new key pair:
+### Easiest path: `scripts/setup_env.py`
+
+If you're setting up the project for the first time, the interactive setup wizard generates everything automatically — no manual key generation or email wrangling needed:
+
+```bash
+python scripts/setup_env.py
+```
+
+In Full Setup mode, this generates the VAPID P-256 key pair (using the project's existing `cryptography` dependency — no Node.js required) **and** prompts for the contact email with a smart default derived from the APP_URL you entered (e.g. `https://health.example.com` → suggests `admin@health.example.com`). All three values land in your `.env` file: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`. Skip ahead to step 3.
+
+### Manual setup
+
+#### 1. Generate Keys
 ```bash
 npx web-push generate-vapid-keys
 ```
 
-### 2. Update Environment Variables
-Add the generated keys to your root `.env` file:
+#### 2. Update Environment Variables
+Add the generated keys to your root `.env` file. `VAPID_ADMIN_EMAIL` should be a real address you monitor — push services (Google/Mozilla/Apple) use it to contact you about delivery issues; it becomes the `sub` claim in the VAPID-signed JWT:
 ```env
 VAPID_PUBLIC_KEY=your_long_public_key_string
 VAPID_PRIVATE_KEY=your_long_private_key_string
@@ -184,4 +195,7 @@ Users must explicitly grant permission in the application:
 1.  Navigate to **Settings** -> **Profile**.
 2.  Click **"Configure browser permissions"** under the Notifications section.
 3.  Accept the browser prompt.
+
+### 4. Subscription lifecycle (automatic cleanup)
+When a push service responds `410 Gone` or `404 Not Found` for a subscription endpoint (per RFC 8030 — the user revoked permission, the subscription expired, or the push service deleted it), `send_web_push` raises `SubscriptionExpired` and `deliver_notification`'s PUSH loop marks the matching `NotificationSubscription.is_active = False` in the database. Inactive subscriptions are excluded from subsequent deliveries, so the DB self-prunes dead rows over time — no manual cleanup required. Transient failures (5xx, network errors) return `False` and leave the subscription active for retry on the next notification.
 

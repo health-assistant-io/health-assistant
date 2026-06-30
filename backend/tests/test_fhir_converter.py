@@ -285,14 +285,16 @@ def test_flatten_interpretation_helper():
     assert fh._flatten_interpretation([]) is None
 
 
-def test_fhir_to_observation_orm_flattens_interpretation_list():
+def test_fhir_to_observation_orm_preserves_interpretation_list():
+    """I6: the canonical FHIR list shape is passed through unchanged (was flattened to a string)."""
     out = fc.fhir_to_observation_orm({"interpretation": [{"coding": [{"display": "High"}]}]})
-    assert out["interpretation"] == "High"
+    assert out["interpretation"] == [{"coding": [{"display": "High"}]}]
 
 
-def test_fhir_to_observation_orm_interpretation_string_passthrough():
+def test_fhir_to_observation_orm_interpretation_string_normalized_to_list():
+    """I6: a bare string is normalized to the canonical list shape by the converter."""
     out = fc.fhir_to_observation_orm({"interpretation": "Normal"})
-    assert out["interpretation"] == "Normal"
+    assert out["interpretation"] == [{"text": "Normal"}]
 
 
 def test_fhir_to_observation_orm_interpretation_empty_is_cleaned():

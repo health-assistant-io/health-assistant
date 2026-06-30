@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.models.doctor_model import DoctorModel
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 async def list_doctors(
@@ -61,6 +62,10 @@ async def create_doctor(
         office_number=office_number,
         office_details=office_details,
     )
+    # FHIR validation gate (audit: write-time gate coverage). Catches invalid
+    # Practitioner shapes (e.g. empty name) before persisting; raises
+    # FhirSerializationError → mapped to HTTP 400 by the global handler.
+    assert_valid_fhir(doctor)
     db.add(doctor)
     await db.commit()
     await db.refresh(doctor)
@@ -78,6 +83,9 @@ async def update_doctor(
         if hasattr(doctor, key):
             setattr(doctor, key, value)
 
+    # FHIR validation gate (audit: write-time gate coverage). Verifies the
+    # mutated DoctorModel still projects to a valid Practitioner before commit.
+    assert_valid_fhir(doctor)
     await db.commit()
     await db.refresh(doctor)
     return doctor

@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_with_tenant_override as get_current_user
 from app.facade import crud
 from app.facade.registry import RESOURCE_REGISTRY, register_all
 from app.facade.responses import (
@@ -224,10 +224,16 @@ async def update_resource(
     resource_type: str,
     resource_id: str,
     payload: Dict[str, Any],
+    request: Request,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """Update a resource by id (full replacement)."""
+    """Update a resource by id (full replacement).
+
+    F5: honors the ``If-Match`` header for optimistic locking. If the header
+    is present (e.g. ``If-Match: W/"3"``), the version must match the current
+    row's version or HTTP 412 Precondition Failed is returned.
+    """
     entry = _require_entry(resource_type)
     if entry is None:
         return operation_outcome(
@@ -245,11 +251,27 @@ async def update_resource(
         )
 
     try:
-        result = await crud.update(entry, resource_id, payload, current_user, db)
+        result = await crud.update(
+            entry,
+            resource_id,
+            payload,
+            current_user,
+            db,
+            if_match=request.headers.get("if-match"),
+        )
     except FhirSerializationError as e:
         return invalid(str(e))
     except PermissionError as e:
         return operation_outcome("error", "not-supported", str(e), 405)
+    except crud.PreconditionFailed as e:
+        # F5: If-Match version mismatch → 412 Precondition Failed (RFC 7232).
+        return operation_outcome(
+            "error",
+            "conflict",
+            f"Version conflict for {e.resource_type}/{e.resource_id}: "
+            f"If-Match expected version {e.expected}, actual version {e.actual}.",
+            412,
+        )
 
     if result is None:
         return not_found(resource_type, resource_id)

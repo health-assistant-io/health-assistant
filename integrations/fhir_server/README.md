@@ -44,6 +44,9 @@ A bounded FHIR search
 (`Observation?patient=<remote>&_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated`,
 + optional `category`) pulls new results, maps each through the Biomarker Engine,
 and routes telemetry. A `_lastUpdated` cursor makes subsequent pulls incremental.
+Multi-component observations (e.g. blood pressure `85354-9` with systolic +
+diastolic) and `note[]` are preserved end-to-end (component → JSONB column,
+note → `comment` field).
 
 ### Push
 
@@ -58,8 +61,17 @@ with the canonical FHIR body. This is idempotent:
 - Observations **sourced from this integration** are excluded (no pull→push echo).
 - Only **LOINC/SNOMED**-coded observations are pushed — custom biomarkers have no
   hospital terminology.
-- A `last_pushed_at` cursor limits each push to rows touched since the last run
-  (first push covers the configured time window).
+- The `last_pushed_at` cursor only advances past **successfully** pushed rows —
+  transiently-failed rows are retried on the next sync. If an entire batch fails,
+  the cursor doesn't move (full retry next cycle).
+- After each successful push, a **Provenance** is POSTed to the remote server
+  (best-effort — a server that doesn't support Provenance is silently skipped).
+  The push result carries `provenance_created` / `provenance_failed` counts.
+- **Per-row 401-race retry**: if a token expires mid-batch, the push force-refreshes
+  and retries that row once. One bad row counts as `error` and the batch continues.
+- **Insufficient scope**: if the SMART server rejects a push with `insufficient_scope`
+  (the token lacks `patient/*.write`), the push stops and surfaces an actionable
+  "re-authorize" warning in the result.
 
 ## Action buttons
 
@@ -70,14 +82,29 @@ The instance detail page exposes these manual actions (they ignore
 |--------|--------------|
 | **Check Connection** | `GET {base}/metadata` — verifies the server is reachable and (SMART) the token still authenticates; shows the CapabilityStatement summary (FHIR version, software, supported resources). |
 | **Pull Now** | Runs an explicit pull **and persists** the results immediately (bypasses `sync_direction`). |
-| **Push Now** | Runs an explicit push of local Observations (bypasses `sync_direction`). Reports created / updated / skipped (412) / errors. |
+| **Push Now** | Runs an explicit push of local Observations (bypasses `sync_direction`). Reports created / updated / skipped (412) / errors + provenance counts. If the token lacks write scope, stops early with an actionable "re-authorize" warning. |
 | **Push Preview** | Dry-run: lists the Observations that *would* be pushed (after echo + coding filters), without sending anything. Use this to verify the echo exclusion. |
 | **Reset Cursors** | Clears the pull/push cursors so the next sync re-pulls/re-pushes the full configured window. |
 
 ## Scope
 
+### Coding scope
+
 Only LOINC/SNOMED-coded observations sync meaningfully. Local-only (custom)
 biomarkers stay internal — they don't exist in hospital terminology.
+
+### OAuth scope
+
+Push requires `patient/*.write` (requested via `PUSH_SCOPES` when
+`sync_direction` is `both` or `push_only`). If you switch `sync_direction`
+to push after initially authorizing with read-only scopes, click
+**Authorize** again — the SMART consent screen will request the write
+scope. A missing write scope surfaces as an `insufficient_scope` 403 on
+the first push attempt (the push stops with an actionable warning).
+
+Disconnecting an instance (DELETE) now **revokes the remote tokens** at
+the SMART `revocation_endpoint` (best-effort — if the server doesn't
+support revocation, the integration is deleted regardless).
 
 ## Debugging
 
@@ -140,8 +167,11 @@ FRONTEND_URL=http://localhost:3000      # where the OAuth callback redirects
 
 - `manifest.json` — `integration_type: ["pull", "push"]`, `access_type: "cloud"`.
 - `config_flow.py` — PENDING instance, pull bounds, `sync_direction`; `is_oauth = True`.
-- `provider.py` — `SmartOAuth` refresh-on-use; `_run_pull` / `_run_push`
-  (conditional update + echo exclusion + 412 handling); 5 custom actions.
+- `provider.py` — `SmartOAuth` refresh-on-use + `revoke()` on disconnect;
+  `_run_pull` (bounded search + biomarker mapping);
+  `_run_push` (conditional update + echo exclusion + 412 handling +
+  remote Provenance POST + per-row 401-race retry + cursor integrity +
+  insufficient_scope detection); 5 custom actions.
 
 See [docs/FHIR_R4_FACADE.md](../../docs/FHIR_R4_FACADE.md) for the Stage 3 facade
 that exposes Health Assistant itself as a FHIR R4 server, and

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.models.document_model import DocumentModel
 from app.core.config import settings
 from app.utils.image_utils import edit_image
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 # Ensure upload directory exists and is writable
@@ -38,6 +39,33 @@ def get_upload_dir():
 
 
 UPLOAD_DIR = get_upload_dir()
+
+
+async def _resolve_practitioner_id(
+    db: AsyncSession, owner_id: str | UUID, tenant_id: str | UUID
+) -> Optional[UUID]:
+    """Look up the Practitioner (DoctorModel) id for a given owner user.
+
+    Used by upload paths to populate DocumentModel.practitioner_id so that
+    DocumentReference.author can emit a resolvable `Practitioner/<id>`
+    reference (audit F11). Returns None if the owner has no DoctorModel row
+    (e.g. admin/manager uploads) — in that case `author` is omitted rather
+    than emit a wrong reference.
+    """
+    from app.models.doctor_model import DoctorModel
+
+    try:
+        owner_uuid = owner_id if isinstance(owner_id, UUID) else UUID(str(owner_id))
+    except (ValueError, TypeError):
+        return None
+    result = await db.execute(
+        select(DoctorModel.id).where(
+            DoctorModel.user_id == owner_uuid,
+            DoctorModel.tenant_id == tenant_id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    return row
 
 
 async def upload_document(
@@ -88,6 +116,19 @@ async def upload_document(
         updated_at=datetime.now(),
     )
 
+    # F11: resolve the owner→Practitioner id so DocumentReference.author can
+    # emit a real `Practitioner/<id>` reference (resolvable by external FHIR
+    # clients). If the owner has no DoctorModel row (admin/manager uploads),
+    # practitioner_id stays NULL and `author` is omitted by to_fhir_dict().
+    practitioner_id = await _resolve_practitioner_id(db, owner_id, tenant_id)
+    if practitioner_id is not None:
+        document.practitioner_id = practitioner_id
+
+    # FHIR validation gate (audit: write-time gate coverage). DocumentModel
+    # projects to DocumentReference; the gate catches invalid shapes (e.g.
+    # missing filename) before persisting. Raises FhirSerializationError →
+    # mapped to HTTP 400 by the global handler.
+    assert_valid_fhir(document)
     db.add(document)
     await db.commit()
     await db.refresh(document)
@@ -430,6 +471,13 @@ async def edit_document_service(
     if original.include_in_extraction:
         original.include_in_extraction = False
 
+    # F11: carry the resolved Practitioner id from the original so the
+    # edited copy also emits a resolvable DocumentReference.author.
+    new_document.practitioner_id = original.practitioner_id
+
+    # FHIR validation gate (audit: write-time gate coverage). Verifies the
+    # edited-copy DocumentModel projects to a valid DocumentReference.
+    assert_valid_fhir(new_document)
     db.add(new_document)
     await db.commit()
     await db.refresh(new_document)

@@ -655,7 +655,17 @@ async def remove_integration(
     
     if not existing:
         raise HTTPException(status_code=404, detail="Integration not found")
-        
+
+    # Best-effort token revocation on disconnect (RFC 7009) — prevents stale
+    # tokens from lingering on the remote server. Wrapped in try/except so a
+    # revocation failure never blocks the delete.
+    provider = integration_registry.get_provider(existing.provider)
+    if provider and hasattr(provider, "revoke"):
+        try:
+            await provider.revoke(existing)
+        except Exception:
+            logger.warning("Token revocation failed for %s — deleting anyway", integration_id)
+
     await db.delete(existing)
     await db.commit()
     return {"message": "Integration removed successfully."}
@@ -739,145 +749,42 @@ async def sync_integration(
     provider = integration_registry.get_provider(domain)
     if not provider:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
-        
-    from app.models.user_integration import IntegrationSyncLog
-    import datetime
 
-    from integrations.sdk.exceptions import IntegrationAuthError, IntegrationRateLimitError
+    from app.services.integration_sync_service import run_sync
 
-    try:
-        start_time = datetime.datetime.now(datetime.timezone.utc)
-        observations_data = await provider.pull_data(integration)
-        count = 0
-        dropped_invalid = 0
-        pulled_count = len(observations_data) if observations_data else 0
-        if observations_data:
-            from app.models.fhir import Observation
+    result = await run_sync(db, integration, provider, source="manual")
 
-            # Convert to ORM models BEFORE passing to mapping
-            observations = []
-            for obs_data in observations_data:
-                obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
-                obs = Observation(**obs_dict)
-                observations.append(obs)
-
-            from app.services.fhir_service import map_observations_to_biomarkers
-            map_result = await map_observations_to_biomarkers(db, observations)
-            dropped_invalid = (
-                map_result.get("dropped_invalid", 0)
-                if isinstance(map_result, dict)
-                else 0
+    if result.status == "skipped":
+        raise HTTPException(
+            status_code=409,
+            detail="A sync is already in progress for this integration. Try again in a moment.",
+        )
+    if result.status == "failed":
+        if result.error_type == "auth":
+            raise HTTPException(
+                status_code=401,
+                detail="Integration authentication failed. Please re-authenticate.",
             )
-
-            # Route telemetry-class observations to the TimescaleDB hypertable
-            # via the shared helper.
-            from app.services.integration_sync_service import (
-                apply_telemetry_split,
+        if result.error_type == "rate_limit":
+            raise HTTPException(
+                status_code=429,
+                detail="Third-party API rate limit exceeded. Try again later.",
             )
-            telemetry_records, fhir_records = await apply_telemetry_split(
-                db,
-                observations,
-                tenant_id=integration.tenant_id,
-                instance_name=integration.instance_name,
-                provider_name=integration.provider,
-                integration_id=integration.id,
-            )
-            count = len(telemetry_records) + len(fhir_records)
+        raise HTTPException(status_code=500, detail=f"Sync failed: {result.error}")
 
-        await provider.push_data(integration, {"status": "manual_sync"})
-
-        integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-
-        # If validation dropped observations, mark the sync as partial so the
-        # UI can surface it; otherwise success.
-        sync_status = "success" if dropped_invalid == 0 else "partial"
-        message = (
-            "Sync completed successfully"
-            if dropped_invalid == 0
-            else f"Sync completed with {dropped_invalid} invalid observation(s) dropped"
-        )
-
-        # Log the sync
-        sync_log = IntegrationSyncLog(
-            integration_id=integration.id,
-            tenant_id=integration.tenant_id,
-            status=sync_status,
-            records_synced=count,
-            started_at=start_time,
-            completed_at=integration.last_synced_at,
-            error_message=(
-                f"{dropped_invalid} of {pulled_count} pulled observations "
-                "failed FHIR validation and were dropped"
-                if dropped_invalid
-                else None
-            ),
-        )
-        db.add(sync_log)
-
-        await db.commit()
-        return {
-            "message": message,
-            "metrics_synced": count,
-            "pulled": pulled_count,
-            "dropped_invalid": dropped_invalid,
-            "status": sync_status,
-            "last_synced_at": integration.last_synced_at,
-        }
-    except IntegrationAuthError as e:
-        await db.rollback()
-        logger.error(f"Auth failed for {domain}: {e}")
-        
-        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-            try:
-                await provider.log_debug_payload(integration, "Auth Error", {"error": str(e)}, level="error")
-            except Exception:
-                pass
-                
-        integration.status = IntegrationStatus.ERROR
-        sync_log = IntegrationSyncLog(
-            integration_id=integration.id,
-            tenant_id=integration.tenant_id,
-            status="failed",
-            records_synced=0,
-            started_at=start_time,
-            completed_at=datetime.datetime.now(datetime.timezone.utc),
-            error_message=str(e)
-        )
-        db.add(sync_log)
-        await db.commit()
-        raise HTTPException(status_code=401, detail="Integration authentication failed. Please re-authenticate.")
-    except IntegrationRateLimitError as e:
-        await db.rollback()
-        logger.error(f"Rate limit hit for {domain}: {e}")
-        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-            try:
-                await provider.log_debug_payload(integration, "Rate Limit Error", {"error": str(e)}, level="warning")
-            except Exception:
-                pass
-        raise HTTPException(status_code=429, detail="Third-party API rate limit exceeded. Try again later.")
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Manual sync failed for {domain}: {e}")
-        
-        if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-            try:
-                await provider.log_debug_payload(integration, "Sync Error", {"error": str(e)}, level="error")
-            except Exception:
-                pass
-                
-        # Log failure
-        sync_log = IntegrationSyncLog(
-            integration_id=integration.id,
-            tenant_id=integration.tenant_id,
-            status="failed",
-            records_synced=0,
-            started_at=datetime.datetime.now(datetime.timezone.utc),
-            completed_at=datetime.datetime.now(datetime.timezone.utc),
-            error_message=str(e)
-        )
-        db.add(sync_log)
-        await db.commit()
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    message = (
+        "Sync completed successfully"
+        if result.dropped_invalid == 0
+        else f"Sync completed with {result.dropped_invalid} invalid observation(s) dropped"
+    )
+    return {
+        "message": message,
+        "metrics_synced": result.fhir_persisted + result.telemetry_persisted,
+        "pulled": result.pulled,
+        "dropped_invalid": result.dropped_invalid,
+        "status": result.status,
+        "last_synced_at": integration.last_synced_at,
+    }
 
 from fastapi import Request
 

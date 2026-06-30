@@ -177,9 +177,34 @@ class Settings(BaseSettings):
 
     # Web Push (VAPID)
     # Generate using: vapid --gen
-    VAPID_PUBLIC_KEY: Optional[str] = os.getenv("VAPID_PUBLIC_KEY")
-    VAPID_PRIVATE_KEY: Optional[str] = os.getenv("VAPID_PRIVATE_KEY")
+    # Declared as plain Optional[str] so pydantic-settings can pick up the
+    # VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY env vars the standard way. The
+    # previous ``os.getenv(...)`` defaults bypassed pydantic and made the
+    # prod-guard validator below ineffective (the os.getenv value was baked
+    # in at class-definition time, before any test could monkeypatch env).
+    VAPID_PUBLIC_KEY: Optional[str] = None
+    VAPID_PRIVATE_KEY: Optional[str] = None
     VAPID_ADMIN_EMAIL: str = "admin@healthassistant.local"
+
+    @model_validator(mode="after")
+    def _validate_vapid_keys(self) -> "Settings":
+        """VAPID keys are required in production for Web Push delivery.
+
+        In development / test, missing keys are tolerated — Web Push is
+        silently skipped (``send_web_push`` returns False with a warning).
+        In production, refusing to boot surfaces operator misconfiguration
+        early instead of letting push notifications silently fail forever.
+        """
+        if self.APP_ENV in ("development", "test", "testing"):
+            return self
+        if not self.VAPID_PUBLIC_KEY or not self.VAPID_PRIVATE_KEY:
+            raise ValueError(
+                f"VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be provided via "
+                f"environment variables for APP_ENV={self.APP_ENV!r}. Generate "
+                "with `vapid --gen` or `npx web-push generate-vapid-keys`. "
+                "Refusing to boot without them."
+            )
+        return self
 
     # Ports (for docker)
     BACKEND_PORT: int = 8000

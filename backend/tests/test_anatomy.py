@@ -5,6 +5,34 @@ from typing import Dict, Any
 
 from app.models.enums import AnatomyCategory, AnatomyRelationType, CodingSystem
 
+
+@pytest_asyncio.fixture(autouse=True)
+async def _clean_anatomy_tables():
+    """Truncate ``anatomy_structures`` before each anatomy test.
+
+    ``anatomy_structures.slug`` has a GLOBALLY unique constraint (anatomy is
+    an ontology — heart is heart in every tenant, by design). Tests use stable
+    slugs like ``"test-heart"`` / ``"graph-a"`` for readability. Without
+    cleanup, rows from previous test runs (in different tenants created by
+    ``system_admin_headers``) accumulate and the second run hits
+    ``UniqueViolationError`` on slug.
+
+    The tables aren't seeded by migrations — the only data in them during
+    tests IS test data — so truncating is safe. FKs from ``anatomy_relations``
+    and ``event_anatomy_links`` to ``anatomy_structures`` are
+    ``ondelete=CASCADE``, so deleting structures cascades to their relations
+    and event links automatically.
+    """
+    from app.core.database import AsyncSessionLocal
+    from sqlalchemy import delete
+    from app.models.anatomy_model import AnatomyStructure
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(delete(AnatomyStructure))
+        await db.commit()
+    yield
+
+
 @pytest.fixture
 def anatomy_node_payload() -> Dict[str, Any]:
     return {

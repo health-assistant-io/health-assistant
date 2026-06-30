@@ -56,7 +56,7 @@ class FhirServerConfigFlow(BaseConfigFlow):
                     "sync_direction": {
                         "type": "string",
                         "title": "Automatic Sync Direction",
-                        "description": "What the scheduled + manual 'Sync Now' should do. The Pull/Push action buttons below always run regardless of this setting.",
+                        "description": "What the scheduled + manual 'Sync Now' should do. The Pull/Push action buttons below always run regardless of this setting. Note: switching to 'both' or 'push_only' requires re-authorizing (click Authorize again) so the SMART consent screen can request write permissions (patient/*.write).",
                         "enum": ["both", "pull_only", "push_only", "none"],
                         "enum_descriptions": {
                             "both": "Two-way — pull remote results in AND push local results out",

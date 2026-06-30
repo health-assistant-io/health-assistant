@@ -17,7 +17,25 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events"""
+    """Application lifespan events.
+
+    Failure mode policy (audit item J9): in development, startup steps are
+    fail-soft (log + continue) so the developer can fix the issue while the
+    app keeps booting. In production, the same failures are fatal — refusing
+    to boot surfaces misconfiguration early instead of running half-initialised
+    (e.g. no medication/allergy catalog, no integrations). The process
+    supervisor (systemd, Docker restart policy) handles restarts.
+    """
+    fail_soft = settings.APP_ENV == "development" or settings.DEBUG
+
+    def _abort_or_warn(exc: Exception, what: str) -> None:
+        """Log the failure; in prod, re-raise so the app refuses to boot."""
+        if fail_soft:
+            logger.warning("%s failed (development mode, continuing): %s", what, exc)
+        else:
+            logger.error("%s failed (production mode, aborting startup): %s", what, exc)
+            raise exc
+
     # Startup
     if settings.DEBUG:
         try:
@@ -80,6 +98,9 @@ async def lifespan(app: FastAPI):
                         stuck_threshold.isoformat(),
                     )
         except Exception as e:
+            # Stuck-extraction cleanup is best-effort even in prod — a stale
+            # row won't block boot, it just means a stuck exam gets cleaned
+            # up by the next periodic beat instead.
             logger.error(f"Failed to cleanup stuck extractions: {e}")
 
     # Seed initial data
@@ -109,14 +130,14 @@ async def lifespan(app: FastAPI):
             stats_figures = await seed_service.seed_anatomy_figures()
             logger.info(f"Anatomy figures sync complete: {stats_figures}")
         except Exception as e:
-            logger.error(f"Failed to seed catalogs: {e}")
-            
+            _abort_or_warn(e, "Catalog seeding")
+
         try:
             from app.core.database import AsyncSessionLocal
             async with AsyncSessionLocal() as db:
                 await integration_registry.initialize(db)
         except Exception as e:
-            logger.error(f"Failed to initialize integrations: {e}")
+            _abort_or_warn(e, "Integration registry initialization")
 
     yield
     # Shutdown

@@ -37,6 +37,14 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """
         await self._http_client.aclose()
 
+    async def revoke(self, integration) -> None:
+        """Best-effort token revocation on disconnect (default no-op).
+
+        OAuth providers override this to call the remote revocation endpoint
+        (RFC 7009). Non-OAuth providers leave the default — nothing to revoke.
+        """
+        return
+
     # --- Tool Exposure (for the Chat Assistant) ---
 
     def supports_tools(self) -> bool:

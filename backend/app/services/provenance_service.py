@@ -38,42 +38,151 @@ def _activity_concept(code: str) -> Dict[str, Any]:
     }
 
 
-def _agent_block(
+async def _agent_block(
+    db: AsyncSession,
     user_id: Optional[UUID],
+    tenant_id: Optional[UUID],
     integration_id: Optional[UUID] = None,
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], bool]:
     """Build the agent[] block for a Provenance.
 
-    The agent identifies who performed the action. We support two modes:
-    - User agent (typical case): ``{who: {reference: "User/<id>"}}``
-    - Integration agent (system-to-system): ``{who: {reference: "Integration/<id>"}}``
+    F12: ``Provenance.agent.who`` must reference a real FHIR resource type
+    (Practitioner / PractitionerRole / RelatedPerson / Patient / Device /
+    Organization). The previous implementation emitted ``User/<id>`` and
+    ``Integration/<id>`` — neither is a FHIR resource, so external clients
+    resolving the reference got 404.
 
-    Both use the Provenance agent type "author" (HL7 ProvenanceParticipantType).
+    Resolution:
+    - ``user_id`` → ``Practitioner/<doctor.id>`` via DoctorModel.user_id.
+      If the user has no Doctor row (admin/manager), fall back to a
+      ``{display: "..."}`` form (spec-compliant — no `reference`).
+    - ``integration_id`` → ``Device/<device.id>`` via
+      DeviceModel.owner_integration_id. If no Device row exists, fall back
+      to ``{display: "..."}``.
+
+    Returns ``(agents, degraded)`` where ``degraded`` is True if any agent
+    was emitted in the display-only shape (so the caller can tag the
+    Provenance with a "degraded" meta tag if desired).
     """
-    who_ref: Optional[Dict[str, str]] = None
+    agents: List[Dict[str, Any]] = []
+    degraded = False
+
     if integration_id:
-        who_ref = {"reference": f"Integration/{integration_id}"}
-    elif user_id:
-        who_ref = {"reference": f"User/{user_id}"}
+        device_ref = await _resolve_device_ref(db, integration_id)
+        if device_ref is not None:
+            who_ref: Optional[Dict[str, str]] = {"reference": device_ref}
+        else:
+            who_ref = {"display": f"Integration {integration_id} (no Device row)"}
+            degraded = True
+        agents.append(
+            {
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                            "code": "author",
+                            "display": "Author",
+                        }
+                    ]
+                },
+                "who": who_ref,
+            }
+        )
 
-    if who_ref is None:
-        # No identifiable agent — record an anonymous device-like agent.
-        who_ref = {"display": "Unknown (no authenticated user)"}
+    if user_id:
+        practitioner_ref = await _resolve_practitioner_ref(db, user_id, tenant_id)
+        if practitioner_ref is not None:
+            who_ref = {"reference": practitioner_ref}
+        else:
+            who_ref = {"display": f"User {user_id} (no Practitioner row)"}
+            degraded = True
+        agents.append(
+            {
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                            "code": "author",
+                            "display": "Author",
+                        }
+                    ]
+                },
+                "who": who_ref,
+            }
+        )
 
-    return [
-        {
-            "type": {
-                "coding": [
-                    {
-                        "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
-                        "code": "author",
-                        "display": "Author",
-                    }
-                ]
-            },
-            "who": who_ref,
-        }
-    ]
+    if not agents:
+        # No identifiable agent at all — record an anonymous display-only agent.
+        agents.append(
+            {
+                "type": {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                            "code": "author",
+                            "display": "Author",
+                        }
+                    ]
+                },
+                "who": {"display": "Unknown (no authenticated user)"},
+            }
+        )
+        degraded = True
+
+    return agents, degraded
+
+
+async def _resolve_practitioner_ref(
+    db: AsyncSession, user_id: UUID, tenant_id: Optional[UUID]
+) -> Optional[str]:
+    """Resolve a User id to a ``Practitioner/<id>`` reference via
+    DoctorModel.user_id. Returns None if the user has no Doctor row."""
+    from sqlalchemy import select
+
+    from app.models.doctor_model import DoctorModel
+
+    try:
+        query = select(DoctorModel.id).where(DoctorModel.user_id == user_id)
+        if tenant_id is not None:
+            query = query.where(DoctorModel.tenant_id == tenant_id)
+        result = await db.execute(query)
+        doctor_id = result.scalar_one_or_none()
+        if doctor_id is None:
+            return None
+        return f"Practitioner/{doctor_id}"
+    except Exception as e:
+        logger.warning(
+            "Practitioner resolution failed for user_id=%s: %s", user_id, e
+        )
+        return None
+
+
+async def _resolve_device_ref(
+    db: AsyncSession, integration_id: UUID
+) -> Optional[str]:
+    """Resolve a UserIntegration id to a ``Device/<id>`` reference via
+    DeviceModel.owner_integration_id. Returns None if no Device row exists."""
+    from sqlalchemy import select
+
+    from app.models.fhir.device import DeviceModel
+
+    try:
+        result = await db.execute(
+            select(DeviceModel.id).where(
+                DeviceModel.owner_integration_id == integration_id
+            )
+        )
+        device_id = result.scalar_one_or_none()
+        if device_id is None:
+            return None
+        return f"Device/{device_id}"
+    except Exception as e:
+        logger.warning(
+            "Device resolution failed for integration_id=%s: %s",
+            integration_id,
+            e,
+        )
+        return None
 
 
 async def record_provenance(
@@ -85,6 +194,7 @@ async def record_provenance(
     tenant_id: Optional[UUID] = None,
     user_id: Optional[UUID] = None,
     integration_id: Optional[UUID] = None,
+    client_id: Optional[str] = None,
     entity_inputs: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[ProvenanceModel]:
     """Record a Provenance resource for a single target.
@@ -104,14 +214,37 @@ async def record_provenance(
         The created ProvenanceModel, or None if recording failed (best-effort).
     """
     try:
+        agents, degraded = await _agent_block(
+            db, user_id=user_id, tenant_id=tenant_id, integration_id=integration_id
+        )
+        # G10: when the caller is a service account, record the external
+        # system identity as an additional agent (display-only — the SA's
+        # client_id has no FHIR resource to reference).
+        if client_id:
+            agents.append({
+                "who": {"display": f"Service Account: {client_id}"},
+                "type": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type", "code": "author"}]}],
+            })
         provenance = ProvenanceModel(
             tenant_id=tenant_id,
             target=[{"reference": f"{target_resource_type}/{target_id}"}],
             recorded=datetime.now(timezone.utc),
             activity=_activity_concept(activity),
-            agent=_agent_block(user_id, integration_id),
+            agent=agents,
             entity=entity_inputs,
         )
+        if degraded:
+            # F12: log that we couldn't resolve the agent to a real FHIR
+            # resource type. The agent is still spec-compliant (a display-
+            # only Reference), but consumers can grep the log if they need
+            # to identify gaps in the audit trail.
+            logger.info(
+                "Provenance for %s/%s (activity=%s) has a degraded agent "
+                "(no Practitioner/Device row for the actor)",
+                target_resource_type,
+                target_id,
+                activity,
+            )
         # Validate the FHIR shape before persisting. A failed Provenance
         # should not abort the parent resource write — we log + return None.
         try:

@@ -1,6 +1,7 @@
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
+from uuid import UUID
 from app.core.config import settings
 from fastapi import HTTPException, status, Header, Depends, Request
 
@@ -111,6 +112,33 @@ def get_current_user(token: str = Depends(get_token)):
         )
 
     return token_data
+
+
+def get_current_user_with_tenant_override(
+    token: str = Depends(get_token),
+    x_tenant: Optional[str] = Header(None, alias="X-Tenant"),
+) -> TokenData:
+    """F19: get_current_user + optional X-Tenant header override.
+
+    When ``X-Tenant: <uuid>`` is present, only ``SYSTEM_ADMIN`` may override
+    the tenant scope (service accounts are bound to their JWT's tenant and
+    cannot override). Non-admin callers get 403; malformed UUIDs get 400.
+    """
+    user = get_current_user(token)
+    if x_tenant is not None:
+        if user.role != Role.SYSTEM_ADMIN.value:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="X-Tenant header requires SYSTEM_ADMIN role.",
+            )
+        try:
+            user.tenant_id = UUID(x_tenant)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Malformed X-Tenant header (expected UUID).",
+            )
+    return user
 
 
 class RoleChecker:

@@ -110,7 +110,10 @@ def fhir_observation_to_create(
 
     value_quantity = fhir_obs.get("valueQuantity")
     value_string = fhir_obs.get("valueString")
-    if not value_quantity and not value_string:
+    component = fhir_obs.get("component")
+    # H2: multi-component observations (blood pressure, panels) have no
+    # valueQuantity/valueString — don't drop them.
+    if not value_quantity and not value_string and not component:
         return None  # no usable value
 
     effective = _parse_fhir_datetime(fhir_obs.get("effectiveDateTime")) or _parse_fhir_datetime(
@@ -135,15 +138,23 @@ def fhir_observation_to_create(
         # the canonical list shape from the source FHIR server so data stays
         # FHIR-compatible through pull -> store -> push round-trips.
         "category": _as_list(fhir_obs.get("category")),
+        # H2: preserve component[] (BP, panels) and note[] (→ comment).
+        "component": _as_list(component),
     }
+    # FHIR note[0].text → the ORM ``comment`` column (single string).
+    _note_list = _as_list(fhir_obs.get("note"))
+    if _note_list and isinstance(_note_list[0], dict) and _note_list[0].get("text"):
+        kwargs["comment"] = _note_list[0]["text"]
     if isinstance(value_quantity, dict):
         kwargs["value_quantity"] = value_quantity
     if isinstance(value_string, str):
         kwargs["value_string"] = value_string
 
-    reference_range = _convert_reference_range(fhir_obs.get("referenceRange"))
+    # H6: preserve the full referenceRange[] list (canonical FHIR shape) —
+    # multi-range observations (age-stratified) no longer lose data.
+    reference_range = _extract_reference_range(fhir_obs.get("referenceRange"))
     if reference_range is not None:
-        kwargs["lab_reference_range"] = reference_range
+        kwargs["reference_range"] = reference_range
 
     try:
         return ObservationCreate(**kwargs)
@@ -152,25 +163,80 @@ def fhir_observation_to_create(
         return None
 
 
-def _convert_reference_range(raw: Any) -> Optional[Dict[str, Any]]:
-    """FHIR referenceRange[] -> a flat {min, max} dict for ``lab_reference_range``."""
+def _extract_reference_range(raw: Any) -> Optional[List[Dict[str, Any]]]:
+    """FHIR referenceRange[] → the canonical list (passthrough).
+
+    H6: previously this flattened only ``referenceRange[0]`` to ``{min, max}``,
+    losing multi-range observations (age-stratified) and dropping ``type``,
+    ``appliesTo``, ``text``, and unit info from each range. Now returns the
+    full canonical FHIR list so the round-trip preserves all data.
+    """
     if not isinstance(raw, list) or not raw:
         return None
-    first = raw[0]
-    if not isinstance(first, dict):
-        return None
-    low = first.get("low") or {}
-    high = first.get("high") or {}
-    low_v = low.get("value") if isinstance(low, dict) else None
-    high_v = high.get("value") if isinstance(high, dict) else None
-    if low_v is None and high_v is None:
-        return None
-    out: Dict[str, Any] = {}
-    if low_v is not None:
-        out["min"] = low_v
-    if high_v is not None:
-        out["max"] = high_v
-    return out
+    return raw
+
+
+async def fhir_create(
+    http_client: httpx.AsyncClient,
+    base_url: str,
+    resource_type: str,
+    body: Dict[str, Any],
+    *,
+    access_token: Optional[str] = None,
+    max_retries: int = 3,
+) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """FHIR create: ``POST /{Resource}`` with a body.
+
+    Used by H3 (remote Provenance POST after a push). Same retry/error
+    contract as :func:`fhir_conditional_update`. Returns
+    ``(status_code, response_dict_or_None)``.
+    """
+    base = base_url.rstrip("/")
+    url = f"{base}/{resource_type}"
+    headers: Dict[str, str] = {
+        "Accept": "application/fhir+json, application/json",
+        "Content-Type": "application/fhir+json",
+    }
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+
+    attempt = 0
+    backoff = 1.0
+    while True:
+        try:
+            response = await http_client.request(
+                "POST", url, headers=headers, json=body
+            )
+        except (httpx.RequestError, httpx.TimeoutException) as e:
+            attempt += 1
+            if attempt >= max_retries:
+                raise IntegrationDataError(f"Network error contacting {url}: {e}") from e
+            await asyncio.sleep(backoff)
+            backoff *= 2
+            continue
+
+        status = response.status_code
+        if status in (401, 403):
+            raise IntegrationAuthError(f"{url} returned {status}: {_enrich_error(response)}")
+        if status == 429:
+            attempt += 1
+            if attempt >= max_retries:
+                raise IntegrationRateLimitError(f"Rate limited by {url} after {max_retries} attempts.")
+            retry_after = response.headers.get("Retry-After")
+            wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
+            await asyncio.sleep(wait)
+            backoff *= 2
+            continue
+        if status >= 500:
+            attempt += 1
+            if attempt >= max_retries:
+                raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
+            await asyncio.sleep(backoff)
+            backoff *= 2
+            continue
+        if status >= 400:
+            raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
+        return status, _safe_json(response)
 
 
 async def fhir_conditional_update(
@@ -236,7 +302,7 @@ async def fhir_conditional_update(
 
         status = response.status_code
         if status in (401, 403):
-            raise IntegrationAuthError(f"{url} returned {status} (token rejected).")
+            raise IntegrationAuthError(f"{url} returned {status}: {_enrich_error(response)}")
         if status == 429:
             attempt += 1
             if attempt >= max_retries:
@@ -250,7 +316,7 @@ async def fhir_conditional_update(
         if status >= 500:
             attempt += 1
             if attempt >= max_retries:
-                raise IntegrationDataError(f"PUT {url} -> {status}: {response.text[:300]}")
+                raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
             logger.warning("Server error PUT %s -> %d (attempt %d/%d)", url, status, attempt, max_retries)
             await asyncio.sleep(backoff)
             backoff *= 2
@@ -259,7 +325,7 @@ async def fhir_conditional_update(
         if status == 412:
             return 412, _safe_json(response)
         if status >= 400:
-            raise IntegrationDataError(f"PUT {url} -> {status}: {response.text[:300]}")
+            raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
         # 200/201 (and any other 2xx) — success.
         return status, _safe_json(response)
 
@@ -273,3 +339,17 @@ def _safe_json(response: httpx.Response) -> Optional[Dict[str, Any]]:
     except ValueError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _enrich_error(response: httpx.Response, default: str = "no response body") -> str:
+    """Extract a human-readable error detail from a FHIR error response.
+
+    H8: tries ``parse_operation_outcome`` (which understands FHIR
+    OperationOutcome ``issue[].diagnostics``) before falling back to the raw
+    response body. This surfaces actionable server messages (e.g. "code system
+    http://loinc.org not recognized") instead of truncated HTML/JSON.
+    """
+    try:
+        return parse_operation_outcome(response.json())
+    except (ValueError, TypeError):
+        return response.text[:300] if response.content else default

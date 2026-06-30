@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime as dt
 from sqlalchemy import select, func, and_
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
-from app.services.fhir_helpers import _extract_patient_id, _flatten_interpretation, assert_valid_fhir, validate_and_filter_observations
+from app.services.fhir_helpers import _extract_patient_id, _normalize_interpretation, assert_valid_fhir, validate_and_filter_observations
 from app.services.notification_manager import NotificationManager
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 
@@ -306,7 +306,7 @@ async def create_observation(
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
         biomarker_id=observation_data.get("biomarker_id"),
-        interpretation=_flatten_interpretation(observation_data.get("interpretation")),
+        interpretation=_normalize_interpretation(observation_data.get("interpretation")),
         raw_value=observation_data.get("raw_value")
         or (value_quantity.get("value") if value_quantity else None),
         document_id=observation_data.get("document_id"),
@@ -834,7 +834,7 @@ async def map_observations_to_biomarkers(
     # FHIR before biomarker mapping/persistence. This single chokepoint covers
     # every integration route (background sync, manual sync, webhook, bridge,
     # and the FHIR-server provider's pull_now path) since they all funnel here.
-    dropped = validate_and_filter_observations(observations, logger)
+    observations, dropped = validate_and_filter_observations(observations, logger)
     if dropped:
         logger.info(
             "Dropped %d invalid observation(s) before biomarker mapping", dropped

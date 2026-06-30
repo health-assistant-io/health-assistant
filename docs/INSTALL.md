@@ -18,10 +18,11 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 
 3. **Initialize environment & secure keys:**
    **Option A: Interactive Setup (Recommended)**
-   Run the setup script to copy the template to `.env`, **automatically generate secure passwords and cryptographic keys**, and interactively configure your environment settings (URLs, workers, debug mode):
+   Run the setup script to copy the template to `.env`, **automatically generate secure passwords and cryptographic keys**, and interactively configure your environment settings (URLs, workers, debug mode, Web Push contact email):
    ```bash
    python scripts/setup_env.py
    ```
+   The script generates: `SECRET_KEY`, `INTEGRATION_SECRET_KEY` (Fernet), `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, and a VAPID P-256 key pair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`). In Full Setup mode it also prompts for `VAPID_ADMIN_EMAIL` with a smart default derived from the APP_URL you enter (e.g. `https://health.example.com` → suggests `admin@health.example.com`).
 
    **Option B: Manual setup**
    If you cannot run the Python script, copy the template manually:
@@ -196,6 +197,7 @@ docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 
 - [ ] Change `SECRET_KEY` to a secure random value *(handled by `setup_env.py` if used)*
 - [ ] **Set `INTEGRATION_SECRET_KEY`** (Fernet key) *(handled by `setup_env.py` if used)*
+- [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). Easiest path: `python scripts/setup_env.py` generates both keys and prompts for the email automatically. Manual alternative: `npx web-push generate-vapid-keys` for the key pair, then set `VAPID_ADMIN_EMAIL` to a real address you monitor (push services use it to contact you about delivery issues). *(Optional in development — Web Push is silently skipped when keys are missing.)*
 - [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value *(handled by `setup_env.py` if used)*
 - [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** *(handled by `setup_env.py` if used)*
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`

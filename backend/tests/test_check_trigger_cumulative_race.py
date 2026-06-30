@@ -90,9 +90,11 @@ async def test_check_trigger_cumulative_acquires_advisory_lock():
             f"Advisory lock (idx {lock_idx}) must be acquired BEFORE the "
             f"pending-count check (idx {pending_idx})"
         )
-    # Since no pending docs and no completed docs, cumulative_extraction
-    # is still fired (the "no text" warning path).
-    delayed.assert_called_once()
+    # Since no pending docs and no completed docs (no extracted text),
+    # cumulative_extraction is NOT fired — the empty-text guard added in
+    # audit item C11 skips the LLM call on blank input. The exam would be
+    # marked completed via UPDATE instead.
+    delayed.assert_not_called()
 
 
 @pytest.mark.asyncio

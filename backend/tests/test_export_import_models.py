@@ -122,5 +122,5 @@ def test_restore_result_defaults():
 
 def test_provenance_constants():
     assert PROVENANCE_CODE == "ha-export"
-    assert FHIR_VERSION == "4.3.0"
+    assert FHIR_VERSION == "4.0.1"
     assert BACKUP_SCHEMA_VERSION == "1.0.0"

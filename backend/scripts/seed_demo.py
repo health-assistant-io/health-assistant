@@ -343,7 +343,8 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
 
 
 
-    created, updated, errors, warnings, _ = await import_service.restore_fhir_bundle(bundle, tenant_id)
+    _brr = await import_service.restore_fhir_bundle(bundle, tenant_id)
+    created, updated, errors, warnings = _brr.created, _brr.updated, _brr.errors, _brr.warnings
     if errors:
         print(f"❌ FHIR Import Errors: {errors}")
         # Not raising immediately so we can see all errors

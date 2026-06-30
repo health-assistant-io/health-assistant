@@ -15,6 +15,7 @@ from app.schemas.medication import (
 
 from app.ai.processors.nlp import get_nlp_extractor_from_db
 from app.ai.schemas.nlp import UnknownMedicationExtract
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 async def get_medication_catalog(
@@ -46,6 +47,10 @@ async def create_catalog_medication(
     db: AsyncSession, tenant_id: UUID, data: MedicationCatalogCreate
 ) -> MedicationCatalog:
     new_entry = MedicationCatalog(tenant_id=tenant_id, **data.model_dump())
+    # FHIR validation gate (audit: write-time gate coverage). Catches invalid
+    # Medication shapes before persisting; raises FhirSerializationError →
+    # mapped to HTTP 400 by the global handler.
+    assert_valid_fhir(new_entry)
     db.add(new_entry)
     await db.commit()
     await db.refresh(new_entry)
@@ -81,6 +86,10 @@ async def update_catalog_medication(
     for key, value in update_data.items():
         setattr(med, key, value)
 
+    # FHIR validation gate (audit: write-time gate coverage). Verifies the
+    # mutated MedicationCatalog still projects to a valid FHIR Medication
+    # before commit.
+    assert_valid_fhir(med)
     await db.commit()
     await db.refresh(med)
     return med
@@ -129,6 +138,11 @@ async def add_patient_medication(
     if timing_data:
         new_record.frequency = timing_data
 
+    # FHIR validation gate (audit: write-time gate coverage). The Medication
+    # ORM row projects to either MedicationStatement or MedicationRequest per
+    # the `intent` discriminator (see Medication.to_fhir_dict); the gate
+    # catches invalid shapes before persisting.
+    assert_valid_fhir(new_record)
     db.add(new_record)
     await db.commit()
     await db.refresh(new_record)
@@ -191,6 +205,10 @@ async def update_patient_medication(
     for key, value in update_data.items():
         setattr(record, key, value)
 
+    # FHIR validation gate (audit: write-time gate coverage). Verifies the
+    # mutated Medication still projects to a valid MedicationStatement /
+    # MedicationRequest before commit.
+    assert_valid_fhir(record)
     await db.commit()
     await db.refresh(record)
 

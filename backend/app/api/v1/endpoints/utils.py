@@ -157,7 +157,10 @@ async def check_observation_access(observation_id: str | UUID, current_user: Tok
     # But Health Assistant model might have patient_id directly or subject
     # Let's check Observation model structure again
     
-    patient_id = observation.subject.get("reference").split("/")[-1] if observation.subject else None
+    patient_id = (
+        (observation.subject or {}).get("reference", "").split("/")[-1]
+        or None
+    )
     if not patient_id:
          raise HTTPException(status_code=400, detail="Observation does not have a linked patient")
          

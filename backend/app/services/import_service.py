@@ -3,12 +3,14 @@ import json
 import logging
 import os
 import zipfile
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select, update as sa_update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -29,8 +31,11 @@ from app.models.enums import (
 from app.models.examination_model import ExaminationModel
 from app.models.export_import_job import ImportJobModel
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.models.fhir.communication import CommunicationModel
+from app.models.fhir.device import DeviceModel
 from app.models.fhir.medication import Medication, MedicationCatalog
 from app.models.fhir.organization import OrganizationModel
+from app.models.fhir.provenance import ProvenanceModel
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.notification import NotificationTrigger
 from app.models.telemetry_model import TelemetryDataModel
@@ -83,6 +88,89 @@ def _parse_date(v: Any) -> Optional[date]:
         return date.fromisoformat(str(v)[:10])
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+# ---------------- FHIR resource type -> ORM model (for verb routing) ----------------
+#
+# Used by DELETE (soft-delete) and POST+ifNoneExist (conditional create) routing
+# in ``_restore_one_fhir_resource``. Practitioner is resolved lazily because
+# ``DoctorModel`` is imported lazily elsewhere to avoid a circular import.
+# MedicationRequest maps to the same ``Medication`` table as MedicationStatement
+# (distinguished by the ``intent`` discriminator).
+_RESOURCE_TYPE_TO_MODEL: Dict[str, Any] = {
+    "Patient": Patient,
+    "Observation": Observation,
+    "MedicationStatement": Medication,
+    "MedicationRequest": Medication,
+    "AllergyIntolerance": AllergyIntolerance,
+    "DiagnosticReport": DiagnosticReport,
+    "Organization": OrganizationModel,
+    "Condition": ClinicalEvent,
+    "Encounter": ExaminationModel,
+    "Device": DeviceModel,
+    "Communication": CommunicationModel,
+    "Provenance": ProvenanceModel,
+}
+
+
+# ---------------- FHIR reference field → resource type (G11) ----------------
+#
+# Used by _apply_remap to route bare urn:uuid: references to the correct
+# resource type. Entries with None are ambiguous (could be several types) and
+# are resolved by a bundle look-ahead (urn_type_index built in restore_fhir_bundle).
+FIELD_HINT_TO_TYPE: Dict[str, Optional[str]] = {
+    "subject": "Patient",
+    "patient": "Patient",
+    "performer": "Practitioner",
+    "partOf": "Organization",
+    "context": "Encounter",
+    "encounter": "Encounter",
+    "author": "Practitioner",
+    "device": "Device",
+    "specimen": "Specimen",
+    "sender": None,      # Practitioner | Organization | Device | Patient — resolve via look-ahead
+    "recipient": None,   # Practitioner | Organization | Patient — resolve via look-ahead
+}
+
+
+def _model_for_type(rt: str) -> Optional[Any]:
+    """Return the ORM model class for a FHIR resource type, or None."""
+    if rt == "Practitioner":
+        from app.models.doctor_model import DoctorModel
+        return DoctorModel
+    return _RESOURCE_TYPE_TO_MODEL.get(rt)
+
+
+@dataclass
+class BundleRestoreResult:
+    """Structured result of restoring a single FHIR Bundle.
+
+    Breaking change (2026-06-30, G7/I4): ``restore_fhir_bundle`` previously
+    returned a 5-tuple ``(created, updated, errors, warnings, id_remap)``.
+    It now returns a ``BundleRestoreResult`` dataclass with attribute access.
+    The new ``deleted`` and ``skipped`` counters track DELETE soft-deletes and
+    conditional-create skips (``ifNoneExist`` matched) respectively.
+    """
+
+    created: Dict[str, int] = field(default_factory=dict)
+    updated: Dict[str, int] = field(default_factory=dict)
+    deleted: Dict[str, int] = field(default_factory=dict)
+    skipped: Dict[str, int] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    id_remap: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def total_created(self) -> int:
+        return sum(self.created.values())
+
+    @property
+    def total_updated(self) -> int:
+        return sum(self.updated.values())
+
+    @property
+    def total_deleted(self) -> int:
+        return sum(self.deleted.values())
 
 
 class ImportService:
@@ -222,9 +310,13 @@ class ImportService:
         tenant_id: UUID,
         validate: bool = True,
         config: Optional[FHIRImportConfig] = None,
-    ) -> Tuple[Dict[str, int], Dict[str, int], List[str], List[str], Dict[str, str]]:
+        actor_user_id: Optional[UUID] = None,
+        source_job_id: Optional[UUID] = None,
+    ) -> BundleRestoreResult:
         created: Dict[str, int] = {}
         updated: Dict[str, int] = {}
+        deleted: Dict[str, int] = {}
+        skipped: Dict[str, int] = {}
         errors: List[str] = []
         warnings: List[str] = []
         id_remap: Dict[str, str] = {}
@@ -234,14 +326,33 @@ class ImportService:
             ok, verrors = validate_bundle(bundle)
             if not ok:
                 errors.extend(verrors)
-                return created, updated, errors, warnings, id_remap
+                return BundleRestoreResult(
+                    created=created, updated=updated, deleted=deleted, skipped=skipped,
+                    errors=errors, warnings=warnings, id_remap=id_remap,
+                )
 
         entries = bundle.get("entry", [])
         if bundle.get("resourceType") == "Bundle" and not entries:
-            return created, updated, errors, warnings, id_remap
+            return BundleRestoreResult(
+                created=created, updated=updated, deleted=deleted, skipped=skipped,
+                errors=errors, warnings=warnings, id_remap=id_remap,
+            )
 
         if bundle.get("resourceType") != "Bundle":
             entries = [{"resource": bundle}]
+
+        # G11: build a {id → resourceType} index once for the whole bundle so
+        # _apply_remap can resolve ambiguous urn:uuid references (sender/recipient)
+        # via bundle look-ahead.
+        urn_type_index: Dict[str, str] = {}
+        for entry in entries:
+            res = entry.get("resource") or {}
+            rid = res.get("id")
+            if rid:
+                urn_type_index[str(rid)] = res.get("resourceType", "")
+
+        # G9: cross-tenant collision warnings accumulated by _resolve_id.
+        self._collision_warnings: List[str] = []
 
         for entry in entries:
             resource = entry.get("resource") or {}
@@ -249,28 +360,50 @@ class ImportService:
             if not rt:
                 errors.append("Entry missing resource.resourceType; skipped")
                 continue
-                
+
             if rt == "DocumentReference":
                 # We skip DocumentReference because Health Assistant exports it for FHIR
                 # completeness, but actually restores documents via the nonfhir/documents.json sidecar.
                 warnings.append(f"Skipped {rt} (handled via documents.json sidecar if present).")
                 continue
 
+            # G7/I4: honor entry.request.method + ifNoneExist. A bundle authored
+            # as a transaction with {"request": {"method": "PUT", "url": "Type/id"}}
+            # is now respected (update-if-exists / create-with-id), POST + ifNoneExist
+            # is a conditional create, DELETE soft-deletes. Missing request block
+            # defaults to POST (create-new) — the historical behaviour.
+            request_block = entry.get("request") or {}
+            method = (request_block.get("method") or "POST").upper()
+            request_url = request_block.get("url")
+            if_none_exist = request_block.get("ifNoneExist")
+
             # Per-resource validation happens inside fhir_to_orm() (via
             # fhir.resources); an invalid resource raises FhirSerializationError
             # which is caught below → skipped + logged (skip-and-log policy).
             try:
                 stats_delta, obs_id = await self._restore_one_fhir_resource(
-                    rt, resource, tenant_id, id_remap
+                    rt, resource, tenant_id, id_remap,
+                    method=method, request_url=request_url, if_none_exist=if_none_exist,
+                    actor_user_id=actor_user_id, source_job_id=source_job_id,
+                    urn_type_index=urn_type_index,
                 )
                 if stats_delta == "created":
                     created[rt] = created.get(rt, 0) + 1
                 elif stats_delta == "updated":
                     updated[rt] = updated.get(rt, 0) + 1
-                elif stats_delta == "skipped":
-                    w = f"Skipped unsupported FHIR resource type: {rt}"
-                    if w not in warnings:
-                        warnings.append(w)
+                elif stats_delta == "deleted":
+                    deleted[rt] = deleted.get(rt, 0) + 1
+                elif stats_delta == "skipped_conditional":
+                    skipped[rt] = skipped.get(rt, 0) + 1
+                    warnings.append(
+                        f"Conditional create skipped for {rt}: ifNoneExist matched an existing resource"
+                    )
+                elif stats_delta in ("skipped_unsupported", "skipped_idempotent"):
+                    if stats_delta == "skipped_unsupported":
+                        w = f"Skipped unsupported FHIR resource type: {rt}"
+                        if w not in warnings:
+                            warnings.append(w)
+                    # skipped_idempotent (DELETE on missing id) is silent — FHIR DELETE is idempotent
                 if obs_id and rt == "Observation":
                     imported_obs_ids.append(obs_id)
             except Exception as e:
@@ -420,7 +553,13 @@ class ImportService:
                 logger.exception("Failed to map biomarkers for imported observations")
                 warnings.append(f"Failed to map biomarkers for imported observations: {e}")
 
-        return created, updated, list(set(errors)), warnings, id_remap
+        # G9: surface cross-tenant collision warnings collected by _resolve_id.
+        warnings.extend(getattr(self, "_collision_warnings", []))
+
+        return BundleRestoreResult(
+            created=created, updated=updated, deleted=deleted, skipped=skipped,
+            errors=list(set(errors)), warnings=warnings, id_remap=id_remap,
+        )
 
     async def _restore_one_fhir_resource(
         self,
@@ -428,46 +567,275 @@ class ImportService:
         fhir_dict: Dict[str, Any],
         tenant_id: UUID,
         id_remap: Dict[str, str],
+        *,
+        method: str = "POST",
+        request_url: Optional[str] = None,
+        if_none_exist: Optional[str] = None,
+        actor_user_id: Optional[UUID] = None,
+        source_job_id: Optional[UUID] = None,
+        urn_type_index: Optional[Dict[str, str]] = None,
     ) -> Tuple[str, Optional[UUID]]:
-        old_id = fhir_dict.get("id")
-        old_id_str = str(old_id) if old_id else None
+        """Restore one FHIR entry, honoring the bundle's request verb.
 
-        remapped = self._apply_remap(fhir_dict, id_remap)
-        
-        # Check if we actually support this resource type before attempting to convert it
-        # This prevents the ValueError from fhir_converter.py from bubbling up as an error
+        Verb routing (G7/I4):
+        - ``DELETE``  → soft-delete by id (idempotent on missing).
+        - ``PUT``     → update-if-exists, else create-with-the-supplied-id.
+        - ``POST`` + ``ifNoneExist`` → conditional create (skip if match).
+        - ``POST`` (default) → create-new (historical behaviour).
+
+        G6: records a Provenance per successful created/updated/deleted entry
+        (best-effort — never aborts the import).
+        """
+        method = (method or "POST").upper()
+        model = _model_for_type(rt)
+
+        # --- DELETE: soft-delete by id (idempotent on missing) ---
+        if method == "DELETE":
+            target_id_str = self._parse_request_id(request_url) or fhir_dict.get("id")
+            if model is None or not hasattr(model, "deleted_at") or not target_id_str:
+                return "skipped_unsupported", None
+            ok = await self._soft_delete_by_id(model, tenant_id, target_id_str)
+            action = "deleted" if ok else "skipped_idempotent"
+            if ok:
+                await self._record_import_provenance(
+                    rt, _uuid(target_id_str), action, tenant_id, actor_user_id, source_job_id
+                )
+            return action, None
+
+        # For PUT/POST we need a converter. Practitioner has no module-level
+        # model entry but DOES have a converter (fhir_to_practitioner_orm).
         from app.services.fhir_converter import _TO_ORM
         if rt not in _TO_ORM:
             logger.warning(f"Unsupported resource type {rt}")
-            return "skipped", None
-            
+            return "skipped_unsupported", None
+
+        # --- PUT: id comes from the request URL (FHIR spec); ensure the body carries it ---
+        force_id: Optional[UUID] = None
+        remapped = fhir_dict
+        if method == "PUT":
+            url_id = self._parse_request_id(request_url)
+            if url_id:
+                remapped = dict(fhir_dict)  # don't mutate the caller's resource dict
+                remapped["id"] = url_id
+                force_id = _uuid(url_id)
+            # fall through to the upsert path (update-if-exists, create-with-id-if-not)
+
+        # --- POST + ifNoneExist: conditional create (skip if a match exists) ---
+        if method == "POST" and if_none_exist and model is not None:
+            existing_id = await self._conditional_find(model, rt, tenant_id, if_none_exist)
+            if existing_id is not None:
+                return "skipped_conditional", None
+            # no match (or unsupported form) → fall through to create
+
+        old_id = remapped.get("id")
+        old_id_str = str(old_id) if old_id else None
+        remapped = self._apply_remap(remapped, id_remap, urn_type_index=urn_type_index)
         orm_dict = fhir_to_orm(rt, remapped)
         orm_dict["tenant_id"] = tenant_id
 
         if rt == "Patient":
-            return await self._upsert_patient(orm_dict, old_id_str, tenant_id, id_remap), None
-        if rt == "Observation":
-            return await self._upsert_observation(orm_dict, old_id_str, tenant_id, id_remap)
-        if rt == "MedicationStatement":
-            return await self._upsert_medication(orm_dict, old_id_str, tenant_id, id_remap), None
-        if rt == "AllergyIntolerance":
-            return await self._upsert_allergy(orm_dict, old_id_str, tenant_id, id_remap), None
-        if rt == "DiagnosticReport":
-            return await self._upsert_diagnostic_report(orm_dict, old_id_str, tenant_id, id_remap), None
-        if rt == "Organization":
-            return await self._upsert_organization(orm_dict, old_id_str, tenant_id, id_remap), None
-        if rt == "Practitioner":
-            return await self._upsert_practitioner(orm_dict, old_id_str, tenant_id, id_remap), None
-            
-        warnings = f"Unsupported resource type {rt}"
-        logger.warning(warnings)
-        return "skipped", None
+            action_str, target_id = await self._upsert_patient(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Observation":
+            action_str, target_id = await self._upsert_observation(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id)
+        elif rt in ("MedicationStatement", "MedicationRequest"):
+            # Both persist to the Medication table, distinguished by `intent`.
+            action_str, target_id = await self._upsert_medication(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "AllergyIntolerance":
+            action_str, target_id = await self._upsert_allergy(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "DiagnosticReport":
+            action_str, target_id = await self._upsert_diagnostic_report(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Organization":
+            action_str, target_id = await self._upsert_organization(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Practitioner":
+            action_str, target_id = await self._upsert_practitioner(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Condition":
+            action_str, target_id = await self._upsert_condition(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Encounter":
+            action_str, target_id = await self._upsert_encounter(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Device":
+            action_str, target_id = await self._upsert_device(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Communication":
+            action_str, target_id = await self._upsert_communication(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        elif rt == "Provenance":
+            action_str, target_id = await self._upsert_provenance(orm_dict, old_id_str, tenant_id, id_remap, force_id=force_id), None
+        else:
+            logger.warning(f"Unsupported resource type {rt} (no upsert branch)")
+            return "skipped_unsupported", None
+
+        # G6: record a Provenance for the created/updated entry. Derive the
+        # target id from the upsert result (Observation returns it directly);
+        # for other types, read it from id_remap when the entry carried a
+        # bundle id. Best-effort — never aborts the import.
+        if action_str in ("created", "updated") and target_id is None and old_id_str:
+            target_id = _uuid(id_remap.get(old_id_str))
+        if action_str in ("created", "updated"):
+            await self._record_import_provenance(
+                rt, target_id, action_str, tenant_id, actor_user_id, source_job_id
+            )
+        return action_str, target_id
+
+    async def _record_import_provenance(
+        self,
+        rt: str,
+        target_id: Optional[UUID],
+        action: str,
+        tenant_id: UUID,
+        actor_user_id: Optional[UUID],
+        source_job_id: Optional[UUID],
+    ) -> None:
+        """G6: record one Provenance per imported/updated entry (best-effort).
+
+        The ``entity_inputs`` carry an ``ImportJob/<id>`` reference so the
+        audit trail is self-describing (distinguishes bulk-import Provenance
+        from facade-write Provenance). Never raises — ``record_provenance``
+        itself is best-effort and this wrapper adds its own guard.
+        """
+        if target_id is None:
+            logger.debug("Skipping import Provenance for %s (no target id)", rt)
+            return
+        from app.services.provenance_service import (
+            record_provenance,
+            RECORD_CREATE,
+            RECORD_UPDATE,
+            RECORD_DELETE,
+        )
+        activity = {
+            "created": RECORD_CREATE,
+            "updated": RECORD_UPDATE,
+            "deleted": RECORD_DELETE,
+        }.get(action)
+        if activity is None:
+            return
+        entity_inputs = None
+        if source_job_id is not None:
+            entity_inputs = [{
+                "role": "source",
+                "what": {"reference": f"ImportJob/{source_job_id}"},
+            }]
+        try:
+            await record_provenance(
+                self.db,
+                target_resource_type=rt,
+                target_id=target_id,
+                activity=activity,
+                tenant_id=tenant_id,
+                user_id=actor_user_id,
+                entity_inputs=entity_inputs,
+            )
+        except Exception:
+            logger.debug("Import Provenance recording failed for %s/%s", rt, target_id, exc_info=True)
+
+    # ---------------- verb-routing helpers (G7/I4) ----------------
 
     @staticmethod
-    def _apply_remap(fhir_dict: Dict[str, Any], id_remap: Dict[str, str]) -> Dict[str, Any]:
+    def _parse_request_id(url: Optional[str]) -> Optional[str]:
+        """Extract the id from a FHIR request URL like ``Observation/abc``.
+
+        Returns ``None`` for conditional URLs (``Observation?identifier=...``)
+        or malformed input, so callers can fall back gracefully.
+        """
+        if not url:
+            return None
+        url = url.lstrip("/")
+        if "?" in url or "=" in url:
+            return None  # conditional form — no literal id
+        parts = url.split("/")
+        if len(parts) == 2 and parts[1]:
+            return parts[1]
+        return None
+
+    async def _soft_delete_by_id(
+        self, model: Any, tenant_id: UUID, resource_id_str: str
+    ) -> bool:
+        """Soft-delete (set ``deleted_at``) a resource by id, tenant-scoped.
+
+        Returns True if a row was updated, False if not found / already deleted.
+        Only callable on models mixing in ``SoftDeleteMixin``.
+        """
+        rid = _uuid(resource_id_str)
+        if rid is None or not hasattr(model, "deleted_at"):
+            return False
+        result = await self.db.execute(
+            sa_update(model)
+            .where(
+                model.id == rid,
+                model.tenant_id == tenant_id,
+                model.deleted_at.is_(None),
+            )
+            .values(deleted_at=datetime.now(timezone.utc))
+        )
+        return bool(getattr(result, "rowcount", 0) or 0)
+
+    async def _conditional_find(
+        self, model: Any, rt: str, tenant_id: UUID, if_none_exist: str
+    ) -> Optional[UUID]:
+        """Best-effort conditional match for FHIR ``ifNoneExist``.
+
+        Supported forms (commonly used by real clients):
+        - ``identifier=<code>`` or ``identifier=<system>|<code>`` on **Patient** →
+          matches the ``mrn`` column (tenant-scoped, not-deleted).
+
+        Unsupported forms (any other resource type, or non-identifier params)
+        log a warning and return None so the caller falls through to an
+        unconditional create. This is honest: we surface the gap rather than
+        silently treat "couldn't match" as "no match".
+        """
+        params = parse_qs(if_none_exist, keep_blank_values=True)
+        if "identifier" in params and params["identifier"]:
+            ident = params["identifier"][0]
+            # FHIR token form: "system|code" → take the code (after the pipe)
+            code = ident.split("|", 1)[-1] if "|" in ident else ident
+            code = code.strip()
+            if not code:
+                return None
+            if rt == "Patient" and hasattr(model, "mrn"):
+                not_deleted = (
+                    model.deleted_at.is_(None) if hasattr(model, "deleted_at") else True
+                )
+                res = await self.db.execute(
+                    select(model.id).where(
+                        model.tenant_id == tenant_id,
+                        model.mrn == code,
+                        not_deleted,
+                    )
+                )
+                row = res.first()
+                return row[0] if row else None
+        logger.warning(
+            "ifNoneExist query form not supported for %s: %r; creating unconditionally",
+            rt, if_none_exist,
+        )
+        return None
+
+    @staticmethod
+    def _apply_remap(
+        fhir_dict: Dict[str, Any],
+        id_remap: Dict[str, str],
+        urn_type_index: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Rewrite inter-resource references using the id_remap table.
+
+        G11: routes bare ``urn:uuid:`` references to the correct resource type
+        via :data:`FIELD_HINT_TO_TYPE`. Ambiguous hints (``sender``/``recipient``)
+        are resolved by looking up the referenced id in ``urn_type_index`` (a
+        bundle-wide ``{id → resourceType}`` map built once by
+        ``restore_fhir_bundle``). Previously every bare urn:uuid defaulted to
+        ``Patient`` unless the hint was ``performer``/``partOf``, so an
+        ``Observation.encounter`` given as ``urn:uuid:abc`` was misrouted to
+        ``Patient/<new>``.
+        """
         if not id_remap:
             return dict(fhir_dict)
         d = json.loads(json.dumps(fhir_dict, default=str))
+        urn_type_index = urn_type_index or {}
+
+        def _resolve_type(field_hint: str, rid: str) -> Optional[str]:
+            """Determine the FHIR resource type for a bare urn:uuid reference."""
+            mapped = FIELD_HINT_TO_TYPE.get(field_hint)
+            if mapped is not None:
+                return mapped
+            # Ambiguous hint — look up the resource type from the bundle index.
+            return urn_type_index.get(rid)
 
         def _remap_ref(obj: Any, field_hint: str) -> Any:
             if isinstance(obj, dict):
@@ -480,25 +848,39 @@ class ImportService:
                     elif ref.startswith("urn:uuid:"):
                         rid = ref.replace("urn:uuid:", "")
                         if rid in id_remap:
-                            prefix = "Patient"
-                            if field_hint == "performer":
-                                prefix = "Practitioner"
-                            elif field_hint == "partOf":
-                                prefix = "Organization"
+                            prefix = _resolve_type(field_hint, rid) or "Patient"
                             return {"reference": f"{prefix}/{id_remap[rid]}"}
                 return {k: _remap_ref(v, field_hint) for k, v in obj.items()}
             if isinstance(obj, list):
                 return [_remap_ref(x, field_hint) for x in obj]
             return obj
 
-        for field in ("subject", "patient", "partOf", "performer", "context"):
-            if field in d:
-                d[field] = _remap_ref(d[field], field)
+        for fld in (
+            "subject", "patient", "partOf", "performer", "context",
+            "encounter", "author", "device", "specimen", "sender", "recipient",
+        ):
+            if fld in d:
+                d[fld] = _remap_ref(d[fld], fld)
         return d
 
     async def _resolve_id(
-        self, model, old_id_str: Optional[str], tenant_id: UUID
+        self,
+        model,
+        old_id_str: Optional[str],
+        tenant_id: UUID,
+        *,
+        force_id: Optional[UUID] = None,
     ) -> Tuple[Optional[UUID], UUID, str]:
+        """Resolve whether an upsert is an update or a create.
+
+        When ``force_id`` is supplied (PUT path) and no existing row matches,
+        the create uses the supplied id instead of minting a fresh ``uuid4`` —
+        this is what makes ``PUT Type/<id>`` create-with-id when the id is absent.
+
+        G9: when the bundle id exists in ANOTHER tenant, the collision is no
+        longer silent — a warning is appended to ``self._collision_warnings`` so
+        the ImportJob result surfaces it (previously looked like 100% creation).
+        """
         if old_id_str:
             old_uuid = _uuid(old_id_str)
             if old_uuid:
@@ -509,14 +891,20 @@ class ImportService:
                 if existing:
                     if existing.tenant_id == tenant_id:
                         return old_uuid, old_uuid, "updated"
-                    new_id = uuid4()
+                    # G9: cross-tenant collision — mint a new id but surface a warning.
+                    new_id = force_id or uuid4()
+                    self._collision_warnings.append(
+                        f"{model.__name__}/{old_id_str} already exists in tenant "
+                        f"{existing.tenant_id}; created new with id {new_id} in tenant {tenant_id}"
+                    )
                     return None, new_id, "created"
-        return None, uuid4(), "created"
+        return None, force_id or uuid4(), "created"
 
     async def _upsert_patient(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
-        existing_id, new_id, action = await self._resolve_id(Patient, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(Patient, old_id_str, tenant_id, force_id=force_id)
         mrn = (orm.get("mrn") or "").strip() or None
         if existing_id:
             await self.db.execute(
@@ -552,9 +940,10 @@ class ImportService:
         return "created"
 
     async def _upsert_observation(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> Tuple[str, Optional[UUID]]:
-        existing_id, new_id, action = await self._resolve_id(Observation, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(Observation, old_id_str, tenant_id, force_id=force_id)
         
         # Semantic Deduplication
         if not existing_id:
@@ -578,7 +967,6 @@ class ImportService:
                     if existing_code == code_text:
                         # Found a match, merge instead of create
                         existing_id = existing_obs.id
-                        action = "updated"
                         break
 
         if existing_id:
@@ -592,6 +980,8 @@ class ImportService:
                     value_string=orm.get("value_string"),
                     reference_range=orm.get("reference_range"),
                     performer=orm.get("performer"),
+                    interpretation=orm.get("interpretation"),
+                    component=orm.get("component"),
                 )
             )
             if old_id_str:
@@ -608,6 +998,8 @@ class ImportService:
             value_string=orm.get("value_string"),
             reference_range=orm.get("reference_range"),
             performer=orm.get("performer"),
+            interpretation=orm.get("interpretation"),
+            component=orm.get("component"),
         )
         self.db.add(obs)
         await self.db.flush()
@@ -616,9 +1008,10 @@ class ImportService:
         return "created", new_id
 
     async def _upsert_medication(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
-        existing_id, new_id, action = await self._resolve_id(Medication, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(Medication, old_id_str, tenant_id, force_id=force_id)
         patient_id = _uuid(orm.get("patient_id"))
         try:
             status = MedicationStatus(orm.get("status", "ACTIVE").upper())
@@ -661,9 +1054,10 @@ class ImportService:
         return "created"
 
     async def _upsert_allergy(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
-        existing_id, new_id, action = await self._resolve_id(AllergyIntolerance, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(AllergyIntolerance, old_id_str, tenant_id, force_id=force_id)
         patient_id = _uuid(orm.get("patient_id"))
         try:
             clinical = AllergyClinicalStatus(orm.get("clinical_status", "ACTIVE").upper())
@@ -718,9 +1112,10 @@ class ImportService:
         return "created"
 
     async def _upsert_diagnostic_report(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
-        existing_id, new_id, action = await self._resolve_id(DiagnosticReport, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(DiagnosticReport, old_id_str, tenant_id, force_id=force_id)
         if existing_id:
             await self.db.execute(
                 sa_update(DiagnosticReport).where(DiagnosticReport.id == existing_id).values(
@@ -754,9 +1149,10 @@ class ImportService:
         return "created"
 
     async def _upsert_organization(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
-        existing_id, new_id, action = await self._resolve_id(OrganizationModel, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(OrganizationModel, old_id_str, tenant_id, force_id=force_id)
         if existing_id:
             await self.db.execute(
                 sa_update(OrganizationModel).where(OrganizationModel.id == existing_id).values(
@@ -784,11 +1180,12 @@ class ImportService:
         return "created"
 
     async def _upsert_practitioner(
-        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str]
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
     ) -> str:
         from app.models.doctor_model import DoctorModel
 
-        existing_id, new_id, action = await self._resolve_id(DoctorModel, old_id_str, tenant_id)
+        existing_id, new_id, action = await self._resolve_id(DoctorModel, old_id_str, tenant_id, force_id=force_id)
         if existing_id:
             await self.db.execute(
                 sa_update(DoctorModel).where(DoctorModel.id == existing_id).values(
@@ -816,6 +1213,194 @@ class ImportService:
             address=orm.get("address"),
         )
         self.db.add(doc)
+        await self.db.flush()
+        if old_id_str:
+            id_remap[old_id_str] = str(new_id)
+        return "created"
+
+    # ---------------- G8: the 5 resource types added in Phase 6.2 ----------------
+
+    async def _upsert_condition(
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
+    ) -> str:
+        existing_id, new_id, action = await self._resolve_id(ClinicalEvent, old_id_str, tenant_id, force_id=force_id)
+        if existing_id:
+            await self.db.execute(
+                sa_update(ClinicalEvent).where(ClinicalEvent.id == existing_id).values(
+                    status=orm.get("status"),
+                    title=orm.get("title") or "Untitled Condition",
+                    description=orm.get("description"),
+                    onset_date=_parse_dt(orm.get("onset_date")),
+                    resolved_date=_parse_dt(orm.get("resolved_date")),
+                    code=orm.get("code"),
+                    coding_system=orm.get("coding_system"),
+                )
+            )
+            if old_id_str:
+                id_remap[old_id_str] = str(existing_id)
+            return "updated"
+        patient_id = _uuid(orm.get("patient_id"))
+        ev = ClinicalEvent(
+            id=new_id,
+            tenant_id=tenant_id,
+            patient_id=patient_id or uuid4(),
+            status=orm.get("status"),
+            title=orm.get("title") or "Untitled Condition",
+            description=orm.get("description"),
+            onset_date=_parse_dt(orm.get("onset_date")),
+            resolved_date=_parse_dt(orm.get("resolved_date")),
+            code=orm.get("code"),
+            coding_system=orm.get("coding_system"),
+        )
+        self.db.add(ev)
+        await self.db.flush()
+        if old_id_str:
+            id_remap[old_id_str] = str(new_id)
+        return "created"
+
+    async def _upsert_encounter(
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
+    ) -> str:
+        # ExaminationModel declares tenant_id manually (NOT via TenantMixin) but it's NOT NULL.
+        existing_id, new_id, action = await self._resolve_id(ExaminationModel, old_id_str, tenant_id, force_id=force_id)
+        if existing_id:
+            await self.db.execute(
+                sa_update(ExaminationModel).where(ExaminationModel.id == existing_id).values(
+                    examination_date=_parse_date(orm.get("examination_date")),
+                    organization_id=_uuid(orm.get("organization_id")),
+                    notes=orm.get("notes"),
+                    diagnoses=orm.get("diagnoses"),
+                )
+            )
+            if old_id_str:
+                id_remap[old_id_str] = str(existing_id)
+            return "updated"
+        patient_id = _uuid(orm.get("patient_id"))
+        exam = ExaminationModel(
+            id=new_id,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            examination_date=_parse_date(orm.get("examination_date")),
+            organization_id=_uuid(orm.get("organization_id")),
+            notes=orm.get("notes"),
+            diagnoses=orm.get("diagnoses"),
+        )
+        self.db.add(exam)
+        await self.db.flush()
+        if old_id_str:
+            id_remap[old_id_str] = str(new_id)
+        return "created"
+
+    async def _upsert_device(
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
+    ) -> str:
+        existing_id, new_id, action = await self._resolve_id(DeviceModel, old_id_str, tenant_id, force_id=force_id)
+        if existing_id:
+            await self.db.execute(
+                sa_update(DeviceModel).where(DeviceModel.id == existing_id).values(
+                    identifier=orm.get("identifier"),
+                    device_name=orm.get("device_name"),
+                    type=orm.get("type"),
+                    manufacturer=orm.get("manufacturer"),
+                    model_number=orm.get("model_number"),
+                    serial_number=orm.get("serial_number"),
+                    status=orm.get("status") or "active",
+                    owner_integration_id=_uuid(orm.get("owner_integration_id")),
+                    patient_id=_uuid(orm.get("patient_id")),
+                )
+            )
+            if old_id_str:
+                id_remap[old_id_str] = str(existing_id)
+            return "updated"
+        dev = DeviceModel(
+            id=new_id,
+            tenant_id=tenant_id,
+            identifier=orm.get("identifier"),
+            device_name=orm.get("device_name"),
+            type=orm.get("type"),
+            manufacturer=orm.get("manufacturer"),
+            model_number=orm.get("model_number"),
+            serial_number=orm.get("serial_number"),
+            status=orm.get("status") or "active",
+            owner_integration_id=_uuid(orm.get("owner_integration_id")),
+            patient_id=_uuid(orm.get("patient_id")),
+        )
+        self.db.add(dev)
+        await self.db.flush()
+        if old_id_str:
+            id_remap[old_id_str] = str(new_id)
+        return "created"
+
+    async def _upsert_communication(
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
+    ) -> str:
+        existing_id, new_id, action = await self._resolve_id(CommunicationModel, old_id_str, tenant_id, force_id=force_id)
+        if existing_id:
+            await self.db.execute(
+                sa_update(CommunicationModel).where(CommunicationModel.id == existing_id).values(
+                    status=orm.get("status") or "completed",
+                    category=orm.get("category"),
+                    priority=orm.get("priority"),
+                    topic=orm.get("topic"),
+                    payload=orm.get("payload"),
+                    sent=_parse_dt(orm.get("sent")),
+                    received=_parse_dt(orm.get("received")),
+                    sender=orm.get("sender"),
+                    recipient=orm.get("recipient"),
+                    subject_patient_id=_uuid(orm.get("subject_patient_id")),
+                    encounter_id=_uuid(orm.get("encounter_id")),
+                )
+            )
+            if old_id_str:
+                id_remap[old_id_str] = str(existing_id)
+            return "updated"
+        comm = CommunicationModel(
+            id=new_id,
+            tenant_id=tenant_id,
+            status=orm.get("status") or "completed",
+            category=orm.get("category"),
+            priority=orm.get("priority"),
+            topic=orm.get("topic"),
+            payload=orm.get("payload"),
+            sent=_parse_dt(orm.get("sent")),
+            received=_parse_dt(orm.get("received")),
+            sender=orm.get("sender"),
+            recipient=orm.get("recipient"),
+            subject_patient_id=_uuid(orm.get("subject_patient_id")),
+            encounter_id=_uuid(orm.get("encounter_id")),
+        )
+        self.db.add(comm)
+        await self.db.flush()
+        if old_id_str:
+            id_remap[old_id_str] = str(new_id)
+        return "created"
+
+    async def _upsert_provenance(
+        self, orm: Dict[str, Any], old_id_str: Optional[str], tenant_id: UUID, id_remap: Dict[str, str],
+        *, force_id: Optional[UUID] = None,
+    ) -> str:
+        # Provenance is immutable (no VersionedMixin, no SoftDeleteMixin). Upsert
+        # is create-only: if the id already exists, leave the original untouched
+        # and count as "updated" (idempotent no-op) rather than overwriting history.
+        existing_id, new_id, action = await self._resolve_id(ProvenanceModel, old_id_str, tenant_id, force_id=force_id)
+        if existing_id:
+            if old_id_str:
+                id_remap[old_id_str] = str(existing_id)
+            return "updated"
+        prov = ProvenanceModel(
+            id=new_id,
+            tenant_id=tenant_id,
+            target=orm.get("target") or [],
+            recorded=_parse_dt(orm.get("recorded")) or datetime.now(timezone.utc),
+            activity=orm.get("activity"),
+            agent=orm.get("agent") or [],
+            entity=orm.get("entity"),
+        )
+        self.db.add(prov)
         await self.db.flush()
         if old_id_str:
             id_remap[old_id_str] = str(new_id)
@@ -1148,7 +1733,7 @@ class ImportService:
             try:
                 res = await self.db.execute(
                     select(MedicationCatalog).where(
-                        MedicationCatalog.name.ilike(name)
+                        func.lower(MedicationCatalog.name) == func.lower(name)
                     )
                 )
                 existing = res.scalar_one_or_none()
@@ -1195,7 +1780,7 @@ class ImportService:
                     category = AllergyCategory.OTHER if category_raw else None
                 res = await self.db.execute(
                     select(AllergyCatalog).where(
-                        AllergyCatalog.name.ilike(name)
+                        func.lower(AllergyCatalog.name) == func.lower(name)
                     )
                 )
                 existing = res.scalar_one_or_none()
@@ -1348,13 +1933,15 @@ class ImportService:
                 fhir_validated = ok
                 if not ok:
                     errors.extend(verrors)
-                c, u, e, w, id_remap = await self.restore_fhir_bundle(
-                    bundle, tenant_id, validate=False, config=config
+                _brr = await self.restore_fhir_bundle(
+                    bundle, tenant_id, validate=False, config=config,
+                    actor_user_id=owner_id, source_job_id=job_id,
                 )
-                created.update(c)
-                updated.update(u)
-                errors.extend(e)
-                warnings.extend(w)
+                created.update(_brr.created)
+                updated.update(_brr.updated)
+                errors.extend(_brr.errors)
+                warnings.extend(_brr.warnings)
+                id_remap = _brr.id_remap
                 await self._update_progress(job_id, 50)
 
             for name in [
@@ -1401,11 +1988,13 @@ class ImportService:
             ok, verrors = validate_bundle(data)
             if not ok:
                 errors.extend(verrors)
-            c, u, e, w, _ = await self.restore_fhir_bundle(data, tenant_id, validate=False, config=config)
-            created.update(c)
-            updated.update(u)
-            errors.extend(e)
-            warnings.extend(w)
+            _brr = await self.restore_fhir_bundle(
+                data, tenant_id, validate=False, config=config, source_job_id=job_id,
+            )
+            created.update(_brr.created)
+            updated.update(_brr.updated)
+            errors.extend(_brr.errors)
+            warnings.extend(_brr.warnings)
             await self.db.commit()
             return created, updated, errors, warnings, False, ok
 
@@ -1506,8 +2095,9 @@ class ImportService:
                 r = entry.get("resource") or {}
                 if r.get("resourceType") in ("Observation", "DiagnosticReport", "MedicationStatement"):
                     r.setdefault("subject", {})["reference"] = f"Patient/{patient_id}"
-        c, u, e, w, _ = await self.restore_fhir_bundle(data, tid, validate=True, config=config)
+        _brr = await self.restore_fhir_bundle(data, tid, validate=True, config=config)
         await self.db.commit()
+        c, u, e, w = _brr.created, _brr.updated, _brr.errors, _brr.warnings
         total = sum(c.values()) + sum(u.values())
         return ImportResult(
             job_id="",

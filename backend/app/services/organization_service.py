@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 from app.models.fhir.organization import OrganizationModel
 from app.models.doctor_model import DoctorModel
 from app.schemas.organization import OrganizationCreate, OrganizationUpdate
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 async def list_organizations(
@@ -57,6 +58,10 @@ async def create_organization(
         doctors = doc_result.scalars().all()
         organization.doctors = list(doctors)
 
+    # FHIR validation gate (audit: write-time gate coverage). Catches invalid
+    # Organization shapes before persisting; raises FhirSerializationError →
+    # mapped to HTTP 400 by the global handler.
+    assert_valid_fhir(organization)
     db.add(organization)
     await db.commit()
     await db.refresh(organization)
@@ -91,6 +96,10 @@ async def update_organization(
         if hasattr(organization, key):
             setattr(organization, key, value)
 
+    # FHIR validation gate (audit: write-time gate coverage). Verifies the
+    # mutated Organization still projects to a valid FHIR Organization before
+    # commit.
+    assert_valid_fhir(organization)
     await db.commit()
     await db.refresh(organization)
     return organization

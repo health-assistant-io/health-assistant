@@ -8,6 +8,7 @@ from app.models.user_model import UserModel
 
 # FHIR models
 from app.models.fhir import Observation, Medication, DiagnosticReport
+from app.services.fhir_helpers import _flatten_interpretation
 
 import re
 import logging
@@ -85,8 +86,9 @@ async def _get_observation_status(
 ) -> str:
     """Helper to determine the status of an observation using the new relative_score or interpretation"""
     # 1. Use LLM extracted interpretation if available
-    if getattr(obs, "interpretation", None):
-        interp = obs.interpretation.upper()
+    interp_raw = _flatten_interpretation(getattr(obs, "interpretation", None))
+    if interp_raw:
+        interp = interp_raw.upper()
         if interp in ["H", "HIGH", "A", "ABNORMAL", "E", "ELEVATED"]:
             return "High"
         if interp in ["L", "LOW", "D", "DECREASED"]:

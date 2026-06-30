@@ -1,6 +1,6 @@
 """Observation FHIR schemas"""
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,7 +25,7 @@ class ObservationCreate(ObservationBase):
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[str] = None
+    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
     biomarker_id: Optional[UUID] = None
     examination_id: Optional[UUID] = None
     biomarker_slug: Optional[str] = None
@@ -40,6 +40,7 @@ class ObservationCreate(ObservationBase):
     relative_score: Optional[float] = None
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None
+    component: Optional[List[Dict[str, Any]]] = None
 
 class ObservationUpdate(BaseModel):
     """Observation update schema"""
@@ -52,9 +53,10 @@ class ObservationUpdate(BaseModel):
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[str] = None
+    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None
+    component: Optional[List[Dict[str, Any]]] = None
 
 class ObservationResponse(ObservationBase):
     """Observation response schema"""
@@ -65,9 +67,10 @@ class ObservationResponse(ObservationBase):
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[str] = None
+    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None
+    component: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

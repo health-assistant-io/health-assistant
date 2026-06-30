@@ -12,11 +12,13 @@ every write returns canonical FHIR JSON with proper status codes + headers,
 and deletes soft-delete via ``SoftDeleteMixin`` (tombstones → 410 Gone).
 """
 import datetime as _dt
+import json as _json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, Float, func, literal, not_, or_, select, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.facade.bundle import build_search_bundle
@@ -32,6 +34,57 @@ from app.services.provenance_service import record_provenance, RECORD_CREATE, RE
 
 
 logger = logging.getLogger(__name__)
+
+
+class PreconditionFailed(Exception):
+    """Raised when an ``If-Match`` header's version doesn't match the current
+    row's version (F5 optimistic locking). The endpoint maps this to HTTP 412.
+
+    Carries the resource type/id and the expected vs actual version so the
+    OperationOutcome diagnostics can be informative.
+    """
+
+    def __init__(
+        self,
+        *,
+        resource_type: str,
+        resource_id: str,
+        expected: Any,
+        actual: Any,
+    ) -> None:
+        self.resource_type = resource_type
+        self.resource_id = resource_id
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Version mismatch for {resource_type}/{resource_id}: "
+            f"If-Match expected {expected!r}, actual {actual!r}"
+        )
+
+
+def _parse_if_match(header_value: str) -> Optional[Any]:
+    """Parse an ``If-Match`` header value into the version number it carries.
+
+    FHIR ETags come in two forms (both RFC 7232 compliant):
+    - ``W/"<version>"`` (weak ETag — what we emit)
+    - ``"<version>"`` (strong ETag)
+
+    Returns the integer version, or None if the header can't be parsed (in
+    which case we ignore it — FHIR allows servers to be lenient on ETag form).
+    """
+    if not header_value:
+        return None
+    v = header_value.strip()
+    # Strip the W/ prefix (weak ETag) if present.
+    if v.startswith("W/"):
+        v = v[2:].strip()
+    # Strip surrounding quotes.
+    if v.startswith('"') and v.endswith('"'):
+        v = v[1:-1]
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -122,19 +175,61 @@ async def search(
             if extra_pred is not None:
                 predicates.append(extra_pred)
 
-    # Count query (full match count for pagination).
-    count_stmt = select(func.count()).select_from(model).where(*predicates) if predicates else select(func.count()).select_from(model)
-    total = (await db.execute(count_stmt)).scalar_one()
+    # F16: _total controls whether the Bundle includes `total` AND whether we
+    # pay for the COUNT(*) query. Values per FHIR spec:
+    # - 'estimated'  → cheap estimate (we treat it as 'accurate' for now)
+    # - 'accurate'   → exact COUNT (default behavior)
+    # - 'none'       → skip COUNT entirely, omit `total` from Bundle
+    total_param = (params._total or "").lower()
+    skip_total = total_param == "none"
+
+    # F16: _summary=count → return only the count (empty entry[], still has
+    # total). Skip the main SELECT — useful for cheap "how many match?"
+    # queries.
+    summary_count = (params._summary or "").lower() in ("count", "true")
+
+    # Count query (full match count for pagination). Skipped when _total=none
+    # (F16) — saves a COUNT(*) per search.
+    if skip_total:
+        total = 0  # not included in the Bundle anyway
+    else:
+        count_stmt = (
+            select(func.count()).select_from(model).where(*predicates)
+            if predicates
+            else select(func.count()).select_from(model)
+        )
+        total = (await db.execute(count_stmt)).scalar_one()
+
+    # _summary=count short-circuits: empty entry[], total returned.
+    if summary_count:
+        raw_qs = "&".join(f"{k}={v}" for k, v in query_params)
+        return build_search_bundle(
+            base_url=base_url,
+            path=entry.route_path,
+            query_string=raw_qs.encode("utf-8"),
+            resources=[],
+            total=total,
+            offset=params.offset,
+            count=params._count,
+            include_total=not skip_total,
+        )
 
     # Main query with sort + pagination.
     stmt = select(model)
     if predicates:
         stmt = stmt.where(*predicates)
-    for column_name, descending in params._sort or [("updated_at", True)]:
-        col = getattr(model, column_name, None)
-        if col is None:
-            continue
-        stmt = stmt.order_by(col.desc() if descending else col.asc())
+    for sort_key, descending in params._sort or [("updated_at", True)]:
+        # ``sort_key`` is usually an ORM column-name string; for expression-based
+        # sorts (e.g. Patient?_sort=name over a JSONB list of HumanName) it's a
+        # callable that builds the SQL expression lazily (avoids circular imports
+        # at module load time).
+        if callable(sort_key):
+            expr = sort_key()
+        else:
+            expr = getattr(model, sort_key, None)
+            if expr is None:
+                continue
+        stmt = stmt.order_by(expr.desc() if descending else expr.asc())
     stmt = stmt.limit(params._count).offset(params.offset)
 
     result = await db.execute(stmt)
@@ -153,6 +248,15 @@ async def search(
                 e,
             )
 
+    # F14: _elements — project each resource to only the requested top-level
+    # fields. Per FHIR R4 spec, the server always includes `resourceType`,
+    # `id`, and `meta` regardless of _elements. We apply this post-serialization
+    # so the projection doesn't bypass the validator.
+    if params._elements:
+        resources = [
+            _project_elements(r, params._elements) for r in resources
+        ]
+
     # Build the Bundle. Preserve the original query string for self-link.
     raw_qs = "&".join(f"{k}={v}" for k, v in query_params)
     return build_search_bundle(
@@ -163,7 +267,214 @@ async def search(
         total=total,
         offset=params.offset,
         count=params._count,
+        include_total=not skip_total,
     )
+
+
+def _jsonb_codeable_concept_match(column, value: str, *, is_list: bool):
+    """Build a JSONB ``@>`` containment predicate for FHIR token search against
+    a CodeableConcept column.
+
+    FHIR ``CodeableConcept`` is ``{coding: [{system, code, display}], text}``.
+    The ``@>`` containment operator matches if the stored JSON contains the
+    supplied fragment anywhere in its structure — so a resource with multiple
+    codings (``coding: [{code: A}, {code: B}]``) matches both ``code=A`` and
+    ``code=B``. This is the F9 fix: previously only ``coding[0]`` was inspected.
+
+    Args:
+        column: the SQLAlchemy JSONB column (e.g. ``Observation.code``).
+        value: the search token. Supports:
+            - ``"1234-5"`` (bare code) — matches any coding with that code.
+            - ``"http://loinc.org|1234-5"`` (system|code) — matches the
+              system+code pair.
+        is_list: ``True`` if the column is a list of CodeableConcept (e.g.
+            ``Observation.category``); ``False`` if it's a single
+            CodeableConcept (e.g. ``Observation.code``).
+
+    Returns ``None`` if the JSONB operator is unavailable (column not JSONB).
+    """
+    # Only emit @> against real JSONB columns — the SQLAlchemy column.type
+    # tells us. This keeps the predicate a no-op against enum/text columns.
+    col_type = getattr(getattr(column, "type", None), "__class__", None)
+    if col_type is None or col_type.__name__ != "JSONB":
+        return None
+
+    if "|" in value:
+        system, code = value.split("|", 1)
+        coding_fragment: Dict[str, Any] = {"system": system, "code": code}
+    else:
+        coding_fragment = {"code": value}
+
+    if is_list:
+        # column is a list of CodeableConcept; wrap the fragment in a list.
+        rhs = _json.dumps([{"coding": [coding_fragment]}])
+    else:
+        rhs = _json.dumps({"coding": [coding_fragment]})
+
+    # @> containment. The literal is typed as String so it can be rendered
+    # with literal_binds (the JSONB literal renderer isn't available at
+    # compile time); PG's CAST(... AS JSONB) does the type conversion.
+    rhs_literal = literal(rhs, String)
+    return column.op("@>")(rhs_literal.cast(JSONB))
+
+
+# Conventional FHIR resource type for each reference field — used when the
+# client sends a bare UUID (no `Type/` prefix) and we need to build the JSONB
+# fragment. Per-resource type rules per FHIR R4 spec; we use the most common
+# type for each field in our model layer.
+_REFERENCE_TYPE_HINTS: Dict[str, str] = {
+    "performer": "Practitioner",
+    "author": "Practitioner",
+    "sender": "Practitioner",
+    "recipient": "Patient",
+    "agent": "Practitioner",
+    "target": "Observation",  # generic; overridden by Type/uuid form
+    "partof": "Organization",
+    "parent": "Device",
+    "subject": "Patient",
+    "patient": "Patient",
+}
+
+
+def _jsonb_reference_match(model, field_name: str, value: str):
+    """Build a JSONB ``@>`` reference predicate for a reference-bearing field.
+
+    Handles the common FHIR reference forms:
+    - ``field=Type/uuid`` → fragment ``{"reference": "Type/uuid"}`` (preferred).
+    - ``field=uuid`` → uses :data:`_REFERENCE_TYPE_HINTS` to pick the type
+      (e.g. ``performer`` → ``Practitioner/uuid``).
+    - ``field=urn:uuid:uuid`` → urn:uuid form (rare for non-bundle requests).
+
+    The column may be a single Reference JSONB (``{"reference": "..."}``) or a
+    list of References (``[{"reference": "..."}]``). We emit both fragment
+    shapes inside a single ``OR (@> ..., @> ...)`` so either storage shape
+    matches.
+
+    Returns ``None`` if the column isn't present or isn't JSONB.
+    """
+    col = getattr(model, field_name, None)
+    if col is None:
+        return None
+    col_type = getattr(getattr(col, "type", None), "__class__", None)
+    if col_type is None or col_type.__name__ != "JSONB":
+        return None
+
+    # Normalize the value to a canonical "Type/uuid" reference string.
+    if "/" in value:
+        reference = value
+    elif value.startswith("urn:uuid:"):
+        reference = value
+    else:
+        # Bare UUID — pick the conventional type for this field.
+        type_hint = _REFERENCE_TYPE_HINTS.get(field_name, "Patient")
+        reference = f"{type_hint}/{value}"
+
+    single_fragment = _json.dumps({"reference": reference})
+    list_fragment = _json.dumps([{"reference": reference}])
+
+    single_pred = col.op("@>")(literal(single_fragment, String).cast(JSONB))
+    list_pred = col.op("@>")(literal(list_fragment, String).cast(JSONB))
+    return or_(single_pred, list_pred)
+
+
+def _jsonb_identifier_match(column, value: str):
+    """Build a JSONB ``@>`` identifier predicate against a ``[{system, value}]``
+    column (Patient/Device/Organization/Practitioner/Medication identifier).
+
+    FHIR identifier token forms:
+    - ``identifier=system|value`` → fragment ``[{"system": sys, "value": val}]``
+    - ``identifier=value`` → fragment ``[{"value": val}]``
+    - ``identifier=system|`` → fragment ``[{"system": sys}]``
+    """
+    if "|" in value:
+        system, _, ident_value = value.partition("|")
+        if ident_value == "":
+            fragment = [{"system": system}]
+        else:
+            fragment = [{"system": system, "value": ident_value}]
+    else:
+        fragment = [{"value": value}]
+    rhs = _json.dumps(fragment)
+    return column.op("@>")(literal(rhs, String).cast(JSONB))
+
+
+# FHIR quantity prefixes we honor for value-quantity search. Same set as date
+# prefixes (minus ne/ap which don't apply to numerics) — see FHIR R4 Search.
+_QUANTITY_PREFIXES = ("eq", "ne", "gt", "ge", "lt", "le", "sa", "eb", "ap")
+
+
+def _value_quantity_match(column, value: str):
+    """Build a numeric predicate against ``valueQuantity.value`` (JSONB path).
+
+    FHIR quantity search format: ``[prefix][number][||system|code]``. We honor
+    the prefix and number; the optional unit (system|code after ``||``) is
+    parsed but not yet used for filtering (deferred).
+
+    Examples:
+    - ``value-quantity=5.4``           → ``value == 5.4``
+    - ``value-quantity=gt5.4``         → ``value > 5.4``
+    - ``value-quantity=5.4||mg/dL``    → ``value == 5.4`` (unit ignored for now)
+    - ``value-quantity=ap10``          → ``value >= 9 AND value <= 11``
+    """
+    # Strip the optional ||unit suffix.
+    numeric_part = value.split("||", 1)[0]
+
+    # Optional prefix.
+    prefix = "eq"
+    for p in _QUANTITY_PREFIXES:
+        if numeric_part.startswith(p):
+            rest = numeric_part[len(p):]
+            if rest:
+                prefix = p
+                numeric_part = rest
+                break
+
+    try:
+        number = float(numeric_part)
+    except (ValueError, TypeError):
+        return None
+
+    # JSONB path valueQuantity.value → numeric. Use func to extract cast to
+    # float so the comparison binds to a numeric (the stored value may be int
+    # or float; PG's ->> returns text, cast to FLOAT for the comparison).
+    value_expr = func.cast(column["value"].astext, Float)
+
+    if prefix == "eq":
+        return value_expr == number
+    if prefix == "ne":
+        return value_expr != number
+    if prefix in ("gt", "sa"):
+        return value_expr > number
+    if prefix == "ge":
+        return value_expr >= number
+    if prefix in ("lt", "eb"):
+        return value_expr < number
+    if prefix == "le":
+        return value_expr <= number
+    if prefix == "ap":
+        # Approximate: ±10% window.
+        return and_(value_expr >= number * 0.9, value_expr <= number * 1.1)
+    return value_expr == number
+
+
+def _project_elements(
+    resource: Dict[str, Any], elements: Optional[List[str]]
+) -> Dict[str, Any]:
+    """Apply the ``_elements`` projection to a FHIR resource dict.
+
+    Per FHIR R4 spec (https://hl7.org/fhir/R4/search.html#elements), the
+    server always includes ``resourceType``, ``id``, and ``meta`` regardless
+    of the requested elements. The projection is applied **post-serialization**
+    (after ``to_fhir_dict()`` has validated the resource) so it never bypasses
+    the validator.
+
+    Returns the input dict unchanged when ``elements`` is None or empty.
+    """
+    if not elements:
+        return resource
+    always_present = {"resourceType", "id", "meta"}
+    wanted = set(elements) | always_present
+    return {k: v for k, v in resource.items() if k in wanted}
 
 
 def _build_resource_filter(model, key: str, value: str):
@@ -174,13 +485,32 @@ def _build_resource_filter(model, key: str, value: str):
     - ``patient=uuid`` → bare UUID
     - ``code=http://loinc.org|1234-5`` → system|code
     - ``code=1234-5`` → bare code
+    - ``code:not=1234-5`` → token modifier :not (exclude)
     - ``status=active`` → enum/string
+    - ``category=vital-signs`` → matches any CodeableConcept in the list
 
-    The implementation here is conservative: handle the common cases
-    (patient/subject references + simple token matches). Full FHIR token
-    semantics land in Phase 8.
+    Token / JSONB semantics (F9 fix):
+    - For ``code`` on a JSONB CodeableConcept column: use the ``@>`` containment
+      operator so multi-coding resources match (previously only ``coding[0]``
+      was inspected — multi-coding resources silently missed).
+    - For ``category`` on a JSONB list-of-CodeableConcept column (Observation,
+      Communication, DiagnosticReport, DocumentReference): use ``@>`` on the
+      list shape so any element matches (previously ``category.astext == value``
+      compared the whole list as a scalar string and matched nothing).
+    - ``category`` on a scalar enum column (AllergyIntolerance) keeps the simple
+      equality match.
+    - Token modifiers ``:not`` negates the match; other modifiers (``:above``,
+      ``:below``, ``:in``, ``:text``) are deferred (Phase 9).
     """
-    if key in ("patient", "subject"):
+    # Split token modifier (e.g. "code:not=1234" → key suffix ":not", value "1234").
+    modifier: Optional[str] = None
+    base_key = key
+    if ":" in key:
+        base_key, _, modifier = key.partition(":")
+
+    negate = modifier == "not"
+
+    if base_key in ("patient", "subject"):
         # Strip the "Patient/" prefix if present.
         raw = value.split("/")[-1] if "/" in value else value
         rid = _resolve_id(raw)
@@ -192,7 +522,7 @@ def _build_resource_filter(model, key: str, value: str):
         if hasattr(model, "subject_patient_id"):
             return model.subject_patient_id == rid
         return None
-    if key in ("encounter", "context"):
+    if base_key in ("encounter", "context"):
         raw = value.split("/")[-1] if "/" in value else value
         rid = _resolve_id(raw)
         if rid is None:
@@ -202,13 +532,25 @@ def _build_resource_filter(model, key: str, value: str):
         if hasattr(model, "examination_id"):
             return model.examination_id == rid
         return None
-    if key == "code":
-        # Token: system|code or bare code → JSONB path lookup.
-        if "|" in value:
-            system, code = value.split("|", 1)
-            return model.code["coding"][0]["code"].astext == code
-        return model.code["coding"][0]["code"].astext == value
-    if key in ("status", "clinical-status", "verification-status", "intent"):
+    if base_key == "code":
+        if not hasattr(model, "code"):
+            return None
+        pred = _jsonb_codeable_concept_match(model.code, value, is_list=False)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key == "type":
+        # DocumentReference.type / DiagnosticReport.type — JSONB CodeableConcept.
+        col = getattr(model, "type", None)
+        if col is None:
+            col = getattr(model, "code", None)
+        if col is None:
+            return None
+        pred = _jsonb_codeable_concept_match(col, value, is_list=False)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key in ("status", "clinical-status", "verification-status", "intent"):
         # Map FHIR param to model column. Status columns are typically snake_case.
         col_name_map = {
             "status": "status",
@@ -216,18 +558,130 @@ def _build_resource_filter(model, key: str, value: str):
             "verification-status": "verification_status",
             "intent": "intent",
         }
-        col_name = col_name_map.get(key)
+        col_name = col_name_map.get(base_key)
         if not col_name or not hasattr(model, col_name):
             return None
         col = getattr(model, col_name)
         value_upper = value.upper()
-        return or_(col == value, col == value_upper)
-    if key == "category":
-        if hasattr(model, "category"):
-            # Category may be JSONB (list) or scalar.
-            return model.category.astext == value
-        return None
+        pred = or_(col == value, col == value_upper)
+        return not_(pred) if negate else pred
+    if base_key == "category":
+        if not hasattr(model, "category"):
+            return None
+        col = model.category
+        # Decide JSONB-list vs JSONB-scalar vs enum-column by inspecting the
+        # SQLAlchemy column type. JSONB list (Observation, Communication,
+        # DiagnosticReport, DocumentReference) needs the @> containment check;
+        # scalar enum (AllergyIntolerance) uses simple equality.
+        col_type = getattr(getattr(col, "type", None), "__class__", None)
+        type_name = col_type.__name__ if col_type is not None else ""
+        if type_name == "JSONB":
+            # Try list-shape containment first (most categories are lists);
+            # fall back to single-CodeableConcept shape (some legacy rows).
+            pred = _jsonb_codeable_concept_match(col, value, is_list=True)
+        else:
+            # Scalar column (Enum / String) — direct case-insensitive equality.
+            value_upper = value.upper()
+            pred = or_(col == value, col == value_upper)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key == "criticality":
+        # AllergyIntolerance.criticality is a scalar enum (low|high|unable-to-assess).
+        col = getattr(model, "criticality", None)
+        if col is None:
+            return None
+        value_upper = value.upper()
+        pred = or_(col == value, col == value_upper)
+        return not_(pred) if negate else pred
+    if base_key == "medication":
+        # MedicationStatement/Request.medication is projected from the same
+        # `code` CodeableConcept column (see Medication.to_fhir_dict). Match
+        # against that column directly.
+        col = getattr(model, "code", None)
+        if col is None:
+            return None
+        pred = _jsonb_codeable_concept_match(col, value, is_list=False)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key == "activity":
+        # Provenance.activity is a JSONB CodeableConcept.
+        col = getattr(model, "activity", None)
+        if col is None:
+            return None
+        pred = _jsonb_codeable_concept_match(col, value, is_list=False)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key in ("performer", "sender", "recipient", "agent", "target", "partof", "parent", "author"):
+        # Reference-bearing fields stored as JSONB. Build a @> containment
+        # fragment for {"reference": "Type/uuid"} (single) or
+        # [{"reference": "Type/uuid"}] (list). Bare UUIDs are normalized to the
+        # conventional reference type for the field (e.g. performer→Practitioner).
+        ref_pred = _jsonb_reference_match(model, base_key, value)
+        if ref_pred is None:
+            return None
+        return not_(ref_pred) if negate else ref_pred
+    if base_key == "identifier":
+        # JSONB list of {system, value}. FHIR format: system|value | value |
+        # system|. Use @> containment with whichever fragment is provided.
+        col = getattr(model, "identifier", None)
+        if col is None:
+            return None
+        col_type = getattr(getattr(col, "type", None), "__class__", None)
+        if col_type is None or col_type.__name__ != "JSONB":
+            return None
+        pred = _jsonb_identifier_match(col, value)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
+    if base_key in ("name", "family", "given"):
+        # Patient/Practitioner name search. Stored as JSONB list of HumanName
+        # (or legacy single dict). Match via substring on the text-cast of the
+        # whole name blob — pragmatic v1 that catches any family/given token;
+        # we don't distinguish family vs given here (defer).
+        col = getattr(model, "name", None)
+        if col is None:
+            return None
+        col_type = getattr(getattr(col, "type", None), "__class__", None)
+        if col_type is None or col_type.__name__ != "JSONB":
+            return None
+        # Cast JSONB → text and ILIKE the value as a substring. Handles both
+        # storage shapes (list-of-HumanName, single-HumanName-dict) uniformly.
+        pred = col.cast(String).ilike(f"%{value}%")
+        return not_(pred) if negate else pred
+    if base_key in ("gender", "active"):
+        # Simple scalar tokens. gender is a String/Enum column; active is bool.
+        col = getattr(model, base_key, None)
+        if col is None:
+            # active may be missing on some resources — no-op.
+            return None
+        if base_key == "active":
+            # Boolean: "true"/"false". Accept both case variants.
+            bool_val = value.strip().lower() in ("true", "1", "yes")
+            pred = col.is_(bool_val)
+        else:
+            value_upper = value.upper()
+            pred = or_(col == value, col == value_upper)
+        return not_(pred) if negate else pred
+    if base_key == "value-quantity":
+        # Observation.value-quantity: [prefix][number][||system|code] against
+        # the valueQuantity.value JSONB numeric path. Optional system|code
+        # narrows the unit; we ignore it for the numeric comparison but
+        # surface it in the documentation as a follow-up.
+        col = getattr(model, "value_quantity", None)
+        if col is None:
+            return None
+        pred = _value_quantity_match(col, value)
+        if pred is None:
+            return None
+        return not_(pred) if negate else pred
     # Date params: onset-date, date, effective, sent, received, authored-on.
+    # Routes through DateFilter.to_orm_filter (the same path _lastUpdated uses)
+    # so FHIR precision semantics (year/month/day implicit ranges) and the
+    # prefix matrix (eq/ne/gt/ge/lt/le/sa/eb/ap) are honored uniformly —
+    # single source of truth.
     date_param_to_col = {
         "date": "examination_date",
         "onset-date": "onset_date",
@@ -243,23 +697,10 @@ def _build_resource_filter(model, key: str, value: str):
         col = getattr(model, col_name, None)
         if col is None:
             return None
-        # Strip FHIR date prefix if present.
-        from app.facade.search_params import _split_date_param, _parse_fhir_datetime
+        from app.facade.search_params import _split_date_param
+
         f = _split_date_param(value)
-        dt = _parse_fhir_datetime(f.value)
-        if dt is None:
-            return None
-        if f.prefix in (None, "eq"):
-            return col == dt
-        if f.prefix in ("gt", "sa"):
-            return col > dt
-        if f.prefix in ("lt", "eb"):
-            return col < dt
-        if f.prefix == "ge":
-            return col >= dt
-        if f.prefix == "le":
-            return col <= dt
-        return col == dt
+        return f.to_orm_filter(col)
     return None
 
 
@@ -358,6 +799,7 @@ async def create(
             activity=RECORD_CREATE,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
+            client_id=getattr(current_user, "client_id", None),
         )
 
     await db.commit()
@@ -375,9 +817,18 @@ async def update(
     fhir_data: Dict[str, Any],
     current_user: TokenData,
     db: AsyncSession,
+    if_match: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Update an existing resource. Returns the updated FHIR dict, or None
-    if the resource doesn't exist."""
+    if the resource doesn't exist.
+
+    F5: if ``if_match`` is supplied (the raw ``If-Match`` header value, e.g.
+    ``W/"3"`` or ``"3"``), the version must match the current row's version
+    or a ``PreconditionFailed`` is raised (HTTP 412). This implements
+    optimistic locking even though we declare ``versioning="no-version"`` in
+    the CapabilityStatement (the versionId/ETag is still tracked in the row's
+    ``VersionedMixin.version`` column and exposed in the ETag header).
+    """
     if "update" not in entry.interactions:
         raise PermissionError(f"update not supported for {entry.resource_type}")
 
@@ -395,6 +846,20 @@ async def update(
     obj = result.scalar_one_or_none()
     if obj is None:
         return None
+
+    # F5: If-Match optimistic locking. If the header is present, the version
+    # in the ETag must match the current row's version exactly; otherwise 412.
+    if if_match is not None:
+        expected_version = _parse_if_match(if_match)
+        if expected_version is not None:
+            current_version = getattr(obj, "version", None) or 1
+            if int(expected_version) != int(current_version):
+                raise PreconditionFailed(
+                    resource_type=entry.resource_type,
+                    resource_id=str(rid),
+                    expected=expected_version,
+                    actual=current_version,
+                )
 
     # Convert the incoming FHIR to ORM-shape and apply mutations.
     orm_dict = fhir_to_orm(entry.resource_type, fhir_data)

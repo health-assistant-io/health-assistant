@@ -83,19 +83,19 @@ async def http_request(
         if response.status_code >= 500:
             attempt += 1
             if attempt >= max_retries:
-                raise IntegrationDataError(f"{method} {url} -> {response.status_code}: {response.text[:300]}")
+                raise IntegrationDataError(f"{method} {url} -> {response.status_code}: {_response_detail(response)}")
             logger.warning("Server error %s %s -> %d (attempt %d/%d)", method, url, response.status_code, attempt, max_retries)
             await asyncio.sleep(backoff)
             backoff *= 2
             continue
         if response.status_code >= 400:
-            raise IntegrationDataError(f"{method} {url} -> {response.status_code}: {response.text[:300]}")
+            raise IntegrationDataError(f"{method} {url} -> {response.status_code}: {_response_detail(response)}")
         if response.status_code == 204 or not response.content:
             return None
         try:
             return response.json()
         except ValueError as e:
-            raise IntegrationDataError(f"Non-JSON response from {url}: {response.text[:300]}") from e
+            raise IntegrationDataError(f"Non-JSON response from {url}: {_response_detail(response)}") from e
 
 
 async def paginate_bundle(
@@ -143,3 +143,32 @@ def _next_link(bundle: Dict[str, Any]) -> Optional[str]:
             if isinstance(url, str):
                 return url
     return None
+
+
+def _response_detail(response: httpx.Response) -> str:
+    """Best-effort human-readable detail from a FHIR error response.
+
+    H8: tries to extract ``OperationOutcome.issue[].diagnostics`` (the most
+    useful field for debugging hospital 422/400 rejections) before falling back
+    to the raw response body. Local helper — avoids importing from ``fhir.py``
+    (which would create a circular dependency since ``fhir.py`` imports
+    ``paginate_bundle`` from here).
+    """
+    if not response.content:
+        return "empty response body"
+    try:
+        body = response.json()
+        if isinstance(body, dict):
+            issues = body.get("issue") or []
+            for issue in issues:
+                if isinstance(issue, dict):
+                    msg = (
+                        issue.get("diagnostics")
+                        or (issue.get("details") or {}).get("text")
+                        or issue.get("code")
+                    )
+                    if msg:
+                        return str(msg)
+    except (ValueError, TypeError):
+        pass
+    return response.text[:300]
