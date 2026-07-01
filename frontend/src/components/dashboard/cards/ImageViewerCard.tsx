@@ -14,6 +14,7 @@ import {
 import { AuthenticatedThumbnail } from '../../ui/AuthenticatedThumbnail';
 import { AuthenticatedImageViewer } from '../../ui/AuthenticatedImageViewer';
 import { getDocumentDownloadUrl } from '../../../services/documentService';
+import { CardTitle } from '../shared/CardTitle';
 
 export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -74,10 +75,12 @@ export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
       )}
       
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <ImageIcon className="w-5 h-5 text-blue-500" />
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('dashboard.cards.image_viewer')}</h3>
-        </div>
+        <CardTitle
+          to="/documents"
+          title={t('dashboard.cards.image_viewer')}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"
+          icon={<ImageIcon className="w-5 h-5 text-blue-500" />}
+        />
         {studies.length > 1 && (
           <div className="flex items-center space-x-1">
             <button 

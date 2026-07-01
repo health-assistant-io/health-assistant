@@ -9,6 +9,7 @@ import {
   List
 } from 'lucide-react';
 import { AuthenticatedThumbnail } from '../../ui/AuthenticatedThumbnail';
+import { CardTitle } from '../shared/CardTitle';
 
 export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -41,10 +42,12 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
       )}
       
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <FileText className="w-5 h-5 text-indigo-500" />
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('dashboard.cards.latest_documents')}</h3>
-        </div>
+        <CardTitle
+          to="/documents"
+          title={t('dashboard.cards.latest_documents')}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"
+          icon={<FileText className="w-5 h-5 text-indigo-500" />}
+        />
         <div className="flex items-center space-x-2">
           <button 
             onClick={toggleViewMode}

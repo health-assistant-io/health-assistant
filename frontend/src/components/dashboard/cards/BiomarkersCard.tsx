@@ -16,6 +16,7 @@ import { filterBiomarkers } from '../../../utils/searchUtils';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
+import { CardTitle } from '../shared/CardTitle';
 
 
 export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
@@ -232,12 +233,12 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
         </button>
       )}
       <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center space-x-2">
-          <FlaskConical className="w-5 h-5 text-blue-500" />
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">
-            {t('common.biomarkers')}
-          </h3>
-        </div>
+        <CardTitle
+          to="/biomarkers"
+          title={t('common.biomarkers')}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"
+          icon={<FlaskConical className="w-5 h-5 text-blue-500" />}
+        />
         
         <div className="flex items-center space-x-2">
           {isEditMode && (

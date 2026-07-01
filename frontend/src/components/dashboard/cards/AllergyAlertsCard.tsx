@@ -7,6 +7,7 @@ import {
   Check
 } from 'lucide-react';
 import { AllergyIntolerance } from '../../../services/allergyService';
+import { CardTitle } from '../shared/CardTitle';
 
 export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -46,12 +47,16 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <div className="p-2 bg-red-50 dark:bg-red-900/30 rounded-xl">
-            <ShieldAlert className="w-5 h-5 text-red-500" />
-          </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('dashboard.cards.clinical_alerts')}</h3>
-        </div>
+        <CardTitle
+          to="/alerts"
+          title={t('dashboard.cards.clinical_alerts')}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"
+          icon={
+            <div className="p-2 bg-red-50 dark:bg-red-900/30 rounded-xl">
+              <ShieldAlert className="w-5 h-5 text-red-500" />
+            </div>
+          }
+        />
         <span className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-[10px] font-black border border-red-100 dark:border-red-900/30 px-3 py-1 rounded-lg uppercase tracking-wider transition-all animate-pulse">
           {activeAllergies.length} {t('dashboard.status.active')}
         </span>

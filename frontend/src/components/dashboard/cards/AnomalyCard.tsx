@@ -6,6 +6,7 @@ import { usePatientStore } from '../../../store/slices/patientSlice';
 import { getAnomalies, BiomarkerAnomaly } from '../../../services/analyticsService';
 import { formatBiomarkerValue, formatUnit } from '../../../utils/biomarkerUtils';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
+import { CardTitle } from '../shared/CardTitle';
 
 const severityConfig: Record<string, { icon: React.ReactNode; classes: string }> = {
   critical: { icon: <AlertTriangle className="w-4 h-4" />, classes: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-400' },
@@ -74,14 +75,16 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <div className={`p-2 rounded-xl ${counts.critical > 0 ? 'bg-red-50 dark:bg-red-900/30' : 'bg-amber-50 dark:bg-amber-900/30'}`}>
-            <Siren className={`w-5 h-5 ${counts.critical > 0 ? 'text-red-500' : 'text-amber-500'}`} />
-          </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">
-            {t('dashboard.cards.anomaly_alerts', { defaultValue: 'Anomaly Detection' })}
-          </h3>
-        </div>
+        <CardTitle
+          to="/analytics/trends"
+          title={t('dashboard.cards.anomaly_alerts', { defaultValue: 'Anomaly Detection' })}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"
+          icon={
+            <div className={`p-2 rounded-xl ${counts.critical > 0 ? 'bg-red-50 dark:bg-red-900/30' : 'bg-amber-50 dark:bg-amber-900/30'}`}>
+              <Siren className={`w-5 h-5 ${counts.critical > 0 ? 'text-red-500' : 'text-amber-500'}`} />
+            </div>
+          }
+        />
         {anomalies.length > 0 && (
           <span className={`text-[10px] font-black border px-3 py-1 rounded-lg uppercase tracking-wider ${counts.critical > 0 ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/30'}`}>
             {anomalies.length} {t('dashboard.status.detected', { defaultValue: 'detected' })}

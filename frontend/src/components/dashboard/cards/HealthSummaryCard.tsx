@@ -5,6 +5,7 @@ import { X, HeartPulse, TrendingUp, TrendingDown, Minus, CalendarClock, ChevronD
 import { getFinalStatus, formatBiomarkerValue, formatUnit, getStatusColorClass } from '../../../utils/biomarkerUtils';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
+import { CardTitle } from '../shared/CardTitle';
 
 interface AbnormalItem {
   name: string;
@@ -134,10 +135,12 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
         </button>
       )}
 
-      <div className="flex items-center space-x-2 mb-3">
-        <h3 className="text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">
-          {t('dashboard.cards.health_summary', { defaultValue: 'Health Summary' })}
-        </h3>
+      <div className="mb-3">
+        <CardTitle
+          to="/analytics/trends"
+          title={t('dashboard.cards.health_summary', { defaultValue: 'Health Summary' })}
+          titleClassName="text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest"
+        />
       </div>
 
       <div className="flex-1 grid grid-cols-3 gap-3 nodrag">

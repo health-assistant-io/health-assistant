@@ -8,6 +8,7 @@ import { formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils'
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
+import { CardTitle } from '../shared/CardTitle';
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
@@ -95,14 +96,16 @@ export const MultiBiomarkerComparisonCard = React.forwardRef((props: any, ref: a
       )}
 
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <div className="p-1.5 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
-            <GitCompareArrows className="w-4 h-4 text-purple-500" />
-          </div>
-          <h3 className="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight">
-            {t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' })}
-          </h3>
-        </div>
+        <CardTitle
+          to="/analytics/correlative"
+          title={t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' })}
+          titleClassName="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight"
+          icon={
+            <div className="p-1.5 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
+              <GitCompareArrows className="w-4 h-4 text-purple-500" />
+            </div>
+          }
+        />
         <button onClick={() => setSelectedInfo({ info: t('dashboard.cards.multi_biomarker_comparison_info', { defaultValue: 'Each biomarker is normalized to **% of its reference range** (0% = at minimum, 100% = at maximum). This lets you compare trends across biomarkers with different units.' }), name: t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' }) })} className="p-1 text-blue-400 hover:text-blue-600 transition-colors">
           <Info className="w-3.5 h-3.5" />
         </button>

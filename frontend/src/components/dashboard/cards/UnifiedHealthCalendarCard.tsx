@@ -322,6 +322,7 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
           transparent={true}
           title={t('dashboard.cards.health_timeline')}
           subtitle={t('dashboard.cards.unified_schedule')}
+          titleTo="/calendar"
           defaultView={viewType as any}
           hideHeader={hideHeader}
           fitToContainer={fitToContainer}

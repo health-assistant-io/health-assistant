@@ -65,6 +65,8 @@ interface Props {
   transparent?: boolean;
   /** In classic view, fit the entire month to the container height instead of scrolling */
   fitToContainer?: boolean;
+  /** When provided, the calendar title becomes clickable and navigates to this in-app route */
+  titleTo?: string;
 }
 
 export const UniversalCalendar: React.FC<Props> = ({ 
@@ -78,7 +80,8 @@ export const UniversalCalendar: React.FC<Props> = ({
   hideHeader = false,
   transparent = false,
   subtitle,
-  fitToContainer = false
+  fitToContainer = false,
+  titleTo
 }) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -559,13 +562,21 @@ export const UniversalCalendar: React.FC<Props> = ({
     <div className={`flex flex-col w-full h-full ${transparent ? 'min-h-0' : `bg-white dark:bg-dark-surface rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden min-h-0 ${compact ? 'max-w-2xl' : 'w-full'}`}`}>
       {!hideHeader ? (
         <div className={`px-6 py-4 border-b border-gray-50 dark:border-dark-border flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${transparent ? 'bg-transparent' : ''}`}>
-          <div className="flex items-center space-x-4">
+          <div className={`flex items-center space-x-4 ${titleTo ? 'group/title relative cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+               onClick={titleTo ? (e) => { e.stopPropagation(); navigate(titleTo); } : undefined}
+               title={titleTo ? title : undefined}>
             <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-2xl">
               <CalendarIcon className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase leading-none">
-                  {title || (viewType === 'classic' ? format(currentDate, 'MMMM yyyy') : t('common.calendar'))}
+              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase leading-none flex items-center space-x-1.5">
+                <span>{title || (viewType === 'classic' ? format(currentDate, 'MMMM yyyy') : t('common.calendar'))}</span>
+                {titleTo && (
+                  <ExternalLink
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(titleTo, '_blank', 'noopener,noreferrer'); }}
+                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:!text-blue-500 transition-opacity shrink-0"
+                  />
+                )}
               </h2>
               {subtitle ? (
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{subtitle}</p>

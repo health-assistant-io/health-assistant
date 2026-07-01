@@ -9,6 +9,7 @@ import { useBiomarkers } from '../../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
 import { isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
+import { CardTitle } from '../shared/CardTitle';
 
 export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -44,9 +45,13 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
           <X className="w-3 h-3" />
         </button>
       )}
-      <div className="flex items-center space-x-2 mb-4">
-        <FileText className="w-5 h-5 text-blue-500" />
-        <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{title}</h3>
+      <div className="mb-4">
+        <CardTitle
+          to="/examinations"
+          title={title}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"
+          icon={<FileText className="w-5 h-5 text-blue-500" />}
+        />
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
         <div className="flex flex-col justify-between h-full">

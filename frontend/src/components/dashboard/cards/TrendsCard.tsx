@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   X, 
@@ -21,10 +20,10 @@ import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
+import { CardTitle } from '../shared/CardTitle';
 
 export const TrendsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const precisionProfile = useBiomarkerPrecisionProfile();
   const { id, isEditMode, selectedBiomarker, setSelectedBiomarker, trendsData, mockTrends, availableBiomarkers, onRemove, style, className, onMouseDown, onMouseUp, onTouchEnd, children, config, onUpdateConfig 
   } = props;
@@ -116,27 +115,22 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
       )}
       
       <div className="flex justify-between items-start mb-4">
-        <div 
-          className={`flex items-center space-x-2 ${!isEditMode && biomarkerId ? 'cursor-pointer group/title' : ''}`}
-          onClick={() => !isEditMode && biomarkerId && navigate(`/biomarkers/details/${biomarkerId}`)}
-        >
-          <TrendingUp className="w-5 h-5 text-blue-500 group-hover/title:scale-110 transition-transform" />
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text group-hover/title:text-blue-600 transition-colors">
-                {selectedBiomarker ? t('dashboard.cards.trend_graph_with_name', { name: displayBiomarkerName }) : t('dashboard.cards.trend_graph')}
-              </h3>
-            </div>
+        <CardTitle
+          to={!isEditMode && biomarkerId ? `/biomarkers/details/${biomarkerId}` : undefined}
+          title={selectedBiomarker ? t('dashboard.cards.trend_graph_with_name', { name: displayBiomarkerName }) : t('dashboard.cards.trend_graph')}
+          titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"
+          icon={<TrendingUp className="w-5 h-5 text-blue-500" />}
+          subtitle={
             <div className="flex items-center space-x-2">
               <p className="text-xs text-gray-400 dark:text-dark-muted font-medium uppercase tracking-wider">
                 {latestPoint ? formatUnit(latestPoint.unit) : 'Longitudinal tracking'}
               </p>
               {showReferenceLines && latestPoint?.reference_range_text && (
-                 <ReferenceRangeDisplay displayText={latestPoint.reference_range_text} compact={true} />
+                <ReferenceRangeDisplay displayText={latestPoint.reference_range_text} compact={true} />
               )}
             </div>
-          </div>
-        </div>
+          }
+        />
         <div className="flex items-center space-x-2">
           {isEditMode ? (
             <SearchableBiomarkerSelect 
