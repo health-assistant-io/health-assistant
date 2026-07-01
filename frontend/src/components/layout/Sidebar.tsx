@@ -51,6 +51,7 @@ function Sidebar() {
   const theme = useSettingsStore(state => state.theme);
   const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record', '/clinical-data']);
   const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Resolve a sub-item path (handles the /patient-info dynamic token)
@@ -214,12 +215,16 @@ function Sidebar() {
   }, [menuItems, user]);
 
   return (
-    <div className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative`}>
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative`}
+    >
       <div className={`p-6 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} mt-2 mb-4`}>
-        <div className="flex items-center space-x-3">
+        <Link to="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
           <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-9 h-9 shrink-0" alt="Health Assistant Logo" />
           {!sidebarCollapsed && <h1 className="text-xl font-bold text-[#1a2b4b] dark:text-white truncate">Health Assistant</h1>}
-        </div>
+        </Link>
         
         {!sidebarCollapsed && (
           <button 
@@ -230,6 +235,23 @@ function Sidebar() {
           </button>
         )}
       </div>
+
+      {/* Invisible hover bridge — keeps the handle visible when the cursor is near the sidebar edge */}
+      <div className="hidden lg:block absolute inset-y-0 left-full w-5 z-[955]" aria-hidden="true" />
+
+      {/* Collapse/expand handle — sits outside the sidebar panel and is revealed on hover */}
+      <button
+        onClick={toggleSidebarCollapse}
+        title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-[960] w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+      >
+        {sidebarCollapsed ? (
+          <ChevronRight className="w-4 h-4" />
+        ) : (
+          <ChevronLeft className="w-4 h-4" />
+        )}
+      </button>
 
       <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
         {filteredMenuItems.map((item) => {
@@ -334,21 +356,6 @@ function Sidebar() {
 
       <div className={`p-4 space-y-2 mt-auto border-t border-gray-50 dark:border-white/5`}>
         <CreateMenu collapsed={sidebarCollapsed} />
-
-        <button
-          onClick={toggleSidebarCollapse}
-          className={`hidden lg:flex items-center ${sidebarCollapsed ? 'justify-center h-12 w-12 mx-auto' : 'px-4 py-3'} w-full text-gray-400 hover:text-indigo-600 hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-all group`}
-          title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-        >
-          {sidebarCollapsed ? (
-            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-          ) : (
-            <>
-              <ChevronLeft className="w-5 h-5 mr-3 group-hover:-translate-x-0.5 transition-transform" />
-              <span className="text-xs font-bold uppercase tracking-widest">Collapse Menu</span>
-            </>
-          )}
-        </button>
 
         <AppVersion collapsed={sidebarCollapsed} className="pt-1" />
       </div>
