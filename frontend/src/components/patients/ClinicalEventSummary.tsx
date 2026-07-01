@@ -95,8 +95,7 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
           }}
           onAdd={() => setIsModalOpen(true)}
           addLabel={t('events.add_event')}
-          onOpen={() => navigate('/events')}
-          openLabel={t('common.open_x', { x: t('events.title') })}
+          titleTo="/events"
         />
         <div className="p-6 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
@@ -134,8 +133,7 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
         tags={tags}
         onAdd={() => setIsModalOpen(true)}
         addLabel={t('events.add_event')}
-        onOpen={() => navigate('/events')}
-        openLabel={t('common.open_x', { x: t('events.title') })}
+        titleTo="/events"
       />
 
       <div className="p-4 sm:p-6 flex-1 flex flex-col">

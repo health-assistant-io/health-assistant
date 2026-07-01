@@ -163,8 +163,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
             content: t('biomarkers.info_text'),
             ariaLabel: t('common.info'),
           }}
-          onOpen={() => navigate('/analytics/trends')}
-          openLabel={t('common.open_x', { x: t('common.biomarker_trends') })}
+          titleTo="/analytics/trends"
         />
         <div className="p-6 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
@@ -199,10 +198,9 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
           content: t('biomarkers.info_text'),
           ariaLabel: t('common.info'),
         }}
-        tags={tags}
-        onOpen={() => navigate('/analytics/trends')}
-        openLabel={t('common.open_x', { x: t('common.biomarker_trends') })}
-      />
+          tags={tags}
+          titleTo="/analytics/trends"
+        />
 
       {/* Body */}
       <div className="p-4 sm:p-6 flex-1">

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Edit2, Trash2, Calendar, ShieldAlert, History, ChevronDown, ChevronUp, Clock, List } from 'lucide-react';
 import { getPatientAllergies, AllergyIntolerance, deletePatientAllergy } from '../../services/allergyService';
@@ -14,7 +13,6 @@ interface Props {
 
 export const AllergySummary: React.FC<Props> = ({ patientId }) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [allergies, setAllergies] = useState<AllergyIntolerance[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,8 +94,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
         ]}
         onAdd={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
         addLabel={t('allergies.add_record')}
-        onOpen={() => navigate('/alerts')}
-        openLabel={t('common.open_x', { x: t('common.clinical_alerts') })}
+        titleTo="/alerts"
       />
 
       <div className="p-4 sm:p-6 max-h-[400px] overflow-y-auto custom-scrollbar">

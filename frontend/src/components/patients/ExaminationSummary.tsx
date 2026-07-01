@@ -97,8 +97,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
           }}
           onAdd={() => navigate('/examinations/upload')}
           addLabel={t('patients.add_visit')}
-          onOpen={() => navigate('/examinations')}
-          openLabel={t('common.open_x', { x: t('patients.examination_history') })}
+          titleTo="/examinations"
         />
         <div className="p-6 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
@@ -136,8 +135,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
         tags={tags}
         onAdd={() => navigate('/examinations/upload')}
         addLabel={t('patients.add_visit')}
-        onOpen={() => navigate('/examinations')}
-        openLabel={t('common.open_x', { x: t('patients.examination_history') })}
+        titleTo="/examinations"
       />
 
       <div className="p-4 sm:p-6 flex-1 flex flex-col">

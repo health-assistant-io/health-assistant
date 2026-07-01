@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Pill, Calendar, Clock, List } from 'lucide-react';
 import { getPatientMedications, MedicationRecord, deletePatientMedication } from '../../services/medicationService';
@@ -15,7 +14,6 @@ interface Props {
 
 export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [medications, setMedications] = useState<MedicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -86,8 +84,7 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
         ]}
         onAdd={() => { setSelectedMedication(undefined); setIsModalOpen(true); }}
         addLabel={t('medications.add_drug')}
-        onOpen={() => navigate('/medications')}
-        openLabel={t('common.open_x', { x: t('common.medications') })}
+        titleTo="/medications"
       />
 
       <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">

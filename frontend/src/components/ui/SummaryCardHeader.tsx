@@ -1,5 +1,6 @@
 import React from 'react';
-import { Plus, type LucideIcon } from 'lucide-react';
+import { Plus, ExternalLink, type LucideIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import OpenPageButton from './OpenPageButton';
 import { InfoTooltip } from './InfoTooltip';
 
@@ -41,6 +42,8 @@ export interface SummaryCardHeaderProps {
   tags?: React.ReactNode[];
   /** Optional info popover configuration. */
   info?: CardHeaderInfo;
+  /** If provided, the card title becomes clickable (in-app nav) with a hover "open in new tab" affordance. */
+  titleTo?: string;
   /** If provided, renders the OpenPageButton (top-right). */
   onOpen?: () => void;
   openLabel?: string;
@@ -55,11 +58,13 @@ const SummaryCardHeader: React.FC<SummaryCardHeaderProps> = ({
   title,
   tags = [],
   info,
+  titleTo,
   onOpen,
   openLabel,
   onAdd,
   addLabel,
 }) => {
+  const navigate = useNavigate();
   const hasActions = onOpen || onAdd;
 
   // Split the title so the LAST word + info icon share a `whitespace-nowrap` span.
@@ -112,7 +117,19 @@ const SummaryCardHeader: React.FC<SummaryCardHeaderProps> = ({
           <Icon className={`w-5 h-5 ${iconClassName} shrink-0 mt-0.5`} />
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text leading-tight">
-              {renderTitleWithIcon()}
+              <span
+                className={titleTo ? 'group/title inline-flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity' : ''}
+                onClick={titleTo ? (e) => { e.stopPropagation(); navigate(titleTo); } : undefined}
+                title={titleTo ? title : undefined}
+              >
+                {renderTitleWithIcon()}
+                {titleTo && (
+                  <ExternalLink
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(titleTo, '_blank', 'noopener,noreferrer'); }}
+                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:!text-blue-500 transition-opacity shrink-0"
+                  />
+                )}
+              </span>
             </h2>
             {tags.length > 0 && (
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">

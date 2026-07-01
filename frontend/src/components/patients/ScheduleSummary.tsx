@@ -82,8 +82,7 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
             content: t('patients.upcoming_schedule_info'),
             ariaLabel: t('common.info'),
           }}
-          onOpen={() => navigate('/calendar')}
-          openLabel={t('common.open_x', { x: t('patients.open_calendar') })}
+          titleTo="/calendar"
         />
         <div className="p-6 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
@@ -114,8 +113,7 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
         tags={[
           <span key="upcoming" className={TAG_EMERALD}>{totalCount} {t('patients.upcoming')}</span>,
         ]}
-        onOpen={() => navigate('/calendar')}
-        openLabel={t('common.open_x', { x: t('patients.open_calendar') })}
+        titleTo="/calendar"
       />
 
       <div className="p-4 sm:p-6 flex-1 flex flex-col">

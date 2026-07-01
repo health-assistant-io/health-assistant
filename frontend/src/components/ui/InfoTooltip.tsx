@@ -87,7 +87,7 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({
         <button
           type="button"
           ref={triggerRef}
-          onClick={() => setIsVisible(prev => !prev)}
+          onClick={(e) => { e.stopPropagation(); setIsVisible(prev => !prev); }}
           aria-label={ariaLabel}
           aria-expanded={isVisible}
           aria-haspopup="dialog"
