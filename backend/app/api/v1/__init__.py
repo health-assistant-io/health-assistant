@@ -7,8 +7,8 @@ from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
 from app.api.v1.endpoints.patients import router as patients_router
 from app.api.v1.endpoints.observations import router as observations_router
 from app.api.v1.endpoints.telemetry import router as telemetry_router
-from app.api.v1.endpoints.alerts import router as alerts_router
 from app.api.v1.endpoints.notifications import router as notifications_router
+from app.api.v1.endpoints.notification_rules import router as notification_rules_router
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.import_data import router as import_router
 from app.api.v1.endpoints.export import router as export_router
@@ -46,8 +46,8 @@ api_router.include_router(fhir_r4_router)
 api_router.include_router(patients_router)
 api_router.include_router(observations_router)
 api_router.include_router(telemetry_router)
-api_router.include_router(alerts_router)
 api_router.include_router(notifications_router)
+api_router.include_router(notification_rules_router)
 api_router.include_router(analytics_router)
 api_router.include_router(import_router)
 api_router.include_router(export_router)

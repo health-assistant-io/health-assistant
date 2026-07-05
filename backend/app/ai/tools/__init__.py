@@ -29,6 +29,7 @@ def get_tools(
     tenant_id: UUID,
     patient_id: UUID,
     examination_id: Optional[UUID] = None,
+    user_id: Optional[UUID] = None,
 ) -> List[Any]:
     """Return the full set of built-in chatbot tools bound to the given context.
 
@@ -41,6 +42,7 @@ def get_tools(
         tenant_id=tenant_id,
         patient_id=patient_id,
         examination_id=examination_id,
+        user_id=user_id,
     )
     tools: List[Any] = []
     for factory in get_factories().values():

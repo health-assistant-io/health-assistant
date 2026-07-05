@@ -208,6 +208,7 @@ async def list_tools(
         current_user.tenant_id,
         patient_id,
         examination_id=examination_id,
+        user_id=current_user.user_id,
     )
     
     result = []

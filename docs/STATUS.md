@@ -18,7 +18,7 @@
 - Comprehensive Clinical Visit system (Examinations & Doctors)
 - AI OCR & NLP Pipeline (OpenAI Vision/LLM + spaCy)
 - Background task processing via Celery & Redis
-- Modular Notification Framework with Web Push (VAPID) support
+- Modular Notification Framework with Web Push (VAPID) support — replaced with the **unified notification system** (multi-source, multi-recipient, multi-channel, role-aware, real-time via WebSocket). See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md).
 - Unit converter service
 - Anomaly detector service (Reference range based)
 - Medication interactor service
@@ -50,6 +50,15 @@
   - **AllergyIntolerance write-time FHIR gate**: `allergy_service` now calls `assert_valid_fhir()` (parity with `fhir_service`).
   - 4 migrations, 131 new tests, zero regressions.
   - **API surface consolidation**: deprecated the misleadingly-named `/fhir/*` ORM-shape router; patient/observation CRUD moved to proper domain endpoints (`/patients/*`, `/observations/*`); medication create consolidated under `/medications/*` (new `GET /medications/{id}` for citation lookups). The `/fhir/R4/*` facade is now clearly the interop-only surface. The frontend's `types/fhir.ts` was split into `types/patient.ts` + `types/observation.ts` (the old name was misleading — these types mirror ORM-shape, not FHIR R4). Dead code removed: GraphQL client (defined but unused), 6 unused `/fhir/*` routes.
+- **Unified notification system** (5 phases) — replaced the legacy single-table reminder system with a multi-source, multi-recipient, multi-channel, role-aware platform with real-time delivery. See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md):
+  - **Fan-out model** (3 tables: `Notification` event + `NotificationRecipient` inbox state + `NotificationDelivery` channel log). Single `emit()` API every source calls.
+  - **Multi-source**: SCHEDULED (medication/exam reminders), RULE (event-driven biomarker thresholds), AGENT (HITL proposals), INTEGRATION (sync outcomes), CLINICAL (clinical-event lifecycle), SYSTEM (admin broadcasts).
+  - **Real-time delivery**: per-user WebSocket `/ws/notifications` over Redis pub/sub (Bearer subprotocol auth) + fallback poll. Replaces the legacy 30s bell polling.
+  - **Web Push (VAPID)**: per-user subscriptions, dead-endpoint self-pruning on 410/404, per-recipient delivery log, click-to-detail modal in the admin center.
+  - **Rules engine**: `NotificationRule` replaces the removed `AlertModel`/`/alerts/*` endpoints. Evaluated on every observation ingestion (`fhir_service.create_observation` → `evaluate_and_fire`).
+  - **Admin center**: broadcast composer (tenant / system), aggregate stats, click-through per-recipient delivery detail.
+  - Removed: `AlertModel`, `/alerts/*` endpoints, `TriggerType.EVENT`, the dead `biomarker_update` event hook, the `/notifications/{id}/delivered` SW-callback endpoint (delivery now tracked server-side).
+  - 1292 backend tests passing; lint clean.
 
 #### Frontend
 - React 18 app with Vite & TypeScript
@@ -58,7 +67,7 @@
 - Secure full-screen viewers for Images, PDFs, and Text/Markdown
 - Centralized data extractor (`useBiomarkers` hook)
 - Zustand state management
-- Notification Center & PWA Push support
+- Notification Center & PWA Push support — unified inbox, real-time WebSocket delivery, biomarker rules engine, admin center with broadcast + per-recipient delivery detail. See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md).
 - Document gallery and clinical timeline
 - **Export & Import UI** (`/settings/export-import`, admin-only) — create exports, restore from ZIP/JSON, live job polling, download
 - **0.3.0 PWA fixes**: manifest shortcut `/examinations/new` → `/examinations/upload`; PWA runtime caches now use same-origin predicates (no longer hardcoded to `localhost:8000`).

@@ -9,8 +9,8 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, select
 
 from app.ai.tools.registry import ToolContext, register_chat_tool
-from app.models.alert_model import AlertModel
 from app.models.fhir.patient import Patient
+from app.models.notification_rule import NotificationRule
 
 
 @register_chat_tool("patient")
@@ -39,11 +39,11 @@ def build(ctx: ToolContext) -> List[Any]:
     async def get_patient_alerts() -> str:
         """Fetch active clinical alerts and monitoring thresholds for the patient."""
         result = await ctx.db.execute(
-            select(AlertModel).where(
+            select(NotificationRule).where(
                 and_(
-                    AlertModel.patient_id == ctx.patient_id,
-                    AlertModel.tenant_id == ctx.tenant_id,
-                    AlertModel.enabled == True,
+                    NotificationRule.patient_id == ctx.patient_id,
+                    NotificationRule.tenant_id == ctx.tenant_id,
+                    NotificationRule.enabled.is_(True),
                 )
             )
         )

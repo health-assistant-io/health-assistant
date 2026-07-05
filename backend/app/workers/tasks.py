@@ -144,13 +144,18 @@ except ImportError:
 @celery_app.task
 @async_task
 async def deliver_notification(notification_id: str):
-    """
-    Final delivery attempt for a notification instance.
-    Handles PUSH, EMAIL, and potentially SMS channels.
+    """Deliver a notification via its pending non-IN_APP channels.
+
+    The fan-out model: one ``Notification`` event has N
+    ``NotificationDelivery`` rows (per recipient × channel). IN_APP
+    deliveries are marked DELIVERED at emit time; this task handles the
+    rest (PUSH today, EMAIL/SMS later). Per-delivery status is updated so
+    the delivery log answers "was this delivered via push?".
     """
     logger.info(f"Worker picking up delivery for notification {notification_id}")
     from app.models.notification import (
         Notification,
+        NotificationDelivery,
         NotificationStatus,
         NotificationChannel,
         NotificationSubscription,
@@ -160,30 +165,15 @@ async def deliver_notification(notification_id: str):
     try:
         async with db:
             notif_uuid = UUID(notification_id)
-            # 1. Fetch notification
             res = await db.execute(
                 select(Notification).where(Notification.id == notif_uuid)
             )
             notif = res.scalar_one_or_none()
             if not notif:
-                logger.error(
-                    f"Notification {notification_id} not found in delivery worker."
-                )
+                logger.error(f"Notification {notification_id} not found.")
                 return
 
-            logger.info(
-                f"Processing notification {notification_id} for patient {notif.patient_id} via {notif.channel}"
-            )
-
-            # Skip if already delivered/dismissed
-            if notif.status != NotificationStatus.PENDING:
-                logger.info(
-                    f"Notification {notification_id} is already in state {notif.status}. Skipping."
-                )
-                return
-
-            # Prepare payload
-            payload = {
+            push_payload = {
                 "id": str(notif.id),
                 "type": notif.type.value,
                 "title": notif.title,
@@ -191,67 +181,57 @@ async def deliver_notification(notification_id: str):
                 "payload": notif.payload,
             }
 
-            success = False
-            # 2. Channel logic
-            # For IN_APP, it's already "stored" in DB for polling or WebSocket
-            # For PUSH, we need to find user subscriptions
-
-            if notif.channel == NotificationChannel.PUSH:
-                # Find users in the tenant
-                from app.models.user_model import UserModel
-
-                users_res = await db.execute(
-                    select(UserModel.id).where(UserModel.tenant_id == notif.tenant_id)
+            # Pending PUSH deliveries only (IN_APP already delivered at emit).
+            deliveries_res = await db.execute(
+                select(NotificationDelivery).where(
+                    and_(
+                        NotificationDelivery.notification_id == notif_uuid,
+                        NotificationDelivery.channel == NotificationChannel.PUSH,
+                        NotificationDelivery.status == NotificationStatus.PENDING,
+                    )
                 )
-                user_ids = [u[0] for u in users_res.all()]
-                logger.info(
-                    f"Targeting {len(user_ids)} users in tenant {notif.tenant_id} for notification {notification_id}"
-                )
+            )
+            deliveries = deliveries_res.scalars().all()
+            if not deliveries:
+                logger.info(f"No pending push deliveries for {notification_id}.")
+                return
 
-                # 3. Web Push Delivery.
-                # Fetch the subscription row id alongside the subscription_data
-                # so we can deactivate dead subscriptions (HTTP 410/404) on
-                # the fly instead of polling them forever.
+            from app.services.webpush_service import (
+                send_web_push,
+                SubscriptionExpired,
+            )
+
+            now = datetime.datetime.now(datetime.timezone.utc)
+            for delivery in deliveries:
                 subs_res = await db.execute(
                     select(
                         NotificationSubscription.id,
                         NotificationSubscription.subscription_data,
                     ).where(
                         and_(
-                            NotificationSubscription.user_id.in_(user_ids),
-                            NotificationSubscription.is_active == True,
+                            NotificationSubscription.user_id == delivery.user_id,
+                            NotificationSubscription.is_active.is_(True),
                         )
                     )
                 )
                 subscriptions = subs_res.all()
-                logger.info(
-                    f"Found {len(subscriptions)} active Web Push subscriptions for notification {notification_id}"
-                )
+                if not subscriptions:
+                    delivery.status = NotificationStatus.FAILED
+                    delivery.error = "no active push subscription"
+                    delivery.attempted_at = now
+                    continue
 
-                from app.services.webpush_service import (
-                    send_web_push,
-                    SubscriptionExpired,
-                )
-
-                deactivated_count = 0
-                for i, (sub_id, sub_data) in enumerate(subscriptions):
+                any_success = False
+                for sub_id, sub_data in subscriptions:
                     try:
-                        push_ok = send_web_push(sub_data, payload)
-                        if push_ok:
-                            success = True
-                            logger.info(
-                                f"Successfully sent Web Push #{i + 1} for notification {notification_id}"
-                            )
+                        if send_web_push(sub_data, push_payload):
+                            any_success = True
+                            delivery.subscription_id = sub_id
                         else:
                             logger.warning(
-                                f"Failed to send Web Push #{i + 1} for notification {notification_id}"
+                                f"Web Push failed for sub {sub_id}, notification {notification_id}"
                             )
                     except SubscriptionExpired as ex:
-                        # Per RFC 8030 the subscription is permanently dead.
-                        # Mark it inactive in the DB so subsequent deliveries
-                        # skip it; otherwise dead rows accumulate and every
-                        # PUSH cycle pays the HTTP cost of re-discovering
-                        # they're still dead.
                         logger.info(
                             f"Deactivating dead subscription {sub_id} "
                             f"(HTTP {ex.status_code}): {ex}"
@@ -261,32 +241,20 @@ async def deliver_notification(notification_id: str):
                             .where(NotificationSubscription.id == sub_id)
                             .values(is_active=False)
                         )
-                        deactivated_count += 1
                     except Exception as e:
-                        logger.error(f"Error sending Web Push #{i + 1}: {e}")
-                if deactivated_count:
-                    logger.info(
-                        f"Deactivated {deactivated_count} dead subscription(s) "
-                        f"during notification {notification_id} delivery."
-                    )
-            else:
-                # For non-push channels (like IN_APP), we consider it delivered to the DB
-                success = True
+                        logger.error(f"Error sending Web Push to sub {sub_id}: {e}")
 
-            # 4. Email Delivery (optional/fallback)
-            # if notif.type in [NotificationType.BIOMARKER_ALERT]:
-            #     # ... logic to send email ...
-            #     pass
+                delivery.attempted_at = now
+                if any_success:
+                    delivery.status = NotificationStatus.DELIVERED
+                    delivery.delivered_at = now
+                    delivery.error = None
+                else:
+                    delivery.status = NotificationStatus.FAILED
+                    delivery.error = "all push attempts failed"
 
-            # Update status
-            notif.status = (
-                NotificationStatus.DELIVERED if success else NotificationStatus.FAILED
-            )
-            notif.sent_at = datetime.datetime.now(datetime.timezone.utc)
             await db.commit()
-            logger.info(
-                f"Notification {notification_id} status updated to {notif.status}"
-            )
+            logger.info(f"Delivery pass complete for notification {notification_id}.")
     except Exception as e:
         logger.exception(
             f"Critical failure in deliver_notification for {notification_id}: {e}"

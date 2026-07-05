@@ -551,11 +551,13 @@ GET /api/v1/wearable/data/summary
 
 ### Notifications & Push
 
-> All notification endpoints require authentication and are
-> **tenant-scoped** via `current_user.tenant_id`. Patient-scoped routes
-> additionally call `check_patient_access` so a `USER`-role caller can
-> only reach patients assigned to them. Cross-tenant calls return `404`
-> (no leak that the row exists elsewhere).
+> Unified multi-source/multi-recipient/multi-channel notification system.
+> All endpoints require authentication and are **tenant-scoped** via
+> `current_user.tenant_id`. Cross-tenant calls return `404`. Patient-scoped
+> routes additionally call `check_patient_access`. See
+> [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md) for the full
+> architecture (fan-out model, target resolution, rules engine, real-time
+> WS).
 
 #### Get VAPID Public Key
 
@@ -563,149 +565,138 @@ GET /api/v1/wearable/data/summary
 GET /api/v1/notifications/vapid-public-key
 ```
 
-Returns the public key required for PWA Web Push registration.
+Returns the public key for Web Push registration. Public (no auth).
 
-#### Register Subscription
+#### Register Push Subscription
 
 ```http
 POST /api/v1/notifications/subscribe
 ```
 
-**Request Body:**
+**Request body** (`SubscribeRequest` Pydantic schema — the whole envelope
+is parsed; do **not** pass the subscription as a bare dict with metadata
+in query params):
+
 ```json
 {
   "subscription": {
-    "endpoint": "...",
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/...",
     "keys": { "p256dh": "...", "auth": "..." }
   },
   "device_id": "optional-uuid",
-  "user_agent": "..."
+  "user_agent": "Mozilla/5.0 ..."
 }
 ```
 
-#### List Notifications
+#### Personal Inbox
 
 ```http
-GET /api/v1/notifications
+GET /api/v1/notifications/inbox
 ```
 
 **Query Parameters:**
-- `patient_id`: (Required) Filter by patient. The caller must have
-  access to this patient (`USER`-role patient-assignment check;
-  `ADMIN`/`MANAGER` see any patient in their tenant).
-- `unread_only`: (Boolean)
-- `limit`: Default 20
+- `status`: `unread` | `read` | `dismissed`
+- `category`: notification category
+- `source`: notification source
+- `patient_id`: filter to a patient (access-checked)
+- `limit` (default 50, max 100), `offset`
 
-**Tenant-scoped**: results are additionally constrained to
-`current_user.tenant_id`.
+Returns `{items: NotificationRecipientRead[], total}` — per-user inbox
+state joined to the notification event.
 
-#### Mark as Read
-
-```http
-PATCH /api/v1/notifications/{id}/read
-```
-
-**Tenant-scoped**: a cross-tenant call returns `404` (no leak).
-
-#### Mark as Delivered
+#### Unread Count
 
 ```http
-PATCH /api/v1/notifications/{id}/delivered
+GET /api/v1/notifications/unread-count
 ```
 
-**Requires authentication** (Bearer JWT). **Tenant-scoped**: a cross-
-tenant call returns `404`. This endpoint previously had no auth at all
-and was used by the frontend service worker; the SW now needs to send
-the session JWT.
+Returns `{count: int}` — for the bell badge.
 
-#### Create Trigger
+#### Mark Read / Dismiss / Read-All
 
 ```http
-POST /api/v1/notifications/triggers
+PATCH /api/v1/notifications/{recipient_id}/read
+PATCH /api/v1/notifications/{recipient_id}/dismiss
+POST  /api/v1/notifications/read-all
 ```
 
-**Request Body:**
-```json
-{
-  "patient_id": "uuid",
-  "title": "Reminder",
-  "body": "Message",
-  "notification_type": "medication_reminder",
-  "trigger_type": "recurring",
-  "config": {
-    "at": "09:00",
-    "days": ["mon", "wed"]
-  }
-}
-```
+Operate on the user's own inbox rows (tenant-scoped; cross-tenant = `404`).
 
-**Patient-access scoped**: `USER`-role callers can only create triggers
-on patients assigned to them; `ADMIN`/`MANAGER` see any patient in
-their tenant.
+#### Admin Feed / Stats / Delivery Detail
 
-#### List Triggers
+> Role-gated to `ADMIN` / `MANAGER` / `SYSTEM_ADMIN`. `SYSTEM_ADMIN` sees
+> cross-tenant data and may pass `tenant_id` to target another tenant.
 
 ```http
-GET /api/v1/notifications/triggers?patient_id=<uuid>
+GET /api/v1/notifications/admin
+GET /api/v1/notifications/admin/stats
+GET /api/v1/notifications/admin/{notification_id}/delivery
 ```
 
-**Tenant-scoped**: results constrained to `current_user.tenant_id`.
-**Patient-access scoped** for `USER` role.
+- `/admin` — tenant-wide (or cross-tenant for `SYSTEM_ADMIN`) feed of every notification event. Filters: `type`, `source`, `category`, `tenant_id`.
+- `/admin/stats` — aggregated counts: `by_source`, `by_category`, `delivery` (per-channel × status matrix), `recipients` (total inbox rows), `unique_recipients` (distinct user count), `total`.
+- `/admin/{id}/delivery` — per-recipient breakdown for one notification. Returns the notification, sender (email resolved), and per-recipient inbox status + per-channel delivery state (channel, status, error, timestamps). Used by the admin center's click-to-detail modal.
 
-#### Delete Trigger
+#### System Broadcast
 
 ```http
+POST /api/v1/admin/notifications/broadcast
+```
+
+**Query Parameters:**
+- `title` (required)
+- `body`
+- `severity`: `info` | `warning` | `critical` (default `info`)
+- `scope`: `tenant` (default) | `system` — `system` requires `SYSTEM_ADMIN`
+- `tenant_id`: target another tenant (`SYSTEM_ADMIN` only)
+
+Emits a `SYSTEM`/`SYSTEM_BROADCAST` notification to every user in scope (`TENANT` target for tenant scope, `SYSTEM` target = every `SYSTEM_ADMIN` for system scope).
+
+#### Scheduled Triggers (reminders)
+
+```http
+POST   /api/v1/notifications/triggers
+GET    /api/v1/notifications/triggers
 DELETE /api/v1/notifications/triggers/{trigger_id}
+POST   /api/v1/notifications/triggers/{trigger_id}/test
 ```
 
-**Tenant-scoped**: a cross-tenant delete is a no-op (the endpoint
-returns success either way to avoid leaking existence).
+`TriggerType`: `TIME` (one-shot at a datetime) or `RECURRING` (wall-clock
+schedule with optional days-of-week). `TriggerType.EVENT` and the legacy
+`biomarker_update` event hook were removed — biomarker thresholds are now
+event-driven via the rules engine below.
 
-#### Test Trigger
+`GET /triggers` `patient_id` is **optional** — without it, lists
+tenant-wide (used by the global Notification Center "Reminders" tab);
+with it, access-checked and patient-scoped.
+
+#### Biomarker Rules (event-driven alerts)
+
+Replaces the removed `/alerts/*` endpoints. Rules are evaluated on every
+observation ingestion (`fhir_service.create_observation` →
+`notification_rule_service.evaluate_and_fire`).
 
 ```http
-POST /api/v1/notifications/triggers/{trigger_id}/test
+GET    /api/v1/notification-rules
+POST   /api/v1/notification-rules
+PUT    /api/v1/notification-rules/{id}
+DELETE /api/v1/notification-rules/{id}
+POST   /api/v1/notification-rules/{id}/test
 ```
 
-Fires the trigger immediately (skipping its schedule). **Tenant-scoped**:
-a cross-tenant call returns `404`.
-
-### Alerts
-
-> All `/alerts/*` endpoints require authentication and are
-> **tenant-scoped** via `current_user.tenant_id`. Cross-tenant read/
-> update/delete/trigger calls return `404` (no leak). Patient-scoped
-> routes additionally call `check_patient_access` so a `USER` cannot
-> read another user's patient; `ADMIN`/`MANAGER` see the tenant-wide
-> view.
-
-#### Create Alert
+#### Real-time WebSocket
 
 ```http
-POST /api/v1/alerts
+GET (WS) /api/v1/ws/notifications
 ```
 
-**Request Body:**
-```json
-{
-  "type": "high_glucose",
-  "patient_id": "123e4567-e89b-12d3-a456-426614174002",
-  "threshold": 7.0,
-  "enabled": true
-}
-```
+Per-user live stream over Redis pub/sub. Auth via the
+`["bearer", <jwt>]` Sec-WebSocket-Protocol subprotocol (the token stays
+out of URL logs). Server-side keepalive ping every 30s. The frontend's
+`useNotificationStream` hook auto-reconnects with 5s backoff and falls
+back to a 30s unread-count poll if the socket can't open.
 
-#### List Alerts
-
-```http
-GET /api/v1/alerts
-```
-
-#### Get Alert History
-
-```http
-GET /api/v1/alerts/history
-```
+### Analytics
 
 #### Get Dashboard Data
 
@@ -818,6 +809,74 @@ integration clients. **Auth:**
 See [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for the `webhook_secret` /
 `api_secret` configuration flow.
 
+#### Notification Action (button click handler)
+
+```http
+POST /api/v1/integrations/{domain}/notification-action/{integration_id}/{action_id}
+```
+
+Server-side handler for clicked action buttons on integration-authored
+notifications (the buttons of `type="post"` in `payload.actions[]`).
+Routes to the provider's `handle_notification_action(integration,
+action_id, payload)` and returns an `ActionResult`-shape dict
+(`{"message": ..., "results": [DisplayBlock...]}`) that the frontend
+renders in a follow-up modal — same renderer as custom-action results.
+
+**Auth**: Bearer JWT, tenant-scoped (the caller must own the integration).
+The provider must opt in via `supports_notifications() → True` (see
+[INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable)).
+
+**Request body**: arbitrary JSON (passed through as the `payload` argument
+to the provider). Most action buttons send an empty object `{}`.
+
+#### Notification Types (per-integration preferences)
+
+```http
+GET /api/v1/integrations/notification-types
+PUT /api/v1/integrations/{domain}/notification-types/{type_id}
+```
+
+**`GET /integrations/notification-types`** — aggregates every enabled
+integration's declared notification kinds into a single response:
+
+```json
+{
+  "integrations": [
+    {
+      "domain": "dev_dummy",
+      "instance_name": "My test dummy",
+      "integration_id": "<uuid>",
+      "types": [
+        {
+          "id": "elevated_heart_rate",
+          "label": "Elevated heart-rate alerts",
+          "description": "Fires when a synced heart-rate reading exceeds 100 bpm.",
+          "category": "alert",
+          "severity": "warning",
+          "default_enabled": true,
+          "channels": ["IN_APP", "PUSH"],
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+`enabled` resolves as: USER setting wins, otherwise the provider's
+`default_enabled`, otherwise `true`. Used by both the per-integration
+"Notifications" tab and the central `/settings/notifications` rollup.
+
+**`PUT /integrations/{domain}/notification-types/{type_id}`** — set the
+caller's per-type preference. Body: `{"enabled": <bool>}`. Setting
+`enabled=true` removes the override (revert to default); `false` writes
+`user.settings["notifications.integration.{domain}.{type_id}"] = false`.
+404 if the caller doesn't own an integration of the given domain.
+
+Prefs are keyed by `(domain, type_id)`, NOT by integration instance —
+multiple instances of the same domain share prefs. See
+[INTEGRATIONS_SDK.md §3.9 → Per-type user preferences](INTEGRATIONS_SDK.md#per-type-user-preferences-opt-out).
+
 ## Error Handling
 
 ### Standard Error Response
@@ -904,13 +963,10 @@ See [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for the `webhook_secret` /
 - `GET /api/v1/wearable/anomalies` - Detect anomalies
 
 #### Alerts (tenant-scoped; B4)
-- `GET /api/v1/alerts` - List alerts
-- `POST /api/v1/alerts` - Create alert
-- `GET /api/v1/alerts/{id}` - Get alert
-- `PUT /api/v1/alerts/{id}` - Update alert
-- `DELETE /api/v1/alerts/{id}` - Delete alert
-- `POST /api/v1/alerts/{id}/trigger` - Trigger alert
-- `GET /api/v1/alerts/history` - Get alert history
+> **Removed.** The legacy `/alerts/*` endpoints and `AlertModel` were
+> deleted in the unified notification system refactor. Biomarker
+> threshold alerts are now event-driven via the `notification_rules`
+> engine (see Notifications below).
 
 #### Analytics
 - `GET /api/v1/analytics/dashboard` - Get dashboard data
@@ -918,16 +974,31 @@ See [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for the `webhook_secret` /
 - `GET /api/v1/analytics/summary` - Get analytics summary
 - `GET /api/v1/analytics/reference-ranges` - Get reference ranges
 
-#### Notifications (tenant-scoped; B2/B3)
-- `GET /api/v1/notifications/vapid-public-key` - Get VAPID key
-- `POST /api/v1/notifications/subscribe` - Register for push
-- `GET /api/v1/notifications` - List patient notifications
-- `PATCH /api/v1/notifications/{id}/read` - Mark read
-- `PATCH /api/v1/notifications/{id}/delivered` - Mark delivered (was unauthenticated; now requires JWT)
-- `POST /api/v1/notifications/triggers` - Create manual trigger
-- `GET /api/v1/notifications/triggers` - List triggers for a patient
+#### Notifications (unified; tenant-scoped)
+> See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md) for the full
+> architecture (fan-out model, target resolution, rules engine).
+
+- `GET /api/v1/notifications/vapid-public-key` - Get VAPID key (public, no auth)
+- `POST /api/v1/notifications/subscribe` - Register a Web Push subscription (body = `SubscribeRequest`)
+- `GET /api/v1/notifications/inbox` - Personal inbox (filters: status/category/source/patient_id/limit/offset)
+- `GET /api/v1/notifications/unread-count` - Bell badge count
+- `PATCH /api/v1/notifications/{recipient_id}/read` - Mark inbox row read
+- `PATCH /api/v1/notifications/{recipient_id}/dismiss` - Dismiss inbox row
+- `POST /api/v1/notifications/read-all` - Mark all unread as read
+- `GET /api/v1/notifications/admin` - Tenant-wide feed (ADMIN/MANAGER/SYSTEM_ADMIN; cross-tenant for SYSTEM_ADMIN)
+- `GET /api/v1/notifications/admin/stats` - Aggregate delivery stats (by source/category/channel-status, unique recipients)
+- `GET /api/v1/notifications/admin/{notification_id}/delivery` - Per-recipient delivery breakdown for one notification
+- `POST /api/v1/admin/notifications/broadcast` - System broadcast (tenant or system scope)
+- `POST /api/v1/notifications/triggers` - Create scheduled/recurring trigger
+- `GET /api/v1/notifications/triggers` - List triggers (tenant-wide when `patient_id` omitted)
 - `DELETE /api/v1/notifications/triggers/{id}` - Delete a trigger
 - `POST /api/v1/notifications/triggers/{id}/test` - Fire a trigger immediately
+- `GET /api/v1/notification-rules` - List biomarker rules
+- `POST /api/v1/notification-rules` - Create a biomarker rule
+- `PUT /api/v1/notification-rules/{id}` - Update a rule
+- `DELETE /api/v1/notification-rules/{id}` - Delete a rule
+- `POST /api/v1/notification-rules/{id}/test` - Force-fire a rule
+- `GET (WS) /api/v1/ws/notifications` - Per-user real-time stream (Bearer subprotocol auth)
 
 #### Task Monitoring (tenant-scoped except SYSTEM_ADMIN; B1)
 - `GET /api/v1/task-monitor/documents/processing` - List stuck processing documents
@@ -942,8 +1013,11 @@ See [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for the `webhook_secret` /
 - `POST /api/v1/integrations/{domain}/enable` - Enable an integration for the current user
 - `DELETE /api/v1/integrations/{domain}/disable` - Disable an integration
 - `POST /api/v1/integrations/{domain}/sync/{integration_id}` - Trigger a manual sync
-- `POST /api/v1/integrations/{domain}/webhook/{integration_id}` - Inbound webhook (HMAC via `webhook_secret`)
+- `POST /api/v1/integrations/{domain}/webhook/{integration_id}` - Inbound webhook (HMAC via `webhook_secret`); triggers the same notification dispatch as `run_sync`
 - `ANY /api/v1/integrations/{domain}/api/{integration_id}/{path}` - Generic two-way API proxy (HMAC via `api_secret` + `X-Api-Signature`; B8)
+- `POST /api/v1/integrations/{domain}/notification-action/{integration_id}/{action_id}` - Server-side handler for clicked action buttons on integration-authored notifications (see [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md))
+- `GET /api/v1/integrations/notification-types` - Aggregate every enabled integration's declared notification types + the caller's per-type prefs
+- `PUT /api/v1/integrations/{domain}/notification-types/{type_id}` - Set the caller's per-type preference (body: `{enabled: bool}`)
 
 #### FHIR R4 Facade (interop surface)
 - `GET /api/v1/fhir/R4/metadata` - CapabilityStatement

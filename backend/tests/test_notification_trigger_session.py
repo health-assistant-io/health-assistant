@@ -23,7 +23,7 @@ Post-fix contract pinned here:
 import inspect
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.models.notification import TriggerType
 
@@ -80,7 +80,6 @@ async def test_process_due_triggers_uses_injected_session_and_forwards_it(monkey
 
     monkeypatch.setattr(nm, "DATABASE_AVAILABLE", True)
 
-    # Detector: AsyncSessionLocal must never be called on the injected path.
     asl_spy = MagicMock()
     monkeypatch.setattr(nm, "AsyncSessionLocal", asl_spy)
 
@@ -101,41 +100,39 @@ async def test_process_due_triggers_uses_injected_session_and_forwards_it(monkey
     asl_spy.assert_not_called()
     fake_session.execute.assert_awaited()
     # Same session object forwarded to fire_notification.
-    assert fire_spy.await_args.args[1] is fake_session, (
+    assert fire_spy.await_args.kwargs.get("session") is fake_session, (
         "process_due_triggers must forward the SAME injected session to "
-        "fire_notification, not open a new one."
+        "fire_notification(session=...), not open a new one."
     )
     fake_session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_fire_notification_uses_injected_session(monkeypatch):
-    """``fire_notification(trigger, session=...)`` must run on the injected
-    session and never instantiate ``AsyncSessionLocal``."""
+    """``fire_notification(trigger, session=...)`` must forward the session to
+    ``notification_service.emit`` and never instantiate ``AsyncSessionLocal``."""
     from app.services import notification_manager as nm
+    from app.services import notification_service as nsvc
 
     asl_spy = MagicMock()
-    monkeypatch.setattr(nm, "AsyncSessionLocal", asl_spy)
+    monkeypatch.setattr(nsvc, "AsyncSessionLocal", asl_spy)
 
-    trigger = MagicMock(patient_id="p", tenant_id="t", id="t1", reference_id=None,
-                       notification_type=MagicMock(), title="x", body=None, config={})
+    trigger = MagicMock(
+        patient_id="p", tenant_id="t", id="t1", reference_id=None,
+        notification_type=MagicMock(), title="x", body=None, config={},
+    )
 
     fake_session = AsyncMock()
-    fake_session.add = MagicMock()  # session.add is synchronous
-    query_res = MagicMock()
-    query_res.all.return_value = []      # no users → no push subs
-    query_res.first.return_value = None  # has_push False
-    fake_session.execute = AsyncMock(return_value=query_res)
-    fake_session.commit = AsyncMock()
-    fake_session.refresh = AsyncMock()
+    emit_spy = AsyncMock(return_value=None)
+    monkeypatch.setattr(nsvc, "emit", emit_spy)
 
-    with patch("app.workers.tasks.deliver_notification") as deliver:
-        await nm.NotificationManager.fire_notification(trigger, session=fake_session)
+    await nm.NotificationManager.fire_notification(trigger, session=fake_session)
 
     asl_spy.assert_not_called()
-    fake_session.commit.assert_awaited()
-    fake_session.refresh.assert_awaited()
-    deliver.delay.assert_called()
+    emit_spy.assert_awaited()
+    assert emit_spy.await_args.kwargs.get("session") is fake_session, (
+        "fire_notification must forward the injected session to emit(session=...)."
+    )
 
 
 # ---------------------------------------------------------------------------

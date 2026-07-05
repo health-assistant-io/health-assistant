@@ -26,15 +26,9 @@ self.addEventListener('push', (event) => {
       ]
     };
 
-    // Mark as delivered in backend
-    if (notificationId) {
-      event.waitUntil(
-        fetch(`/api/v1/notifications/${notificationId}/delivered`, {
-          method: 'PATCH'
-        }).catch(err => console.error('Failed to mark notification as delivered:', err))
-      );
-    }
-
+    // Delivery status is tracked server-side by the push delivery worker
+    // (NotificationDelivery row updated when the push is accepted), so no
+    // client callback is needed here.
     event.waitUntil(self.registration.showNotification(title, options));
   }
 });

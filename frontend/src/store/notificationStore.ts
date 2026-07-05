@@ -1,85 +1,137 @@
 import { create } from 'zustand';
-import { notificationService, Notification } from '../services/notificationService';
+import {
+  notificationService,
+  type NotificationInboxItem,
+  type NotificationEvent,
+  type NotificationCategory,
+  type NotificationSource,
+  type RecipientStatus,
+} from '../services/notificationService';
+
+export type { NotificationInboxItem, NotificationEvent } from '../services/notificationService';
 
 interface NotificationState {
-  notifications: Notification[];
+  inbox: NotificationInboxItem[];
   unreadCount: number;
   loading: boolean;
   error: string | null;
-  pollInterval: any;
-  
-  fetchNotifications: (patientId: string) => Promise<void>;
-  startPolling: (patientId: string) => void;
-  stopPolling: () => void;
-  markAsRead: (notificationId: string) => Promise<void>;
-  addNotification: (notification: Notification) => void;
-  clearNotifications: () => void;
+  /** True once the real-time stream is connected. */
+  connected: boolean;
+
+  fetchInbox: (filters?: {
+    status?: RecipientStatus;
+    category?: NotificationCategory;
+    source?: NotificationSource;
+    patientId?: string;
+  }) => Promise<void>;
+  refreshUnreadCount: () => Promise<void>;
+  markRead: (recipientId: string) => Promise<void>;
+  markDismissed: (recipientId: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
+  /** Real-time handler: a notification arrived over the WebSocket. */
+  onLiveNotification: (event: NotificationEvent) => void;
+  setConnected: (connected: boolean) => void;
+  clear: () => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  notifications: [],
+  inbox: [],
   unreadCount: 0,
   loading: false,
   error: null,
-  pollInterval: null as any,
+  connected: false,
 
-  fetchNotifications: async (patientId: string) => {
+  fetchInbox: async (filters) => {
     try {
-      const notifications = await notificationService.getNotifications(patientId);
-      const unreadCount = notifications.filter(n => n.status === 'pending' || n.status === 'delivered').length;
-      set({ notifications, unreadCount, loading: false });
+      set({ loading: true, error: null });
+      const { items } = await notificationService.getInbox({
+        status: filters?.status,
+        category: filters?.category,
+        source: filters?.source,
+        patient_id: filters?.patientId,
+        limit: 50,
+      });
+      const unreadCount = items.filter((i) => i.status === 'unread').length;
+      set({ inbox: items, unreadCount, loading: false });
     } catch (error: any) {
       set({ error: error.message, loading: false });
     }
   },
 
-  startPolling: (patientId: string) => {
-    const { stopPolling, fetchNotifications } = get();
-    stopPolling();
-    
-    // Initial fetch
-    fetchNotifications(patientId);
-    
-    // Set interval for every 30 seconds
-    const interval = setInterval(() => {
-      fetchNotifications(patientId);
-    }, 30000);
-    
-    set({ pollInterval: interval });
-  },
-
-  stopPolling: () => {
-    const { pollInterval } = get();
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      set({ pollInterval: null });
-    }
-  },
-
-  markAsRead: async (notificationId: string) => {
+  refreshUnreadCount: async () => {
     try {
-      await notificationService.markAsRead(notificationId);
-      set(state => {
-        const updated = state.notifications.map(n => 
-          n.id === notificationId ? { ...n, status: 'read' as const, read_at: new Date().toISOString() } : n
-        );
-        const unreadCount = updated.filter(n => n.status === 'pending' || n.status === 'delivered').length;
-        return { notifications: updated, unreadCount };
-      });
-    } catch (error: any) {
-      set({ error: error.message });
+      const count = await notificationService.getUnreadCount();
+      set({ unreadCount: count });
+    } catch {
+      // Non-fatal: the bell badge will refresh on next inbox fetch.
     }
   },
 
-  addNotification: (notification: Notification) => {
-    set(state => {
-      const notifications = [notification, ...state.notifications];
-      const unreadCount = notifications.filter(n => n.status === 'pending' || n.status === 'delivered').length;
-      return { notifications, unreadCount };
+  markRead: async (recipientId: string) => {
+    const prev = get().inbox;
+    // Optimistic
+    set({
+      inbox: prev.map((i) =>
+        i.recipient_id === recipientId
+          ? { ...i, status: 'read', read_at: new Date().toISOString() }
+          : i
+      ),
+      unreadCount: Math.max(0, get().unreadCount - 1),
+    });
+    try {
+      await notificationService.markRead(recipientId);
+    } catch {
+      // Revert on failure
+      set({ inbox: prev, unreadCount: prev.filter((i) => i.status === 'unread').length });
+    }
+  },
+
+  markDismissed: async (recipientId: string) => {
+    const prev = get().inbox;
+    const wasUnread = prev.find((i) => i.recipient_id === recipientId)?.status === 'unread';
+    set({
+      inbox: prev.map((i) =>
+        i.recipient_id === recipientId
+          ? { ...i, status: 'dismissed', dismissed_at: new Date().toISOString() }
+          : i
+      ),
+      unreadCount: wasUnread ? Math.max(0, get().unreadCount - 1) : get().unreadCount,
+    });
+    try {
+      await notificationService.markDismissed(recipientId);
+    } catch {
+      set({ inbox: prev, unreadCount: prev.filter((i) => i.status === 'unread').length });
+    }
+  },
+
+  markAllRead: async () => {
+    const prev = get().inbox;
+    set({
+      inbox: prev.map((i) =>
+        i.status === 'unread' ? { ...i, status: 'read', read_at: new Date().toISOString() } : i
+      ),
+      unreadCount: 0,
+    });
+    try {
+      await notificationService.markAllRead();
+    } catch {
+      set({ inbox: prev, unreadCount: prev.filter((i) => i.status === 'unread').length });
+    }
+  },
+
+  onLiveNotification: (event) => {
+    const item: NotificationInboxItem = {
+      recipient_id: event.id, // temporary client id until next full fetch
+      status: 'unread',
+      notification: event,
+    };
+    set({
+      inbox: [item, ...get().inbox].slice(0, 100),
+      unreadCount: get().unreadCount + 1,
     });
   },
 
-  clearNotifications: () => {
-    set({ notifications: [], unreadCount: 0 });
-  }
+  setConnected: (connected) => set({ connected }),
+
+  clear: () => set({ inbox: [], unreadCount: 0, error: null }),
 }));

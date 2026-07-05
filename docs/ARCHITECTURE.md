@@ -36,10 +36,12 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 - **biomarker_groups**: Clinical panels and system groupings (id, name, type)
 - **laboratories**: Source tracking for lab reports (id, name, location)
 - **telemetry_data**: Time-series health metrics (id, device_id, timestamp, data)
-- **notification_triggers**: Scheduling and event rules for notifications
-- **notifications**: Patient-specific message history (FHIR Communication)
-- **notification_subscriptions**: Web Push credentials for PWA support
-- **alerts**: Clinical threshold triggers (all endpoints tenant-scoped; see [API.md](API.md#alerts))
+- **notification_triggers**: Scheduling rules for TIME/RECURRING reminders (medication / exam). `TriggerType.EVENT` and the legacy `biomarker_update` hook were removed (use the rules engine below).
+- **notifications**: Immutable notification **event** (1 row per emission). Source/category/severity/type, title/body/payload, nullable `patient_id`/`tenant_id` for system broadcasts, optional `communication_id` + `trigger_id`.
+- **notification_recipients**: Inbox state (N rows, 1 per resolved user). `user_id`, `status` (unread/read/dismissed). Indexed `(user_id, status)`.
+- **notification_deliveries**: Per-channel delivery log (N rows per recipient). `channel` (IN_APP/PUSH/EMAIL/SMS), `status` (pending/sent/delivered/failed), timestamps, error.
+- **notification_rules**: Event-driven biomarker threshold rules — replaces the removed `alerts` table. Evaluated on observation ingestion (`fhir_service.create_observation` → `evaluate_and_fire`).
+- **notification_subscriptions**: Web Push (VAPID) credentials per user. Dead-endpoint self-pruning on HTTP 410/404.
 
 ### FHIR Architecture & Biomarker Engine (`app/models/fhir/`)
 
@@ -69,12 +71,16 @@ Health Assistant bridges the gap between discrete clinical visits and long-term 
 
 ## Notification Framework
 
-The project implements a comprehensive system for medical reminders and clinical alerts:
-- **Modular Triggers**: Supports time-based schedules (Medication), specific dates (Examinations), and system events (Biomarker breaches).
-- **Asynchronous Delivery**: Uses Celery to process triggers and deliver messages without blocking the main API thread.
-- **Web Push Integration**: Full PWA support for background notifications using the VAPID standard.
-- **FHIR Compliance**: Delivered notifications are mapped to **FHIR Communication** resources for interoperability.
-- **Real-time Monitoring**: Periodic tasks check for upcoming triggers every minute, ensuring high-precision delivery.
+The platform's unified notification system is a multi-source, multi-recipient, multi-channel, role-aware platform with real-time delivery. See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md) for the full architecture.
+
+- **Fan-out model** (GitHub/Slack-style): one immutable `Notification` event row → N `NotificationRecipient` inbox-state rows → N `NotificationDelivery` channel-log rows. A single `notification_service.emit()` API is the entry point every source calls.
+- **Multi-source**: SCHEDULED reminders, RULE (event-driven biomarker thresholds), AGENT (HITL proposals), INTEGRATION (sync outcomes), CLINICAL (clinical-event lifecycle), SYSTEM (admin broadcasts).
+- **Target resolver**: target specs (`USER`/`PATIENT`/`DOCTOR`/`TENANT`/`SYSTEM`) expand to concrete `user_id`s. PATIENT includes the patient's `user_id` + care team; tenant-scoped so cross-tenant ids resolve to nobody.
+- **Real-time delivery**: per-user WebSocket `/ws/notifications` over Redis pub/sub (`user:{id}:notifications` channel). Bearer subprotocol auth; auto-reconnect with backoff and fallback poll client-side.
+- **Channels**: IN_APP (always; marked DELIVERED at emit), PUSH (Web Push via VAPID; `pywebpush` from the Celery worker), EMAIL/SMS (stubbed).
+- **Rules engine**: `NotificationRule` replaces the removed `AlertModel`/`/alerts/*`. Evaluated on every observation ingestion.
+- **FHIR link**: clinical sources (`RULE`/`CLINICAL`/`AGENT` with `patient_id`) write a linked `Communication` resource for clinical-record exposure.
+- **Web Push (VAPID)**: per-user subscriptions, dead-endpoint self-pruning on 410/404, per-recipient delivery log, click-to-detail modal in the admin center.
 
 ## AI / OCR Processing Pipeline
 

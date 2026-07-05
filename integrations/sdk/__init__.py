@@ -24,6 +24,12 @@ from .display import (
     code_block,
     action_result,
 )
+from .notifications import (
+    NotificationAction,
+    NotificationSpec,
+    NotificationSpecBuilder,
+    NotificationTypeSpec,
+)
 from .exceptions import (
     IntegrationError,
     IntegrationAuthError,
@@ -62,6 +68,10 @@ __all__ = [
     "text_block",
     "code_block",
     "action_result",
+    "NotificationAction",
+    "NotificationSpec",
+    "NotificationSpecBuilder",
+    "NotificationTypeSpec",
     "IntegrationError",
     "IntegrationAuthError",
     "IntegrationRateLimitError",

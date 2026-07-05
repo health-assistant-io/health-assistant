@@ -51,6 +51,10 @@ export const nativeNotificationService = {
 
       // Register with backend
       await notificationService.subscribe(subscription.toJSON());
+      console.log(
+        'Push subscription registered with backend. Endpoint:',
+        subscription.endpoint
+      );
       return subscription;
     } catch (error) {
       console.error('Failed to subscribe to push notifications:', error);

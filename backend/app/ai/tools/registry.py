@@ -28,6 +28,7 @@ class ToolContext:
     tenant_id: UUID
     patient_id: UUID
     examination_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
 
 
 # A factory maps a ToolContext -> list of LangChain tools (closures over ctx).

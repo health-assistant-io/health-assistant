@@ -227,8 +227,9 @@ async def test_create_observation_persists_orm_shape_input():
 
     with (
         patch.object(fhir_service, "AsyncSessionLocal", return_value=fake_session),
-        patch.object(
-            fhir_service.NotificationManager, "trigger_event", AsyncMock()
+        patch(
+            "app.services.notification_rule_service.evaluate_and_fire",
+            new=AsyncMock(),
         ),
     ):
         obs = await fhir_service.create_observation(

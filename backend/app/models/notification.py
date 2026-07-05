@@ -1,32 +1,74 @@
+"""Unified notification system — fan-out architecture.
+
+Three tables separate the three concerns of a notification system:
+
+* :class:`Notification` — the immutable **event** (one row per thing that
+  happened). Carries content, source, clinical context, and the optional
+  ``actions`` payload. ``patient_id`` / ``tenant_id`` are nullable so a
+  system-wide or tenant-wide broadcast can be represented.
+* :class:`NotificationRecipient` — the **inbox state**, one row per resolved
+  human recipient. Owns the read/dismiss lifecycle. Indexed on
+  ``(user_id, status)`` so "my unread inbox" is a single fast lookup.
+* :class:`NotificationDelivery` — the **channel delivery log**, one row per
+  (recipient, channel) attempt. Tracks pending/sent/delivered/failed per
+  channel plus the error message, answering "was this delivered via push?".
+
+:class:`NotificationTrigger` (scheduled/event rules) and
+:class:`NotificationSubscription` (VAPID push subscriptions) are retained.
+Biomarker/threshold rules live in :mod:`app.models.notification_rule`.
+"""
 from sqlalchemy import (
     Column,
     String,
-    Float,
+    Text,
     Boolean,
     DateTime,
     ForeignKey,
     Enum,
-    Text,
-    JSON,
     Index,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from app.models.enums import NotificationType, NotificationChannel, NotificationStatus, TriggerType
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
+
+from app.models.base import (
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    TimestampMixin,
+)
+from app.models.enums import (
+    NotificationType,
+    NotificationSource,
+    NotificationCategory,
+    NotificationSeverity,
+    NotificationChannel,
+    NotificationStatus,
+    RecipientKind,
+    RecipientStatus,
+    TriggerType,
+)
+
+
+def _enum_values(enum_cls):
+    """Persist the enum ``.value`` (not the member name) for enums whose
+    value differs from its name (e.g. lowercase / symbolic values)."""
+    return [e.value for e in enum_cls]
 
 
 class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
+    """Defines when a scheduled/recurring/event notification should fire."""
+
     __tablename__ = "notification_triggers"
 
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("fhir_patients.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
-    trigger_type = Column(Enum(TriggerType), nullable=False)
-    notification_type = Column(Enum(NotificationType), nullable=False)
+    trigger_type = Column(Enum(TriggerType, values_callable=_enum_values), nullable=False)
+    notification_type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False)
 
     # Configuration for the trigger
     # e.g., {"at": "2024-03-20T10:00:00", "repeat": "daily"}
@@ -47,7 +89,7 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
-            "patient_id": str(self.patient_id),
+            "patient_id": str(self.patient_id) if self.patient_id else None,
             "trigger_type": self.trigger_type.value,
             "notification_type": self.notification_type.value,
             "config": self.config,
@@ -66,14 +108,19 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
 
 
 class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
-    """Represents a single delivered notification (FHIR Communication mapping)"""
+    """The immutable notification event (what happened).
+
+    Fan-out targets live on :class:`NotificationRecipient`; per-channel
+    delivery state on :class:`NotificationDelivery`.
+    """
 
     __tablename__ = "notifications"
 
+    # Clinical context (nullable so system/tenant broadcasts can exist)
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("fhir_patients.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     trigger_id = Column(
@@ -88,45 +135,166 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
         index=True,
     )
 
-    type = Column(Enum(NotificationType), nullable=False)
-    status = Column(
-        Enum(NotificationStatus), default=NotificationStatus.PENDING, nullable=False
-    )
-    channel = Column(
-        Enum(NotificationChannel), default=NotificationChannel.IN_APP, nullable=False
+    # Origin + classification
+    source = Column(Enum(NotificationSource, values_callable=_enum_values), nullable=False, index=True)
+    type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False, index=True)
+    category = Column(Enum(NotificationCategory, values_callable=_enum_values), nullable=False, index=True)
+    severity = Column(
+        Enum(NotificationSeverity, values_callable=_enum_values),
+        default=NotificationSeverity.INFO,
+        nullable=False,
     )
 
+    # Content
     title = Column(String(255), nullable=False)
     body = Column(Text, nullable=True)
 
-    # Dynamic payload (e.g., link to examination, icon name)
+    # Dynamic payload: ``{"actions": [...], "link": "...", ...}``
+    # ``actions`` shape: [{"id","label","type":"link|post","url"|"endpoint",
+    #                       "method","style"}]
     payload = Column(JSONB, nullable=True, default=dict)
 
-    delivered_at = Column(DateTime(timezone=True), nullable=True)
-    read_at = Column(DateTime(timezone=True), nullable=True)
+    # Originating reference (integration domain, agent session id, rule id,
+    # biomarker_id, observation_id, ...).
+    source_ref = Column(JSONB, nullable=True, default=dict)
+
+    # The user account that triggered the emission, if any (system/agent
+    # emissions leave this null).
+    sender_user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
-            "patient_id": str(self.patient_id),
+            "patient_id": str(self.patient_id) if self.patient_id else None,
             "trigger_id": str(self.trigger_id) if self.trigger_id else None,
-            "communication_id": str(self.communication_id) if self.communication_id else None,
+            "communication_id": str(self.communication_id)
+            if self.communication_id
+            else None,
+            "source": self.source.value,
             "type": self.type.value,
-            "status": self.status.value,
-            "channel": self.channel.value,
+            "category": self.category.value,
+            "severity": self.severity.value,
             "title": self.title,
             "body": self.body,
             "payload": self.payload,
+            "source_ref": self.source_ref,
+            "sender_user_id": str(self.sender_user_id) if self.sender_user_id else None,
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
+    """Per-user inbox state for a notification (the fan-out result).
+
+    One row per resolved human recipient. ``user_id`` is the delivery
+    target (a login account). ``recipient_kind``/``recipient_ref`` retain
+    the original target spec for traceability (e.g. "this user was
+    targeted via PATIENT <id>").
+    """
+
+    __tablename__ = "notification_recipients"
+
+    notification_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("notifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    recipient_kind = Column(Enum(RecipientKind, values_callable=_enum_values), nullable=False)
+    recipient_ref = Column(UUID(as_uuid=True), nullable=True)
+
+    status = Column(
+        Enum(RecipientStatus, values_callable=_enum_values), default=RecipientStatus.UNREAD, nullable=False
+    )
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    dismissed_at = Column(DateTime(timezone=True), nullable=True)
+
+    notification = relationship(
+        "Notification", lazy="selectin", innerjoin=False
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "notification_id": str(self.notification_id),
+            "user_id": str(self.user_id),
+            "recipient_kind": self.recipient_kind.value,
+            "recipient_ref": str(self.recipient_ref) if self.recipient_ref else None,
+            "status": self.status.value,
+            "read_at": self.read_at.isoformat() if self.read_at else None,
+            "dismissed_at": self.dismissed_at.isoformat()
+            if self.dismissed_at
+            else None,
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class NotificationDelivery(Base, UUIDMixin, TenantMixin, TimestampMixin):
+    """Per-recipient, per-channel delivery attempt log."""
+
+    __tablename__ = "notification_deliveries"
+
+    notification_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("notifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    channel = Column(Enum(NotificationChannel, values_callable=_enum_values), nullable=False)
+    status = Column(
+        Enum(NotificationStatus, values_callable=_enum_values), default=NotificationStatus.PENDING, nullable=False
+    )
+
+    attempted_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)
+
+    # Optional link to the NotificationSubscription used (push only).
+    subscription_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("notification_subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "notification_id": str(self.notification_id),
+            "user_id": str(self.user_id),
+            "channel": self.channel.value,
+            "status": self.status.value,
+            "attempted_at": self.attempted_at.isoformat()
+            if self.attempted_at
+            else None,
             "delivered_at": self.delivered_at.isoformat()
             if self.delivered_at
             else None,
-            "read_at": self.read_at.isoformat() if self.read_at else None,
+            "error": self.error,
+            "subscription_id": str(self.subscription_id)
+            if self.subscription_id
+            else None,
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
 class NotificationSubscription(Base, UUIDMixin, TenantMixin, TimestampMixin):
-    """Stores Web Push (VAPID) subscriptions for PWAs"""
+    """Stores Web Push (VAPID) subscriptions for PWAs."""
 
     __tablename__ = "notification_subscriptions"
 
@@ -136,7 +304,7 @@ class NotificationSubscription(Base, UUIDMixin, TenantMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    device_id = Column(String(255), nullable=True)  # Optional unique device identifier
+    device_id = Column(String(255), nullable=True)
 
     # Web Push Subscription JSON (endpoint, keys)
     subscription_data = Column(JSONB, nullable=False)
@@ -155,7 +323,21 @@ class NotificationSubscription(Base, UUIDMixin, TenantMixin, TimestampMixin):
 
 
 # Indices for performance
-Index("idx_notification_patient_status", Notification.patient_id, Notification.status)
+Index(
+    "idx_notification_recipient_user_status",
+    NotificationRecipient.user_id,
+    NotificationRecipient.status,
+)
+Index(
+    "idx_notification_recipient_tenant_status",
+    NotificationRecipient.tenant_id,
+    NotificationRecipient.status,
+)
+Index(
+    "idx_notification_delivery_lookup",
+    NotificationDelivery.notification_id,
+    NotificationDelivery.channel,
+)
 Index(
     "idx_trigger_next_run",
     NotificationTrigger.next_trigger,

@@ -131,3 +131,65 @@ async def import_catalog_from_file(
     return {
         "message": "Catalog import started in the background. Check task logs for progress."
     }
+
+
+@router.post("/notifications/broadcast")
+async def broadcast_notification(
+    title: str,
+    body: str | None = None,
+    severity: str = "info",
+    scope: str = "tenant",
+    tenant_id: str | None = None,
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
+) -> Dict[str, str]:
+    """Broadcast a system notification.
+
+    ADMIN/MANAGER may broadcast to their own tenant (``scope=tenant``).
+    SYSTEM_ADMIN may additionally broadcast system-wide (``scope=system``)
+    or target another tenant via ``tenant_id``.
+    """
+    from app.models.enums import (
+        NotificationCategory,
+        NotificationSeverity,
+        NotificationSource,
+        NotificationType,
+        RecipientKind,
+    )
+    from app.services.notification_service import emit
+
+    is_system_admin = current_user.role == Role.SYSTEM_ADMIN.value
+    if severity not in {s.value for s in NotificationSeverity}:
+        raise HTTPException(status_code=400, detail=f"Invalid severity: {severity}")
+
+    if scope == "system":
+        if not is_system_admin:
+            raise HTTPException(
+                status_code=403, detail="Only SYSTEM_ADMIN can broadcast system-wide."
+            )
+        targets = [{"kind": RecipientKind.SYSTEM.value}]
+        tenant_scope = None
+    elif scope == "tenant":
+        target_tenant = (
+            tenant_id if (is_system_admin and tenant_id) else current_user.tenant_id
+        )
+        targets = [{"kind": RecipientKind.TENANT.value, "id": str(target_tenant)}]
+        tenant_scope = target_tenant
+    else:
+        raise HTTPException(status_code=400, detail="scope must be 'tenant' or 'system'.")
+
+    notification = await emit(
+        source=NotificationSource.SYSTEM,
+        type=NotificationType.SYSTEM_BROADCAST,
+        category=NotificationCategory.SYSTEM,
+        severity=NotificationSeverity(severity),
+        title=title,
+        body=body,
+        tenant_id=tenant_scope,
+        targets=targets,
+        payload={"broadcast": True, "scope": scope},
+        source_ref={"broadcast_by": str(current_user.user_id)},
+        sender_user_id=current_user.user_id,
+    )
+    if notification is None:
+        raise HTTPException(status_code=500, detail="Failed to emit notification.")
+    return {"status": "success", "notification_id": str(notification.id)}

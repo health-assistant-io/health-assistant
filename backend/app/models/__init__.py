@@ -8,15 +8,26 @@ from .doctor_model import DoctorModel
 from .fhir.organization import OrganizationModel
 from .associations import examination_doctors, organization_doctors
 from .telemetry_model import TelemetryDataModel
-from .alert_model import AlertModel
 from .notification import (
     NotificationTrigger,
     Notification,
+    NotificationRecipient,
+    NotificationDelivery,
     NotificationSubscription,
     NotificationType,
+    NotificationSource,
+    NotificationCategory,
+    NotificationSeverity,
     NotificationChannel,
     NotificationStatus,
+    RecipientKind,
+    RecipientStatus,
     TriggerType,
+)
+from .notification_rule import (
+    NotificationRule,
+    NotificationRuleType,
+    ComparisonOperator,
 )
 from .audit_model import AuditLog
 from .task_log import TaskLog
@@ -76,7 +87,6 @@ __all__ = [
     "OrganizationModel",
     "organization_doctors",
     "TelemetryDataModel",
-    "AlertModel",
     "AuditLog",
     "TaskLog",
     "PatientLayoutModel",
@@ -115,11 +125,21 @@ __all__ = [
     "BiomarkerEventCorrelation",
     "NotificationTrigger",
     "Notification",
+    "NotificationRecipient",
+    "NotificationDelivery",
     "NotificationSubscription",
     "NotificationType",
+    "NotificationSource",
+    "NotificationCategory",
+    "NotificationSeverity",
     "NotificationChannel",
     "NotificationStatus",
+    "RecipientKind",
+    "RecipientStatus",
     "TriggerType",
+    "NotificationRule",
+    "NotificationRuleType",
+    "ComparisonOperator",
     "UserIntegration",
     "SystemIntegration",
     "SystemSetting",

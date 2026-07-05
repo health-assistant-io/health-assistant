@@ -137,7 +137,11 @@
     "other": "Other",
     "close": "Close",
     "no_patients": "No patients found",
-    "no_doctors": "No doctors found"
+    "no_doctors": "No doctors found",
+    "mark_all_read": "Mark all read",
+    "mark_read": "Mark read",
+    "refresh": "Refresh",
+    "allergy_alerts": "Allergy Alerts"
   },
   "dashboard": {
     "title": "Patient Health Overview",
@@ -1575,5 +1579,16 @@
     "female": "Female",
     "view_front": "Front",
     "view_back": "Back"
+  },
+  "notifications": {
+    "center": "Notification Center",
+    "subtitle": "Your notifications and reminders",
+    "inbox": "Inbox",
+    "all": "All",
+    "triggers": "Reminders",
+    "debug_title": "Real-time delivery",
+    "debug_body": "Notifications stream over a live per-user WebSocket. Push delivery to your devices uses Web Push (VAPID) — enable it above.",
+    "rules_tab": "Biomarker Rules",
+    "admin_tab": "Admin"
   }
 }

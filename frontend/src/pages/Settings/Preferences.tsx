@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Globe, Ruler, Bell, SlidersHorizontal } from 'lucide-react';
+import { Globe, Ruler, SlidersHorizontal } from 'lucide-react';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 
 function Preferences() {
   const { t } = useTranslation();
-  const { language, setLanguage, notificationsEnabled, setNotificationsEnabled, unitSystem, setUnitSystem } = useSettingsStore();
+  const { language, setLanguage, unitSystem, setUnitSystem } = useSettingsStore();
 
   return (
     <div className="space-y-6">
@@ -54,48 +54,6 @@ function Preferences() {
             <option value="metric">{t('settings.unit_system_metric', 'Metric')}</option>
             <option value="imperial">{t('settings.unit_system_imperial', 'Imperial')}</option>
           </select>
-        </div>
-
-        <div className="flex items-center justify-between pt-6 border-t border-gray-100 dark:border-dark-border">
-          <div className="flex items-center space-x-3">
-            <Bell className="w-4 h-4 text-gray-400" />
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{t('settings.notifications_enabled', 'Notifications')}</p>
-              <p className="text-sm text-gray-500 dark:text-dark-muted">
-                {notificationsEnabled ? t('admin.active', 'Enabled') : t('common.inactive', 'Disabled')}
-              </p>
-              <p className="text-xs text-blue-500 cursor-pointer hover:underline" onClick={async () => {
-                const { nativeNotificationService } = await import('../../services/nativeNotificationService');
-                const sub = await nativeNotificationService.subscribeToPush();
-                if (sub) {
-                  setNotificationsEnabled(true);
-                  alert(t('settings.push_subscribed', 'Successfully subscribed to push notifications!'));
-                } else {
-                  alert(t('settings.push_failed', 'Failed to subscribe. Please check browser permissions.'));
-                }
-              }}>
-                {t('settings.configure_browser_permissions', 'Configure browser permissions')}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={async () => {
-              if (!notificationsEnabled) {
-                const { nativeNotificationService } = await import('../../services/nativeNotificationService');
-                const sub = await nativeNotificationService.subscribeToPush();
-                if (sub) setNotificationsEnabled(true);
-              } else {
-                setNotificationsEnabled(false);
-              }
-            }}
-            className={`px-4 py-2 rounded-lg ${
-              notificationsEnabled
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 dark:bg-dark-border text-gray-600 dark:text-dark-muted'
-            }`}
-          >
-            {notificationsEnabled ? t('admin.active', 'Enabled') : t('common.inactive', 'Disabled')}
-          </button>
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@ interface AllergyWithPatient extends AllergyIntolerance {
   patient_name_display: string;
 }
 
-function ClinicalAlerts() {
+function AllergyAlerts() {
   const { t } = useTranslation();
   const { currentPatient } = usePatientStore();
   const [allergies, setAllergies] = useState<AllergyWithPatient[]>([]);
@@ -176,4 +176,4 @@ function ClinicalAlerts() {
   );
 }
 
-export default ClinicalAlerts;
+export default AllergyAlerts;

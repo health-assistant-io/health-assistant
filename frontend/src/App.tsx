@@ -4,7 +4,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import Layout from './components/layout/Layout';
 import Login from './pages/Auth/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
-import ClinicalAlerts from './pages/Dashboard/ClinicalAlerts';
+import AllergyAlerts from './pages/Dashboard/AllergyAlerts';
 import { BiomarkerTrends, CorrelativeAnalytics } from './pages/Analytics';
 import Documents from './pages/Documents/DocumentList';
 import DocumentDetail from './pages/Documents/DocumentDetail';
@@ -35,6 +35,7 @@ import AboutPage from './pages/About/AboutPage';
 import MyAccount from './pages/Account/MyAccount';
 import AppearanceSettings from './pages/Settings/AppearanceSettings';
 import Preferences from './pages/Settings/Preferences';
+import Notifications from './pages/Settings/Notifications';
 import Security from './pages/Settings/Security';
 import TenantSettingsPage from './pages/Admin/TenantSettings';
 import SystemSettingsPage from './pages/Admin/SystemSettings';
@@ -223,7 +224,9 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/alerts" element={<ClinicalAlerts />} />
+          <Route path="/alerts" element={<AllergyAlerts />} />
+          <Route path="/notifications" element={<NotificationManagement />} />
+          <Route path="/notifications/:tab" element={<NotificationManagement />} />
           <Route path="/analytics/trends" element={<BiomarkerTrends />} />
           <Route path="/analytics/correlative" element={<CorrelativeAnalytics />} />
           <Route path="/biomarkers" element={<BiomarkerTrends />} />
@@ -285,11 +288,11 @@ function App() {
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="/settings/appearance" replace />} />
             <Route path="preferences" element={<Preferences />} />
+            <Route path="notifications" element={<Notifications />} />
             <Route path="security" element={<Security />} />
             <Route path="appearance" element={<AppearanceSettings />} />
             <Route path="ai-config" element={<AIConfig scope="user" />} />
             <Route path="integrations" element={<Integrations />} />
-            <Route path="notifications" element={<NotificationManagement />} />
             {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
               <Route path="export-import" element={<ExportImport />} />
             )}

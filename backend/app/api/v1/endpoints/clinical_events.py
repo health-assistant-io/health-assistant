@@ -282,6 +282,46 @@ async def create_event(
 
     await db.commit()
 
+    # Notify the care team (patient's user + assigned doctors) about the new event.
+    try:
+        from app.models.enums import (
+            NotificationCategory,
+            NotificationSeverity,
+            NotificationSource,
+            NotificationType,
+            RecipientKind,
+        )
+        from app.services.notification_service import emit
+
+        await emit(
+            source=NotificationSource.CLINICAL,
+            type=NotificationType.CLINICAL_EVENT,
+            category=NotificationCategory.CLINICAL_EVENT,
+            severity=NotificationSeverity.INFO,
+            title=f"New clinical event: {new_event.title}",
+            body="A new clinical event was recorded.",
+            patient_id=new_event.patient_id,
+            tenant_id=current_user.tenant_id,
+            targets=[{"kind": RecipientKind.PATIENT.value, "id": str(new_event.patient_id)}],
+            payload={
+                "event_id": str(new_event.id),
+                "actions": [
+                    {
+                        "id": "view",
+                        "label": "View event",
+                        "type": "link",
+                        "url": f"/events",
+                        "style": "primary",
+                    }
+                ],
+            },
+            source_ref={"event_id": str(new_event.id)},
+            sender_user_id=current_user.user_id,
+            link_communication=True,
+        )
+    except Exception:
+        logger.exception("Clinical-event notification emit failed")
+
     # Re-fetch with relationships
     result = await db.execute(
         select(ClinicalEvent)

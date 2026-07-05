@@ -47,8 +47,15 @@ ENUM_TYPES = [
     ("medicationintent", "('statement', 'order', 'plan', 'proposal')"),
     ("medicationstatus", "('ACTIVE', 'INACTIVE', 'COMPLETED', 'CANCELLED', 'ENTERED_IN_ERROR', 'INTENDED', 'STOPPED', 'ON_HOLD', 'UNKNOWN')"),
     ("notificationchannel", "('IN_APP', 'PUSH', 'EMAIL', 'SMS')"),
-    ("notificationstatus", "('PENDING', 'DELIVERED', 'READ', 'DISMISSED', 'FAILED')"),
-    ("notificationtype", "('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'SYSTEM_UPDATE', 'CUSTOM')"),
+    ("notificationstatus", "('PENDING', 'SENT', 'DELIVERED', 'FAILED')"),
+    ("notificationtype", "('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'BIOMARKER_THRESHOLD', 'OUT_OF_RANGE', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'HITL_TASK', 'AGENT_RESULT', 'INTEGRATION_EVENT', 'SYNC_FAILURE', 'SYSTEM_UPDATE', 'SYSTEM_BROADCAST', 'SYSTEM_ERROR', 'CLINICAL_EVENT', 'CUSTOM')"),
+    ("notificationsource", "('SYSTEM', 'INTEGRATION', 'AGENT', 'RULE', 'CLINICAL', 'SCHEDULED')"),
+    ("notificationcategory", "('reminder', 'alert', 'hitl', 'agent', 'system', 'integration', 'clinical_event')"),
+    ("notificationseverity", "('info', 'warning', 'critical')"),
+    ("recipientkind", "('USER', 'PATIENT', 'DOCTOR', 'TENANT', 'SYSTEM')"),
+    ("recipientstatus", "('unread', 'read', 'dismissed')"),
+    ("notificationruletype", "('BIOMARKER_THRESHOLD', 'OUT_OF_NORMAL_RANGE', 'TREND_ANOMALY', 'EVENT_LIFECYCLE')"),
+    ("comparisonoperator", "('>', '<', '>=', '<=', '==', 'out_of_normal')"),
     ("organizationtype", "('HOUSEHOLD', 'CLINIC', 'DEPARTMENT', 'PROVIDER_GROUP', 'HOSPITAL', 'OTHER')"),
     ("quantitytype", "('MASS_CONCENTRATION', 'MOLAR_CONCENTRATION', 'NUMBER_CONCENTRATION', 'PERCENTAGE', 'PRESSURE', 'VOLUME', 'MASS', 'TIME', 'RATIO', 'TEMPERATURE', 'OTHER')"),
     ("role", "('SYSTEM_ADMIN', 'ADMIN', 'MANAGER', 'USER')"),
@@ -785,25 +792,6 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_notification_subscriptions_updated_at'), ['updated_at'], unique=False)
         batch_op.create_index(batch_op.f('ix_notification_subscriptions_user_id'), ['user_id'], unique=False)
 
-    op.create_table('alerts',
-    sa.Column('patient_id', sa.UUID(), nullable=False),
-    sa.Column('type', sa.String(length=100), nullable=False),
-    sa.Column('threshold', sa.Float(), nullable=True),
-    sa.Column('enabled', sa.Boolean(), nullable=True),
-    sa.Column('last_triggered', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('tenant_id', sa.UUID(), nullable=True),
-    sa.Column('created_by', sa.UUID(), nullable=True),
-    sa.Column('updated_by', sa.UUID(), nullable=True),
-    sa.Column('version', sa.Integer(), nullable=True),
-    sa.Column('is_current', sa.Boolean(), nullable=True),
-    sa.ForeignKeyConstraint(['patient_id'], ['fhir_patients.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
-    )
-    with op.batch_alter_table('alerts', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_alerts_patient_id'), ['patient_id'], unique=False)
-        batch_op.create_index(batch_op.f('ix_alerts_tenant_id'), ['tenant_id'], unique=False)
-
     op.create_table('biomarker_event_correlations',
     sa.Column('biomarker_id', sa.UUID(), nullable=False),
     sa.Column('event_type_id', sa.UUID(), nullable=False),
@@ -910,9 +898,9 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_fhir_allergy_intolerances_updated_at'), ['updated_at'], unique=False)
 
     op.create_table('notification_triggers',
-    sa.Column('patient_id', sa.UUID(), nullable=False),
+    sa.Column('patient_id', sa.UUID(), nullable=True),
     sa.Column('trigger_type', postgresql.ENUM('TIME', 'RECURRING', 'EVENT', 'THRESHOLD', name='triggertype', create_type=False), nullable=False),
-    sa.Column('notification_type', postgresql.ENUM('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'SYSTEM_UPDATE', 'CUSTOM', name='notificationtype', create_type=False), nullable=False),
+    sa.Column('notification_type', postgresql.ENUM('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'BIOMARKER_THRESHOLD', 'OUT_OF_RANGE', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'HITL_TASK', 'AGENT_RESULT', 'INTEGRATION_EVENT', 'SYNC_FAILURE', 'SYSTEM_UPDATE', 'SYSTEM_BROADCAST', 'SYSTEM_ERROR', 'CLINICAL_EVENT', 'CUSTOM', name='notificationtype', create_type=False), nullable=False),
     sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=False),
     sa.Column('body', sa.Text(), nullable=True),
@@ -1323,18 +1311,18 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_event_observation_links_updated_at'), ['updated_at'], unique=False)
 
     op.create_table('notifications',
-    sa.Column('patient_id', sa.UUID(), nullable=False),
+    sa.Column('patient_id', sa.UUID(), nullable=True),
     sa.Column('trigger_id', sa.UUID(), nullable=True),
     sa.Column('communication_id', sa.UUID(), nullable=True),
-    sa.Column('type', postgresql.ENUM('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'SYSTEM_UPDATE', 'CUSTOM', name='notificationtype', create_type=False), nullable=False),
-    sa.Column('status', postgresql.ENUM('PENDING', 'DELIVERED', 'READ', 'DISMISSED', 'FAILED', name='notificationstatus', create_type=False), nullable=False),
-    sa.Column('channel', postgresql.ENUM('IN_APP', 'PUSH', 'EMAIL', 'SMS', name='notificationchannel', create_type=False), nullable=False),
+    sa.Column('source', postgresql.ENUM('SYSTEM', 'INTEGRATION', 'AGENT', 'RULE', 'CLINICAL', 'SCHEDULED', name='notificationsource', create_type=False), nullable=False),
+    sa.Column('type', postgresql.ENUM('MEDICATION_REMINDER', 'EXAMINATION_REMINDER', 'BIOMARKER_ALERT', 'BIOMARKER_THRESHOLD', 'OUT_OF_RANGE', 'CALENDAR_EVENT', 'AI_SUGGESTION', 'HITL_TASK', 'AGENT_RESULT', 'INTEGRATION_EVENT', 'SYNC_FAILURE', 'SYSTEM_UPDATE', 'SYSTEM_BROADCAST', 'SYSTEM_ERROR', 'CLINICAL_EVENT', 'CUSTOM', name='notificationtype', create_type=False), nullable=False),
+    sa.Column('category', postgresql.ENUM('reminder', 'alert', 'hitl', 'agent', 'system', 'integration', 'clinical_event', name='notificationcategory', create_type=False), nullable=False),
+    sa.Column('severity', postgresql.ENUM('info', 'warning', 'critical', name='notificationseverity', create_type=False), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=False),
     sa.Column('body', sa.Text(), nullable=True),
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('delivered_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('fhir_resource_type', sa.String(length=50), nullable=True),
+    sa.Column('source_ref', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    sa.Column('sender_user_id', sa.UUID(), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
@@ -1345,12 +1333,103 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('notifications', schema=None) as batch_op:
-        batch_op.create_index('idx_notification_patient_status', ['patient_id', 'status'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notifications_category'), ['category'], unique=False)
         batch_op.create_index(batch_op.f('ix_notifications_communication_id'), ['communication_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_notifications_created_at'), ['created_at'], unique=False)
         batch_op.create_index(batch_op.f('ix_notifications_patient_id'), ['patient_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notifications_sender_user_id'), ['sender_user_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notifications_source'), ['source'], unique=False)
         batch_op.create_index(batch_op.f('ix_notifications_tenant_id'), ['tenant_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notifications_type'), ['type'], unique=False)
         batch_op.create_index(batch_op.f('ix_notifications_updated_at'), ['updated_at'], unique=False)
+
+    op.create_table('notification_recipients',
+    sa.Column('notification_id', sa.UUID(), nullable=False),
+    sa.Column('user_id', sa.UUID(), nullable=False),
+    sa.Column('recipient_kind', postgresql.ENUM('USER', 'PATIENT', 'DOCTOR', 'TENANT', 'SYSTEM', name='recipientkind', create_type=False), nullable=False),
+    sa.Column('recipient_ref', sa.UUID(), nullable=True),
+    sa.Column('status', postgresql.ENUM('unread', 'read', 'dismissed', name='recipientstatus', create_type=False), nullable=False),
+    sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('dismissed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('tenant_id', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['notification_id'], ['notifications.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('notification_recipients', schema=None) as batch_op:
+        batch_op.create_index('idx_notification_recipient_user_status', ['user_id', 'status'], unique=False)
+        batch_op.create_index('idx_notification_recipient_tenant_status', ['tenant_id', 'status'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_recipients_created_at'), ['created_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_recipients_notification_id'), ['notification_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_recipients_tenant_id'), ['tenant_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_recipients_updated_at'), ['updated_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_recipients_user_id'), ['user_id'], unique=False)
+
+    op.create_table('notification_deliveries',
+    sa.Column('notification_id', sa.UUID(), nullable=False),
+    sa.Column('user_id', sa.UUID(), nullable=False),
+    sa.Column('channel', postgresql.ENUM('IN_APP', 'PUSH', 'EMAIL', 'SMS', name='notificationchannel', create_type=False), nullable=False),
+    sa.Column('status', postgresql.ENUM('PENDING', 'SENT', 'DELIVERED', 'FAILED', name='notificationstatus', create_type=False), nullable=False),
+    sa.Column('attempted_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('delivered_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('error', sa.Text(), nullable=True),
+    sa.Column('subscription_id', sa.UUID(), nullable=True),
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('tenant_id', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['notification_id'], ['notifications.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['subscription_id'], ['notification_subscriptions.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('notification_deliveries', schema=None) as batch_op:
+        batch_op.create_index('idx_notification_delivery_lookup', ['notification_id', 'channel'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_deliveries_created_at'), ['created_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_deliveries_notification_id'), ['notification_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_deliveries_tenant_id'), ['tenant_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_deliveries_updated_at'), ['updated_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_deliveries_user_id'), ['user_id'], unique=False)
+
+    op.create_table('notification_rules',
+    sa.Column('rule_type', postgresql.ENUM('BIOMARKER_THRESHOLD', 'OUT_OF_NORMAL_RANGE', 'TREND_ANOMALY', 'EVENT_LIFECYCLE', name='notificationruletype', create_type=False), nullable=False),
+    sa.Column('biomarker_id', sa.UUID(), nullable=True),
+    sa.Column('operator', postgresql.ENUM('>', '<', '>=', '<=', '==', 'out_of_normal', name='comparisonoperator', create_type=False), nullable=True),
+    sa.Column('value', sa.Float(), nullable=True),
+    sa.Column('patient_id', sa.UUID(), nullable=True),
+    sa.Column('severity', postgresql.ENUM('info', 'warning', 'critical', name='notificationseverity', create_type=False), nullable=False),
+    sa.Column('enabled', sa.Boolean(), nullable=False),
+    sa.Column('cooldown_minutes', sa.Integer(), nullable=False),
+    sa.Column('last_fired_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('targets', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('title_template', sa.String(length=255), nullable=True),
+    sa.Column('body_template', sa.Text(), nullable=True),
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('tenant_id', sa.UUID(), nullable=True),
+    sa.Column('created_by', sa.UUID(), nullable=True),
+    sa.Column('updated_by', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.ForeignKeyConstraint(['biomarker_id'], ['biomarker_definitions.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['patient_id'], ['fhir_patients.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('notification_rules', schema=None) as batch_op:
+        batch_op.create_index('idx_notification_rule_lookup', ['tenant_id', 'biomarker_id', 'enabled'], unique=False)
+        batch_op.create_index('idx_notification_rule_patient', ['patient_id', 'enabled'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_biomarker_id'), ['biomarker_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_created_at'), ['created_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_last_fired_at'), ['last_fired_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_patient_id'), ['patient_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_rule_type'), ['rule_type'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_tenant_id'), ['tenant_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_notification_rules_updated_at'), ['updated_at'], unique=False)
 
     # --- Post-table DDL: TimescaleDB hypertable + continuous aggregates ----
     # All TimescaleDB DDL is guarded so the migration succeeds on plain-PG
@@ -1470,13 +1549,47 @@ def downgrade() -> None:
             "SELECT remove_compression_policy('telemetry_data', if_exists => true)"
         )
 
+    with op.batch_alter_table('notification_rules', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_notification_rules_updated_at'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_tenant_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_rule_type'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_patient_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_last_fired_at'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_created_at'))
+        batch_op.drop_index(batch_op.f('ix_notification_rules_biomarker_id'))
+        batch_op.drop_index('idx_notification_rule_patient')
+        batch_op.drop_index('idx_notification_rule_lookup')
+
+    op.drop_table('notification_rules')
+    with op.batch_alter_table('notification_deliveries', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_notification_deliveries_user_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_deliveries_updated_at'))
+        batch_op.drop_index(batch_op.f('ix_notification_deliveries_tenant_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_deliveries_notification_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_deliveries_created_at'))
+        batch_op.drop_index('idx_notification_delivery_lookup')
+
+    op.drop_table('notification_deliveries')
+    with op.batch_alter_table('notification_recipients', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_notification_recipients_user_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_recipients_updated_at'))
+        batch_op.drop_index(batch_op.f('ix_notification_recipients_tenant_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_recipients_notification_id'))
+        batch_op.drop_index(batch_op.f('ix_notification_recipients_created_at'))
+        batch_op.drop_index('idx_notification_recipient_tenant_status')
+        batch_op.drop_index('idx_notification_recipient_user_status')
+
+    op.drop_table('notification_recipients')
     with op.batch_alter_table('notifications', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_notifications_updated_at'))
+        batch_op.drop_index(batch_op.f('ix_notifications_type'))
+        batch_op.drop_index(batch_op.f('ix_notifications_source'))
+        batch_op.drop_index(batch_op.f('ix_notifications_sender_user_id'))
         batch_op.drop_index(batch_op.f('ix_notifications_tenant_id'))
         batch_op.drop_index(batch_op.f('ix_notifications_patient_id'))
         batch_op.drop_index(batch_op.f('ix_notifications_created_at'))
         batch_op.drop_index(batch_op.f('ix_notifications_communication_id'))
-        batch_op.drop_index('idx_notification_patient_status')
+        batch_op.drop_index(batch_op.f('ix_notifications_category'))
 
     op.drop_table('notifications')
     with op.batch_alter_table('event_observation_links', schema=None) as batch_op:
@@ -1639,11 +1752,6 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_biomarker_event_correlations_biomarker_id'))
 
     op.drop_table('biomarker_event_correlations')
-    with op.batch_alter_table('alerts', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_alerts_tenant_id'))
-        batch_op.drop_index(batch_op.f('ix_alerts_patient_id'))
-
-    op.drop_table('alerts')
     with op.batch_alter_table('notification_subscriptions', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_notification_subscriptions_user_id'))
         batch_op.drop_index(batch_op.f('ix_notification_subscriptions_updated_at'))

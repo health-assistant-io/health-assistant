@@ -318,7 +318,7 @@ async def create_observation(
         await session.commit()
         await session.refresh(new_obs)
 
-    # Check for biomarker thresholds (Biomarker Alert)
+    # Evaluate biomarker rules (event-driven notification source).
     patient_id = None
     patient_id_str = observation_data.get("patient_id") or _extract_patient_id(subject)
     if patient_id_str:
@@ -327,17 +327,22 @@ async def create_observation(
         except (ValueError, TypeError):
             pass
 
-    if patient_id:
-        await NotificationManager.trigger_event(
-            event_name="biomarker_update",
-            patient_id=patient_id,
-            tenant_id=tenant_id,
-            data={
-                "observation_id": str(new_obs.id),
-                "code": new_obs.code,
-                "value": new_obs.value_quantity,
-            },
-        )
+    if patient_id and new_obs.biomarker_id:
+        try:
+            from app.services.notification_rule_service import evaluate_and_fire
+
+            await evaluate_and_fire(
+                observation=new_obs,
+                patient_id=patient_id,
+                tenant_id=tenant_id,
+            )
+        except Exception:
+            # Rule evaluation must never break observation persistence.
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Biomarker rule evaluation failed for observation %s", new_obs.id
+            )
 
     return new_obs
 

@@ -41,9 +41,8 @@ def upgrade() -> None:
                existing_nullable=True,
                postgresql_using='completed_at::timestamptz')
 
-    # D16: drop dead notifications.fhir_resource_type column
-    with op.batch_alter_table('notifications', schema=None) as batch_op:
-        batch_op.drop_column('fhir_resource_type')
+    # D16 (notifications.fhir_resource_type) is obsolete — the column was
+    # never recreated in the squashed initial schema.
 
     # D19: prevent empty-string MRNs (Postgres treats NULLs as distinct
     # but "" would collide on the unique index)
@@ -59,9 +58,7 @@ def downgrade() -> None:
     # D19: drop MRN check constraint
     op.drop_check_constraint('fhir_patients', 'mrn_not_empty')
 
-    # D16: restore dead column
-    with op.batch_alter_table('notifications', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('fhir_resource_type', sa.VARCHAR(length=50), autoincrement=False, nullable=True))
+    # D16 column intentionally not restored (obsolete).
 
     # D17: revert completed_at back to TEXT
     with op.batch_alter_table('import_jobs', schema=None) as batch_op:

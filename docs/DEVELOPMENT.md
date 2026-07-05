@@ -154,7 +154,7 @@ The clinical events system is metadata-driven. To add new clinical event categor
 
 ## Extending Notifications
 
-The notification framework is modular and event-driven. For detailed instructions on adding new notification types or event hooks, see [NOTIFICATION_SYSTEM.md](./docs/NOTIFICATION_SYSTEM.md).
+The notification framework is unified and multi-source — every kind of notice (scheduled reminders, biomarker thresholds, HITL proposals, integration sync, clinical events, system broadcasts) flows through one `notification_service.emit()` API. For detailed instructions on adding a new source or wiring new triggers, see [NOTIFICATION_SYSTEM.md](./NOTIFICATION_SYSTEM.md).
 
 ## Project Versioning
 

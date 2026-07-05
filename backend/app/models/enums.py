@@ -23,10 +23,63 @@ class NotificationType(str, enum.Enum):
     MEDICATION_REMINDER = "MEDICATION_REMINDER"
     EXAMINATION_REMINDER = "EXAMINATION_REMINDER"
     BIOMARKER_ALERT = "BIOMARKER_ALERT"
+    BIOMARKER_THRESHOLD = "BIOMARKER_THRESHOLD"
+    OUT_OF_RANGE = "OUT_OF_RANGE"
     CALENDAR_EVENT = "CALENDAR_EVENT"
     AI_SUGGESTION = "AI_SUGGESTION"
+    HITL_TASK = "HITL_TASK"
+    AGENT_RESULT = "AGENT_RESULT"
+    INTEGRATION_EVENT = "INTEGRATION_EVENT"
+    SYNC_FAILURE = "SYNC_FAILURE"
     SYSTEM_UPDATE = "SYSTEM_UPDATE"
+    SYSTEM_BROADCAST = "SYSTEM_BROADCAST"
+    SYSTEM_ERROR = "SYSTEM_ERROR"
+    CLINICAL_EVENT = "CLINICAL_EVENT"
     CUSTOM = "CUSTOM"
+
+
+class NotificationSource(str, enum.Enum):
+    """Origin system of a notification event."""
+    SYSTEM = "SYSTEM"
+    INTEGRATION = "INTEGRATION"
+    AGENT = "AGENT"
+    RULE = "RULE"
+    CLINICAL = "CLINICAL"
+    SCHEDULED = "SCHEDULED"
+
+
+class NotificationCategory(str, enum.Enum):
+    """UI grouping for the notification center."""
+    REMINDER = "reminder"
+    ALERT = "alert"
+    HITL = "hitl"
+    AGENT = "agent"
+    SYSTEM = "system"
+    INTEGRATION = "integration"
+    CLINICAL_EVENT = "clinical_event"
+
+
+class NotificationSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class RecipientKind(str, enum.Enum):
+    """The principal kind a notification target was specified as (pre-resolution)."""
+    USER = "USER"
+    PATIENT = "PATIENT"
+    DOCTOR = "DOCTOR"
+    TENANT = "TENANT"
+    SYSTEM = "SYSTEM"
+
+
+class RecipientStatus(str, enum.Enum):
+    """Per-recipient inbox state (the user-facing read/dismiss lifecycle)."""
+    UNREAD = "unread"
+    READ = "read"
+    DISMISSED = "dismissed"
+
 
 class NotificationChannel(str, enum.Enum):
     IN_APP = "IN_APP"
@@ -34,12 +87,30 @@ class NotificationChannel(str, enum.Enum):
     EMAIL = "EMAIL"
     SMS = "SMS"
 
+
 class NotificationStatus(str, enum.Enum):
+    """Per-channel delivery lifecycle (delivery log)."""
     PENDING = "PENDING"
+    SENT = "SENT"
     DELIVERED = "DELIVERED"
-    READ = "READ"
-    DISMISSED = "DISMISSED"
     FAILED = "FAILED"
+
+
+class NotificationRuleType(str, enum.Enum):
+    """What a NotificationRule evaluates."""
+    BIOMARKER_THRESHOLD = "BIOMARKER_THRESHOLD"
+    OUT_OF_NORMAL_RANGE = "OUT_OF_NORMAL_RANGE"
+    TREND_ANOMALY = "TREND_ANOMALY"
+    EVENT_LIFECYCLE = "EVENT_LIFECYCLE"
+
+
+class ComparisonOperator(str, enum.Enum):
+    GT = ">"
+    LT = "<"
+    GTE = ">="
+    LTE = "<="
+    EQ = "=="
+    OUT_OF_NORMAL = "out_of_normal"
 
 class HitlTaskStatus(str, enum.Enum):
     """Status of a human-in-the-loop task card proposed by the AI assistant.

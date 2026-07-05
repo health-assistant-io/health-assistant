@@ -16,7 +16,6 @@ timing the connection out.
 """
 from datetime import datetime, timezone
 import asyncio
-import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
@@ -41,24 +40,31 @@ async def _extract_token(websocket: WebSocket, query_token: str | None) -> str |
     string so the token is not logged by reverse proxies or browser history.
 
     Clients connect with ``new WebSocket(url, ["bearer", "<token>"])``. We
-    accept the second element of the negotiated subprotocols list. If no
-    subprotocol was negotiated, fall back to the legacy ``?token=`` query
-    parameter for backward compatibility.
+    accept the token that follows the ``bearer`` sentinel. Subprotocols are
+    read from the ASGI ``scope["subprotocols"]`` list (the canonical location
+    uvicorn populates) and, as a fallback, from the raw
+    ``Sec-WebSocket-Protocol`` header. If neither yields a token, fall back to
+    the legacy ``?token=`` query parameter.
     """
-    subprotocols = websocket.headers.get("sec-websocket-protocol", "")
-    if subprotocols:
-        # The header is comma-separated; the client sends ["bearer", "<token>"].
-        parts = [p.strip() for p in subprotocols.split(",") if p.strip()]
-        # Find the token after the "bearer" sentinel, if present.
-        for i, part in enumerate(parts):
-            if part.lower() == "bearer" and i + 1 < len(parts):
-                return parts[i + 1]
-        # Some clients send the raw token directly as the subprotocol.
-        if parts and parts[0].lower() not in ("bearer",):
-            # Heuristic: JWTs contain two dots; only accept subprotocol form
-            # for actual tokens to avoid swallowing arbitrary values.
-            if parts[0].count(".") >= 2:
-                return parts[0]
+    # 1. ASGI scope subprotocols (canonical; uvicorn/Starlette populate this).
+    scope_subs = websocket.scope.get("subprotocols") or []
+    # 2. Raw header (comma-joined if multiple values).
+    header_subs = websocket.headers.get("sec-websocket-protocol", "")
+    parts: list[str] = list(scope_subs)
+    if header_subs:
+        parts.extend([p.strip() for p in header_subs.split(",") if p.strip()])
+
+    logger.debug(
+        "WS auth: scope_subprotocols=%r header=%r", scope_subs, header_subs[:40]
+    )
+
+    for i, part in enumerate(parts):
+        if part.lower() == "bearer" and i + 1 < len(parts):
+            return parts[i + 1]
+    # Some clients send the raw token directly as the (only) subprotocol.
+    for part in parts:
+        if part.lower() != "bearer" and part.count(".") >= 2:
+            return part
     return query_token
 
 
@@ -99,34 +105,38 @@ async def websocket_tasks_endpoint(
 
     pubsub = redis_client.pubsub()
     channel = f"tenant:{tenant_id}:tasks"
-    await pubsub.subscribe(channel)
-
-    last_ping = datetime.now(timezone.utc)
 
     try:
+        await pubsub.subscribe(channel)
+
+        async def _read_loop():
+            try:
+                while True:
+                    await websocket.receive()
+            except WebSocketDisconnect:
+                pass
+
+        read_task = asyncio.create_task(_read_loop())
+        last_ping = datetime.now(timezone.utc)
+
         while True:
-            # get_message already blocks for up to _POLL_TIMEOUT_SECONDS,
-            # which sets the effective cadence — no extra busy-wait sleep.
+            if read_task.done():
+                break
+
             message = await pubsub.get_message(
                 ignore_subscribe_messages=True, timeout=_POLL_TIMEOUT_SECONDS
             )
             if message and message.get("type") == "message":
                 data = message["data"]
-                # Redis returns bytes for pub/sub payloads.
                 if isinstance(data, bytes):
                     data = data.decode("utf-8", errors="replace")
                 await websocket.send_text(data)
 
-            # Lightweight keepalive ping so reverse proxies don't drop the
-            # idle connection. WebSocket pong frames are handled by the
-            # server automatically; we just need traffic.
             now = datetime.now(timezone.utc)
             if (now - last_ping).total_seconds() >= _PING_INTERVAL_SECONDS:
                 try:
                     await websocket.send_json({"type": "ping", "ts": now.isoformat()})
                 except Exception:
-                    # Client may have disconnected mid-send; let the outer
-                    # loop handle the cleanup.
                     break
                 last_ping = now
     except WebSocketDisconnect:
@@ -139,6 +149,99 @@ async def websocket_tasks_endpoint(
         # diagnose unexpected drops.
         logger.warning(
             "WebSocket error for tenant=%s: %s", tenant_id, e, exc_info=True
+        )
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except Exception:
+            pass
+
+
+@router.websocket("/notifications")
+async def websocket_notifications_endpoint(
+    websocket: WebSocket,
+    token: str = Query(default=None),
+):
+    """Live per-user notification stream.
+
+    Subscribes to the Redis channel ``user:{user_id}:notifications`` so each
+    authenticated user receives their own fan-out (notifications are targeted
+    at concrete user ids by ``notification_service.emit``). Auth + connection
+    hygiene mirror ``/ws/tasks`` (subprotocol-preferred token).
+    """
+    resolved_token = await _extract_token(websocket, token)
+    print(f"[WS-DEBUG] /ws/notifications resolved_token={'<set>' if resolved_token else '<None>'}", flush=True)
+    if not resolved_token:
+        await websocket.close(code=1008)
+        return
+
+    try:
+        current_user: TokenData = await get_current_user_ws(resolved_token)
+        print(f"[WS-DEBUG] auth OK user={current_user.user_id}", flush=True)
+    except Exception as e:
+        print(f"[WS-DEBUG] auth RAISED: {type(e).__name__}: {e}", flush=True)
+        logger.info("Notification WebSocket auth rejected: %s", e)
+        await websocket.close(code=1008)
+        return
+
+    subprotocols = websocket.headers.get("sec-websocket-protocol", "")
+    negotiated = None
+    if subprotocols:
+        parts = [p.strip() for p in subprotocols.split(",") if p.strip()]
+        if parts:
+            negotiated = parts[0]
+    await websocket.accept(subprotocol=negotiated)
+
+    user_id = current_user.user_id
+
+    pubsub = redis_client.pubsub()
+    channel = f"user:{user_id}:notifications"
+
+    try:
+        await pubsub.subscribe(channel)
+
+        async def _read_loop():
+            try:
+                while True:
+                    await websocket.receive()
+            except WebSocketDisconnect:
+                pass
+
+        read_task = asyncio.create_task(_read_loop())
+        last_ping = datetime.now(timezone.utc)
+
+        while True:
+            if read_task.done():
+                break
+
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=_POLL_TIMEOUT_SECONDS
+            )
+            if message and message.get("type") == "message":
+                data = message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8", errors="replace")
+                await websocket.send_text(data)
+
+            now = datetime.now(timezone.utc)
+            if (now - last_ping).total_seconds() >= _PING_INTERVAL_SECONDS:
+                try:
+                    await websocket.send_json({"type": "ping", "ts": now.isoformat()})
+                except Exception:
+                    break
+                last_ping = now
+    except WebSocketDisconnect:
+        logger.debug("Notification WebSocket client disconnected (user=%s)", user_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning(
+            "Notification WebSocket error for user=%s: %s", user_id, e, exc_info=True
         )
         try:
             await websocket.close(code=1011)

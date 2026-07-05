@@ -103,6 +103,88 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """Override to handle custom action execution triggered from the UI."""
         raise NotImplementedError(f"Action '{action_id}' is not implemented by {self.domain}.")
 
+    # --- Notifications ---
+
+    def supports_notifications(self) -> bool:
+        """Whether this integration emits rich, event-driven notifications.
+
+        Override to return ``True`` and implement :meth:`get_notifications`
+        to surface threshold breaches, HITL-style prompts, anomaly alerts,
+        daily summaries, etc. — anything beyond the universal "sync done"
+        baseline that the platform emits for every integration.
+
+        Default: ``False`` (only the baseline sync-outcome notification fires).
+        """
+        return False
+
+    def get_notification_types(self) -> List[Any]:
+        """Statically declare the notification kinds this provider can emit.
+
+        Override to return a list of
+        :class:`~integrations.sdk.notifications.NotificationTypeSpec` objects.
+        The platform aggregates them into a "Notifications" tab on each
+        ``IntegrationDetail`` page (conditional on non-empty) AND a
+        per-integration rollup in ``/settings/notifications`` so users can
+        toggle individual types on/off without losing the rest.
+
+        Specs emitted at runtime via :meth:`get_notifications` can link to
+        a declared type via ``NotificationSpec.type_id`` — linked specs
+        are filtered by the user's per-type pref; unlinked specs always
+        pass through (backwards-compatible).
+
+        Default: ``[]`` (no static types — every emitted spec passes through).
+        """
+        return []
+
+    async def get_notifications(
+        self,
+        integration: UserIntegration,
+        *,
+        observations: List[Any],
+        context: Dict[str, Any],
+    ) -> List[Any]:
+        """Return a list of :class:`~integrations.sdk.notifications.NotificationSpec`
+        objects to emit after a sync produces new observations.
+
+        Called by ``integration_sync_service.run_sync`` after observations
+        are persisted. The platform passes the just-persisted
+        ``ObservationCreate`` list and a ``context`` dict containing at least:
+
+        * ``sync_result`` — the :class:`SyncResult` (counts, status, timing)
+        * ``patient_id`` — the integration's resolved patient_id (may be None)
+
+        The platform handles target resolution (default: integration owner
+        only), ``emit()`` dispatch, and per-user preference filtering. The
+        provider only needs to decide *what* the notification should say and
+        *which actions* attach to it.
+
+        Implementations should never raise — return ``[]`` on failure so one
+        bad notification doesn't break the sync.
+
+        Default: ``[]``.
+        """
+        return []
+
+    async def handle_notification_action(
+        self,
+        integration: UserIntegration,
+        action_id: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Handle a clicked action button from an emitted notification.
+
+        The platform routes ``type="post"`` action clicks to this method via
+        ``POST /integrations/{domain}/notification-action/{iid}/{action_id}``.
+        Return an ``ActionResult``-shape dict (``{"message": ..., "results":
+        [DisplayBlock...]}``) — the frontend renders it in a modal.
+
+        Default: ``NotImplementedError`` (providers that don't use POST
+        actions don't need to override).
+        """
+        raise NotImplementedError(
+            f"Notification action '{action_id}' not implemented by {self.domain}."
+        )
+
     # --- Debugging ---
     
     async def log_debug_payload(self, integration: UserIntegration, title: str, payload: Any, level: str = "info"):

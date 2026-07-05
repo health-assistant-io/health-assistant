@@ -109,13 +109,15 @@ def test_tenant_mixin_model_has_fk_declaration():
     """The TenantMixin in base.py must declare the FK so every inheriting
     model gets it by default. Verified via a concrete model that inherits
     only TenantMixin + UUIDMixin (no override)."""
-    from app.models.alert_model import AlertModel
+    from app.models.notification_rule import NotificationRule
 
-    col = AlertModel.__table__.columns.get("tenant_id")
-    assert col is not None, "AlertModel (TenantMixin inheritor) must have tenant_id"
+    col = NotificationRule.__table__.columns.get("tenant_id")
+    assert col is not None, (
+        "NotificationRule (TenantMixin inheritor) must have tenant_id"
+    )
     fks = list(col.foreign_keys)
     assert len(fks) == 1, (
-        f"AlertModel.tenant_id must have exactly one FK (from TenantMixin), got {len(fks)}"
+        f"NotificationRule.tenant_id must have exactly one FK (from TenantMixin), got {len(fks)}"
     )
     fk = fks[0]
     assert fk.column.table.name == "tenants", (

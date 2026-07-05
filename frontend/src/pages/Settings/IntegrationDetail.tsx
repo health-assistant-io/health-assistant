@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { integrationService, CustomAction } from '../../services/integrationService';
+import { integrationService, CustomAction, type IntegrationNotificationType } from '../../services/integrationService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -25,8 +25,12 @@ const IntegrationDetail: React.FC = () => {
   const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [actionResult, setActionResult] = useState<{ result: ActionResult; label: string } | null>(null);
-  
-  const tabParam = searchParams.get('tab') as 'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings' | null;
+  // Per-integration notification types (null = not yet loaded; empty array =
+  // provider declares none → tab stays hidden).
+  const [notifTypes, setNotifTypes] = useState<IntegrationNotificationType[] | null>(null);
+  const [notifBusy, setNotifBusy] = useState<string | null>(null); // type_id while toggling
+
+  const tabParam = searchParams.get('tab') as 'overview' | 'examinations' | 'biomarkers' | 'data' | 'settings' | 'notifications' | null;
   const activeTab = tabParam || 'overview';
 
   const handleTabChange = (tabId: string) => {
@@ -46,6 +50,39 @@ const IntegrationDetail: React.FC = () => {
       integrationService.getAvailable().then(setAvailable).catch(console.error);
     }
   }, [id, currentPatient]);
+
+  // Load per-integration notification types whenever the integration domain
+  // changes (i.e. whenever details load). Cheap call, single endpoint.
+  useEffect(() => {
+    if (!details?.domain) return;
+    setNotifTypes(null);
+    integrationService.getNotificationTypes()
+      .then((res) => {
+        const group = res.integrations.find((g) => g.domain === details.domain);
+        setNotifTypes(group?.types ?? []);
+      })
+      .catch(() => setNotifTypes([]));
+  }, [details?.domain]);
+
+  const handleToggleNotifType = async (typeId: string, nextEnabled: boolean) => {
+    if (!details?.domain) return;
+    setNotifBusy(typeId);
+    // Optimistic
+    setNotifTypes((prev) =>
+      prev?.map((t) => (t.id === typeId ? { ...t, enabled: nextEnabled } : t)) ?? prev
+    );
+    try {
+      await integrationService.updateNotificationTypePref(details.domain, typeId, nextEnabled);
+    } catch (err: any) {
+      // Revert on failure
+      setNotifTypes((prev) =>
+        prev?.map((t) => (t.id === typeId ? { ...t, enabled: !nextEnabled } : t)) ?? prev
+      );
+      toast.error(err?.response?.data?.detail ?? 'Failed to update preference');
+    } finally {
+      setNotifBusy(null);
+    }
+  };
 
   const loadDetails = async () => {
     if (!currentPatient || !id) return;
@@ -331,6 +368,12 @@ const IntegrationDetail: React.FC = () => {
           { id: 'examinations', label: 'Examinations' },
           { id: 'biomarkers', label: 'Biomarkers' },
           { id: 'data', label: 'Raw Data' },
+          // Conditionally show the Notifications tab when the provider
+          // declares any types. Hidden for providers without notification
+          // support (notifTypes === null while loading, [] after if none).
+          ...(notifTypes && notifTypes.length > 0
+            ? [{ id: 'notifications', label: 'Notifications' }]
+            : []),
           { id: 'settings', label: 'Settings' }
         ].map(tab => (
           <button
@@ -615,6 +658,56 @@ const IntegrationDetail: React.FC = () => {
               <p className="text-sm font-medium text-gray-500">No recent raw data found.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'notifications' && notifTypes && notifTypes.length > 0 && (
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
+          <h3 className="text-base font-bold text-gray-900 dark:text-dark-text mb-1">
+            Notification types
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-dark-muted mb-5">
+            Choose which kinds of notifications this integration can send you. Linked to your account, not this specific instance — toggles here apply to every <span className="font-mono">{details.domain}</span> integration you have.
+          </p>
+          <div className="space-y-3">
+            {notifTypes.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-start justify-between gap-4 p-4 border border-gray-100 dark:border-dark-border rounded-xl"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-bold text-gray-900 dark:text-dark-text">{t.label}</p>
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted">
+                      {t.category}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted">
+                      {t.severity}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-dark-muted leading-relaxed">{t.description}</p>
+                  <p className="text-[10px] text-gray-400 mt-1 font-mono">channels: {t.channels.join(', ')}</p>
+                </div>
+                <button
+                  onClick={() => handleToggleNotifType(t.id, !t.enabled)}
+                  disabled={notifBusy === t.id}
+                  className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors mt-1 disabled:opacity-50 ${
+                    t.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-dark-border'
+                  }`}
+                  title={t.enabled ? 'Click to disable' : 'Click to enable'}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 bg-white rounded-full shadow transform transition-transform mt-0.5 ${
+                      t.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 dark:text-dark-muted mt-5 leading-relaxed">
+            These preferences only affect this integration's provider-authored notifications. The platform's per-source ("INTEGRATION") and per-channel ("IN_APP"/"PUSH") toggles in <button onClick={() => navigate('/settings/notifications')} className="text-blue-600 dark:text-blue-400 hover:underline">Notification settings</button> are applied independently.
+          </p>
         </div>
       )}
 

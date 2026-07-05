@@ -27,8 +27,7 @@ def upgrade() -> None:
     with op.batch_alter_table('ai_task_assignments', schema=None) as batch_op:
         batch_op.create_foreign_key('ai_task_assignments_tenant_id_fkey', 'tenants', ['tenant_id'], ['id'], ondelete='CASCADE')
 
-    with op.batch_alter_table('alerts', schema=None) as batch_op:
-        batch_op.create_foreign_key('alerts_tenant_id_fkey', 'tenants', ['tenant_id'], ['id'], ondelete='CASCADE')
+    # 'alerts' table FK skipped — table removed in the squashed initial schema.
 
     with op.batch_alter_table('allergy_catalog', schema=None) as batch_op:
         batch_op.create_foreign_key('allergy_catalog_tenant_id_fkey', 'tenants', ['tenant_id'], ['id'], ondelete='CASCADE')
@@ -192,8 +191,7 @@ def downgrade() -> None:
     with op.batch_alter_table('allergy_catalog', schema=None) as batch_op:
         batch_op.drop_constraint('allergy_catalog_tenant_id_fkey', type_='foreignkey')
 
-    with op.batch_alter_table('alerts', schema=None) as batch_op:
-        batch_op.drop_constraint('alerts_tenant_id_fkey', type_='foreignkey')
+    # 'alerts' table FK drop skipped — table removed in the squashed initial schema.
 
     with op.batch_alter_table('ai_task_assignments', schema=None) as batch_op:
         batch_op.drop_constraint('ai_task_assignments_tenant_id_fkey', type_='foreignkey')

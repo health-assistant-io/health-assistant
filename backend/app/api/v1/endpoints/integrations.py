@@ -1,6 +1,6 @@
 from typing import Any, List, Dict
 import os
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
@@ -11,6 +11,7 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.user_integration import UserIntegration
 from app.models.system_integration import SystemIntegration
+from app.models.user_model import UserModel
 from app.models.fhir.patient import Patient
 from app.models.enums import IntegrationStatus
 from app.core.integration_registry import integration_registry
@@ -379,7 +380,7 @@ async def oauth_callback(
 
     try:
         await provider.complete_oauth(integration, pending, code)
-    except (IntegrationAuthError, IntegrationDataError) as e:
+    except (IntegrationAuthError, IntegrationDataError):
         redirect = (
             f"{_frontend_origin()}/integrations/{domain}/connected"
             f"?integration_id={integration_id}&status=error"
@@ -718,6 +719,195 @@ async def execute_custom_action(
         logger.error(f"Custom action {action_id} failed for {domain}: {e}")
         raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
 
+
+@router.get("/notification-types")
+async def list_notification_types(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Aggregate every enabled integration's declared notification types.
+
+    Returns a list of ``{domain, instance_name, types: [{id, label,
+    description, category, severity, default_enabled, channels, enabled}]}``
+    for every UserIntegration the caller has, where ``enabled`` reflects
+    the caller's per-type pref (defaults to ``default_enabled`` when the
+    user hasn't set an explicit override). Used by both the central
+    ``/settings/notifications`` rollup AND the per-integration tab (the
+    latter filters client-side by domain).
+    """
+    stmt = select(UserIntegration).where(
+        UserIntegration.user_id == current_user.user_id,
+    )
+    integrations = (await db.execute(stmt)).scalars().all()
+
+    # Load the caller's settings once.
+    user_row = (
+        await db.execute(
+            select(UserModel.settings).where(UserModel.id == current_user.user_id)
+        )
+    ).scalar_one_or_none()
+    user_settings = dict(user_row or {})
+
+    out = []
+    for integration in integrations:
+        provider = integration_registry.get_provider(integration.provider)
+        if provider is None:
+            continue
+        getter = getattr(provider, "get_notification_types", None)
+        if getter is None:
+            continue
+        try:
+            types = getter() or []
+        except Exception:
+            logger.exception(
+                "get_notification_types failed for %s", integration.provider
+            )
+            continue
+        if not types:
+            continue
+        out.append({
+            "domain": integration.provider,
+            "instance_name": integration.instance_name,
+            "integration_id": str(integration.id),
+            "types": [
+                {
+                    **t.to_dict(),
+                    "enabled": _resolve_type_enabled(
+                        user_settings, integration.provider, t
+                    ),
+                }
+                for t in types
+            ],
+        })
+    return {"integrations": out}
+
+
+@router.put("/{domain}/notification-types/{type_id}")
+async def update_notification_type_pref(
+    domain: str,
+    type_id: str,
+    payload: Dict[str, Any],
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Set the caller's per-type preference for an integration's notification kind.
+
+    Body: ``{"enabled": bool}``. Stored at
+    ``user.settings["notifications.integration.{domain}.{type_id}"]``.
+    The integration must be one the caller has enabled (404 otherwise).
+    """
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=400, detail="`enabled` (bool) is required")
+
+    # Confirm the caller owns an integration of this domain.
+    stmt = select(UserIntegration.id).where(
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.provider == domain,
+    ).limit(1)
+    has_integration = (await db.execute(stmt)).first() is not None
+    if not has_integration:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No enabled integration for domain '{domain}'",
+        )
+
+    key = f"notifications.integration.{domain}.{type_id}"
+    user = (
+        await db.execute(
+            select(UserModel).where(UserModel.id == current_user.user_id)
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = dict(user.settings or {})
+    if enabled:
+        # Remove the override so it falls back to default_enabled.
+        # (Storing True is also fine but explicit-removal keeps the JSONB tidy.)
+        settings.pop(key, None)
+    else:
+        settings[key] = False
+    user.settings = settings
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(user, "settings")
+    await db.commit()
+    return {
+        "status": "success",
+        "domain": domain,
+        "type_id": type_id,
+        "enabled": enabled,
+    }
+
+
+def _resolve_type_enabled(user_settings: Dict[str, Any], domain: str, type_decl: Any) -> bool:
+    """USER setting wins; otherwise the provider's default_enabled; else True."""
+    key = f"notifications.integration.{domain}.{type_decl.id}"
+    if key in user_settings:
+        return bool(user_settings[key])
+    return getattr(type_decl, "default_enabled", True)
+
+
+@router.post("/{domain}/notification-action/{integration_id}/{action_id}")
+async def execute_notification_action(
+    domain: str,
+    integration_id: str,
+    action_id: str,
+    payload: Dict[str, Any] | None = None,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Dispatch a clicked notification action button to the provider.
+
+    Triggered by the notification detail modal when a user clicks an action
+    of ``type="post"`` (the endpoint path is the action's ``endpoint`` URL).
+    Routes to ``provider.handle_notification_action(integration, action_id,
+    payload)`` — providers return an ActionResult dict that the frontend
+    renders as a follow-up modal.
+
+    Tenant-scoped to the caller (must own the integration).
+    """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+    )
+    integration = (await db.execute(stmt)).scalar_one_or_none()
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    if integration.provider != domain:
+        raise HTTPException(status_code=400, detail="Integration domain mismatch")
+
+    provider = integration_registry.get_provider(domain)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Integration provider not loaded")
+    if not getattr(provider, "supports_notifications", lambda: False)():
+        raise HTTPException(
+            status_code=400,
+            detail="Provider does not support notification actions",
+        )
+
+    try:
+        response = await provider.handle_notification_action(
+            integration, action_id, payload or {}
+        )
+        # Persist any provider-side state changes (cursor bumps, ack flags, etc.)
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(integration, "user_config")
+        await db.commit()
+        return response
+    except NotImplementedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(
+            "Notification action %s failed for %s: %s", action_id, domain, e
+        )
+        raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
+
 @router.post("/instance/{integration_id}/sync")
 async def sync_integration(
     integration_id: str,
@@ -956,7 +1146,6 @@ async def integration_webhook(
             )
 
     from app.models.user_integration import IntegrationSyncLog
-    import datetime
 
     try:
         payload = (
@@ -1053,6 +1242,29 @@ async def integration_webhook(
         db.add(sync_log)
         
         await db.commit()
+        # Best-effort notification dispatch (baseline + provider-authored).
+        # Closes the webhook→notification gap: previously webhooks bypassed
+        # run_sync entirely, so neither the "synced N records" baseline nor
+        # any provider-authored threshold/HITL notifications fired for
+        # webhook-driven integrations.
+        try:
+            from app.services.integration_sync_service import post_sync_notifications
+            await post_sync_notifications(
+                provider,
+                integration,
+                pulled=count,
+                fhir_persisted=count,  # webhook handler doesn't split FHIR vs telemetry today
+                telemetry_persisted=0,
+                status="success",
+                started_at=start_time,
+                completed_at=integration.last_synced_at,
+                observations=observations_data or [],
+            )
+        except Exception as webhook_notif_err:
+            logger.warning(
+                "Webhook post-sync notification dispatch failed for %s: %s",
+                domain, webhook_notif_err,
+            )
         return {"message": "Webhook processed successfully", "metrics_synced": count}
     except Exception as e:
         await db.rollback()
@@ -1065,17 +1277,40 @@ async def integration_webhook(
                 pass
                 
         # Log failure
+        failure_completed = datetime.datetime.now(datetime.timezone.utc)
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
             status="failed",
             records_synced=0,
-            started_at=datetime.datetime.now(datetime.timezone.utc),
-            completed_at=datetime.datetime.now(datetime.timezone.utc),
+            started_at=start_time,
+            completed_at=failure_completed,
             error_message=str(e)
         )
         db.add(sync_log)
         await db.commit()
+        # Best-effort failure notification — webhooks previously failed silently
+        # from the user's POV (no row in the inbox, no admin escalation).
+        try:
+            from app.services.integration_sync_service import post_sync_notifications
+            await post_sync_notifications(
+                provider,
+                integration,
+                pulled=0,
+                fhir_persisted=0,
+                telemetry_persisted=0,
+                status="failed",
+                started_at=start_time,
+                completed_at=failure_completed,
+                error=str(e),
+                error_type="data",
+                observations=[],
+            )
+        except Exception as webhook_notif_err:
+            logger.warning(
+                "Webhook failure-notification dispatch failed for %s: %s",
+                domain, webhook_notif_err,
+            )
         raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
 
 @router.api_route("/{domain}/api/{integration_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])

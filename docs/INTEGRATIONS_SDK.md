@@ -419,6 +419,222 @@ Requires: `INTEGRATION_SECRET_KEY` (Fernet) + Redis (`REDIS_URL`) configured.
 
 ---
 
+### 3.9 Notifications (Event-Driven, Rich, Actionable)
+
+Providers can emit rich, event-driven notifications — threshold alerts, HITL-style prompts, anomaly flags, daily summaries — by overriding three opt-in hooks on `BaseHealthProvider`. The pattern mirrors `supports_tools` / `get_tools` (§3.6) and `get_custom_actions` / `execute_custom_action` (§3.5): safe defaults, no per-domain code in any endpoint, providers opt in by overriding.
+
+The platform emits two kinds of notifications for every integration:
+
+1. **Baseline** (always on, automatic) — "synced N records" / "sync failed" from `integration_sync_service._notify_sync_outcome`. Universal, no provider code required.
+2. **Provider-authored** (opt-in) — domain-specific events from `get_notifications`. The provider inspects the just-synced observations and decides what (if anything) to surface to the user.
+
+#### Hooks
+
+There are three runtime hooks (`supports_notifications`, `get_notifications`, `handle_notification_action` — documented below) plus one static declaration hook (`get_notification_types` — documented in the **Per-type user preferences** subsection at the end of §3.9).
+
+```python
+class MyProvider(BaseHealthProvider):
+    def supports_notifications(self) -> bool:
+        """Return True to opt in. Default False — existing providers unaffected."""
+        return True
+
+    async def get_notifications(
+        self,
+        integration: UserIntegration,
+        *,
+        observations: List[ObservationCreate],
+        context: Dict[str, Any],
+    ) -> List[NotificationSpec]:
+        """Inspect the just-persisted observations + return specs to emit.
+
+        ``context`` contains:
+          * ``sync_result`` — SyncResult (counts, status, timing)
+          * ``patient_id`` — the integration's resolved patient_id (may be None)
+          * ``integration_id`` / ``domain`` — identifying metadata
+
+        Default: ``[]``. Never raise — swallow errors and return ``[]`` so one
+        bad notification doesn't break the sync.
+        """
+        return []
+
+    async def handle_notification_action(
+        self,
+        integration: UserIntegration,
+        action_id: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Handle a clicked action button of ``type='post'``.
+
+        Default: ``NotImplementedError``. Override only when you emit POST
+        actions. Return an ``action_result(...)`` dict; the frontend renders
+        it in a follow-up modal with the same DisplayBlocks renderer used
+        by ``execute_custom_action``.
+        """
+        raise NotImplementedError(...)
+```
+
+#### `NotificationSpec` builder
+
+```python
+from integrations.sdk import NotificationSpec
+from integrations.sdk.display import kv_block, table_block
+
+spec = (
+    NotificationSpec.builder(
+        title="Elevated heart rate detected",
+        body="120 bpm observed (reference 60–100).",
+        category="alert",        # any NotificationCategory value
+        severity="warning",      # info | warning | critical
+        type="INTEGRATION_EVENT",  # any NotificationType value (default)
+    )
+    .patient_id(integration.patient_id)
+    .source_ref("biomarker_code", "8867-4")
+    .add_link_action(
+        "View trend",                       # navigate (relative URL → router)
+        f"/patients/{pid}",                 # ← patient dashboard; see "Deep-link gotcha" below
+        style="primary",
+    )
+    .add_post_action(
+        "Acknowledge",                      # POST → handle_notification_action
+        endpoint=f"/integrations/{self.domain}/notification-action/{iid}/ack",
+        style="ghost",
+    )
+    .display_block(                         # rendered in the notification modal
+        kv_block("Reading", {"value": 120, "unit": "bpm", "range": "60–100"})
+    )
+    .build()
+)
+```
+
+**Builder methods:**
+
+| Method | Purpose |
+|---|---|
+| `body_text(s)` | Override the body |
+| `patient_id(pid)` | Attach patient context (linked FHIR Communication gets written automatically for clinical categories) |
+| `payload_field(k, v)` | Add an arbitrary key to `payload` |
+| `source_ref(k, v)` | Add an arbitrary key to `source_ref` (the platform auto-injects `integration_id` + `provider`) |
+| `add_link_action(label, url, *, style)` | Button that navigates to an app URL |
+| `add_post_action(label, *, endpoint, style)` | Button that POSTs to a platform endpoint that dispatches to `handle_notification_action` |
+| `add_action(NotificationAction)` | Build-it-yourself escape hatch |
+| `display_block(block)` | Attach a DisplayBlock (`kv_block` / `list_block` / `table_block` / `json_block` / `text_block` / `code_block`) |
+| `targets([{kind, id}])` | Override the default "integration owner only" target |
+
+#### Action button contract
+
+The frontend renders `payload.actions[]` and supports:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Unique per notification |
+| `label` | string | Button text |
+| `type` | `"link"` \| `"post"` | `link` → navigate; `post` → POST to `endpoint` |
+| `url` | string? | Required for `type="link"`. Relative URL → react-router; absolute → new tab |
+| `endpoint` | string? | Required for `type="post"`. Always under `/integrations/{domain}/notification-action/{iid}/{action_id}` |
+| `method` | string | Default `"POST"` |
+| `style` | `"primary"` \| `"danger"` \| `"ghost"` \| `"default"` | Visual treatment |
+
+POST clicks route through `POST /api/v1/integrations/{domain}/notification-action/{integration_id}/{action_id}` (tenant-scoped to the integration owner) → `provider.handle_notification_action(integration, action_id, payload)`. The return value is rendered in the same modal pattern as `execute_custom_action` results (§3.5).
+
+##### Deep-link gotcha: biomarker detail
+
+The biomarker detail route is **`/biomarkers/details/<definition-UUID>`** — not patient-scoped, and the path segment is the biomarker **definition id** (a UUID), **not** the LOINC code (e.g. `8867-4`). A URL like `/patients/{pid}/biomarkers/details/8867-4` will 404. Providers don't know the definition UUID at notification-emit time (only the LOINC they emitted in `ObservationBuilder.set_biomarker`), so deep-linking directly to a specific biomarker's detail page is generally not possible from a notification. Link to the **patient dashboard** (`/patients/{pid}`) instead — the user sees all biomarkers in context and can pick out the relevant one. The `dev_dummy` provider demonstrates this pattern.
+
+#### Categories
+
+`category` accepts any `NotificationCategory` value. Integrations commonly use:
+
+- `"integration"` — default, neutral sync events
+- `"alert"` — threshold breaches
+- `"hitl"` — prompts that need user review/confirmation
+- `"agent"` — AI-style prompts (e.g. "Open chat to discuss")
+- `"system"` — daily summaries, informational
+
+Pick whatever fits the message — there's no enforcement that an integration must use `"integration"`.
+
+#### When notifications fire
+
+The platform calls `get_notifications`:
+
+1. After every **pull sync** (`run_sync`) that successfully persists ≥1 observation.
+2. After every **webhook** that successfully processes ≥1 observation (closing the historical gap where webhooks bypassed `run_sync`).
+3. **Not** on skipped syncs (rate-limit / no new data) — stay silent, matching the baseline behavior.
+
+`source_ref.integration_id` is auto-injected so the admin center can group/filter by integration.
+
+#### Targeting
+
+Default = integration owner (USER target). Override per-spec with `targets([{kind, id}])` to also reach a patient's care team (`kind="PATIENT"`), a specific doctor (`kind="DOCTOR"`), or the whole tenant (`kind="TENANT"`). See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md) for the full target resolver spec.
+
+Per-user preference filtering is applied at `emit()` time — if the recipient has disabled the `INTEGRATION` source or the relevant channel in their settings, the notification is silently dropped for them (admin center still sees the event row).
+
+#### Per-type user preferences (opt-out)
+
+Providers can statically declare the notification **kinds** they emit, so users can toggle individual kinds on/off without losing the rest. Mirrors Android Notification Channels / iOS per-app categories. The pattern matches `get_custom_actions` (§3.5): static declaration, single-line override, platform-aggregated UI.
+
+**Declaration** — override `get_notification_types` on the provider:
+
+```python
+from integrations.sdk import NotificationTypeSpec
+
+class MyProvider(BaseHealthProvider):
+    def get_notification_types(self) -> list[NotificationTypeSpec]:
+        return [
+            NotificationTypeSpec(
+                id="elevated_heart_rate",
+                label="Elevated heart-rate alerts",
+                description="Fires when a synced heart-rate reading exceeds 100 bpm.",
+                category="alert",         # suggested category
+                severity="warning",       # suggested severity
+                default_enabled=True,     # opt-OUT convention (see below)
+                channels=("IN_APP", "PUSH"),  # advisory
+            ),
+            NotificationTypeSpec(
+                id="daily_summary",
+                label="Per-sync summary",
+                description="Informational table of every measurement imported.",
+                category="system",
+                severity="info",
+                default_enabled=True,
+            ),
+        ]
+```
+
+**Linkage** — tag runtime specs with `type_id`:
+
+```python
+spec = (
+    NotificationSpec.builder(title="Elevated heart rate", ...)
+    .type_id("elevated_heart_rate")   # link to the declared type
+    .build()
+)
+```
+
+**Filtering** — the platform drops specs whose `type_id` the integration owner has muted, before dispatching. Prefs live at `user.settings["notifications.integration.{domain}.{type_id}"] = False`. Specs without a `type_id` always pass through (backwards-compatible — providers that don't declare types are unaffected).
+
+**Default-on convention**: providers SHOULD set `default_enabled=True` for every type. Users opt OUT, not IN. The platform baseline is already opt-in (`supports_notifications()` returns `False` by default) — once a provider opts in, the types should default ON. Otherwise nobody discovers the feature. Reserve `default_enabled=False` for types that are genuinely noisy in practice (rare).
+
+**Storage**: prefs are keyed by `(domain, type_id)`, NOT by integration instance. A user with two Fitbit accounts shares the same per-type prefs across both. This avoids state explosion; per-instance prefs are a power-user feature for later.
+
+**UI surfaces** (auto-rendered by the platform; no per-domain code):
+1. **IntegrationDetail → "Notifications" tab** (conditional — only renders when `get_notification_types()` returns ≥1 type). Each type shown with label, description, category/severity badges, channels hint, and a toggle switch. Deep-links to the central settings page.
+2. **`/settings/notifications` → "Per-integration notification types" collapsible** (under "Advanced"; auto-hidden when no integrations declare types). Aggregates every enabled integration's types in one place. Deep-links back into each integration's tab.
+
+**Three filter layers compose cleanly** — all enforced server-side at `emit()` / `_emit_provider_notifications` time:
+- **Per-source** (global): "mute all INTEGRATION notifications" — `notifications.sources.INTEGRATION = false`
+- **Per-channel** (global): "no PUSH, only IN_APP" — `notifications.channels.PUSH = false`
+- **Per-integration-type** (specific): "mute dev_dummy daily summaries" — `notifications.integration.dev_dummy.daily_summary = false`
+
+A notification fires only if it passes ALL three layers.
+
+**Limitation**: the per-type filter is keyed on the **integration owner's** prefs. If a spec broadcasts beyond the owner (via `targets_override`), recipients past the owner still receive it — they're filtered only by the per-source + per-channel layers. Per-recipient type prefs would require coupling `emit()` to integration concepts, which is out of scope.
+
+#### Worked example: `integrations/dev_dummy/`
+
+The dev dummy provider overrides `supports_notifications() → True`, declares **4 NotificationTypeSpecs** covering every category/severity combination (alert/warning, hitl/warning, system/info, agent/critical), tags every emitted spec with the matching `type_id`, and implements `handle_notification_action` for the Acknowledge / Dismiss buttons. Read `integrations/dev_dummy/provider.py` as a copy-paste reference for the full type-declaration + runtime-link + action-handler round-trip.
+
+---
+
 ## 4. Building FHIR Observations
 Use the `ObservationBuilder` to map raw third-party data into FHIR compliant schemas easily.
 

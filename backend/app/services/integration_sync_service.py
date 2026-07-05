@@ -26,6 +26,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
@@ -207,6 +208,88 @@ async def _release_lock(lock_key: str) -> None:
         pass  # TTL is the crash-recovery fallback
 
 
+async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
+    """Surface sync results to the integration owner (best-effort).
+
+    * New data arrived  → INTEGRATION_EVENT (info).
+    * Auth/data failure → SYNC_FAILURE (warning) to owner + tenant admins.
+
+    Rate-limit and skip outcomes are silent (transient / no action needed).
+    """
+    try:
+        from app.models.enums import (
+            NotificationCategory,
+            NotificationSeverity,
+            NotificationSource,
+            NotificationType,
+            RecipientKind,
+            Role,
+        )
+        from app.services.notification_service import emit
+        from sqlalchemy import select
+        from app.models.user_model import UserModel
+
+        tenant_id = integration.tenant_id
+        targets: list[dict] = [
+            {"kind": RecipientKind.USER.value, "id": str(integration.user_id)}
+        ]
+
+        is_failure = result.status == "failed" and result.error_type in ("auth", "data")
+        total_new = result.fhir_persisted + result.telemetry_persisted
+        if not is_failure and total_new == 0:
+            return  # nothing arrived and nothing failed — stay silent
+
+        if is_failure:
+            severity = NotificationSeverity.WARNING
+            ntype = NotificationType.SYNC_FAILURE
+            title = f"{integration.provider} sync failed"
+            body = result.error or "The integration sync failed and may need re-authorization."
+            async with AsyncSessionLocal() as session:
+                admin_ids = [
+                    row[0]
+                    for row in (
+                        await session.execute(
+                            select(UserModel.id).where(
+                                UserModel.tenant_id == tenant_id,
+                                UserModel.role.in_(
+                                    [
+                                        Role.ADMIN.value,
+                                        Role.MANAGER.value,
+                                        Role.SYSTEM_ADMIN.value,
+                                    ]
+                                ),
+                            )
+                        )
+                    ).all()
+                ]
+            for uid in admin_ids:
+                targets.append({"kind": RecipientKind.USER.value, "id": str(uid)})
+        else:
+            severity = NotificationSeverity.INFO
+            ntype = NotificationType.INTEGRATION_EVENT
+            title = f"{integration.provider} synced {total_new} new record{'s' if total_new != 1 else ''}"
+            body = f"{integration.instance_name}: {total_new} measurement(s) imported."
+
+        await emit(
+            source=NotificationSource.INTEGRATION,
+            type=ntype,
+            category=NotificationCategory.INTEGRATION,
+            severity=severity,
+            title=title,
+            body=body,
+            tenant_id=tenant_id,
+            targets=targets,
+            payload={"integration_id": str(integration.id), "provider": integration.provider},
+            source_ref={
+                "integration_id": str(integration.id),
+                "provider": integration.provider,
+                "status": result.status,
+            },
+        )
+    except Exception:
+        logger.exception("Integration sync notification failed")
+
+
 async def run_sync(
     db: AsyncSession,
     integration: Any,
@@ -249,6 +332,7 @@ async def run_sync(
             except Exception:
                 pass
 
+    result: Optional[SyncResult] = None
     try:
         # ---- pull ----
         observations_data = await provider.pull_data(integration)
@@ -323,7 +407,7 @@ async def run_sync(
         db.add(sync_log)
         await db.commit()
 
-        return SyncResult(
+        result = SyncResult(
             pulled=pulled,
             fhir_persisted=fhir_count,
             telemetry_persisted=telemetry_count,
@@ -333,6 +417,7 @@ async def run_sync(
             started_at=started,
             completed_at=completed,
         )
+        return result
 
     except IntegrationAuthError as e:
         await db.rollback()
@@ -341,10 +426,11 @@ async def run_sync(
         integration.status = IntegrationStatus.ERROR
         _write_failed_log(db, integration, started, str(e))
         await db.commit()
-        return SyncResult(
+        result = SyncResult(
             status="failed", error=str(e), error_type="auth",
             started_at=started, completed_at=_now(),
         )
+        return result
 
     except IntegrationRateLimitError as e:
         await db.rollback()
@@ -352,10 +438,11 @@ async def run_sync(
         await _debug("Rate Limit Error", {"error": str(e), "source": source}, level="warning")
         _write_failed_log(db, integration, started, "Rate Limit Exceeded. Will retry later.")
         await db.commit()
-        return SyncResult(
+        result = SyncResult(
             status="failed", error=str(e), error_type="rate_limit",
             started_at=started, completed_at=_now(),
         )
+        return result
 
     except Exception as e:
         await db.rollback()
@@ -363,13 +450,37 @@ async def run_sync(
         await _debug("Sync Error", {"error": str(e), "source": source}, level="error")
         _write_failed_log(db, integration, started, str(e))
         await db.commit()
-        return SyncResult(
+        result = SyncResult(
             status="failed", error=str(e), error_type="data",
             started_at=started, completed_at=_now(),
         )
+        return result
 
     finally:
         await _release_lock(lock_key)
+        # Best-effort notification dispatch (baseline + provider-authored).
+        # Wrapped in post_sync_notifications so a notification failure can
+        # never break the sync result. Same helper is called from the
+        # webhook handler so both code paths get identical coverage.
+        if result is not None:
+            try:
+                await post_sync_notifications(
+                    provider,
+                    integration,
+                    pulled=result.pulled,
+                    fhir_persisted=result.fhir_persisted,
+                    telemetry_persisted=result.telemetry_persisted,
+                    status=result.status,
+                    started_at=result.started_at or started,
+                    completed_at=result.completed_at or _now(),
+                    error=result.error,
+                    error_type=result.error_type,
+                    observations=observations_data or [],
+                )
+            except Exception:
+                logger.exception(
+                    "post_sync_notifications raised for %s", integration.id
+                )
 
 
 def _write_failed_log(
@@ -389,3 +500,230 @@ def _write_failed_log(
             error_message=error,
         )
     )
+
+
+async def _filter_specs_by_owner_type_prefs(
+    integration: Any, specs: list[Any]
+) -> list[Any]:
+    """Drop specs whose declared ``type_id`` the integration owner has muted.
+
+    Per-integration-type preferences live at
+    ``user.settings["notifications.integration.{domain}.{type_id}"] = False``.
+    Specs without a ``type_id`` always pass through. Loads the owner's
+    settings once (single query); returns the input list unchanged on any
+    error so a settings-lookup failure can never suppress notifications.
+    """
+    if not specs:
+        return specs
+    # Fast path: nothing is tagged.
+    if not any(getattr(s, "type_id", None) for s in specs):
+        return specs
+
+    try:
+        from app.models.user_model import UserModel
+
+        async with AsyncSessionLocal() as session:
+            row = (
+                await session.execute(
+                    select(UserModel.settings).where(UserModel.id == integration.user_id)
+                )
+            ).scalar_one_or_none()
+        user_settings = dict(row or {})
+    except Exception:
+        logger.exception(
+            "Failed to load user settings for type pref filter; passing all specs through (user=%s)",
+            integration.user_id,
+        )
+        return specs
+
+    domain = integration.provider
+    out: list[Any] = []
+    for spec in specs:
+        tid = getattr(spec, "type_id", None)
+        if not tid:
+            out.append(spec)
+            continue
+        key = f"notifications.integration.{domain}.{tid}"
+        if user_settings.get(key, True) is False:
+            logger.debug(
+                "Filtering integration notification (user=%s domain=%s type_id=%s — muted)",
+                integration.user_id, domain, tid,
+            )
+            continue
+        out.append(spec)
+    return out
+
+
+async def _emit_provider_notifications(
+    provider: Any,
+    integration: Any,
+    result: "SyncResult",
+    observations: list[Any],
+) -> None:
+    """Ask the provider for rich, event-driven notifications and emit them.
+
+    Called from ``run_sync``'s ``finally`` block after a successful/partial
+    sync, AND from the webhook handler (see :func:`post_sync_notifications`).
+    The provider's :meth:`get_notifications` returns a list of
+    :class:`~integrations.sdk.notifications.NotificationSpec`. The platform
+    emits each with:
+
+    * ``source=NotificationSource.INTEGRATION``
+    * ``targets`` default = integration owner (USER); providers can override
+      via ``spec.targets_override``
+    * ``patient_id`` from the spec (defaults to ``integration.patient_id``)
+    * ``tenant_id`` from the integration
+    * ``source_ref.integration_id`` automatically added (admin filter/group)
+
+    Failures are logged and swallowed — never propagate to the sync result.
+    """
+    if provider is None or not getattr(provider, "supports_notifications", lambda: False)():
+        return
+
+    context = {
+        "sync_result": result,
+        "patient_id": str(integration.patient_id) if integration.patient_id else None,
+        "integration_id": str(integration.id),
+        "domain": integration.provider,
+    }
+    try:
+        specs = await provider.get_notifications(
+            integration, observations=observations, context=context
+        )
+    except Exception:
+        logger.exception(
+            "Provider %s get_notifications raised; skipping",
+            integration.provider,
+        )
+        return
+
+    if not specs:
+        return
+
+    # Filter specs whose declared type_id the integration owner has opted
+    # out of. Prefs live at user.settings["notifications.integration.
+    # {domain}.{type_id}"] = False. Specs without a type_id always pass
+    # through (backwards-compatible). When a spec uses targets_override
+    # (broadcast beyond the owner), we still apply the owner's pref — the
+    # owner is the one who configured the integration and is the canonical
+    # audience; per-recipient type prefs would require pushing this filter
+    # down into emit() and coupling it to integration concepts, which we
+    # explicitly avoid.
+    filtered_specs = await _filter_specs_by_owner_type_prefs(
+        integration, specs
+    )
+    if not filtered_specs:
+        return
+
+    from app.models.enums import (
+        NotificationCategory,
+        NotificationSeverity,
+        NotificationSource,
+        NotificationType,
+        RecipientKind,
+    )
+    from app.services.notification_service import emit
+
+    for spec in filtered_specs:
+        try:
+            # Category / severity / type — accept both enum and string value.
+            category = _coerce_enum(spec.category, NotificationCategory, NotificationCategory.INTEGRATION)
+            severity = _coerce_enum(spec.severity, NotificationSeverity, NotificationSeverity.INFO)
+            ntype = _coerce_enum(spec.type, NotificationType, NotificationType.INTEGRATION_EVENT)
+
+            patient_id = spec.patient_id or integration.patient_id
+            targets = spec.targets_override or [
+                {"kind": RecipientKind.USER.value, "id": str(integration.user_id)}
+            ]
+
+            source_ref = dict(spec.source_ref)
+            source_ref.setdefault("integration_id", str(integration.id))
+            source_ref.setdefault("provider", integration.provider)
+
+            await emit(
+                source=NotificationSource.INTEGRATION,
+                type=ntype,
+                category=category,
+                severity=severity,
+                title=spec.title,
+                body=spec.body,
+                patient_id=patient_id,
+                tenant_id=integration.tenant_id,
+                targets=targets,
+                payload=spec.to_payload(),
+                source_ref=source_ref,
+                sender_user_id=None,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to emit provider notification %r for %s",
+                getattr(spec, "title", "?"),
+                integration.id,
+            )
+            continue
+
+
+async def post_sync_notifications(
+    provider: Any,
+    integration: Any,
+    *,
+    pulled: int,
+    fhir_persisted: int,
+    telemetry_persisted: int,
+    status: str,
+    started_at: datetime,
+    completed_at: datetime,
+    error: Optional[str] = None,
+    error_type: Optional[str] = None,
+    observations: Optional[list[Any]] = None,
+) -> None:
+    """Best-effort baseline + provider-authored notification dispatch.
+
+    Single entry point called from BOTH ``run_sync``'s finally block AND
+    the webhook endpoint so webhook-driven integrations get the same
+    notification coverage as pull-driven ones. Constructs a throwaway
+    :class:`SyncResult` and invokes both emitters. Never raises — wraps
+    every step in try/except so a notification failure can never break
+    the parent sync / webhook response.
+    """
+    result = SyncResult(
+        pulled=pulled,
+        fhir_persisted=fhir_persisted,
+        telemetry_persisted=telemetry_persisted,
+        status=status,
+        error=error,
+        error_type=error_type,
+        started_at=started_at,
+        completed_at=completed_at,
+    )
+    try:
+        await _notify_sync_outcome(integration, result)
+    except Exception:
+        logger.exception(
+            "Sync-outcome notification failed for %s", integration.id
+        )
+    if (
+        status in ("success", "partial")
+        and (fhir_persisted + telemetry_persisted) > 0
+    ):
+        try:
+            await _emit_provider_notifications(
+                provider, integration, result, observations or []
+            )
+        except Exception:
+            logger.exception(
+                "Provider-authored notifications failed for %s", integration.id
+            )
+
+
+def _coerce_enum(value: Any, enum_cls: Any, default: Any) -> Any:
+    """Best-effort coerce a string or enum member to the enum class."""
+    if value is None:
+        return default
+    try:
+        return enum_cls(value)
+    except Exception:
+        try:
+            return enum_cls[value]
+        except Exception:
+            return default

@@ -21,6 +21,59 @@ from app.models.enums import HitlTaskStatus
 from app.models.examination_model import ExaminationModel
 
 
+async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
+    """Surface a HITL proposal in the recipient's notification inbox so it
+    survives a closed chat window. Best-effort — never breaks the tool call.
+    """
+    if not ctx.user_id:
+        return
+    try:
+        from app.services.notification_service import emit
+        from app.models.enums import (
+            NotificationCategory,
+            NotificationSeverity,
+            NotificationSource,
+            NotificationType,
+            RecipientKind,
+        )
+
+        await emit(
+            source=NotificationSource.AGENT,
+            type=NotificationType.HITL_TASK,
+            category=NotificationCategory.HITL,
+            severity=NotificationSeverity.WARNING,
+            title=task.get("title", "AI proposal needs your review"),
+            body="The assistant prepared an action for your confirmation.",
+            patient_id=ctx.patient_id,
+            tenant_id=ctx.tenant_id,
+            targets=[{"kind": RecipientKind.USER.value, "id": str(ctx.user_id)}],
+            payload={
+                "task_type": task.get("task_type"),
+                "proposal_id": task.get("proposal_id"),
+                "actions": [
+                    {
+                        "id": "open_chat",
+                        "label": "Open chat",
+                        "type": "link",
+                        "url": "/ai-assistant",
+                        "style": "primary",
+                    }
+                ],
+            },
+            source_ref={
+                "proposal_id": task.get("proposal_id"),
+                "task_type": task.get("task_type"),
+            },
+            sender_user_id=ctx.user_id,
+            link_communication=ctx.patient_id is not None,
+        )
+    except Exception:
+        # Tool results must never fail because of a notification side-effect.
+        import logging
+
+        logging.getLogger(__name__).exception("HITL notification emit failed")
+
+
 @register_chat_tool("hitl_proposals")
 def build(ctx: ToolContext) -> List[Any]:
     @tool
@@ -91,6 +144,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
@@ -220,6 +274,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
@@ -299,6 +354,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
@@ -372,6 +428,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
@@ -423,6 +480,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
@@ -451,6 +509,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "resolved": None,
         }
+        await _notify_hitl_proposal(ctx, task)
         return json.dumps({"__hitl__": True, "task": task})
 
     return [
