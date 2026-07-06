@@ -86,7 +86,7 @@ Pygments==2.20.0
 pylibjpeg==2.1.0
 pylibjpeg-libjpeg==2.4.0
 pytesseract==0.3.13
-pytest==9.0.3
+pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
 pytest-dotenv==0.5.2
