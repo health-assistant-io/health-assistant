@@ -29,7 +29,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-grid-layout": "^2.2.2",
-    "react-i18next": "^16.5.8",
+    "react-i18next": "^17.0.8",
     "react-image-crop": "^11.0.10",
     "react-markdown": "^10.1.0",
     "react-quill-new": "~3.7.0",
