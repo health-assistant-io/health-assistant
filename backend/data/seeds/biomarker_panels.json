@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health Assistant",
+    "last_updated": "2026-07-07",
+    "description": "Biomarker panel membership: each item links a biomarker definition (by slug) to a biomarker_panel concept (by slug) via a MEMBER_OF concept_edge."
+  },
+  "items": [
+    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-total" },
+    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-hdl" },
+    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-ldl" },
+    { "panel_slug": "lipid-panel", "biomarker_slug": "triglycerides" },
+    { "panel_slug": "cbc-panel", "biomarker_slug": "hemoglobin" },
+    { "panel_slug": "cbc-panel", "biomarker_slug": "wbc" },
+    { "panel_slug": "cbc-panel", "biomarker_slug": "platelets" }
+  ]
+}

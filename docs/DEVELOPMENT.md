@@ -33,11 +33,25 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
    - **Flower (Celery Monitoring):** [http://localhost:5555](http://localhost:5555) - *Real-time view of background workers, queues, and task history.*
 
    The unified script (`scripts/run-dev.sh`) runs every dev process under
-   [honcho](https://github.com/nickstenning/honcho) using `Procfile.dev`:
+   [honcho](https://github.com/nickstenxing/honcho) using `Procfile.dev`:
    `backend`, `worker`, `beat`, `flower`, and `frontend`. A single `Ctrl+C`
    cleanly stops all of them, and if any process crashes honcho stops the
    others so you see the error immediately in the foreground. To start just
    one process (e.g. the worker): `honcho start worker -f Procfile.dev`.
+
+   **Wiping the dev database:** when a migration diverges from your local
+   schema or seed data gets into a bad state, `scripts/reset-dev-db.sh`
+   stops the dev Postgres + Redis containers, removes their volumes, and
+   brings up a fresh empty database + cache (it confirms before destroying
+   anything and waits for Postgres to be healthy). Flags: `-y` (skip
+   confirm), `--keep-redis`, `--no-start`, `--migrate`, `--purge-dangling`.
+   Pair with `./scripts/run-dev.sh` afterwards — it re-runs `seed_all()` on
+   the fresh DB.
+
+   ```bash
+   ./scripts/reset-dev-db.sh -y        # wipe + restart the dev DB stack
+   ./scripts/reset-dev-db.sh -y --migrate   # also apply migrations so pytest works immediately
+   ```
 
 ### Alternative: All-in-Docker Development
 
@@ -136,6 +150,22 @@ npm run lint
 - Vite provides HMR (Hot Module Replacement).
 - Check browser console for errors.
 - Use React DevTools for state debugging.
+
+## Seed System
+
+All reference/catalog data (medications, clinical event types, allergies, anatomy, the taxonomy, the default biomarker catalog, biomarker panel memberships) is seeded on every application startup by `SeedService.seed_all()` — a single ordered pipeline (`backend/app/services/seed_service.py`). The order is declared in `_SEED_STAGE_NAMES` so dependencies land first (e.g. `concepts` before `concept_edges`; `body_parts` before `concept_edges` which resolve anatomy slugs).
+
+Each stage returns a standard stats contract `{added, updated, skipped, errors}` and is **idempotent** — re-runs reconcile existing rows to the JSON (including a concept's multi-kind tags), so editing a seed file and restarting is the normal way to evolve catalog data. Seed files live under `backend/data/seeds/` and use a standard `{metadata, items}` envelope.
+
+To re-run a single stage against a running DB (without restarting the app):
+```bash
+cd backend && source venv/bin/activate
+export PYTHONPATH=.:../
+python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_concepts())"
+```
+(replace `seed_concepts` with any of the `_SEED_STAGE_NAMES` methods.)
+
+See [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) for the anatomy graph, demo data, and screenshot-friendly frozen-date seeding.
 
 ## Extending Clinical Events
 

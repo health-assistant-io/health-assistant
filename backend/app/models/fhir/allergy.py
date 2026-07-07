@@ -10,7 +10,12 @@ from app.models.base import (
     SoftDeleteMixin,
 )
 from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus
-from app.services.fhir_helpers import _enum_value, build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir_helpers import (
+    _enum_value,
+    build_fhir_resource,
+    build_meta,
+    fhir_isoformat,
+)
 
 
 class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
@@ -43,7 +48,13 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
 
 
 class AllergyIntolerance(
-    Base, UUIDMixin, TenantMixin, TimestampMixin, AuditMixin, VersionedMixin, SoftDeleteMixin
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    TimestampMixin,
+    AuditMixin,
+    VersionedMixin,
+    SoftDeleteMixin,
 ):
     __tablename__ = "fhir_allergy_intolerances"
 

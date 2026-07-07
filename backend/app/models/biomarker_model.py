@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, ForeignKey, Integer, Enum, Text, Boolean
+from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -36,10 +36,17 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     __tablename__ = "biomarker_definitions"
 
     slug = Column(String(255), unique=True, nullable=False, index=True)
-    coding_system = Column(Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC)
+    coding_system = Column(
+        Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC
+    )
     code = Column(String(100), nullable=True)
     name = Column(String(255), nullable=False)
-    category = Column(String(100), nullable=True)
+    class_concept_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     preferred_unit_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("units.id", ondelete="SET NULL"),
@@ -60,46 +67,13 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
 
     # Relationships
     preferred_unit = relationship("Unit", lazy="selectin")
+    class_concept = relationship("Concept", lazy="selectin")
 
-
-class BiomarkerGroup(Base, UUIDMixin, AuditMixin, TimestampMixin, TenantMixin):
-    __tablename__ = "biomarker_groups"
-
-    name = Column(String(255), nullable=False)
-    type = Column(String(100), nullable=True)  # e.g., "Panel"
-    display_order = Column(Integer, default=0)
-    tenant_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=True,
-    )
-
-    # Relationships
-    members = relationship(
-        "BiomarkerGroupMember", back_populates="group", cascade="all, delete-orphan"
-    )
-
-
-class BiomarkerGroupMember(Base, UUIDMixin, AuditMixin, TimestampMixin):
-    __tablename__ = "biomarker_group_members"
-
-    group_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("biomarker_groups.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    biomarker_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    display_order = Column(Integer, default=0)
-
-    # Relationships
-    group = relationship("BiomarkerGroup", back_populates="members")
-    biomarker = relationship("BiomarkerDefinition")
+    @property
+    def category(self) -> str | None:
+        """Backward-compat: the old ``category`` column was replaced by the
+        ``class_concept_id`` FK to ``concepts``. Return the concept name."""
+        return self.class_concept.name if self.class_concept else None
 
 
 class BiomarkerRelationship(Base, UUIDMixin, AuditMixin, TimestampMixin):
@@ -152,7 +126,9 @@ class BiomarkerEventCorrelation(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    correlation_type = Column(String(100), nullable=True)  # e.g., "diagnostic", "monitoring"
+    correlation_type = Column(
+        String(100), nullable=True
+    )  # e.g., "diagnostic", "monitoring"
     description = Column(Text, nullable=True)
 
     # Relationships

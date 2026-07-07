@@ -9,6 +9,7 @@ Processor-only backends (``tesseract``, ``spacy``) are deliberately absent —
 they never produce a ``BaseChatModel`` and are dispatched through the OCR/NLP
 processor factories instead.
 """
+
 from __future__ import annotations
 
 import logging

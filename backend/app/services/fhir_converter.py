@@ -169,10 +169,14 @@ def _fhir_to_medication_orm_legacy(f: Dict[str, Any]) -> Dict[str, Any]:
     med_cc = f.get("medicationCodeableConcept") or {}
     dosage_list = f.get("dosage") or []
     dosage_text = (
-        dosage_list[0].get("text") if dosage_list and isinstance(dosage_list[0], dict) else None
+        dosage_list[0].get("text")
+        if dosage_list and isinstance(dosage_list[0], dict)
+        else None
     )
     timing = (
-        dosage_list[0].get("timing") if dosage_list and isinstance(dosage_list[0], dict) else None
+        dosage_list[0].get("timing")
+        if dosage_list and isinstance(dosage_list[0], dict)
+        else None
     )
     period = f.get("effectivePeriod") or {}
     reason_code = f.get("reasonCode") or []
@@ -233,10 +237,14 @@ def fhir_to_medication_request_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     med_cc = f.get("medicationCodeableConcept") or {}
     dosage_list = f.get("dosageInstruction") or []
     dosage_text = (
-        dosage_list[0].get("text") if dosage_list and isinstance(dosage_list[0], dict) else None
+        dosage_list[0].get("text")
+        if dosage_list and isinstance(dosage_list[0], dict)
+        else None
     )
     timing = (
-        dosage_list[0].get("timing") if dosage_list and isinstance(dosage_list[0], dict) else None
+        dosage_list[0].get("timing")
+        if dosage_list and isinstance(dosage_list[0], dict)
+        else None
     )
     reason_code = f.get("reasonCode") or []
     note_list = f.get("note") or []
@@ -297,9 +305,7 @@ def fhir_to_allergy_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             "patient_id": _extract_patient_id(f.get("patient")),
             "onset_date": f.get("onsetDateTime"),
             "last_occurrence": f.get("lastOccurrence"),
-            "note": (f.get("note") or [{}])[0].get("text")
-            if f.get("note")
-            else None,
+            "note": (f.get("note") or [{}])[0].get("text") if f.get("note") else None,
             "reactions": reactions or None,
         }
     )
@@ -343,9 +349,12 @@ def fhir_to_organization_orm(f: Dict[str, Any]) -> Dict[str, Any]:
 def fhir_to_practitioner_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     name_list = f.get("name") or []
     name_obj = name_list[0] if name_list else {}
-    full_name = name_obj.get("text") or " ".join(
-        (name_obj.get("given") or []) + [name_obj.get("family") or ""]
-    ).strip()
+    full_name = (
+        name_obj.get("text")
+        or " ".join(
+            (name_obj.get("given") or []) + [name_obj.get("family") or ""]
+        ).strip()
+    )
 
     qualifications = f.get("qualification") or []
     specialty = (
@@ -356,12 +365,8 @@ def fhir_to_practitioner_orm(f: Dict[str, Any]) -> Dict[str, Any]:
         license_number = qualifications[0]["identifier"][0].get("value")
 
     telecom = f.get("telecom") or []
-    email = next(
-        (t.get("value") for t in telecom if t.get("system") == "email"), None
-    )
-    phone = next(
-        (t.get("value") for t in telecom if t.get("system") == "phone"), None
-    )
+    email = next((t.get("value") for t in telecom if t.get("system") == "email"), None)
+    phone = next((t.get("value") for t in telecom if t.get("system") == "phone"), None)
 
     return _clean(
         {
@@ -395,9 +400,7 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     from app.models.enums import ClinicalEventStatus, CodingSystem
 
     # Clinical status → ClinicalEventStatus enum.
-    clinical_codings = (
-        (f.get("clinicalStatus") or {}).get("coding") or []
-    )
+    clinical_codings = (f.get("clinicalStatus") or {}).get("coding") or []
     clinical_code = next(
         (c.get("code") for c in clinical_codings if c.get("code")),
         "active",
@@ -428,10 +431,11 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
 
     note_list = f.get("note") or []
     description = (
-        note_list[0].get("text") if note_list and isinstance(note_list[0], dict) else None
+        note_list[0].get("text")
+        if note_list and isinstance(note_list[0], dict)
+        else None
     )
 
-    import datetime as _dt
     onset_raw = f.get("onsetDateTime")
     onset_dt = _parse_iso(onset_raw)
     abatement_raw = f.get("abatementDateTime")
@@ -538,9 +542,7 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
 
     context = f.get("context") or {}
     encounter_list = context.get("encounter") or []
-    examination_id = (
-        _extract_patient_id(encounter_list[0]) if encounter_list else None
-    )
+    examination_id = _extract_patient_id(encounter_list[0]) if encounter_list else None
 
     return _clean(
         {

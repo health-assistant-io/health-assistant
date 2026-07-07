@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update as sa_update
@@ -7,8 +7,6 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.biomarker_model import (
     BiomarkerDefinition,
-    BiomarkerGroup,
-    BiomarkerGroupMember,
     Unit,
 )
 from app.models.fhir.patient import Observation
@@ -20,6 +18,7 @@ from app.schemas.biomarker import (
     UnitResponse,
     UnitCreate,
 )
+from app.services.concept_service import resolve_biomarker_class_concept
 from uuid import UUID
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
@@ -101,45 +100,6 @@ async def create_unit(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/groups")
-async def get_groups(
-    db: AsyncSession = Depends(get_db),
-    current_user: TokenData = Depends(get_current_user),
-):
-    """Get biomarker groups and their members"""
-    result = await db.execute(select(BiomarkerGroup))
-    groups = result.scalars().all()
-
-    response = []
-    for g in groups:
-        mem_result = await db.execute(
-            select(BiomarkerDefinition)
-            .join(BiomarkerGroupMember)
-            .where(BiomarkerGroupMember.group_id == str(g.id))
-            .order_by(BiomarkerGroupMember.display_order)
-        )
-        members = mem_result.scalars().all()
-        response.append(
-            {
-                "id": g.id,
-                "name": g.name,
-                "type": g.type,
-                "members": [
-                    {
-                        "id": m.id,
-                        "slug": m.slug,
-                        "name": m.name,
-                        "category": m.category,
-                        "aliases": m.aliases,
-                        "info": m.info,
-                    }
-                    for m in members
-                ],
-            }
-        )
-    return response
-
-
 @router.post("/", response_model=BiomarkerResponse)
 async def create_biomarker(
     biomarker: BiomarkerCreate,
@@ -157,10 +117,19 @@ async def create_biomarker(
         if unit:
             unit_id = unit.id
 
+    # Resolve legacy ``category`` string to a ``biomarker_class`` concept ID.
+    # An explicit ``class_concept_id`` wins; otherwise we best-effort resolve
+    # the legacy ``category`` slug.
+    class_concept_id = biomarker.class_concept_id
+    if class_concept_id is None:
+        class_concept_id = await resolve_biomarker_class_concept(
+            db, biomarker.category, tenant_id=current_user.tenant_id
+        )
+
     new_bio = BiomarkerDefinition(
         slug=biomarker.slug,
         name=biomarker.name,
-        category=biomarker.category,
+        class_concept_id=class_concept_id,
         aliases=biomarker.aliases,
         info=biomarker.info,
         reference_range_min=biomarker.reference_range_min,
@@ -173,13 +142,15 @@ async def create_biomarker(
     try:
         await db.commit()
         await db.refresh(new_bio)
-        
+
         # Get unit symbol
         symbol = None
         if new_bio.preferred_unit_id:
-            u_res = await db.execute(select(Unit.symbol).where(Unit.id == new_bio.preferred_unit_id))
+            u_res = await db.execute(
+                select(Unit.symbol).where(Unit.id == new_bio.preferred_unit_id)
+            )
             symbol = u_res.scalar_one_or_none()
-            
+
         return {
             "id": new_bio.id,
             "slug": new_bio.slug,
@@ -334,24 +305,32 @@ async def retry_biomarker_migration(
         raise HTTPException(status_code=404, detail="Biomarker not found")
 
     meta = dict(db_biomarker.meta_data or {})
-    
+
     # We only allow retrying if it actually was marked as in progress or failed
     if meta.get("migration_status") not in ["failed", "in_progress"]:
-        raise HTTPException(status_code=400, detail="No active or failed migration to retry")
-        
+        raise HTTPException(
+            status_code=400, detail="No active or failed migration to retry"
+        )
+
     meta["migration_status"] = "in_progress"
     meta["migration_progress"] = 0
     if "migration_error" in meta:
         del meta["migration_error"]
-        
+
     db_biomarker.meta_data = meta
-    
+
     from sqlalchemy.orm.attributes import flag_modified
+
     flag_modified(db_biomarker, "meta_data")
 
     # Trigger celery task again using current is_telemetry state
     from app.workers.tasks import migrate_biomarker_data
-    migrate_biomarker_data.delay(str(db_biomarker.id), str(current_user.tenant_id), bool(db_biomarker.is_telemetry))
+
+    migrate_biomarker_data.delay(
+        str(db_biomarker.id),
+        str(current_user.tenant_id),
+        bool(db_biomarker.is_telemetry),
+    )
 
     try:
         await db.commit()
@@ -383,6 +362,7 @@ async def retry_biomarker_migration(
         "preferred_unit_symbol": symbol,
     }
 
+
 @router.post("/{biomarker_id}/remap")
 async def remap_observations(
     biomarker_id: UUID,
@@ -403,7 +383,9 @@ async def remap_observations(
         select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
     )
     if not target_res.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Target biomarker definition not found")
+        raise HTTPException(
+            status_code=404, detail="Target biomarker definition not found"
+        )
 
     # Build the match conditions: same tenant, code.text matches source_name,
     # biomarker_id is null (genuinely unmapped), optional patient scope.
@@ -418,9 +400,7 @@ async def remap_observations(
         )
 
     result = await db.execute(
-        sa_update(Observation)
-        .where(*conditions)
-        .values(biomarker_id=biomarker_id)
+        sa_update(Observation).where(*conditions).values(biomarker_id=biomarker_id)
     )
     updated = result.rowcount or 0
     try:
@@ -434,6 +414,7 @@ async def remap_observations(
         "biomarker_id": str(biomarker_id),
         "observations_remapped": updated,
     }
+
 
 @router.patch("/{biomarker_id}", response_model=BiomarkerResponse)
 async def update_biomarker(
@@ -452,13 +433,28 @@ async def update_biomarker(
         raise HTTPException(status_code=404, detail="Biomarker not found")
 
     old_is_telemetry = db_biomarker.is_telemetry
-    
+
     # Update fields
     update_data = biomarker_update.model_dump(exclude_unset=True)
-    
+
     new_is_telemetry = update_data.get("is_telemetry")
-    needs_migration = new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
-    
+    needs_migration = (
+        new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
+    )
+
+    # ``class_concept_id`` (the FK) is authoritative. ``category`` is a
+    # read-only property — if a caller sends only the legacy string, resolve
+    # it to a concept ID (best-effort) and drop the property name.
+    if "class_concept_id" not in update_data and "category" in update_data:
+        class_concept_id = await resolve_biomarker_class_concept(
+            db, update_data.pop("category"), tenant_id=current_user.tenant_id
+        )
+        update_data["class_concept_id"] = class_concept_id
+    elif "category" in update_data:
+        # An explicit ``class_concept_id`` was provided — drop the legacy
+        # property name so it doesn't trip ``setattr`` below.
+        update_data.pop("category")
+
     for key, value in update_data.items():
         setattr(db_biomarker, key, value)
 
@@ -471,14 +467,20 @@ async def update_biomarker(
             if "migration_error" in meta:
                 del meta["migration_error"]
             db_biomarker.meta_data = meta
-            
+
             # Need to flag the JSONB column as modified
             from sqlalchemy.orm.attributes import flag_modified
+
             flag_modified(db_biomarker, "meta_data")
-            
+
             # Trigger celery task
             from app.workers.tasks import migrate_biomarker_data
-            migrate_biomarker_data.delay(str(db_biomarker.id), str(current_user.tenant_id), bool(new_is_telemetry))
+
+            migrate_biomarker_data.delay(
+                str(db_biomarker.id),
+                str(current_user.tenant_id),
+                bool(new_is_telemetry),
+            )
 
         await db.commit()
         await db.refresh(db_biomarker)

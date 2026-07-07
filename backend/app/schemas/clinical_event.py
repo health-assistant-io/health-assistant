@@ -21,25 +21,6 @@ class EventObservationLinkResponse(EventObservationLinkBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ClinicalEventCategoryBase(BaseModel):
-    name: str
-    slug: str
-    description: Optional[str] = None
-    icon: Optional[Dict[str, Any]] = None
-    color: Optional[str] = None
-
-
-class ClinicalEventCategoryCreate(ClinicalEventCategoryBase):
-    pass
-
-
-class ClinicalEventCategoryResponse(ClinicalEventCategoryBase):
-    id: UUID
-    tenant_id: Optional[UUID] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class ClinicalEventTypeBase(BaseModel):
     name: str
     slug: str
@@ -57,7 +38,7 @@ class ClinicalEventTypeCreate(ClinicalEventTypeBase):
 class ClinicalEventTypeResponse(ClinicalEventTypeBase):
     id: UUID
     tenant_id: Optional[UUID] = None
-    category: Optional[ClinicalEventCategoryResponse] = None
+    category: Optional[Dict[str, Any]] = None
     correlated_biomarkers: List[BiomarkerResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

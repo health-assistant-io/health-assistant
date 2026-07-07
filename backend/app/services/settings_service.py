@@ -4,6 +4,7 @@ Resolution order for a tiered setting: USER > TENANT > SYSTEM > built-in default
 Device settings are never stored server-side; this service only deals with the
 ``tiered`` storage scope.
 """
+
 from typing import Any, Dict, Tuple
 from uuid import UUID
 
@@ -81,7 +82,8 @@ class SettingsService:
     ) -> Dict[str, Any]:
         raw = await self._load_raw_overrides(level, user_id, tenant_id)
         allowed = {
-            d.key for d in get_all_definitions()
+            d.key
+            for d in get_all_definitions()
             if d.storage == SettingStorage.TIERED and level in d.allowed_levels
         }
         return {k: v for k, v in raw.items() if k in allowed}
@@ -196,7 +198,9 @@ class SettingsService:
             await self.db.delete(existing[key])
 
 
-def can_manage_level(role: str, level: SettingLevel, tenant_id: UUID, target_tenant_id: UUID) -> bool:
+def can_manage_level(
+    role: str, level: SettingLevel, tenant_id: UUID, target_tenant_id: UUID
+) -> bool:
     """Authorize ``role`` to read/write ``level`` overrides."""
     if role == Role.SYSTEM_ADMIN.value:
         return True
@@ -232,9 +236,7 @@ def _coerce_and_validate(definition: SettingDefinition, value: Any) -> Any:
     if t.value == "enum":
         allowed = [o.value for o in (definition.options or [])]
         if value not in allowed:
-            raise ValueError(
-                f"Setting '{definition.key}' must be one of {allowed}"
-            )
+            raise ValueError(f"Setting '{definition.key}' must be one of {allowed}")
         return value
     if isinstance(value, str):
         return value
@@ -243,10 +245,6 @@ def _coerce_and_validate(definition: SettingDefinition, value: Any) -> Any:
 
 def _check_bounds(definition: SettingDefinition, value: float) -> None:
     if definition.min is not None and value < definition.min:
-        raise ValueError(
-            f"Setting '{definition.key}' must be >= {definition.min}"
-        )
+        raise ValueError(f"Setting '{definition.key}' must be >= {definition.min}")
     if definition.max is not None and value > definition.max:
-        raise ValueError(
-            f"Setting '{definition.key}' must be <= {definition.max}"
-        )
+        raise ValueError(f"Setting '{definition.key}' must be <= {definition.max}")

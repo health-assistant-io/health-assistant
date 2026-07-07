@@ -1,5 +1,6 @@
 import enum
 
+
 class QuantityType(str, enum.Enum):
     MASS_CONCENTRATION = "MASS_CONCENTRATION"
     MOLAR_CONCENTRATION = "MOLAR_CONCENTRATION"
@@ -13,11 +14,13 @@ class QuantityType(str, enum.Enum):
     TEMPERATURE = "TEMPERATURE"
     OTHER = "OTHER"
 
+
 class ClinicalEventStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     RESOLVED = "RESOLVED"
     ON_HOLD = "ON_HOLD"
     UNKNOWN = "UNKNOWN"
+
 
 class NotificationType(str, enum.Enum):
     MEDICATION_REMINDER = "MEDICATION_REMINDER"
@@ -40,6 +43,7 @@ class NotificationType(str, enum.Enum):
 
 class NotificationSource(str, enum.Enum):
     """Origin system of a notification event."""
+
     SYSTEM = "SYSTEM"
     INTEGRATION = "INTEGRATION"
     AGENT = "AGENT"
@@ -50,6 +54,7 @@ class NotificationSource(str, enum.Enum):
 
 class NotificationCategory(str, enum.Enum):
     """UI grouping for the notification center."""
+
     REMINDER = "reminder"
     ALERT = "alert"
     HITL = "hitl"
@@ -67,6 +72,7 @@ class NotificationSeverity(str, enum.Enum):
 
 class RecipientKind(str, enum.Enum):
     """The principal kind a notification target was specified as (pre-resolution)."""
+
     USER = "USER"
     PATIENT = "PATIENT"
     DOCTOR = "DOCTOR"
@@ -76,6 +82,7 @@ class RecipientKind(str, enum.Enum):
 
 class RecipientStatus(str, enum.Enum):
     """Per-recipient inbox state (the user-facing read/dismiss lifecycle)."""
+
     UNREAD = "unread"
     READ = "read"
     DISMISSED = "dismissed"
@@ -90,6 +97,7 @@ class NotificationChannel(str, enum.Enum):
 
 class NotificationStatus(str, enum.Enum):
     """Per-channel delivery lifecycle (delivery log)."""
+
     PENDING = "PENDING"
     SENT = "SENT"
     DELIVERED = "DELIVERED"
@@ -98,6 +106,7 @@ class NotificationStatus(str, enum.Enum):
 
 class NotificationRuleType(str, enum.Enum):
     """What a NotificationRule evaluates."""
+
     BIOMARKER_THRESHOLD = "BIOMARKER_THRESHOLD"
     OUT_OF_NORMAL_RANGE = "OUT_OF_NORMAL_RANGE"
     TREND_ANOMALY = "TREND_ANOMALY"
@@ -112,10 +121,12 @@ class ComparisonOperator(str, enum.Enum):
     EQ = "=="
     OUT_OF_NORMAL = "out_of_normal"
 
+
 class HitlTaskStatus(str, enum.Enum):
     """Status of a human-in-the-loop task card proposed by the AI assistant.
     Values are lowercase to match the JSONB payload contract consumed by the
     frontend (registry.tsx HITL_STATUS_META keys)."""
+
     PROPOSED = "proposed"
     CONFIRMED = "confirmed"
     FAILED = "failed"
@@ -127,17 +138,20 @@ class HitlTaskStatus(str, enum.Enum):
         (i.e. the user has finished acting on the proposal)."""
         return frozenset({cls.CONFIRMED, cls.DISMISSED, cls.FAILED})
 
+
 class TriggerType(str, enum.Enum):
     TIME = "TIME"
     RECURRING = "RECURRING"
     EVENT = "EVENT"
     THRESHOLD = "THRESHOLD"
 
+
 class Gender(str, enum.Enum):
     MALE = "MALE"
     FEMALE = "FEMALE"
     OTHER = "OTHER"
     UNKNOWN = "UNKNOWN"
+
 
 class MedicationStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
@@ -159,16 +173,19 @@ class MedicationIntent(str, enum.Enum):
     ``/fhir/R4/MedicationStatement`` or ``/fhir/R4/MedicationRequest``. Audit
     items C11 + C12: one table serves both FHIR resources.
     """
+
     STATEMENT = "statement"
     ORDER = "order"
     PLAN = "plan"
     PROPOSAL = "proposal"
+
 
 class AIScope(str, enum.Enum):
     SYSTEM = "SYSTEM"
     TENANT = "TENANT"
     USER = "USER"
     ORGANIZATION = "ORGANIZATION"
+
 
 class ImportFormat(str, enum.Enum):
     CSV = "CSV"
@@ -177,12 +194,14 @@ class ImportFormat(str, enum.Enum):
     PDF = "PDF"
     IMAGE = "IMAGE"
 
+
 class ImportSourceType(str, enum.Enum):
     FILE_UPLOAD = "FILE_UPLOAD"
     URL = "URL"
     MANUAL_ENTRY = "MANUAL_ENTRY"
     WEARABLE = "WEARABLE"
     LAB_SYSTEM = "LAB_SYSTEM"
+
 
 class ImportStatus(str, enum.Enum):
     PENDING = "PENDING"
@@ -191,6 +210,7 @@ class ImportStatus(str, enum.Enum):
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
 
+
 class AllergyCategory(str, enum.Enum):
     FOOD = "FOOD"
     MEDICATION = "MEDICATION"
@@ -198,26 +218,31 @@ class AllergyCategory(str, enum.Enum):
     BIOLOGIC = "BIOLOGIC"
     OTHER = "OTHER"
 
+
 class AllergyCriticality(str, enum.Enum):
     LOW = "LOW"
     HIGH = "HIGH"
     UNABLE_TO_ASSESS = "UNABLE_TO_ASSESS"
+
 
 class AllergyClinicalStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     RESOLVED = "RESOLVED"
 
+
 class ReactionSeverity(str, enum.Enum):
     MILD = "MILD"
     MODERATE = "MODERATE"
     SEVERE = "SEVERE"
+
 
 class Role(str, enum.Enum):
     SYSTEM_ADMIN = "SYSTEM_ADMIN"
     ADMIN = "ADMIN"
     MANAGER = "MANAGER"
     USER = "USER"
+
 
 class OrganizationType(str, enum.Enum):
     HOUSEHOLD = "HOUSEHOLD"
@@ -226,6 +251,7 @@ class OrganizationType(str, enum.Enum):
     PROVIDER_GROUP = "PROVIDER_GROUP"
     HOSPITAL = "HOSPITAL"
     OTHER = "OTHER"
+
 
 class CodingSystem(str, enum.Enum):
     LOINC = "loinc"
@@ -240,6 +266,7 @@ class CodingSystem(str, enum.Enum):
         elif self == CodingSystem.SNOMED:
             return "http://snomed.info/sct"
         return "urn:uuid:health-assistant:custom-biomarker"
+
 
 class IntegrationStatus(str, enum.Enum):
     PENDING = "PENDING"
@@ -279,6 +306,7 @@ class AnatomyCategory(str, enum.Enum):
     JOINT = "JOINT"
     OTHER = "OTHER"
 
+
 class AnatomyRelationType(str, enum.Enum):
     PART_OF = "PART_OF"
     BRANCH_OF = "BRANCH_OF"
@@ -287,3 +315,116 @@ class AnatomyRelationType(str, enum.Enum):
     INNERVATED_BY = "INNERVATED_BY"
     SUPPLIED_BY = "SUPPLIED_BY"
     CONTINUOUS_WITH = "CONTINUOUS_WITH"
+
+
+class ConceptKind(str, enum.Enum):
+    """The domain a Concept belongs to in the unified taxonomy.
+
+    Values are lowercase short codes (used verbatim as FHIR CodeSystem codes
+    and as API ``?kind=`` query params). Add new domains here — no schema
+    change required (the migration creates the enum type idempotently).
+    """
+
+    SPECIALTY = "specialty"
+    EXAMINATION_CATEGORY = "examination_category"
+    EVENT_CATEGORY = "event_category"
+    BIOMARKER_CLASS = "biomarker_class"
+    BIOMARKER_PANEL = "biomarker_panel"
+    ANATOMY_CLASS = "anatomy_class"
+    VACCINE_CLASS = "vaccine_class"
+    MEDICATION_CLASS = "medication_class"
+    DOCUMENT_CATEGORY = "document_category"
+    DISEASE = "disease"
+    BODY_SYSTEM = "body_system"
+    PROCEDURE = "procedure"
+    LIFESTYLE = "lifestyle"
+    FACTOR = "factor"
+    SYMPTOM = "symptom"
+    ORGAN = "organ"
+
+
+class ConceptStatus(str, enum.Enum):
+    """Lifecycle of a Concept (mirrors FHIR CodeSystem concept status)."""
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    RETIRED = "retired"
+
+
+class ConceptProvenance(str, enum.Enum):
+    """Where a Concept or ConceptEdge originated.
+
+    Drives the curated-wins conflict resolution (``seed`` > ``integration`` >
+    ``ai`` > ``manual``) and gates HITL review for ``ai`` rows.
+    """
+
+    SEED = "seed"
+    INTEGRATION = "integration"
+    AI = "ai"
+    MANUAL = "manual"
+
+
+class EdgeApprovalStatus(str, enum.Enum):
+    """Approval state of a ConceptEdge.
+
+    Only ``approved`` rows count for graph queries; ``proposed`` rows are
+    HITL-pending (AI suggestions). ``rejected`` rows are kept for audit.
+    """
+
+    APPROVED = "approved"
+    PROPOSED = "proposed"
+    REJECTED = "rejected"
+
+
+class EdgeEndpointType(str, enum.Enum):
+    """Polymorphic type tag for a ConceptEdge endpoint.
+
+    ``concept`` endpoints reference ``concepts.id``; all others reference the
+    primary key of a domain entity table (biomarker_definitions, doctors,
+    examinations, etc.). There is no hard FK across tables — referential
+    integrity is enforced in the service layer + a nightly orphan-cleanup job.
+    """
+
+    CONCEPT = "concept"
+    BIOMARKER = "biomarker"
+    MEDICATION = "medication"
+    CLINICAL_EVENT_TYPE = "clinical_event_type"
+    ALLERGY = "allergy"
+    IMMUNIZATION = "immunization"
+    OBSERVATION = "observation"
+    DOCTOR = "doctor"
+    EXAMINATION = "examination"
+    ANATOMY = "anatomy"
+    DOCUMENT = "document"
+
+
+class ConceptRelationType(str, enum.Enum):
+    """Typed relationships between Concepts, or between an entity and a Concept.
+
+    Split into two groups: **structural / classification** (single-valued
+    classification is usually a direct FK on the entity table; these cover the
+    M:N and cross-domain cases) and **semantic / medical knowledge** (the graph
+    that powers correlations and recommendations).
+    """
+
+    # --- structural / classification -----------------------------------------
+    MEMBER_OF = "MEMBER_OF"
+    HAS_SPECIALTY = "HAS_SPECIALTY"
+    CLASSIFIED_AS = "CLASSIFIED_AS"
+    EXAMINES = "EXAMINES"
+    IMAGES = "IMAGES"
+    PERFORMS = "PERFORMS"
+    ORDERS = "ORDERS"
+    LOCATED_IN = "LOCATED_IN"
+    PART_OF = "PART_OF"
+
+    # --- semantic / medical knowledge ----------------------------------------
+    TREATS = "TREATS"
+    INDICATES = "INDICATES"
+    PREVENTS = "PREVENTS"
+    CONTRAINDICATES = "CONTRAINDICATES"
+    CORRELATES_WITH = "CORRELATES_WITH"
+    CAUSED_BY = "CAUSED_BY"
+    MONITORS = "MONITORS"
+    RISK_OF = "RISK_OF"
+    SCREENS_FOR = "SCREENS_FOR"

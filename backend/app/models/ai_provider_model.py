@@ -1,9 +1,7 @@
-import enum
 from sqlalchemy import (
     Column,
     String,
     Boolean,
-    DateTime,
     ForeignKey,
     Text,
     Integer,
@@ -16,7 +14,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import text
 from typing import Optional
-from uuid import uuid4
 
 from .base import Base, UUIDMixin, TenantMixin, TimestampMixin, UserMixin
 
@@ -38,7 +35,9 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     settings = Column(JSONB, nullable=True, default=dict)
 
     # Provider Transparency Info
-    is_local = Column(Boolean, default=False, server_default=text('false'), nullable=False)
+    is_local = Column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     company_name = Column(String(200), nullable=True)
     company_website = Column(String(500), nullable=True)
     company_country = Column(String(100), nullable=True)
@@ -122,7 +121,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
     temperature = Column(Float, default=0.7)
-    is_local = Column(Boolean, nullable=True) # Override provider's is_local
+    is_local = Column(Boolean, nullable=True)  # Override provider's is_local
     settings = Column(JSONB, nullable=True, default=dict)
 
     # Relationship to provider

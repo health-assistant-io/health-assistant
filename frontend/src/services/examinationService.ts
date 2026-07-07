@@ -26,7 +26,7 @@ export async function magicFillExamination(userInput: string): Promise<any> {
 
 export async function getExaminationCategories(): Promise<any[]> {
   try {
-    const response = await api.get('/examination-categories');
+    const response = await api.get('/concepts?kind=examination_category&limit=500');
     const categories = response.data;
     if (categories && categories.length > 0) {
       await db.metadata.put({
@@ -52,7 +52,7 @@ export async function createExaminationCategory(data: {
   color?: string;
   icon?: any;
 }) {
-  const response = await api.post('/examination-categories', data);
+  const response = await api.post('/concepts', { ...data, kind: 'examination_category' });
   return response.data;
 }
 
@@ -63,12 +63,12 @@ export async function updateExaminationCategory(id: string, data: {
   color?: string;
   icon?: any;
 }) {
-  const response = await api.patch(`/examination-categories/${id}`, data);
+  const response = await api.put(`/concepts/${id}`, data);
   return response.data;
 }
 
 export async function deleteExaminationCategory(id: string) {
-  const response = await api.delete(`/examination-categories/${id}`);
+  const response = await api.delete(`/concepts/${id}`);
   return response.data;
 }
 

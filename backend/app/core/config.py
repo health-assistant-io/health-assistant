@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
-from typing import Optional, Any, List
+from typing import Optional
 from functools import lru_cache
 
 
@@ -69,10 +69,11 @@ class Settings(BaseSettings):
         instance fails fast instead of silently running exploitable creds.
         """
         weak_passwords = {"", "admin123", "password", "postgres", "secret", "changeme"}
-        
+
         # We know DATABASE_URL is constructed by the time this runs.
         # Extract the actual password being used.
         import urllib.parse
+
         parsed_url = urllib.parse.urlparse(self.DATABASE_URL)
         active_password = parsed_url.password or ""
 
@@ -101,14 +102,17 @@ class Settings(BaseSettings):
     # Security
     # SECRET_KEY signs JWTs. It must be explicitly provided in production.
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
-    
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
         """Ensure a valid SECRET_KEY is provided, falling back to an ephemeral one in dev only."""
         if not self.SECRET_KEY:
             if self.APP_ENV in ("development", "test", "testing"):
                 import logging
-                logging.warning("No SECRET_KEY provided; generating an ephemeral one for development. Logins will not survive restarts.")
+
+                logging.warning(
+                    "No SECRET_KEY provided; generating an ephemeral one for development. Logins will not survive restarts."
+                )
                 self.SECRET_KEY = secrets.token_urlsafe(32)
             else:
                 raise ValueError(
@@ -119,7 +123,7 @@ class Settings(BaseSettings):
 
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
-    
+
     # URLs
     FRONTEND_URL: str = "http://localhost:5173"
     APP_URL: str = "http://localhost:8000"
@@ -145,7 +149,10 @@ class Settings(BaseSettings):
             if self.APP_ENV in ("development", "test", "testing"):
                 from cryptography.fernet import Fernet
                 import logging
-                logging.warning("No INTEGRATION_SECRET_KEY provided; generating an ephemeral one for development. Connected integrations will break on restart.")
+
+                logging.warning(
+                    "No INTEGRATION_SECRET_KEY provided; generating an ephemeral one for development. Connected integrations will break on restart."
+                )
                 self.INTEGRATION_SECRET_KEY = Fernet.generate_key().decode()
             else:
                 raise ValueError(

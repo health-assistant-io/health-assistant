@@ -1,4 +1,5 @@
 """Pydantic schemas for the tiered settings system."""
+
 from typing import Any, Dict, List, Optional
 from enum import Enum
 from pydantic import BaseModel

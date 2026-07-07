@@ -17,6 +17,7 @@ Three tables separate the three concerns of a notification system:
 :class:`NotificationSubscription` (VAPID push subscriptions) are retained.
 Biomarker/threshold rules live in :mod:`app.models.notification_rule`.
 """
+
 from sqlalchemy import (
     Column,
     String,
@@ -67,8 +68,12 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
         nullable=True,
         index=True,
     )
-    trigger_type = Column(Enum(TriggerType, values_callable=_enum_values), nullable=False)
-    notification_type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False)
+    trigger_type = Column(
+        Enum(TriggerType, values_callable=_enum_values), nullable=False
+    )
+    notification_type = Column(
+        Enum(NotificationType, values_callable=_enum_values), nullable=False
+    )
 
     # Configuration for the trigger
     # e.g., {"at": "2024-03-20T10:00:00", "repeat": "daily"}
@@ -136,9 +141,19 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
     )
 
     # Origin + classification
-    source = Column(Enum(NotificationSource, values_callable=_enum_values), nullable=False, index=True)
-    type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False, index=True)
-    category = Column(Enum(NotificationCategory, values_callable=_enum_values), nullable=False, index=True)
+    source = Column(
+        Enum(NotificationSource, values_callable=_enum_values),
+        nullable=False,
+        index=True,
+    )
+    type = Column(
+        Enum(NotificationType, values_callable=_enum_values), nullable=False, index=True
+    )
+    category = Column(
+        Enum(NotificationCategory, values_callable=_enum_values),
+        nullable=False,
+        index=True,
+    )
     severity = Column(
         Enum(NotificationSeverity, values_callable=_enum_values),
         default=NotificationSeverity.INFO,
@@ -208,18 +223,20 @@ class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
         index=True,
     )
 
-    recipient_kind = Column(Enum(RecipientKind, values_callable=_enum_values), nullable=False)
+    recipient_kind = Column(
+        Enum(RecipientKind, values_callable=_enum_values), nullable=False
+    )
     recipient_ref = Column(UUID(as_uuid=True), nullable=True)
 
     status = Column(
-        Enum(RecipientStatus, values_callable=_enum_values), default=RecipientStatus.UNREAD, nullable=False
+        Enum(RecipientStatus, values_callable=_enum_values),
+        default=RecipientStatus.UNREAD,
+        nullable=False,
     )
     read_at = Column(DateTime(timezone=True), nullable=True)
     dismissed_at = Column(DateTime(timezone=True), nullable=True)
 
-    notification = relationship(
-        "Notification", lazy="selectin", innerjoin=False
-    )
+    notification = relationship("Notification", lazy="selectin", innerjoin=False)
 
     def to_dict(self) -> dict:
         return {
@@ -255,9 +272,13 @@ class NotificationDelivery(Base, UUIDMixin, TenantMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    channel = Column(Enum(NotificationChannel, values_callable=_enum_values), nullable=False)
+    channel = Column(
+        Enum(NotificationChannel, values_callable=_enum_values), nullable=False
+    )
     status = Column(
-        Enum(NotificationStatus, values_callable=_enum_values), default=NotificationStatus.PENDING, nullable=False
+        Enum(NotificationStatus, values_callable=_enum_values),
+        default=NotificationStatus.PENDING,
+        nullable=False,
     )
 
     attempted_at = Column(DateTime(timezone=True), nullable=True)

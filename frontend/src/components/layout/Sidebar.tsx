@@ -162,6 +162,7 @@ function Sidebar() {
         { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/users', labelKey: 'admin.users', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/catalogs', labelKey: 'Clinical Ontology', roles: ['SYSTEM_ADMIN'] },
+        { path: '/admin/system/taxonomy', labelKey: 'Taxonomy Manager', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/ai-config', labelKey: 'admin.system_ai_config', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/integrations', labelKey: 'System Integrations', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/settings', labelKey: 'admin.system_settings', roles: ['SYSTEM_ADMIN'] },

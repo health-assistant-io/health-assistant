@@ -11,6 +11,7 @@ Storage model
 * ``device`` settings are per-browser (localStorage). Use these for prefs that
   legitimately differ per device, e.g. light/dark theme.
 """
+
 from typing import Dict, List, Optional
 
 from app.schemas.settings import (
@@ -179,7 +180,6 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
         ],
         order=5,
     ),
-
     # ---------------- Localization ----------------
     SettingDefinition(
         key="localization.language",
@@ -207,11 +207,12 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
         description_key="settings.unit_system_desc",
         options=[
             SettingEnumOption(value="metric", label_key="settings.unit_system_metric"),
-            SettingEnumOption(value="imperial", label_key="settings.unit_system_imperial"),
+            SettingEnumOption(
+                value="imperial", label_key="settings.unit_system_imperial"
+            ),
         ],
         order=20,
     ),
-
     # ---------------- Notifications ----------------
     SettingDefinition(
         key="notifications.enabled",

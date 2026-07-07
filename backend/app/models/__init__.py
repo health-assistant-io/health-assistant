@@ -3,7 +3,6 @@ from .user_model import UserModel, Role
 from .tenant_model import TenantModel
 from .document_model import DocumentModel
 from .examination_model import ExaminationModel
-from .examination_category import ExaminationCategory
 from .doctor_model import DoctorModel
 from .fhir.organization import OrganizationModel
 from .associations import examination_doctors, organization_doctors
@@ -35,8 +34,6 @@ from .patient_layout import PatientLayoutModel
 from .biomarker_model import (
     Unit,
     BiomarkerDefinition,
-    BiomarkerGroup,
-    BiomarkerGroupMember,
     BiomarkerRelationship,
     Laboratory,
     BiomarkerEventCorrelation,
@@ -66,6 +63,7 @@ from .clinical_event import (
     ClinicalEventStatus,
 )
 from .anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
+from .concept_model import Concept, ConceptEdge, ConceptKindTag
 from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
@@ -82,7 +80,6 @@ __all__ = [
     "TenantModel",
     "DocumentModel",
     "ExaminationModel",
-    "ExaminationCategory",
     "DoctorModel",
     "OrganizationModel",
     "organization_doctors",
@@ -104,8 +101,6 @@ __all__ = [
     "CommunicationModel",
     "Unit",
     "BiomarkerDefinition",
-    "BiomarkerGroup",
-    "BiomarkerGroupMember",
     "BiomarkerRelationship",
     "Laboratory",
     "AIProviderModel",
@@ -122,6 +117,9 @@ __all__ = [
     "AnatomyStructure",
     "AnatomyRelation",
     "AnatomyFigure",
+    "Concept",
+    "ConceptEdge",
+    "ConceptKindTag",
     "BiomarkerEventCorrelation",
     "NotificationTrigger",
     "Notification",

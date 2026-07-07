@@ -3,6 +3,7 @@
 Extracted from ``ChatbotTools`` (Phase 3). Covers clinical lab history,
 telemetry trends, catalog search, and definition lookup.
 """
+
 import json
 from typing import Any, List, Optional
 from uuid import UUID
@@ -41,9 +42,7 @@ def build(ctx: ToolContext) -> List[Any]:
             summary.append(
                 {
                     "id": str(obs.id),
-                    "biomarker_id": str(obs.biomarker_id)
-                    if obs.biomarker_id
-                    else None,
+                    "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
                     "date": obs.effective_datetime.isoformat()
                     if obs.effective_datetime
                     else None,
@@ -93,9 +92,7 @@ def build(ctx: ToolContext) -> List[Any]:
             history.append(
                 {
                     "id": str(obs.id),
-                    "biomarker_id": str(obs.biomarker_id)
-                    if obs.biomarker_id
-                    else None,
+                    "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
                     "date": obs.effective_datetime.isoformat()
                     if obs.effective_datetime
                     else None,
@@ -119,22 +116,35 @@ def build(ctx: ToolContext) -> List[Any]:
         If search_term is omitted, returns a list of common biomarkers."""
         from app.services.catalog_search_service import search_biomarkers
 
-        biomarkers = await search_biomarkers(ctx.db, ctx.tenant_id, search_term, limit=20)
+        biomarkers = await search_biomarkers(
+            ctx.db, ctx.tenant_id, search_term, limit=20
+        )
 
         summary = []
         for b in biomarkers:
-            summary.append({
-                "id": str(b.id),
-                "name": b.name,
-                "slug": b.slug,
-                "category": b.category,
-                "is_telemetry": b.is_telemetry,
-                "preferred_unit": b.preferred_unit.symbol if b.preferred_unit else None
-            })
+            summary.append(
+                {
+                    "id": str(b.id),
+                    "name": b.name,
+                    "slug": b.slug,
+                    "category": b.category,
+                    "is_telemetry": b.is_telemetry,
+                    "preferred_unit": b.preferred_unit.symbol
+                    if b.preferred_unit
+                    else None,
+                }
+            )
         return json.dumps(summary)
 
     @tool
-    async def get_aggregated_biomarker_trends(biomarker_id_or_slug: str, start_date_iso: Optional[str] = None, end_date_iso: Optional[str] = None, period: str = "last-30-days", aggregation: Optional[str] = None, limit: int = 100) -> str:
+    async def get_aggregated_biomarker_trends(
+        biomarker_id_or_slug: str,
+        start_date_iso: Optional[str] = None,
+        end_date_iso: Optional[str] = None,
+        period: str = "last-30-days",
+        aggregation: Optional[str] = None,
+        limit: int = 100,
+    ) -> str:
         """Fetch historical, aggregated timeseries data for a biomarker (especially telemetry like heart rate or steps).
         Specify a 'period' (e.g., 'last-7-days', 'last-6-months', 'all-time') OR explicit 'start_date_iso' and 'end_date_iso'.
         Optionally specify 'aggregation' bucket (e.g. '1 hour', '1 day').
@@ -148,12 +158,14 @@ def build(ctx: ToolContext) -> List[Any]:
         end_date = None
         if start_date_iso:
             try:
-                start_date = datetime.fromisoformat(start_date_iso.replace('Z', '+00:00'))
+                start_date = datetime.fromisoformat(
+                    start_date_iso.replace("Z", "+00:00")
+                )
             except ValueError:
                 return "Invalid start_date_iso format. Use ISO 8601."
         if end_date_iso:
             try:
-                end_date = datetime.fromisoformat(end_date_iso.replace('Z', '+00:00'))
+                end_date = datetime.fromisoformat(end_date_iso.replace("Z", "+00:00"))
             except ValueError:
                 return "Invalid end_date_iso format. Use ISO 8601."
 
@@ -165,7 +177,7 @@ def build(ctx: ToolContext) -> List[Any]:
             patient_id=str(ctx.patient_id),
             start_date=start_date,
             end_date=end_date,
-            db=ctx.db
+            db=ctx.db,
         )
 
         trends = result.get("biomarkers", {})
@@ -180,7 +192,10 @@ def build(ctx: ToolContext) -> List[Any]:
         # Fallback to substring match if exact match fails
         if not target_data:
             for key, data in trends.items():
-                if biomarker_id_or_slug.lower() in key.lower() or key.lower() in biomarker_id_or_slug.lower():
+                if (
+                    biomarker_id_or_slug.lower() in key.lower()
+                    or key.lower() in biomarker_id_or_slug.lower()
+                ):
                     target_data = data
                     break
 
@@ -202,7 +217,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "date": item.get("date"),
                 "value": item.get("value"),
                 "unit": item.get("unit"),
-                "status": item.get("status")
+                "status": item.get("status"),
             }
             if item.get("min_value") is not None:
                 clean_item["min_value"] = item.get("min_value")

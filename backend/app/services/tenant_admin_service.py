@@ -16,6 +16,7 @@ conventions). Mutating methods persist an ``AuditLog`` entry via
 ``audit_service.log_audit_action`` so every administrative action is
 traceable.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -120,8 +121,10 @@ class TenantAdminService:
         """
         candidate = slug
         for _ in range(8):
-            stmt = select(func.count()).select_from(TenantModel).where(
-                TenantModel.slug == candidate
+            stmt = (
+                select(func.count())
+                .select_from(TenantModel)
+                .where(TenantModel.slug == candidate)
             )
             if exclude_id is not None:
                 stmt = stmt.where(TenantModel.id != exclude_id)
@@ -162,34 +165,42 @@ class TenantAdminService:
             count_query = count_query.where(TenantModel.is_active == is_active)
 
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = query.order_by(TenantModel.created_at.desc()).limit(limit).offset(offset)
+        query = (
+            query.order_by(TenantModel.created_at.desc()).limit(limit).offset(offset)
+        )
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)
 
     async def _count(self, model, tenant_id: UUID) -> int:
-        stmt = select(func.count()).select_from(model).where(
-            model.tenant_id == tenant_id
+        stmt = (
+            select(func.count()).select_from(model).where(model.tenant_id == tenant_id)
         )
         return int((await self.db.execute(stmt)).scalar() or 0)
 
     async def _compute_stats(self, tenant_id: UUID) -> TenantStats:
-        users_count, active_users_count, patients_count, orgs_count, exams_count, obs_count, docs_count = (
-            await asyncio.gather(
-                self._count(UserModel, tenant_id),
-                self.db.execute(
-                    select(func.count())
-                    .select_from(UserModel)
-                    .where(
-                        UserModel.tenant_id == tenant_id,
-                        UserModel.is_active.is_(True),
-                    )
-                ),
-                self._count(Patient, tenant_id),
-                self._count(OrganizationModel, tenant_id),
-                self._count(ExaminationModel, tenant_id),
-                self._count(Observation, tenant_id),
-                self._count(DocumentModel, tenant_id),
-            )
+        (
+            users_count,
+            active_users_count,
+            patients_count,
+            orgs_count,
+            exams_count,
+            obs_count,
+            docs_count,
+        ) = await asyncio.gather(
+            self._count(UserModel, tenant_id),
+            self.db.execute(
+                select(func.count())
+                .select_from(UserModel)
+                .where(
+                    UserModel.tenant_id == tenant_id,
+                    UserModel.is_active.is_(True),
+                )
+            ),
+            self._count(Patient, tenant_id),
+            self._count(OrganizationModel, tenant_id),
+            self._count(ExaminationModel, tenant_id),
+            self._count(Observation, tenant_id),
+            self._count(DocumentModel, tenant_id),
         )
         return TenantStats(
             users_count=users_count,
@@ -226,12 +237,8 @@ class TenantAdminService:
     # Mutations
     # ------------------------------------------------------------------
 
-    async def create_tenant(
-        self, payload: TenantCreate, actor_id: UUID
-    ) -> TenantModel:
-        slug = await self._ensure_unique_slug(
-            _slugify(payload.slug or payload.name)
-        )
+    async def create_tenant(self, payload: TenantCreate, actor_id: UUID) -> TenantModel:
+        slug = await self._ensure_unique_slug(_slugify(payload.slug or payload.name))
         tenant = TenantModel(
             name=payload.name.strip(),
             slug=slug,
@@ -384,7 +391,9 @@ class TenantAdminService:
         refresh_claims = {**base_claims, "tenant_id": str(tenant.id)}
 
         access_token = create_access_token(access_claims, expires_delta=access_expires)
-        refresh_token = create_access_token(refresh_claims, expires_delta=refresh_expires)
+        refresh_token = create_access_token(
+            refresh_claims, expires_delta=refresh_expires
+        )
 
         await log_audit_action(
             tenant_id=tenant.id,
@@ -422,8 +431,12 @@ class TenantAdminService:
             "tenant_id": str(original_tenant_id),
             "role": actor.role,
         }
-        access_token = create_access_token(restored_claims, expires_delta=access_expires)
-        refresh_token = create_access_token(restored_claims, expires_delta=refresh_expires)
+        access_token = create_access_token(
+            restored_claims, expires_delta=access_expires
+        )
+        refresh_token = create_access_token(
+            restored_claims, expires_delta=refresh_expires
+        )
 
         await log_audit_action(
             tenant_id=original_tenant_id,
@@ -457,9 +470,9 @@ class TenantAdminService:
         offset = max(0, offset)
         query = select(UserModel).where(UserModel.tenant_id == tenant_id)
         count_query = (
-            select(func.count()).select_from(UserModel).where(
-                UserModel.tenant_id == tenant_id
-            )
+            select(func.count())
+            .select_from(UserModel)
+            .where(UserModel.tenant_id == tenant_id)
         )
         if search:
             like = f"%{search.lower()}%"
@@ -580,16 +593,14 @@ class TenantAdminService:
         offset = max(0, offset)
         query = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
         count_query = (
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.tenant_id == tenant_id
-            )
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.tenant_id == tenant_id)
         )
         if action:
             query = query.where(AuditLog.action == action)
             count_query = count_query.where(AuditLog.action == action)
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = (
-            query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
-        )
+        query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)

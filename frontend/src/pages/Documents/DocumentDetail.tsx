@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getDocument, downloadDocument, getExtractionStatus, triggerExtraction, deleteDocument, updateDocument, triggerDocumentDownload } from '../../services/documentService';
 import { getPatient } from '../../services/patientService';
-import { CATEGORY_LABELS as CATEGORIES } from '../../constants/categories';
+import { getDocumentCategories } from '../../services/conceptService';
 import { TaskProgressIndicator } from '../../components/ui/TaskProgressIndicator';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
 import { getStatusColorClass, isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
@@ -391,8 +391,8 @@ export default function DocumentDetail() {
                   className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-xs dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
                 >
                   <option value="">Select category...</option>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                  {getDocumentCategories().map((cat) => (
+                    <option key={cat.slug} value={cat.slug}>{cat.name}</option>
                   ))}
                 </select>
                 <button

@@ -4,7 +4,12 @@ import logging
 from datetime import date, datetime as dt
 from sqlalchemy import select, func, and_
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
-from app.services.fhir_helpers import _extract_patient_id, _normalize_interpretation, assert_valid_fhir, validate_and_filter_observations
+from app.services.fhir_helpers import (
+    _extract_patient_id,
+    _normalize_interpretation,
+    assert_valid_fhir,
+    validate_and_filter_observations,
+)
 from app.services.notification_manager import NotificationManager
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 
@@ -26,6 +31,7 @@ def _parse_date(d):
 def _parse_datetime(d):
     """Internal helper to parse datetime strings from FHIR-like dicts"""
     from datetime import timezone
+
     if not d:
         return None
     if isinstance(d, dt):
@@ -306,7 +312,9 @@ async def create_observation(
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
         biomarker_id=observation_data.get("biomarker_id"),
-        interpretation=_normalize_interpretation(observation_data.get("interpretation")),
+        interpretation=_normalize_interpretation(
+            observation_data.get("interpretation")
+        ),
         raw_value=observation_data.get("raw_value")
         or (value_quantity.get("value") if value_quantity else None),
         document_id=observation_data.get("document_id"),
@@ -408,9 +416,7 @@ async def delete_observation(
         predicates.append(Observation.tenant_id == tid)
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Observation).where(*predicates)
-        )
+        result = await session.execute(select(Observation).where(*predicates))
         observation = result.scalar_one_or_none()
         if observation:
             await session.delete(observation)
@@ -464,9 +470,7 @@ async def list_observations(
         # The FHIR ``code`` JSONB contains a coding list:
         # {"coding": [{"system": "http://loinc.org", "code": "8867-4"}], ...}.
         # Match by JSON path. ``code`` here is the LOINC/OID code string.
-        predicates.append(
-            Observation.code["coding"][0]["code"].astext == str(code)
-        )
+        predicates.append(Observation.code["coding"][0]["code"].astext == str(code))
 
     if start_date:
         start_dt = _parse_date(start_date)
@@ -540,9 +544,7 @@ async def get_observation_history(
         return []
 
     try:
-        patient_uuid = (
-            UUID(patient_id) if isinstance(patient_id, str) else patient_id
-        )
+        patient_uuid = UUID(patient_id) if isinstance(patient_id, str) else patient_id
     except (ValueError, TypeError):
         return []
 
@@ -647,9 +649,7 @@ async def get_diagnostic_report(
         predicates.append(DiagnosticReport.tenant_id == tid)
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(DiagnosticReport).where(*predicates)
-        )
+        result = await session.execute(select(DiagnosticReport).where(*predicates))
         return result.scalar_one_or_none()
 
 
@@ -755,9 +755,7 @@ async def get_medication(
         predicates.append(Medication.tenant_id == tid)
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Medication).where(*predicates)
-        )
+        result = await session.execute(select(Medication).where(*predicates))
         return result.scalar_one_or_none()
 
 
@@ -882,14 +880,28 @@ async def map_observations_to_biomarkers(
                 bdef = res.scalars().first()
 
                 if not bdef:
+                    # Resolve the legacy ``category`` slug to a ``biomarker_class``
+                    # concept. Vital signs ("rate"/"pressure") map to
+                    # "vital-signs-class"; everything else falls back to "other"
+                    # (which resolves to no concept -> ``class_concept_id`` is NULL).
+                    legacy_category = (
+                        "vital_signs"
+                        if "rate" in text.lower() or "pressure" in text.lower()
+                        else "other"
+                    )
+                    from app.services.concept_service import (
+                        resolve_biomarker_class_concept,
+                    )
+
+                    class_concept_id = await resolve_biomarker_class_concept(
+                        db, legacy_category, tenant_id=obs.tenant_id
+                    )
                     bdef = BiomarkerDefinition(
                         slug=slug,
                         coding_system="loinc" if loinc_code else "custom",
                         code=loinc_code,
                         name=text,
-                        category="vital_signs"
-                        if "rate" in text.lower() or "pressure" in text.lower()
-                        else "other",
+                        class_concept_id=class_concept_id,
                         tenant_id=obs.tenant_id,
                     )
                     db.add(bdef)

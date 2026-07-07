@@ -18,7 +18,7 @@ def mock_doctor_data():
         "id": str(uuid.uuid4()),
         "tenant_id": str(uuid.uuid4()),
         "name": "Sarah Wilson",
-        "specialty": "Cardiology",
+        "specialty_concept_id": None,
         "license_number": "MD12345",
         "email": "sarah.wilson@hospital.com",
         "phone": "555-0101",
@@ -68,7 +68,7 @@ async def test_create_doctor(mock_create, async_client: AsyncClient, mock_doctor
     mock_create.return_value = mock_doctor_data
 
     response = await async_client.post(
-        "/api/v1/doctors", json={"name": "Sarah Wilson", "specialty": "Cardiology"}
+        "/api/v1/doctors", json={"name": "Sarah Wilson", "specialty_concept_id": None}
     )
     assert response.status_code == 201
     assert response.json()["name"] == "Sarah Wilson"

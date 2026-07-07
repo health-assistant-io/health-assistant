@@ -9,6 +9,7 @@ agentic-chat reasoning loop, HITL helpers, and chat prompts live in
 The HITL helpers and the service class are re-exported here for backward
 compatibility with callers and tests.
 """
+
 import logging
 from typing import Any, Dict, Optional
 from uuid import UUID
@@ -392,6 +393,4 @@ class AIAssistanceService:
         reference_image: Optional[str] = None,
         context: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        return await generate_category_icon(
-            llm, user_input, reference_image, context
-        )
+        return await generate_category_icon(llm, user_input, reference_image, context)

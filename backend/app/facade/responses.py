@@ -70,7 +70,12 @@ def invalid(diagnostics: str) -> JSONResponse:
     )
 
 
-def created_response(resource: Dict[str, Any], location: str, etag: str, last_modified: Optional[str] = None) -> JSONResponse:
+def created_response(
+    resource: Dict[str, Any],
+    location: str,
+    etag: str,
+    last_modified: Optional[str] = None,
+) -> JSONResponse:
     """201 Created with Location, ETag, Last-Modified headers + canonical body."""
     headers: Dict[str, str] = {
         "Location": location,
@@ -81,7 +86,9 @@ def created_response(resource: Dict[str, Any], location: str, etag: str, last_mo
     return JSONResponse(status_code=201, content=resource, headers=headers)
 
 
-def ok_response(resource: Dict[str, Any], etag: str, last_modified: Optional[str] = None) -> JSONResponse:
+def ok_response(
+    resource: Dict[str, Any], etag: str, last_modified: Optional[str] = None
+) -> JSONResponse:
     """200 OK with ETag + canonical body."""
     headers: Dict[str, str] = {"ETag": etag}
     if last_modified:

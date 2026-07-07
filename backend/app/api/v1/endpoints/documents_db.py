@@ -9,7 +9,7 @@ from fastapi import (
     Form,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Any, Optional, cast
+from typing import Any, Optional, cast
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.services.document_service_db import (
@@ -20,9 +20,8 @@ from app.services.document_service_db import (
     delete_document,
     update_document,
 )
-from app.workers.ai_tasks import process_document, process_document_sync
+from app.workers.ai_tasks import process_document_sync
 import logging
-from typing import Any
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -134,7 +133,12 @@ async def list_documents(
     role = current_user.role
 
     # Admins can see all documents in tenant, users only see their own
-    owner_id = None if current_user.role in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] else str(user_id)
+    owner_id = (
+        None
+        if current_user.role
+        in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+        else str(user_id)
+    )
 
     # Convert tenant_id to string if it's a UUID object
     tenant_id_str = str(tenant_id)
@@ -164,7 +168,11 @@ async def get_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    is_admin = current_user.role in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+    is_admin = current_user.role in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ]
     if not is_admin and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to view this document"
@@ -194,7 +202,11 @@ async def update_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
+    if role not in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to update this document"
         )
@@ -246,7 +258,11 @@ async def edit_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
+    if role not in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to edit this document"
         )
@@ -274,7 +290,11 @@ async def get_presigned_url_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    is_admin = current_user.role in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+    is_admin = current_user.role in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ]
     if not is_admin and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to view this document"
@@ -337,7 +357,11 @@ async def trigger_extraction_endpoint(
         user_id = current_user.user_id
         role = current_user.role
 
-        if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
+        if role not in [
+            Role.ADMIN.value,
+            Role.MANAGER.value,
+            Role.SYSTEM_ADMIN.value,
+        ] and str(document.owner_id) != str(user_id):
             raise HTTPException(
                 status_code=403, detail="Not authorized to extract this document"
             )
@@ -375,7 +399,10 @@ async def get_extraction_status_endpoint(
         f"Checking permissions: user={current_user_id}, role={role}, doc_owner={doc_owner_id}"
     )
 
-    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and doc_owner_id != current_user_id:
+    if (
+        role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+        and doc_owner_id != current_user_id
+    ):
         logger.warning(
             f"Permission denied: user {current_user_id} (role: {role}) tried to access document owned by {doc_owner_id}"
         )
@@ -469,7 +496,11 @@ async def get_dicom_metadata_endpoint(
     # Check permissions
     user_id = current_user.user_id
     role = current_user.role
-    is_admin = current_user.role in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+    is_admin = current_user.role in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ]
     if not is_admin and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to view this document"
@@ -563,7 +594,9 @@ async def get_document_preview_endpoint(
         # and the ``exp`` window. Tenant enforcement happened at mint time
         # (the authenticated caller asked for a doc they could already read).
         if not verify_presigned_token(token, document_id):
-            raise HTTPException(status_code=401, detail="Invalid or expired preview token")
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired preview token"
+            )
     else:
         # No presigned token → require an Authorization: Bearer <jwt>.
         authorization = request.headers.get("authorization")
@@ -573,7 +606,7 @@ async def get_document_preview_endpoint(
                 detail="Authentication required: provide a presigned token or a Bearer token.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        bearer = authorization[len("Bearer "):]
+        bearer = authorization[len("Bearer ") :]
         payload = decode_access_token(bearer)
         if not payload:
             raise HTTPException(
@@ -671,7 +704,11 @@ async def delete_document_endpoint(
     user_id = current_user.user_id
     role = current_user.role
 
-    if role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value] and str(document.owner_id) != str(user_id):
+    if role not in [
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ] and str(document.owner_id) != str(user_id):
         raise HTTPException(
             status_code=403, detail="Not authorized to delete this document"
         )

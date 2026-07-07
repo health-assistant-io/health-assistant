@@ -103,15 +103,11 @@ def test_medicatonstatus_enum_values_match_python():
         "fhir_communications",
         "documents",
         "examinations",
-        "examination_categories",
         "clinical_events",
-        "clinical_event_categories",
         "clinical_event_types",
         "medication_catalog",
         "allergy_catalog",
         "biomarker_definitions",
-        "biomarker_groups",
-        "biomarker_group_members",
         "biomarker_relationships",
         "biomarker_event_correlations",
         "telemetry_data",
@@ -152,60 +148,45 @@ def test_table_exists_in_migration(table):
     )
 
 
-def test_examination_categories_seeded():
-    """The migration seeds the default examination categories.
-
-    Uses a live query against the migrated test database (conftest already
-    runs `alembic upgrade head`).
-    """
+def test_concept_tables_exist():
+    """The unified concept tables exist after migration."""
     sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT count(*) FROM examination_categories "
-                    "WHERE slug = 'laboratory-tests'"
-                )
-            ).scalar()
-            assert result == 1, "default category 'laboratory-tests' not seeded"
-
-            total = conn.execute(
-                text("SELECT count(*) FROM examination_categories")
-            ).scalar()
-            assert total >= 15, (
-                f"expected >=15 default categories, got {total}"
-            )
+            for table in ("concepts", "concept_edges"):
+                result = conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_name = :t"
+                    ),
+                    {"t": table},
+                ).scalar()
+                assert result == 1, f"Table '{table}' does not exist"
     finally:
         engine.dispose()
 
 
-def test_examination_category_ids_are_deterministic():
-    """Re-running the seed must produce identical UUIDs (uuid5-based)."""
+def test_old_category_tables_dropped():
+    """The old scattered category tables have been dropped."""
     sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            slug_to_id = dict(
-                conn.execute(
+            for table in (
+                "examination_categories",
+                "clinical_event_categories",
+                "biomarker_groups",
+                "biomarker_group_members",
+            ):
+                result = conn.execute(
                     text(
-                        "SELECT slug, id FROM examination_categories "
-                        "WHERE slug = 'laboratory-tests'"
-                    )
-                ).all()
-            )
-            # The uuid5 of NAMESPACE_DNS('health-assistant.examination_categories')
-            # + 'laboratory-tests' must be stable across runs.
-            import uuid
-
-            ns = uuid.uuid5(
-                uuid.NAMESPACE_DNS, "health-assistant.examination_categories"
-            )
-            expected = str(uuid.uuid5(ns, "laboratory-tests"))
-            actual = str(slug_to_id["laboratory-tests"])
-            assert actual == expected, (
-                f"category id {actual} != deterministic expected {expected}"
-            )
+                        "SELECT count(*) FROM information_schema.tables "
+                        "WHERE table_name = :t"
+                    ),
+                    {"t": table},
+                ).scalar()
+                assert result == 0, f"Old table '{table}' should have been dropped"
     finally:
         engine.dispose()
 

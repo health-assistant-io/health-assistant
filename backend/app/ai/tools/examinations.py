@@ -3,6 +3,7 @@
 Extracted from ``ChatbotTools`` (Phase 3). Includes the only write tool
 (``update_examination_notes``).
 """
+
 import json
 from typing import Any, List
 from uuid import UUID
@@ -111,9 +112,7 @@ def build(ctx: ToolContext) -> List[Any]:
             summary["biomarkers"].append(
                 {
                     "id": str(obs.id),
-                    "biomarker_id": str(obs.biomarker_id)
-                    if obs.biomarker_id
-                    else None,
+                    "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
                     "name": obs.code.get("text"),
                     "value": obs.value_quantity.get("value")
                     if obs.value_quantity

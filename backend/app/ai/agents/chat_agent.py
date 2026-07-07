@@ -21,6 +21,7 @@ Public surface:
   * :func:`run_reasoning_loop`   — the ONE loop (event generator).
   * :func:`stream_loop_as_sse`   — event -> SSE-sentinel mapper.
 """
+
 import json
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
@@ -29,7 +30,11 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.agents.hitl import _append_assistant_turn_to_history, _hitl_llm_feedback, _parse_hitl_proposal
+from app.ai.agents.hitl import (
+    _append_assistant_turn_to_history,
+    _hitl_llm_feedback,
+    _parse_hitl_proposal,
+)
 from app.ai.tools import get_tools
 
 logger = logging.getLogger(__name__)
@@ -58,7 +63,9 @@ async def build_chat_tools(
         return []
 
     exam_id = UUID(examination_id) if examination_id else None
-    tools = get_tools(db, tenant_id, UUID(patient_id), examination_id=exam_id, user_id=user_id)
+    tools = get_tools(
+        db, tenant_id, UUID(patient_id), examination_id=exam_id, user_id=user_id
+    )
     try:
         from app.ai.tools.aggregator import aggregate as integration_aggregate
 
@@ -192,14 +199,14 @@ async def run_reasoning_loop(
                     if not total_content:
                         delta = content_received
                     elif content_received.startswith(total_content):
-                        delta = content_received[len(total_content):]
+                        delta = content_received[len(total_content) :]
                     elif total_content.startswith(content_received):
                         delta = ""
                     else:
                         delta = content_received
 
                     if content_yielded_iter and delta.startswith(content_yielded_iter):
-                        actual_yield = delta[len(content_yielded_iter):]
+                        actual_yield = delta[len(content_yielded_iter) :]
                     else:
                         actual_yield = delta
 
@@ -218,7 +225,7 @@ async def run_reasoning_loop(
                 if not total_content:
                     delta = response.content
                 elif response.content.startswith(total_content):
-                    delta = response.content[len(total_content):]
+                    delta = response.content[len(total_content) :]
                 elif total_content.startswith(response.content):
                     delta = ""
                 else:

@@ -16,6 +16,7 @@ Public functions:
 the savepoint regression tests (``inst._persist_results(...)`` on a
 ``__new__`` instance with only ``db`` set) keep working unchanged.
 """
+
 import datetime
 import logging
 from typing import Any, Dict, List, Optional
@@ -29,28 +30,28 @@ from app.models.enums import CodingSystem, QuantityType
 from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
 from app.models.fhir.patient import Observation
 from app.models.document_model import DocumentModel
-from app.services.fhir_helpers import FhirSerializationError, _normalize_interpretation, assert_valid_fhir
+from app.services.fhir_helpers import (
+    FhirSerializationError,
+    _normalize_interpretation,
+    assert_valid_fhir,
+)
 
 logger = logging.getLogger(__name__)
 
-# Maps BiomarkerDefinition.category (internal taxonomy) to the canonical FHIR
-# observation-category code (http://terminology.hl7.org/CodeSystem/observation-category).
-# FHIR Observation.category is 0..* (a list of CodeableConcept); OCR-sourced
-# observations are stamped with the mapped category so they carry proper FHIR
-# semantics and round-trip cleanly through export/import. Unknown/missing -> laboratory.
-_BIOMARKER_TO_FHIR_CATEGORY = {
-    "blood_laboratory": "laboratory",
-    "urine": "laboratory",
-    "vital_signs": "vital-signs",
-    "imaging": "imaging",
-    "ophthalmology": "exam",
-}
 _OBS_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/observation-category"
 
 
-def _fhir_observation_category(bio_category: Optional[str]) -> List[Dict[str, Any]]:
-    """Build a canonical FHIR ``category`` list from a biomarker category."""
-    code = _BIOMARKER_TO_FHIR_CATEGORY.get((bio_category or "").strip(), "laboratory")
+def _fhir_observation_category(concept=None) -> List[Dict[str, Any]]:
+    """Build a canonical FHIR ``category`` list from a biomarker's class concept.
+
+    The FHIR observation-category code is stored on the concept itself in
+    ``meta_data["fhir_observation_category"]`` (seeded via ``concepts.json``,
+    editable via the TaxonomyManager UI). Falls back to ``"laboratory"`` when
+    the concept or the meta_data key is missing.
+    """
+    code = "laboratory"
+    if concept and concept.meta_data:
+        code = concept.meta_data.get("fhir_observation_category", "laboratory")
     return [
         {
             "coding": [
@@ -87,7 +88,9 @@ async def persist_results(
     # transaction stays open for the caller to handle the error.
     async with db.begin_nested():
         # Clear existing
-        await db.execute(delete(Observation).where(Observation.examination_id == exam.id))
+        await db.execute(
+            delete(Observation).where(Observation.examination_id == exam.id)
+        )
         await db.execute(delete(Medication).where(Medication.examination_id == exam.id))
 
         # Refresh maps
@@ -144,7 +147,14 @@ async def persist_results(
                 interpretation_flag=b.interpretation_flag,
             )
             await save_observation(
-                db, wrapped, target, unit_map, exam, patient_ref, eff_date, source_doc_id
+                db,
+                wrapped,
+                target,
+                unit_map,
+                exam,
+                patient_ref,
+                eff_date,
+                source_doc_id,
             )
 
         # Save Medications
@@ -171,9 +181,7 @@ async def persist_results(
     # end begin_nested — savepoint released cleanly, outer txn continues
 
 
-def find_source_doc(
-    text_to_find: str, docs: List[DocumentModel]
-) -> Optional[str]:
+def find_source_doc(text_to_find: str, docs: List[DocumentModel]) -> Optional[str]:
     if not docs:
         return None
     for d in docs:
@@ -212,7 +220,12 @@ async def save_observation(
     relative_score: Optional[float] = None
     ref_min = b.reference_range_min
     ref_max = b.reference_range_max
-    if val_float is not None and ref_min is not None and ref_max is not None and ref_max > ref_min:
+    if (
+        val_float is not None
+        and ref_min is not None
+        and ref_max is not None
+        and ref_max > ref_min
+    ):
         relative_score = (val_float - ref_min) / (ref_max - ref_min)
         relative_score = max(0.0, min(1.0, relative_score))
     elif ref_min is not None or ref_max is not None:
@@ -264,11 +277,15 @@ async def save_observation(
     )
     coding = []
     if target_bio:
-        coding.append({
-            "system": target_bio.coding_system.fhir_system if target_bio.coding_system else CodingSystem.CUSTOM.fhir_system,
-            "code": target_bio.code or target_bio.slug,
-            "display": target_bio.name
-        })
+        coding.append(
+            {
+                "system": target_bio.coding_system.fhir_system
+                if target_bio.coding_system
+                else CodingSystem.CUSTOM.fhir_system,
+                "code": target_bio.code or target_bio.slug,
+                "display": target_bio.name,
+            }
+        )
 
     obs = Observation(
         examination_id=exam.id,
@@ -288,7 +305,7 @@ async def save_observation(
         method=b.method,
         interpretation=_normalize_interpretation(b.interpretation_flag),
         category=_fhir_observation_category(
-            target_bio.category if target_bio else None
+            target_bio.class_concept if target_bio else None
         ),
     )
     # Write-time FHIR gate: never persist an Observation that cannot be
@@ -297,8 +314,6 @@ async def save_observation(
     try:
         assert_valid_fhir(obs)
     except FhirSerializationError as e:
-        logger.warning(
-            "Skipping invalid OCR observation for %s: %s", b.name, e
-        )
+        logger.warning("Skipping invalid OCR observation for %s: %s", b.name, e)
         return
     db.add(obs)

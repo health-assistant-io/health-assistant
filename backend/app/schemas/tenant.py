@@ -9,6 +9,7 @@ Switching carries its own response (``SwitchTenantResponse``) that hands the
 frontend a fresh scoped JWT plus the original-tenant pointer so it can later
 restore the admin's real session.
 """
+
 from typing import Any, Dict, List, Literal, Optional
 from datetime import datetime
 from uuid import UUID

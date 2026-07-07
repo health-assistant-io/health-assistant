@@ -1,0 +1,673 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health Assistant",
+    "last_updated": "2026-07-07"
+  },
+  "items": [
+    {
+      "slug": "blood-laboratory",
+      "name": "Blood Laboratory",
+      "color": "#dc2626",
+      "icon": {
+        "type": "lucide",
+        "value": "droplet"
+      },
+      "kinds": [
+        "examination_category",
+        "biomarker_class",
+        "document_category"
+      ]
+    },
+    {
+      "slug": "vital-signs",
+      "name": "Vital Signs",
+      "color": "#ef4444",
+      "icon": {
+        "type": "lucide",
+        "value": "activity"
+      },
+      "kinds": [
+        "examination_category",
+        "biomarker_class",
+        "document_category"
+      ]
+    },
+    {
+      "slug": "cardiology",
+      "name": "Cardiology",
+      "color": "#dc2626",
+      "icon": {
+        "type": "lucide",
+        "value": "heart"
+      },
+      "kinds": [
+        "specialty",
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "neurology",
+      "name": "Neurology",
+      "coding_system": "snomed",
+      "code": "394591006",
+      "color": "#6366f1",
+      "icon": {
+        "type": "lucide",
+        "value": "brain"
+      },
+      "kinds": [
+        "specialty",
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "ophthalmology",
+      "name": "Ophthalmology",
+      "coding_system": "snomed",
+      "code": "394810000",
+      "color": "#0ea5e9",
+      "icon": {
+        "type": "lucide",
+        "value": "eye"
+      },
+      "kinds": [
+        "specialty",
+        "examination_category",
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "pulmonology",
+      "name": "Pulmonology",
+      "coding_system": "snomed",
+      "code": "394812008",
+      "color": "#2dd4bf",
+      "icon": {
+        "type": "lucide",
+        "value": "wind"
+      },
+      "kinds": [
+        "specialty",
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "gastroenterology",
+      "name": "Gastroenterology",
+      "coding_system": "snomed",
+      "code": "394802001",
+      "color": "#10b981",
+      "icon": {
+        "type": "lucide",
+        "value": "utensils"
+      },
+      "kinds": [
+        "specialty",
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "laboratory-tests",
+      "name": "Laboratory Tests",
+      "color": "#f97316",
+      "icon": {
+        "type": "lucide",
+        "value": "clipboard-list"
+      },
+      "kinds": [
+        "examination_category",
+        "document_category"
+      ]
+    },
+    {
+      "slug": "imaging-radiology",
+      "name": "Imaging & Radiology",
+      "color": "#a855f7",
+      "icon": {
+        "type": "lucide",
+        "value": "image"
+      },
+      "kinds": [
+        "examination_category",
+        "document_category"
+      ]
+    },
+    {
+      "slug": "other",
+      "name": "Other",
+      "color": "#6b7280",
+      "icon": {
+        "type": "lucide",
+        "value": "more-horizontal"
+      },
+      "kinds": [
+        "examination_category",
+        "anatomy_class",
+        "document_category"
+      ]
+    },
+    {
+      "slug": "specialty",
+      "name": "Medical Specialties",
+      "description": "Root for doctor specialties",
+      "kinds": [
+        "document_category"
+      ]
+    },
+    {
+      "slug": "endocrinology",
+      "name": "Endocrinology",
+      "coding_system": "snomed",
+      "code": "394812008",
+      "color": "#f59e0b",
+      "icon": {
+        "type": "lucide",
+        "value": "activity"
+      },
+      "kinds": [
+        "specialty"
+      ]
+    },
+    {
+      "slug": "dermatology",
+      "name": "Dermatology",
+      "coding_system": "snomed",
+      "code": "394807007",
+      "color": "#ec4899",
+      "icon": {
+        "type": "lucide",
+        "value": "hand"
+      },
+      "kinds": [
+        "specialty"
+      ]
+    },
+    {
+      "slug": "general-practice",
+      "name": "General Practice",
+      "coding_system": "snomed",
+      "code": "408443003",
+      "color": "#6b7280",
+      "icon": {
+        "type": "lucide",
+        "value": "stethoscope"
+      },
+      "kinds": [
+        "specialty"
+      ]
+    },
+    {
+      "slug": "cardiovascular-system",
+      "name": "Cardiovascular System",
+      "color": "#dc2626",
+      "icon": {
+        "type": "lucide",
+        "value": "heart"
+      },
+      "kinds": [
+        "body_system"
+      ]
+    },
+    {
+      "slug": "nervous-system",
+      "name": "Nervous System",
+      "color": "#6366f1",
+      "icon": {
+        "type": "lucide",
+        "value": "brain"
+      },
+      "kinds": [
+        "body_system"
+      ]
+    },
+    {
+      "slug": "respiratory-system",
+      "name": "Respiratory System",
+      "color": "#2dd4bf",
+      "icon": {
+        "type": "lucide",
+        "value": "wind"
+      },
+      "kinds": [
+        "body_system"
+      ]
+    },
+    {
+      "slug": "digestive-system",
+      "name": "Digestive System",
+      "color": "#10b981",
+      "icon": {
+        "type": "lucide",
+        "value": "utensils"
+      },
+      "kinds": [
+        "body_system"
+      ]
+    },
+    {
+      "slug": "endocrine-system",
+      "name": "Endocrine System",
+      "color": "#f59e0b",
+      "icon": {
+        "type": "lucide",
+        "value": "activity"
+      },
+      "kinds": [
+        "body_system"
+      ]
+    },
+    {
+      "slug": "urine-laboratory",
+      "name": "Urine Laboratory",
+      "color": "#facc15",
+      "icon": {
+        "type": "lucide",
+        "value": "test-tube"
+      },
+      "kinds": [
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "dentistry",
+      "name": "Dentistry",
+      "color": "#94a3b8",
+      "icon": {
+        "type": "lucide",
+        "value": "smile"
+      },
+      "kinds": [
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "pathology",
+      "name": "Pathology",
+      "color": "#b91c1c",
+      "icon": {
+        "type": "lucide",
+        "value": "microscope"
+      },
+      "kinds": [
+        "examination_category"
+      ]
+    },
+    {
+      "slug": "reproductive-health",
+      "name": "Reproductive Health",
+      "color": "#ec4899",
+      "icon": {
+        "type": "lucide",
+        "value": "baby"
+      },
+      "kinds": [
+        "event_category"
+      ]
+    },
+    {
+      "slug": "acute-chronic",
+      "name": "Acute & Chronic",
+      "color": "#ef4444",
+      "icon": {
+        "type": "lucide",
+        "value": "alert-triangle"
+      },
+      "kinds": [
+        "event_category"
+      ]
+    },
+    {
+      "slug": "specialized-care",
+      "name": "Specialized Care",
+      "color": "#8b5cf6",
+      "icon": {
+        "type": "lucide",
+        "value": "stethoscope"
+      },
+      "kinds": [
+        "event_category"
+      ]
+    },
+    {
+      "slug": "routine-wellness",
+      "name": "Routine & Wellness",
+      "color": "#10b981",
+      "icon": {
+        "type": "lucide",
+        "value": "shield-check"
+      },
+      "kinds": [
+        "event_category"
+      ]
+    },
+    {
+      "slug": "urine-class",
+      "name": "Urine",
+      "color": "#facc15",
+      "icon": {
+        "type": "lucide",
+        "value": "test-tube"
+      },
+      "meta_data": {
+        "fhir_observation_category": "laboratory"
+      },
+      "kinds": [
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "lipids-class",
+      "name": "Lipids",
+      "color": "#f59e0b",
+      "icon": {
+        "type": "lucide",
+        "value": "droplet"
+      },
+      "meta_data": {
+        "fhir_observation_category": "laboratory"
+      },
+      "kinds": [
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "hematology-class",
+      "name": "Hematology",
+      "color": "#dc2626",
+      "icon": {
+        "type": "lucide",
+        "value": "droplet"
+      },
+      "meta_data": {
+        "fhir_observation_category": "laboratory"
+      },
+      "kinds": [
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "endocrine-class",
+      "name": "Endocrine",
+      "color": "#f59e0b",
+      "icon": {
+        "type": "lucide",
+        "value": "activity"
+      },
+      "meta_data": {
+        "fhir_observation_category": "laboratory"
+      },
+      "kinds": [
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "activity-class",
+      "name": "Activity",
+      "color": "#10b981",
+      "icon": {
+        "type": "lucide",
+        "value": "footprints"
+      },
+      "meta_data": {
+        "fhir_observation_category": "activity"
+      },
+      "kinds": [
+        "biomarker_class"
+      ]
+    },
+    {
+      "slug": "lipid-panel",
+      "name": "Lipid Panel",
+      "coding_system": "loinc",
+      "code": "LP39316-6",
+      "color": "#f59e0b",
+      "icon": {
+        "type": "lucide",
+        "value": "layers"
+      },
+      "aliases": [
+        "lipid profile",
+        "cholesterol panel"
+      ],
+      "kinds": [
+        "biomarker_panel"
+      ]
+    },
+    {
+      "slug": "blood-pressure-panel",
+      "name": "Blood Pressure",
+      "coding_system": "loinc",
+      "code": "LP42298-3",
+      "color": "#ef4444",
+      "icon": {
+        "type": "lucide",
+        "value": "gauge"
+      },
+      "aliases": [
+        "bp",
+        "blood pressure"
+      ],
+      "kinds": [
+        "biomarker_panel"
+      ]
+    },
+    {
+      "slug": "cbc-panel",
+      "name": "Complete Blood Count",
+      "coding_system": "loinc",
+      "code": "LP41724-9",
+      "color": "#dc2626",
+      "icon": {
+        "type": "lucide",
+        "value": "droplets"
+      },
+      "aliases": [
+        "cbc",
+        "full blood count"
+      ],
+      "kinds": [
+        "biomarker_panel"
+      ]
+    },
+    {
+      "slug": "basic-metabolic-panel",
+      "name": "Basic Metabolic Panel",
+      "coding_system": "loinc",
+      "code": "LP41732-2",
+      "color": "#06b6d4",
+      "icon": {
+        "type": "lucide",
+        "value": "flask-conical"
+      },
+      "aliases": [
+        "bmp",
+        "chem-7"
+      ],
+      "kinds": [
+        "biomarker_panel"
+      ]
+    },
+    {
+      "slug": "system",
+      "name": "System",
+      "description": "A body system (e.g. cardiovascular)",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "region",
+      "name": "Region",
+      "description": "A body region (e.g. head, thorax)",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "organ",
+      "name": "Organ",
+      "description": "A distinct organ (e.g. heart, liver)",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "organ-part",
+      "name": "Organ Part",
+      "description": "A subdivided part of an organ",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "tissue",
+      "name": "Tissue",
+      "description": "A tissue type",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "joint",
+      "name": "Joint",
+      "description": "A joint",
+      "kinds": [
+        "anatomy_class"
+      ]
+    },
+    {
+      "slug": "prescription-doc",
+      "name": "Prescriptions",
+      "color": "#3b82f6",
+      "kinds": [
+        "document_category"
+      ]
+    },
+    {
+      "slug": "clinical-notes-doc",
+      "name": "Clinical Notes",
+      "color": "#6b7280",
+      "kinds": [
+        "document_category"
+      ]
+    },
+    {
+      "slug": "discharge-doc",
+      "name": "Discharge Summaries",
+      "color": "#10b981",
+      "kinds": [
+        "document_category"
+      ]
+    },
+    {
+      "slug": "atc-c",
+      "name": "Cardiovascular System",
+      "coding_system": "atc",
+      "code": "C",
+      "description": "ATC level 1: Cardiovascular system drugs",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-c10",
+      "name": "Lipid Modifying Agents",
+      "coding_system": "atc",
+      "code": "C10",
+      "parent_slug": "atc-c",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-c10aa",
+      "name": "HMG CoA Reductase Inhibitors (Statins)",
+      "coding_system": "atc",
+      "code": "C10AA",
+      "parent_slug": "atc-c10",
+      "aliases": [
+        "statins"
+      ],
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-a",
+      "name": "Alimentary Tract & Metabolism",
+      "coding_system": "atc",
+      "code": "A",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-a10",
+      "name": "Drugs Used in Diabetes",
+      "coding_system": "atc",
+      "code": "A10",
+      "parent_slug": "atc-a",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-a10ba",
+      "name": "Biguanides",
+      "coding_system": "atc",
+      "code": "A10BA",
+      "parent_slug": "atc-a10",
+      "aliases": [
+        "metformin class"
+      ],
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-n",
+      "name": "Nervous System",
+      "coding_system": "atc",
+      "code": "N",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-n02",
+      "name": "Analgesics",
+      "coding_system": "atc",
+      "code": "N02",
+      "parent_slug": "atc-n",
+      "aliases": [
+        "painkillers"
+      ],
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-j",
+      "name": "Antiinfectives for Systemic Use",
+      "coding_system": "atc",
+      "code": "J",
+      "kinds": [
+        "medication_class"
+      ]
+    },
+    {
+      "slug": "atc-j01",
+      "name": "Antibacterials for Systemic Use",
+      "coding_system": "atc",
+      "code": "J01",
+      "parent_slug": "atc-j",
+      "aliases": [
+        "antibiotics"
+      ],
+      "kinds": [
+        "medication_class"
+      ]
+    }
+  ]
+}

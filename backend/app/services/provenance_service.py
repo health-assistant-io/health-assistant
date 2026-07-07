@@ -7,6 +7,7 @@ it never changes.
 This is a best-effort service: if Provenance creation fails, the resource
 write is NOT rolled back (spec allows this). We log a warning and continue.
 """
+
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -151,15 +152,11 @@ async def _resolve_practitioner_ref(
             return None
         return f"Practitioner/{doctor_id}"
     except Exception as e:
-        logger.warning(
-            "Practitioner resolution failed for user_id=%s: %s", user_id, e
-        )
+        logger.warning("Practitioner resolution failed for user_id=%s: %s", user_id, e)
         return None
 
 
-async def _resolve_device_ref(
-    db: AsyncSession, integration_id: UUID
-) -> Optional[str]:
+async def _resolve_device_ref(db: AsyncSession, integration_id: UUID) -> Optional[str]:
     """Resolve a UserIntegration id to a ``Device/<id>`` reference via
     DeviceModel.owner_integration_id. Returns None if no Device row exists."""
     from sqlalchemy import select
@@ -221,10 +218,21 @@ async def record_provenance(
         # system identity as an additional agent (display-only — the SA's
         # client_id has no FHIR resource to reference).
         if client_id:
-            agents.append({
-                "who": {"display": f"Service Account: {client_id}"},
-                "type": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type", "code": "author"}]}],
-            })
+            agents.append(
+                {
+                    "who": {"display": f"Service Account: {client_id}"},
+                    "type": [
+                        {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                                    "code": "author",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            )
         provenance = ProvenanceModel(
             tenant_id=tenant_id,
             target=[{"reference": f"{target_resource_type}/{target_id}"}],

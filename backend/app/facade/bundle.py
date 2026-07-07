@@ -49,7 +49,11 @@ def build_search_bundle(
         ``entry[]``, and ``link[]`` for self/first/previous/next/last.
     """
     # Parse the raw query string so we can mutate it for pagination links.
-    raw_qs = query_string.decode("utf-8") if isinstance(query_string, bytes) else query_string
+    raw_qs = (
+        query_string.decode("utf-8")
+        if isinstance(query_string, bytes)
+        else query_string
+    )
     parsed = _parse_qs(raw_qs)
 
     # Compute total pages.
@@ -88,12 +92,38 @@ def build_search_bundle(
     # Build pagination links.
     links: List[Dict[str, Any]] = []
     links.append({"relation": "self", "url": _build_url(base_url, path, parsed)})
-    links.append({"relation": "first", "url": _build_url(base_url, path, _with_page(parsed, 0, count))})
-    links.append({"relation": "last", "url": _build_url(base_url, path, _with_page(parsed, (total_pages - 1) * count, count))})
+    links.append(
+        {
+            "relation": "first",
+            "url": _build_url(base_url, path, _with_page(parsed, 0, count)),
+        }
+    )
+    links.append(
+        {
+            "relation": "last",
+            "url": _build_url(
+                base_url, path, _with_page(parsed, (total_pages - 1) * count, count)
+            ),
+        }
+    )
     if current_page > 1:
-        links.append({"relation": "previous", "url": _build_url(base_url, path, _with_page(parsed, max(0, offset - count), count))})
+        links.append(
+            {
+                "relation": "previous",
+                "url": _build_url(
+                    base_url, path, _with_page(parsed, max(0, offset - count), count)
+                ),
+            }
+        )
     if current_page < total_pages:
-        links.append({"relation": "next", "url": _build_url(base_url, path, _with_page(parsed, offset + count, count))})
+        links.append(
+            {
+                "relation": "next",
+                "url": _build_url(
+                    base_url, path, _with_page(parsed, offset + count, count)
+                ),
+            }
+        )
 
     bundle: Dict[str, Any] = {
         "resourceType": "Bundle",
@@ -110,6 +140,7 @@ def build_search_bundle(
         bundle["meta"] = meta
     else:
         from app.services.fhir_helpers import build_meta
+
         bundle["meta"] = build_meta(provenance=False)
     return bundle
 

@@ -7,6 +7,7 @@ catalog auto-expands. ``MedicalProcessingService`` keeps thin delegate methods
 (``_process_unknown_biomarkers`` / ``_process_unknown_medications``) that
 forward to the functions here.
 """
+
 import logging
 from typing import Any, Dict
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.enums import QuantityType
 from app.models.fhir.medication import MedicationCatalog
+from app.services.concept_service import resolve_biomarker_class_concept
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +57,20 @@ async def process_unknown_biomarkers(
                     unit_map[u_lower] = new_unit
                     preferred_unit_id = new_unit.id
 
+            # ``def_data.category`` is a slug like "blood_laboratory" —
+            # resolve it to a ``biomarker_class`` concept ID. The helper
+            # normalizes to the concept slug ("blood-laboratory-class").
+            class_concept_id = await resolve_biomarker_class_concept(
+                db, def_data.category, tenant_id=tenant_id
+            )
+
             db.add(
                 BiomarkerDefinition(
                     slug=def_data.proposed_slug,
                     coding_system=def_data.proposed_coding_system,
                     code=def_data.proposed_code,
                     name=def_data.name,
-                    category=def_data.category,
+                    class_concept_id=class_concept_id,
                     aliases=def_data.suggested_aliases,
                     reference_range_min=def_data.reference_range_min,
                     reference_range_max=def_data.reference_range_max,

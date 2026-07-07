@@ -1,109 +1,116 @@
-[
-  {
-    "name": "Penicillin",
-    "category": "MEDICATION",
-    "description": "Antibiotic allergy"
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health Assistant",
+    "last_updated": "2026-07-05"
   },
-  {
-    "name": "Amoxicillin",
-    "category": "MEDICATION",
-    "description": "Antibiotic allergy"
-  },
-  {
-    "name": "Ibuprofen",
-    "category": "MEDICATION",
-    "description": "NSAID allergy"
-  },
-  {
-    "name": "Aspirin",
-    "category": "MEDICATION",
-    "description": "NSAID allergy"
-  },
-  {
-    "name": "Sulfa drugs",
-    "category": "MEDICATION",
-    "description": "Antibiotic allergy"
-  },
-  {
-    "name": "Peanuts",
-    "category": "FOOD",
-    "description": "Nut allergy",
-    "typical_reactions": [
-      "Hives",
-      "Swelling",
-      "Anaphylaxis"
-    ]
-  },
-  {
-    "name": "Tree Nuts",
-    "category": "FOOD",
-    "description": "Includes walnuts, almonds, cashews",
-    "typical_reactions": [
-      "Hives",
-      "Swelling"
-    ]
-  },
-  {
-    "name": "Shellfish",
-    "category": "FOOD",
-    "description": "Includes shrimp, crab, lobster"
-  },
-  {
-    "name": "Dairy / Milk",
-    "category": "FOOD",
-    "description": "Milk protein allergy"
-  },
-  {
-    "name": "Eggs",
-    "category": "FOOD",
-    "description": "Egg protein allergy"
-  },
-  {
-    "name": "Wheat",
-    "category": "FOOD",
-    "description": "Wheat allergy (not Celiac)"
-  },
-  {
-    "name": "Soy",
-    "category": "FOOD",
-    "description": "Soy protein allergy"
-  },
-  {
-    "name": "Pollen",
-    "category": "ENVIRONMENT",
-    "description": "Seasonal hay fever",
-    "typical_reactions": [
-      "Sneezing",
-      "Itchy eyes"
-    ]
-  },
-  {
-    "name": "Dust Mites",
-    "category": "ENVIRONMENT",
-    "description": "Indoor allergen"
-  },
-  {
-    "name": "Mold",
-    "category": "ENVIRONMENT",
-    "description": "Fungal spores"
-  },
-  {
-    "name": "Pet Dander",
-    "category": "ENVIRONMENT",
-    "description": "Allergy to cats/dogs"
-  },
-  {
-    "name": "Latex",
-    "category": "BIOLOGIC",
-    "description": "Natural rubber latex"
-  },
-  {
-    "name": "Bee Stings",
-    "category": "BIOLOGIC",
-    "description": "Insect venom allergy",
-    "typical_reactions": [
-      "Severe swelling",
-      "Anaphylaxis"
-    ]
-  }
-]
+  "items": [
+    {
+      "name": "Penicillin",
+      "category": "MEDICATION",
+      "description": "Antibiotic allergy"
+    },
+    {
+      "name": "Amoxicillin",
+      "category": "MEDICATION",
+      "description": "Antibiotic allergy"
+    },
+    {
+      "name": "Ibuprofen",
+      "category": "MEDICATION",
+      "description": "NSAID allergy"
+    },
+    {
+      "name": "Aspirin",
+      "category": "MEDICATION",
+      "description": "NSAID allergy"
+    },
+    {
+      "name": "Sulfa drugs",
+      "category": "MEDICATION",
+      "description": "Antibiotic allergy"
+    },
+    {
+      "name": "Peanuts",
+      "category": "FOOD",
+      "description": "Nut allergy",
+      "typical_reactions": [
+        "Hives",
+        "Swelling",
+        "Anaphylaxis"
+      ]
+    },
+    {
+      "name": "Tree Nuts",
+      "category": "FOOD",
+      "description": "Includes walnuts, almonds, cashews",
+      "typical_reactions": [
+        "Hives",
+        "Swelling"
+      ]
+    },
+    {
+      "name": "Shellfish",
+      "category": "FOOD",
+      "description": "Includes shrimp, crab, lobster"
+    },
+    {
+      "name": "Dairy / Milk",
+      "category": "FOOD",
+      "description": "Milk protein allergy"
+    },
+    {
+      "name": "Eggs",
+      "category": "FOOD",
+      "description": "Egg protein allergy"
+    },
+    {
+      "name": "Wheat",
+      "category": "FOOD",
+      "description": "Wheat allergy (not Celiac)"
+    },
+    {
+      "name": "Soy",
+      "category": "FOOD",
+      "description": "Soy protein allergy"
+    },
+    {
+      "name": "Pollen",
+      "category": "ENVIRONMENT",
+      "description": "Seasonal hay fever",
+      "typical_reactions": [
+        "Sneezing",
+        "Itchy eyes"
+      ]
+    },
+    {
+      "name": "Dust Mites",
+      "category": "ENVIRONMENT",
+      "description": "Indoor allergen"
+    },
+    {
+      "name": "Mold",
+      "category": "ENVIRONMENT",
+      "description": "Fungal spores"
+    },
+    {
+      "name": "Pet Dander",
+      "category": "ENVIRONMENT",
+      "description": "Allergy to cats/dogs"
+    },
+    {
+      "name": "Latex",
+      "category": "BIOLOGIC",
+      "description": "Natural rubber latex"
+    },
+    {
+      "name": "Bee Stings",
+      "category": "BIOLOGIC",
+      "description": "Insect venom allergy",
+      "typical_reactions": [
+        "Severe swelling",
+        "Anaphylaxis"
+      ]
+    }
+  ]
+}

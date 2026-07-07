@@ -2,6 +2,30 @@
 
 Creating robust demo data is critical for E2E tests, documentation screenshots, and local development. This project follows specific best practices to ensure seeding is idempotent, deterministic, and maintainable.
 
+## 0. The Seed Pipeline (`SeedService.seed_all`)
+
+Every application startup runs a single ordered, idempotent seed pipeline against the dev/prod DB (`backend/app/services/seed_service.py`). The stage order is declared in `_SEED_STAGE_NAMES` so dependencies land first:
+
+| # | Stage | Depends on |
+|---|---|---|
+| 1 | `medications` | — |
+| 2 | `clinical_event_types` | — |
+| 3 | `allergies` | — |
+| 4 | `body_parts` (anatomy structures + relations) | — |
+| 5 | `anatomy_figures` | body_parts |
+| 6 | `concepts` (taxonomy) | — |
+| 7 | `concept_edges` (incl. concept→anatomy) | concepts + body_parts |
+| 8 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
+| 9 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
+
+**Conventions:**
+- **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
+- **Stats contract** — every `seed_*` returns `{added, updated, skipped, errors}`. `seed_default_catalog` additionally carries a `details: {units_added, units_updated, biomarkers_added, biomarkers_updated}` sub-dict.
+- **Idempotency + reconciliation** — re-runs upsert by the natural key (slug / `(src, dst, relation)` for edges) and reconcile existing rows to the JSON. Editing a concept's `kinds` array and restarting will diff its kind tags into place; nothing is ever deleted by a seed.
+- **`main.py`** calls `seed_all()` in one place; the whole pipeline is wrapped in `_abort_or_warn` (fail-soft in dev, abort boot in prod).
+
+To re-run a single stage against a running DB without restarting, see [DEVELOPMENT.md §Seed System](DEVELOPMENT.md).
+
 ## 1. Avoid Raw SQL or `.zip` Imports for Core Seeds
 
 While the system supports ZIP and JSON imports for end-users, relying on external `.zip` files for core developer seeding introduces complexity:
@@ -50,44 +74,37 @@ The anatomy graph is a modular, directed-graph ontology of the human body. It re
 - **`AnatomyStructure`** (nodes): body parts, organs, systems, tissues, cells, joints, etc.
 - **`AnatomyRelation`** (edges): relationships between structures (`PART_OF`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`).
 
-Each node has a `category` (SYSTEM, REGION, ORGAN, ORGAN_PART, TISSUE, CELL, SUBSTANCE, JOINT, OTHER) and optional standard identifiers (`standard_system` + `standard_code` for SNOMED CT, LOINC, or CUSTOM coding).
+Each node carries a `class_concept_slug` referencing an `anatomy_class` concept (e.g. `organ`, `system`, `region`, `organ-part`, `tissue`, `joint`) and optional standard identifiers (`standard_system` + `standard_code` for SNOMED CT, LOINC, or CUSTOM coding). The legacy `category` enum (`SYSTEM`, `REGION`, `ORGAN`, …) was replaced by the unified taxonomy — the import service maps a `class_concept_slug` to a `class_concept_id` FK.
 
 ### 6.1 Automatic Seeding on Startup
 
-The base anatomy catalog is seeded automatically on application startup (in `main.py` lifespan) via `seed_service.seed_body_parts()`. The seed file is:
+The base anatomy catalog is seeded automatically on application startup by `SeedService.seed_all()` (stage `body_parts`). It reads two standard-envelope seed files:
 
 ```
-backend/data/seeds/anatomy_base.json
+backend/data/seeds/anatomy_structures.json   (nodes — AnatomyStructure rows)
+backend/data/seeds/anatomy_relations.json    (edges — AnatomyRelation rows)
 ```
 
-This file contains **54 nodes** (major body systems, organs, regions, and joints with SNOMED codes) and **67 edges** (PART_OF and SUPPLIED_BY relationships). The seeding is idempotent — existing nodes are updated by slug, new ones are inserted, and duplicate edges are skipped.
+Together they contain **54 nodes** (major body systems, organs, regions, and joints with SNOMED codes) and **62 edges** (PART_OF and SUPPLIED_BY relationships). The seeding is idempotent — existing nodes are updated by slug, new ones are inserted, and duplicate edges are skipped.
 
-The startup log will show:
+The startup log (emitted by `seed_all`) shows:
 ```
-Syncing body parts catalog...
-Body parts sync complete: {'added': 54, 'updated': 0, 'errors': 0}
+Seeding body_parts...
+Seeded body_parts: {'added': 54, 'updated': 0, 'skipped': 0, 'errors': 0}
 ```
 
-### 6.2 Manual Seeding
+### 6.2 Manual Re-seed
 
-To re-seed the base anatomy catalog manually (e.g., after modifying `anatomy_base.json`):
+To re-seed the base anatomy catalog manually (e.g., after editing the split seed files), call the service method directly against a running backend:
 
 ```bash
 cd backend
 source venv/bin/activate
 export PYTHONPATH=.:../
-python scripts/seed_anatomy.py
+python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_body_parts())"
 ```
 
-In Docker:
-
-```bash
-# Standalone
-docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py
-
-# Prod
-docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_anatomy.py
-```
+(The `scripts/seed_anatomy.py` CLI is for importing *custom expansion packs* — see §6.3 — not for re-seeding the base catalog.)
 
 ### 6.3 Importing Custom Expansion Packs
 
@@ -115,7 +132,7 @@ Alternatively, use the REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_A
     {
       "slug": "left-ventricle",
       "name": "Left Ventricle",
-      "category": "ORGAN_PART",
+      "class_concept_slug": "organ-part",
       "standard_system": "snomed",
       "standard_code": "87878005",
       "description": "The lower left chamber of the heart",
@@ -143,7 +160,7 @@ Alternatively, use the REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_A
 - **Nodes** are upserted by `slug`. If a node with the same slug exists, it is updated; otherwise, it is created. Records are never deleted.
 - **Edges** are deduplicated by the unique constraint `(source_id, target_id, relation_type)`. Duplicate edges are silently skipped.
 - Edge `source_slug` and `target_slug` must resolve to existing nodes (either in the payload or already in the database). Unresolvable edges are skipped with a warning.
-- `category` must be one of: `SYSTEM`, `REGION`, `ORGAN`, `ORGAN_PART`, `TISSUE`, `CELL`, `SUBSTANCE`, `JOINT`, `OTHER`.
+- `class_concept_slug` is optional and must resolve to an existing `anatomy_class` concept (e.g. `organ`, `system`, `region`, `organ-part`, `tissue`, `joint`). The legacy uppercase `category` enum values (`SYSTEM`, `REGION`, `ORGAN`, …) are accepted for backward compat and lowercased+hyphenated automatically.
 - `relation_type` must be one of: `PART_OF`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`.
 - `standard_system` is optional and must be one of: `loinc`, `snomed`, `custom`.
 - `display` is optional JSONB metadata. It holds body-map rendering hints under `display.map.markers`, **keyed by figure slug** (e.g. `man-front`, `woman-back` — slugs of rows in the `anatomy_figures` table). Each marker uses **normalized** coordinates (`nx`, `ny`, `nr` in the 0–1 range) relative to that figure's own viewBox. Absolute pixel coordinates are not used — positions are figure-independent and resolved at render time. See **§6.6**.
@@ -158,10 +175,9 @@ The AI task type `define_anatomy_graph` can also be called directly via `POST /a
 
 To extend the base anatomy catalog that ships with the application:
 
-1. Edit `backend/data/seeds/anatomy_base.json`.
-2. Add new nodes to the `nodes` array (ensure unique `slug` values).
-3. Add new edges to the `edges` array (ensure `source_slug` and `target_slug` reference existing slugs).
-4. Restart the application (or run the manual seeding command above). The upsert logic will add new nodes and edges without affecting existing data.
+1. Edit `backend/data/seeds/anatomy_structures.json` (add nodes to `items`) and/or `backend/data/seeds/anatomy_relations.json` (add edges to `items`).
+2. Ensure node `slug` values are unique, and that edge `source_slug`/`target_slug` reference existing slugs.
+3. Restart the application (or run the manual re-seed command in §6.2). The upsert logic will add new nodes and edges without affecting existing data.
 
 ### 6.6 Body Diagram Atlas & Organ Markers
 

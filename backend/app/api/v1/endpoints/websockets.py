@@ -14,6 +14,7 @@ Connection hygiene:
 A lightweight server-side ping (every 30s) keeps intermediaries from
 timing the connection out.
 """
+
 from datetime import datetime, timezone
 import asyncio
 import logging
@@ -147,9 +148,7 @@ async def websocket_tasks_endpoint(
     except Exception as e:
         # B11: was previously a silent close(1011). Log so operators can
         # diagnose unexpected drops.
-        logger.warning(
-            "WebSocket error for tenant=%s: %s", tenant_id, e, exc_info=True
-        )
+        logger.warning("WebSocket error for tenant=%s: %s", tenant_id, e, exc_info=True)
         try:
             await websocket.close(code=1011)
         except Exception:
@@ -175,7 +174,10 @@ async def websocket_notifications_endpoint(
     hygiene mirror ``/ws/tasks`` (subprotocol-preferred token).
     """
     resolved_token = await _extract_token(websocket, token)
-    print(f"[WS-DEBUG] /ws/notifications resolved_token={'<set>' if resolved_token else '<None>'}", flush=True)
+    print(
+        f"[WS-DEBUG] /ws/notifications resolved_token={'<set>' if resolved_token else '<None>'}",
+        flush=True,
+    )
     if not resolved_token:
         await websocket.close(code=1008)
         return

@@ -15,6 +15,7 @@ system startup) calls :func:`emit`. The function:
 The module also exposes the inbox read/mutation helpers used by the
 ``/notifications`` endpoints.
 """
+
 from __future__ import annotations
 
 import json
@@ -123,12 +124,24 @@ async def emit(
 
     owns_session = session is None
 
-    async def _write(s: AsyncSession) -> tuple[Notification, set[UUID], list[tuple[UUID, UUID, NotificationChannel]]]:
+    async def _write(
+        s: AsyncSession,
+    ) -> tuple[Notification, set[UUID], list[tuple[UUID, UUID, NotificationChannel]]]:
         communication_id = None
-        if link_communication and patient_uuid is not None and source in _CLINICAL_SOURCES:
+        if (
+            link_communication
+            and patient_uuid is not None
+            and source in _CLINICAL_SOURCES
+        ):
             communication_id = await _create_communication(
-                s, tenant_uuid, patient_uuid, title, body, payload,
-                category.value, sender_uuid,
+                s,
+                tenant_uuid,
+                patient_uuid,
+                title,
+                body,
+                payload,
+                category.value,
+                sender_uuid,
             )
 
         notification = Notification(
@@ -175,7 +188,10 @@ async def emit(
                 )
             )
             for channel in wanted_channels:
-                if channel == NotificationChannel.PUSH and not await _has_push_subscription(s, user_id):
+                if (
+                    channel == NotificationChannel.PUSH
+                    and not await _has_push_subscription(s, user_id)
+                ):
                     continue
                 delivery_status = (
                     NotificationStatus.DELIVERED
@@ -189,7 +205,9 @@ async def emit(
                         tenant_id=tenant_uuid,
                         channel=channel,
                         status=delivery_status,
-                        delivered_at=_now() if channel == NotificationChannel.IN_APP else None,
+                        delivered_at=_now()
+                        if channel == NotificationChannel.IN_APP
+                        else None,
                     )
                 )
                 if channel != NotificationChannel.IN_APP:
@@ -495,9 +513,7 @@ async def get_inbox(
     return items, total
 
 
-async def get_unread_count(
-    user_id: str | UUID, tenant_id: str | UUID
-) -> int:
+async def get_unread_count(user_id: str | UUID, tenant_id: str | UUID) -> int:
     if not DATABASE_AVAILABLE:
         return 0
     user_uuid = _uuid(user_id)
@@ -584,10 +600,16 @@ async def get_admin_feed(
     async with AsyncSessionLocal() as session:
         total = (await session.execute(count_stmt)).scalar() or 0
         rows = (
-            await session.execute(
-                base.order_by(Notification.created_at.desc()).limit(limit).offset(offset)
+            (
+                await session.execute(
+                    base.order_by(Notification.created_at.desc())
+                    .limit(limit)
+                    .offset(offset)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return [n.to_dict() for n in rows], total
 
 
@@ -638,19 +660,29 @@ async def get_notification_delivery_detail(
         recip_rows = (
             await session.execute(
                 select(NotificationRecipient, UserModel.email)
-                .join(UserModel, UserModel.id == NotificationRecipient.user_id, isouter=True)
+                .join(
+                    UserModel,
+                    UserModel.id == NotificationRecipient.user_id,
+                    isouter=True,
+                )
                 .where(NotificationRecipient.notification_id == notif_uuid)
                 .order_by(NotificationRecipient.created_at.asc())
             )
         ).all()
 
         delivery_rows = (
-            await session.execute(
-                select(NotificationDelivery)
-                .where(NotificationDelivery.notification_id == notif_uuid)
-                .order_by(NotificationDelivery.user_id, NotificationDelivery.channel)
+            (
+                await session.execute(
+                    select(NotificationDelivery)
+                    .where(NotificationDelivery.notification_id == notif_uuid)
+                    .order_by(
+                        NotificationDelivery.user_id, NotificationDelivery.channel
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         deliveries_by_user: dict[UUID, list[NotificationDelivery]] = {}
         for d in delivery_rows:
             deliveries_by_user.setdefault(d.user_id, []).append(d)
@@ -663,7 +695,9 @@ async def get_notification_delivery_detail(
                     "user_id": str(recipient.user_id),
                     "user_email": email,
                     "inbox_status": recipient.status.value,
-                    "read_at": recipient.read_at.isoformat() if recipient.read_at else None,
+                    "read_at": recipient.read_at.isoformat()
+                    if recipient.read_at
+                    else None,
                     "dismissed_at": recipient.dismissed_at.isoformat()
                     if recipient.dismissed_at
                     else None,
@@ -729,6 +763,7 @@ async def get_admin_stats(
     )
 
     async with AsyncSessionLocal() as session:
+
         def _q(stmt, flt):
             return stmt.where(flt) if flt is not None else stmt
 
@@ -757,9 +792,7 @@ async def get_admin_stats(
                         func.count(),
                     ),
                     delivery_filter,
-                ).group_by(
-                    NotificationDelivery.channel, NotificationDelivery.status
-                )
+                ).group_by(NotificationDelivery.channel, NotificationDelivery.status)
             )
         ).all()
         recipient_total = (

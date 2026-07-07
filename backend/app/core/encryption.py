@@ -9,6 +9,7 @@ Secrets are encrypted at rest with a Fernet token prefixed by ``enc::`` so
 storage and transport layers can distinguish them from any legacy plaintext.
 Response schemas mask the key on read so it is never returned to clients.
 """
+
 from __future__ import annotations
 
 import logging
@@ -99,7 +100,7 @@ def decrypt_secret(stored: Optional[str]) -> Optional[str]:
         return ""
     if not is_encrypted(stored):
         return stored
-    token = stored[len(ENCRYPTED_PREFIX):].encode("utf-8")
+    token = stored[len(ENCRYPTED_PREFIX) :].encode("utf-8")
     fernet = _fernet_singleton()
     if fernet is None:
         raise ValueError(

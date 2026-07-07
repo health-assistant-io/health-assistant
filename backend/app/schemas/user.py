@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
 class UserBase(BaseModel):

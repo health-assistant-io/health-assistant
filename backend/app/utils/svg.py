@@ -12,6 +12,7 @@ Defends against XSS in AI-generated SVG markup. Strips:
 The optimization passes (injecting default Lucide-like stroke / fill /
 viewBox attributes) are preserved.
 """
+
 import re
 
 

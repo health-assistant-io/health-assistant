@@ -14,6 +14,7 @@ Three variants, all extracted verbatim from the (former) monolithic
 The per-context suffix block (exam / biomarker / medication / tab) is shared
 via :func:`_append_context_suffix`.
 """
+
 from typing import Any, Dict
 
 from app.utils.prompt_guard import DEFENSE_PREAMBLE

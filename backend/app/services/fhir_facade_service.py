@@ -10,7 +10,7 @@ import os
 import re
 from typing import Any, Dict, List
 
-from app.facade.registry import RESOURCE_REGISTRY, ResourceEntry
+from app.facade.registry import RESOURCE_REGISTRY
 from app.facade.search_params import RESOURCE_PARAMS
 from app.schemas.backup import FHIR_VERSION
 
@@ -59,15 +59,28 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
 
     resources: List[Dict[str, Any]] = []
     for entry in RESOURCE_REGISTRY.all():
-        params = sorted(RESOURCE_PARAMS.get(entry.resource_type, set()) | {"_id", "_lastUpdated", "_count", "_sort", "_format"})
-        interactions = [
-            {"code": code}
-            for code in sorted(entry.interactions)
-        ]
+        params = sorted(
+            RESOURCE_PARAMS.get(entry.resource_type, set())
+            | {"_id", "_lastUpdated", "_count", "_sort", "_format"}
+        )
+        interactions = [{"code": code} for code in sorted(entry.interactions)]
         search_param_block = [
             {
                 "name": name,
-                "type": "token" if name not in ("date", "_lastUpdated", "onset-date", "birthdate", "authored-on", "recorded", "sent", "received", "effective") else "date",
+                "type": "token"
+                if name
+                not in (
+                    "date",
+                    "_lastUpdated",
+                    "onset-date",
+                    "birthdate",
+                    "authored-on",
+                    "recorded",
+                    "sent",
+                    "received",
+                    "effective",
+                )
+                else "date",
                 "documentation": f"Search by {name}",
             }
             for name in params

@@ -9,6 +9,7 @@ Event-style triggers (``TriggerType.EVENT``) and the legacy
 ``biomarker_update`` event hook have been removed — event-driven biomarker
 checks now live in :mod:`app.services.notification_rule_service`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,8 +51,13 @@ class NotificationManager:
                 next_run += timedelta(days=1)
             if days:
                 day_map = {
-                    "mon": 0, "tue": 1, "wed": 2, "thu": 3,
-                    "fri": 4, "sat": 5, "sun": 6,
+                    "mon": 0,
+                    "tue": 1,
+                    "wed": 2,
+                    "thu": 3,
+                    "fri": 4,
+                    "sat": 5,
+                    "sun": 6,
                 }
                 target_days = [
                     day_map[d.lower()[:3]] for d in days if d.lower()[:3] in day_map
@@ -95,7 +101,9 @@ class NotificationManager:
                 next_trigger = cls.calculate_next_occurrence(at_str, config.get("days"))
             else:
                 interval_mins = config.get("interval_minutes", 1440)
-                next_trigger = datetime.now(timezone.utc) + timedelta(minutes=interval_mins)
+                next_trigger = datetime.now(timezone.utc) + timedelta(
+                    minutes=interval_mins
+                )
 
         new_trigger = NotificationTrigger(
             patient_id=UUID(str(patient_id)) if patient_id else None,
@@ -288,7 +296,11 @@ class NotificationManager:
                     patient_id=patient_id,
                     notification_type=NotificationType.MEDICATION_REMINDER,
                     trigger_type=TriggerType.RECURRING,
-                    config={"at": clean_time, "days": days_of_week, "medication_name": medication_name},
+                    config={
+                        "at": clean_time,
+                        "days": days_of_week,
+                        "medication_name": medication_name,
+                    },
                     title=f"Time to take your {medication_name}",
                     body=f"Please take your scheduled dose of {medication_name}.",
                     tenant_id=tenant_id,
@@ -299,7 +311,10 @@ class NotificationManager:
                 patient_id=patient_id,
                 notification_type=NotificationType.MEDICATION_REMINDER,
                 trigger_type=TriggerType.RECURRING,
-                config={"interval_minutes": int(1440 / frequency), "medication_name": medication_name},
+                config={
+                    "interval_minutes": int(1440 / frequency),
+                    "medication_name": medication_name,
+                },
                 title=f"Time to take your {medication_name}",
                 body=f"Please take your scheduled dose of {medication_name}.",
                 tenant_id=tenant_id,
@@ -370,9 +385,13 @@ class NotificationManager:
 
         targets = []
         if trigger.patient_id:
-            targets.append({"kind": RecipientKind.PATIENT.value, "id": str(trigger.patient_id)})
+            targets.append(
+                {"kind": RecipientKind.PATIENT.value, "id": str(trigger.patient_id)}
+            )
         elif trigger.tenant_id:
-            targets.append({"kind": RecipientKind.TENANT.value, "id": str(trigger.tenant_id)})
+            targets.append(
+                {"kind": RecipientKind.TENANT.value, "id": str(trigger.tenant_id)}
+            )
 
         await emit(
             source=NotificationSource.SCHEDULED,
@@ -385,7 +404,9 @@ class NotificationManager:
             tenant_id=trigger.tenant_id,
             targets=targets,
             payload={
-                "reference_id": str(trigger.reference_id) if trigger.reference_id else None,
+                "reference_id": str(trigger.reference_id)
+                if trigger.reference_id
+                else None,
                 "trigger_config": trigger.config,
             },
             source_ref={"trigger_id": str(trigger.id)},

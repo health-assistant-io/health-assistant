@@ -5,7 +5,6 @@ import {
   Check, Sparkles,
   ChevronRight, ChevronDown, Search, Camera
 } from 'lucide-react';
-import { CATEGORY_LABELS } from '../../constants/categories';
 import { getTempPreviewUrl } from '../../services/documentService';
 import { FilePreviewManager } from '../../components/ui/FilePreviewManager';
 import { FileCard } from '../../components/ui/FileCard';

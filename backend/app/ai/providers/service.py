@@ -357,11 +357,15 @@ class AIProviderService:
         providers = await self.get_providers(
             tenant_id=tenant_id, user_id=user_id, scope=scope
         )
-        
+
         # Load models for all visible providers
         provider_ids = {p.id for p in providers}
         models_res = await self.db.execute(
-            select(AIModel).where(AIModel.provider_id.in_(list(provider_ids)) if provider_ids else text("FALSE"))
+            select(AIModel).where(
+                AIModel.provider_id.in_(list(provider_ids))
+                if provider_ids
+                else text("FALSE")
+            )
         )
         visible_models = models_res.scalars().all()
 
@@ -394,7 +398,9 @@ class AIProviderService:
                 )
                 task_assignments[task_type] = TaskTypeAssignment(
                     task_type=task_type,
-                    provider=AIProviderResponse.model_validate(provider) if provider else None,
+                    provider=AIProviderResponse.model_validate(provider)
+                    if provider
+                    else None,
                     model=AIModelResponse.model_validate(model) if model else None,
                     assignment_id=assignment.id,
                 )
@@ -405,9 +411,11 @@ class AIProviderService:
 
         # Get max iterations
         max_iterations = settings.AI_AGENT_MAX_ITERATIONS
-        
+
         # Check system DB setting first if looking at system scope or if no tenant specified
-        system_db_max = await SystemSetting.get_value(self.db, "ai_agent_max_iterations")
+        system_db_max = await SystemSetting.get_value(
+            self.db, "ai_agent_max_iterations"
+        )
         if system_db_max is not None:
             max_iterations = int(system_db_max)
 
@@ -454,10 +462,10 @@ class AIProviderService:
             # Update System-wide settings
             if config_data.ai_agent_max_iterations is not None:
                 await SystemSetting.set_value(
-                    self.db, 
-                    "ai_agent_max_iterations", 
+                    self.db,
+                    "ai_agent_max_iterations",
                     config_data.ai_agent_max_iterations,
-                    user_id=current_user_id
+                    user_id=current_user_id,
                 )
             return True
 
@@ -471,18 +479,21 @@ class AIProviderService:
 
             if tenant.settings is None:
                 tenant.settings = {}
-            
+
             # Merge settings
             if config_data.ai_agent_max_iterations is not None:
-                tenant.settings["ai_agent_max_iterations"] = config_data.ai_agent_max_iterations
+                tenant.settings["ai_agent_max_iterations"] = (
+                    config_data.ai_agent_max_iterations
+                )
 
             # Flag for SQLAlchemy to detect change in JSONB
             from sqlalchemy.orm.attributes import flag_modified
+
             flag_modified(tenant, "settings")
-            
+
             await self.db.commit()
             return True
-        
+
         return False
 
     async def _resolve_config(
@@ -677,7 +688,7 @@ class AIProviderService:
                 model=settings.OPENAI_MODEL or "gpt-4o-mini",
                 temperature=0.7,
             )
-            
+
         logger.warning(
             "AI Resolution [nlp]: No DB assignment found and no API keys in environment. Falling back to standard SPACY extractor."
         )

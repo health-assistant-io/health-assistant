@@ -5,6 +5,7 @@ write; it returns a ``{"__hitl__": True, "task": ...}`` payload that the chat
 reasoning loop renders as an interactive review card. The user must confirm
 before anything is saved.
 """
+
 import json
 from datetime import datetime, timezone
 from typing import Any, List, Optional
@@ -185,18 +186,24 @@ def build(ctx: ToolContext) -> List[Any]:
             reason: Optional clinical rationale for the proposal.
         """
         # --- Resolve + authorize the target examination (hard-fail on miss) ---
-        candidate = examination_id or (str(ctx.examination_id) if ctx.examination_id else None)
+        candidate = examination_id or (
+            str(ctx.examination_id) if ctx.examination_id else None
+        )
         if not candidate:
-            return json.dumps({
-                "error": "No active examination. Call get_recent_examinations to find the exam "
-                         "the user means, then pass its id as examination_id."
-            })
+            return json.dumps(
+                {
+                    "error": "No active examination. Call get_recent_examinations to find the exam "
+                    "the user means, then pass its id as examination_id."
+                }
+            )
         try:
             from uuid import UUID
 
             exam_uuid = UUID(candidate)
         except (ValueError, AttributeError, TypeError):
-            return json.dumps({"error": f"Invalid examination_id '{candidate}' (expected a UUID)."})
+            return json.dumps(
+                {"error": f"Invalid examination_id '{candidate}' (expected a UUID)."}
+            )
 
         exam_result = await ctx.db.execute(
             select(ExaminationModel)
@@ -211,13 +218,19 @@ def build(ctx: ToolContext) -> List[Any]:
         )
         exam = exam_result.scalars().first()
         if not exam:
-            return json.dumps({
-                "error": f"Examination {candidate} was not found or is not accessible for this patient."
-            })
+            return json.dumps(
+                {
+                    "error": f"Examination {candidate} was not found or is not accessible for this patient."
+                }
+            )
 
         resolved_exam_id = str(exam.id)
-        examination_date = exam.examination_date.isoformat() if exam.examination_date else None
-        examination_category = exam.category_entity.name if exam.category_entity else None
+        examination_date = (
+            exam.examination_date.isoformat() if exam.examination_date else None
+        )
+        examination_category = (
+            exam.category_entity.name if exam.category_entity else None
+        )
 
         # --- Resolve the biomarker by name/slug (tenant-scoped or global) ---
         interp = (interpretation or "normal").lower()

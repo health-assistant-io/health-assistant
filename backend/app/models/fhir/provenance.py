@@ -10,9 +10,9 @@ The model is **immutable** — no SoftDeleteMixin, no VersionedMixin. Once
 recorded, a Provenance row never changes. The Provenance-on-write hook
 (Phase 7) creates one Provenance per facade POST/PUT/DELETE.
 """
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from sqlalchemy.orm import relationship
+
+from sqlalchemy import Column, DateTime, func
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models.base import Base, UUIDMixin, TenantMixin, TimestampMixin
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
@@ -41,7 +41,9 @@ class ProvenanceModel(Base, UUIDMixin, TenantMixin, TimestampMixin):
 
     # recorded: when the provenance was recorded (server time).
     # Spec: 1..1 instant.
-    recorded = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    recorded = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
 
     # activity: CodeableConcept for what happened (CREATE/UPDATE/DELETE).
     # Spec: 0..1 CodeableConcept.

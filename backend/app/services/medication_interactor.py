@@ -44,7 +44,10 @@ class MedicationInteractor:
             return data.get("idGroup", {}).get("rxnormId", "")
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Error getting RxCUI for {medication}: {e}")
+
+            logging.getLogger(__name__).error(
+                f"Error getting RxCUI for {medication}: {e}"
+            )
             return ""
 
     async def _check_interaction(self, code1: str, code2: str) -> Dict[str, Any]:
@@ -65,7 +68,10 @@ class MedicationInteractor:
                 }
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Error checking interaction between {code1} and {code2}: {e}")
+
+            logging.getLogger(__name__).error(
+                f"Error checking interaction between {code1} and {code2}: {e}"
+            )
 
         return {}
 

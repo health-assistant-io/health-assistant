@@ -11,6 +11,7 @@ respect the per-rule cooldown to avoid alert storms.
 CRUD helpers mirror the rest of the codebase: tenant-scoped, fail-soft,
 ``None`` on cross-tenant access (so endpoints can surface 404).
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,7 +56,9 @@ def _uuid(value: str | UUID | None) -> Optional[UUID]:
 # ---------------------------------------------------------------------------
 
 
-async def create_rule(rule_data: dict, tenant_id: str | UUID) -> Optional[NotificationRule]:
+async def create_rule(
+    rule_data: dict, tenant_id: str | UUID
+) -> Optional[NotificationRule]:
     if not DATABASE_AVAILABLE:
         return None
     tenant_uuid = _uuid(tenant_id)
@@ -63,7 +66,9 @@ async def create_rule(rule_data: dict, tenant_id: str | UUID) -> Optional[Notifi
         tenant_id=tenant_uuid,
         rule_type=NotificationRuleType(rule_data["rule_type"]),
         biomarker_id=_uuid(rule_data.get("biomarker_id")),
-        operator=ComparisonOperator(rule_data["operator"]) if rule_data.get("operator") else None,
+        operator=ComparisonOperator(rule_data["operator"])
+        if rule_data.get("operator")
+        else None,
         value=rule_data.get("value"),
         patient_id=_uuid(rule_data.get("patient_id")),
         severity=NotificationSeverity(rule_data.get("severity", "warning")),
@@ -80,7 +85,9 @@ async def create_rule(rule_data: dict, tenant_id: str | UUID) -> Optional[Notifi
     return rule
 
 
-async def get_rule(rule_id: str | UUID, tenant_id: str | UUID) -> Optional[NotificationRule]:
+async def get_rule(
+    rule_id: str | UUID, tenant_id: str | UUID
+) -> Optional[NotificationRule]:
     if not DATABASE_AVAILABLE:
         return None
     rid = _uuid(rule_id)
@@ -181,7 +188,9 @@ async def test_fire(rule_id: str | UUID, tenant_id: str | UUID) -> bool:
                 name = getattr(biomarker, "name", None) or rule.biomarker_id
     title = rule.title_template or f"Test alert: {name}"
     body = rule.body_template or "This is a test firing of your notification rule."
-    targets = rule.targets or [{"kind": RecipientKind.TENANT.value, "id": str(tenant_id)}]
+    targets = rule.targets or [
+        {"kind": RecipientKind.TENANT.value, "id": str(tenant_id)}
+    ]
     await notification_service.emit(
         source=NotificationSource.RULE,
         type=NotificationType.BIOMARKER_THRESHOLD,
@@ -234,7 +243,9 @@ async def evaluate_and_fire(
                 continue
             if _in_cooldown(rule, now):
                 continue
-            await _fire(session, rule, observation, biomarker, value, patient_id, tenant_id)
+            await _fire(
+                session, rule, observation, biomarker, value, patient_id, tenant_id
+            )
             rule.last_fired_at = now
             fired += 1
         if fired:
@@ -260,7 +271,10 @@ async def _candidate_rules(
                     NotificationRuleType.OUT_OF_NORMAL_RANGE,
                 ]
             ),
-            or_(NotificationRule.patient_id.is_(None), NotificationRule.patient_id == patient_id),
+            or_(
+                NotificationRule.patient_id.is_(None),
+                NotificationRule.patient_id == patient_id,
+            ),
         )
     )
     return list((await session.execute(stmt)).scalars().all())

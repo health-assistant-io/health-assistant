@@ -1,0 +1,320 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health Assistant",
+    "last_updated": "2026-07-07",
+    "description": "Anatomy graph edges (AnatomyRelation rows): topology between structures (PART_OF, BRANCH_OF, DRAINS_INTO, ...)."
+  },
+  "items": [
+    {
+      "source_slug": "head",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "neck",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "chest",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "abdomen",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "upper-back",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "lower-back",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "arm-left",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "arm-right",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "leg-left",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "leg-right",
+      "target_slug": "whole-body",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "face",
+      "target_slug": "head",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "brain",
+      "target_slug": "head",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "eyes",
+      "target_slug": "face",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "ears",
+      "target_slug": "face",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "nose",
+      "target_slug": "face",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "mouth",
+      "target_slug": "face",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "throat",
+      "target_slug": "neck",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "thyroid",
+      "target_slug": "neck",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "heart",
+      "target_slug": "chest",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "left-lung",
+      "target_slug": "chest",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "right-lung",
+      "target_slug": "chest",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "liver",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "stomach",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "pancreas",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "spleen",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "left-kidney",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "right-kidney",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "small-intestine",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "large-intestine",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "bladder",
+      "target_slug": "abdomen",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "shoulder-left",
+      "target_slug": "arm-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "elbow-left",
+      "target_slug": "arm-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "wrist-left",
+      "target_slug": "arm-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "hand-left",
+      "target_slug": "arm-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "shoulder-right",
+      "target_slug": "arm-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "elbow-right",
+      "target_slug": "arm-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "wrist-right",
+      "target_slug": "arm-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "hand-right",
+      "target_slug": "arm-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "hip-left",
+      "target_slug": "leg-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "knee-left",
+      "target_slug": "leg-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "ankle-left",
+      "target_slug": "leg-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "foot-left",
+      "target_slug": "leg-left",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "hip-right",
+      "target_slug": "leg-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "knee-right",
+      "target_slug": "leg-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "ankle-right",
+      "target_slug": "leg-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "foot-right",
+      "target_slug": "leg-right",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "heart",
+      "target_slug": "cardiovascular-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "left-lung",
+      "target_slug": "respiratory-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "right-lung",
+      "target_slug": "respiratory-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "brain",
+      "target_slug": "nervous-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "liver",
+      "target_slug": "digestive-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "stomach",
+      "target_slug": "digestive-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "pancreas",
+      "target_slug": "digestive-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "small-intestine",
+      "target_slug": "digestive-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "large-intestine",
+      "target_slug": "digestive-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "thyroid",
+      "target_slug": "endocrine-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "left-kidney",
+      "target_slug": "urinary-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "right-kidney",
+      "target_slug": "urinary-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "bladder",
+      "target_slug": "urinary-system",
+      "relation_type": "PART_OF"
+    },
+    {
+      "source_slug": "heart",
+      "target_slug": "cardiovascular-system",
+      "relation_type": "SUPPLIED_BY"
+    },
+    {
+      "source_slug": "brain",
+      "target_slug": "nervous-system",
+      "relation_type": "SUPPLIED_BY"
+    },
+    {
+      "source_slug": "brain",
+      "target_slug": "cardiovascular-system",
+      "relation_type": "SUPPLIED_BY"
+    }
+  ]
+}

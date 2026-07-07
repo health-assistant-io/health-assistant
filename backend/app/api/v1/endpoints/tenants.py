@@ -11,6 +11,7 @@ own tenant:
   * ``PATCH /tenants/{id}``   — tenant admin self-service update
     (name / description / settings only).
 """
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,7 +44,9 @@ async def get_my_tenant(
     """Return the caller's own tenant."""
     tenant = await get_tenant(current_user.tenant_id)
     if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+        )
     return TenantResponse.model_validate(tenant)
 
 
@@ -67,7 +70,9 @@ async def get_tenant_endpoint(
         )
     tenant = await get_tenant(tid)
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+        )
     return TenantResponse.model_validate(tenant)
 
 
@@ -84,7 +89,9 @@ async def update_my_tenant_endpoint(
     richer surface at ``PATCH /admin/tenants/{id}`` instead.
     """
     tid = _coerce_uuid(tenant_id)
-    if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != str(tid):
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(
+        current_user.tenant_id
+    ) != str(tid):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this tenant.",

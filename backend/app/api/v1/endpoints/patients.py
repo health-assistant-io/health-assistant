@@ -36,7 +36,9 @@ async def list_patients_endpoint(
     elif current_user.role == Role.USER.value:
         final_user_id = str(current_user.user_id)
 
-    patients = await list_patients(final_tenant_id, limit, offset, user_id=final_user_id)
+    patients = await list_patients(
+        final_tenant_id, limit, offset, user_id=final_user_id
+    )
     return patients
 
 

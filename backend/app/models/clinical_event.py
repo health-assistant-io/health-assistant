@@ -10,40 +10,8 @@ from app.models.base import (
     TimestampMixin,
     SoftDeleteMixin,
 )
-import enum
 from app.models.enums import ClinicalEventStatus, CodingSystem
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
-
-
-class ClinicalEventCategory(Base, UUIDMixin, TimestampMixin):
-    __tablename__ = "clinical_event_categories"
-
-    name = Column(String(100), nullable=False)
-    slug = Column(String(100), nullable=False, unique=True)
-    description = Column(Text, nullable=True)
-    icon = Column(JSONB, nullable=True)  # { "type": "lucide", "value": "Activity" }
-    color = Column(String(50), nullable=True)
-
-    tenant_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=True,  # Nullable for global categories
-        index=True,
-    )
-
-    # Relationships
-    event_types = relationship("ClinicalEventType", back_populates="category_entity")
-
-    def to_dict(self) -> dict:
-        return {
-            "id": str(self.id) if self.id else None,
-            "name": self.name,
-            "slug": self.slug,
-            "description": self.description,
-            "icon": self.icon,
-            "color": self.color,
-            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
-        }
 
 
 class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
@@ -58,7 +26,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
 
     category_id = Column(
         PG_UUID(as_uuid=True),
-        ForeignKey("clinical_event_categories.id", ondelete="SET NULL"),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -71,9 +39,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     )
 
     # Relationships
-    category_entity = relationship(
-        "ClinicalEventCategory", back_populates="event_types"
-    )
+    category_entity = relationship("Concept", lazy="selectin")
     events = relationship("ClinicalEvent", back_populates="type_entity")
 
     def to_dict(self) -> dict:
@@ -311,14 +277,23 @@ class ClinicalEvent(
         }
         return build_fhir_resource("Condition", data)
 
+
 class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "event_anatomy_links"
 
-    event_id = Column(PG_UUID(as_uuid=True), ForeignKey("clinical_events.id", ondelete="CASCADE"), nullable=False)
-    anatomy_id = Column(PG_UUID(as_uuid=True), ForeignKey("anatomy_structures.id", ondelete="CASCADE"), nullable=False)
-    
+    event_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("clinical_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    anatomy_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("anatomy_structures.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
     # E.g., 'primary_site', 'radiates_to'
-    relation_type = Column(String(50), nullable=True) 
+    relation_type = Column(String(50), nullable=True)
 
     __table_args__ = (
         Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),

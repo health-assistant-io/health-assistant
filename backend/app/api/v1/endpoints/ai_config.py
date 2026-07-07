@@ -29,27 +29,39 @@ from app.models.enums import Role
 router = APIRouter(prefix="/ai-config", tags=["AI Configuration"])
 
 
-def check_scope_access(scope: AIScope, current_user: TokenData, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None):
+def check_scope_access(
+    scope: AIScope,
+    current_user: TokenData,
+    tenant_id: Optional[UUID] = None,
+    user_id: Optional[UUID] = None,
+):
     """Verify if the user has access to a specific configuration scope"""
     if scope == AIScope.SYSTEM:
         if current_user.role != Role.SYSTEM_ADMIN.value:
             raise HTTPException(
-                status_code=403, detail="Only system admins can manage system configuration"
+                status_code=403,
+                detail="Only system admins can manage system configuration",
             )
     elif scope == AIScope.TENANT:
         if current_user.role not in [Role.SYSTEM_ADMIN.value, Role.ADMIN.value]:
             raise HTTPException(
                 status_code=403, detail="Only admins can manage tenant configuration"
             )
-        if current_user.role == Role.ADMIN.value and str(tenant_id) != str(current_user.tenant_id):
+        if current_user.role == Role.ADMIN.value and str(tenant_id) != str(
+            current_user.tenant_id
+        ):
             raise HTTPException(
                 status_code=403, detail="Cannot manage configuration for another tenant"
             )
     elif scope == AIScope.USER:
-        if str(user_id) != str(current_user.user_id) and current_user.role != Role.SYSTEM_ADMIN.value:
-             # Standard admins can't even see other users' personal keys
-             raise HTTPException(
-                status_code=403, detail="Not authorized to manage this user's configuration"
+        if (
+            str(user_id) != str(current_user.user_id)
+            and current_user.role != Role.SYSTEM_ADMIN.value
+        ):
+            # Standard admins can't even see other users' personal keys
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to manage this user's configuration",
             )
 
 
@@ -90,15 +102,15 @@ async def create_provider(
     service = AIProviderService(db)
 
     check_scope_access(
-        provider_data.scope, 
-        current_user, 
-        tenant_id=provider_data.tenant_id, 
-        user_id=provider_data.user_id or current_user.user_id
+        provider_data.scope,
+        current_user,
+        tenant_id=provider_data.tenant_id,
+        user_id=provider_data.user_id or current_user.user_id,
     )
 
     if provider_data.scope == AIScope.TENANT and not provider_data.tenant_id:
         provider_data.tenant_id = current_user.tenant_id
-        
+
     if provider_data.scope == AIScope.USER and not provider_data.user_id:
         provider_data.user_id = current_user.user_id
 
@@ -126,16 +138,16 @@ async def get_providers(
     # If no scope specified, we filter based on user context
     search_tenant_id = tenant_id
     search_user_id = user_id
-    
+
     if not scope:
         # Standard users see system and their own
         # Admins see system, their tenant, and their own
         if current_user.role == Role.USER.value:
-            # We need to fetch both system and user scope. 
+            # We need to fetch both system and user scope.
             # The service.get_providers might need to be called multiple times or updated.
             # For simplicity, if no scope is requested, we show what they have access to.
             search_user_id = current_user.user_id
-            search_tenant_id = None # Don't show tenant providers to users
+            search_tenant_id = None  # Don't show tenant providers to users
         elif current_user.role == Role.ADMIN.value:
             search_tenant_id = current_user.tenant_id
             search_user_id = current_user.user_id
@@ -213,7 +225,12 @@ async def update_provider(
     if not existing:
         raise HTTPException(status_code=404, detail="Provider not found")
 
-    check_scope_access(existing.scope, current_user, tenant_id=existing.tenant_id, user_id=existing.user_id)
+    check_scope_access(
+        existing.scope,
+        current_user,
+        tenant_id=existing.tenant_id,
+        user_id=existing.user_id,
+    )
 
     updated = await service.update_provider(provider_id, provider_data)
     return AIProviderResponse.model_validate(updated)
@@ -233,7 +250,12 @@ async def delete_provider(
     if not existing:
         return None  # Already gone
 
-    check_scope_access(existing.scope, current_user, tenant_id=existing.tenant_id, user_id=existing.user_id)
+    check_scope_access(
+        existing.scope,
+        current_user,
+        tenant_id=existing.tenant_id,
+        user_id=existing.user_id,
+    )
 
     await service.delete_provider(provider_id)
     return None
@@ -411,15 +433,15 @@ async def create_task_assignment(
     service = AIProviderService(db)
 
     check_scope_access(
-        assignment_data.scope, 
-        current_user, 
-        tenant_id=assignment_data.tenant_id, 
-        user_id=assignment_data.user_id or current_user.user_id
+        assignment_data.scope,
+        current_user,
+        tenant_id=assignment_data.tenant_id,
+        user_id=assignment_data.user_id or current_user.user_id,
     )
 
     if assignment_data.scope == AIScope.TENANT and not assignment_data.tenant_id:
         assignment_data.tenant_id = current_user.tenant_id
-        
+
     if assignment_data.scope == AIScope.USER and not assignment_data.user_id:
         assignment_data.user_id = current_user.user_id
 
@@ -460,7 +482,7 @@ async def get_task_assignments(
 
     search_tenant_id = tenant_id
     search_user_id = user_id
-    
+
     if not scope:
         if current_user.role == Role.USER.value:
             search_user_id = current_user.user_id
@@ -494,7 +516,12 @@ async def get_task_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    check_scope_access(assignment.scope, current_user, tenant_id=assignment.tenant_id, user_id=assignment.user_id)
+    check_scope_access(
+        assignment.scope,
+        current_user,
+        tenant_id=assignment.tenant_id,
+        user_id=assignment.user_id,
+    )
 
     return AITaskAssignmentResponse.model_validate(assignment)
 
@@ -515,7 +542,12 @@ async def update_task_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    check_scope_access(assignment.scope, current_user, tenant_id=assignment.tenant_id, user_id=assignment.user_id)
+    check_scope_access(
+        assignment.scope,
+        current_user,
+        tenant_id=assignment.tenant_id,
+        user_id=assignment.user_id,
+    )
 
     # Check if trying to set as active - ensure only one active per task type per tenant/user/system
     if assignment_data.is_active:
@@ -524,7 +556,7 @@ async def update_task_assignment(
             user_id=assignment.user_id,
             task_type=assignment.task_type,
             is_active=True,
-            scope=assignment.scope
+            scope=assignment.scope,
         )
         for existing in existing_active:
             if existing.is_active and existing.id != assignment_id:
@@ -550,12 +582,17 @@ async def delete_task_assignment(
 ):
     """Delete a task assignment"""
     service = AIProviderService(db)
-    
+
     assignment = await service.get_task_assignment(assignment_id)
     if not assignment:
         return None
 
-    check_scope_access(assignment.scope, current_user, tenant_id=assignment.tenant_id, user_id=assignment.user_id)
+    check_scope_access(
+        assignment.scope,
+        current_user,
+        tenant_id=assignment.tenant_id,
+        user_id=assignment.user_id,
+    )
 
     await service.delete_task_assignment(assignment_id)
     return None
@@ -608,7 +645,7 @@ async def get_config_summary(
 
     search_tenant_id = tenant_id
     search_user_id = user_id
-    
+
     if not scope:
         if current_user.role == Role.USER.value:
             search_user_id = current_user.user_id
@@ -645,7 +682,7 @@ async def update_ai_settings(
         config_data=config_data,
         tenant_id=target_tenant_id,
         user_id=user_id,
-        current_user_id=current_user.user_id
+        current_user_id=current_user.user_id,
     )
 
     if not success:

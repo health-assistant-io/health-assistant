@@ -98,7 +98,9 @@ class DocumentModel(
             "filename": self.filename,
             "file_path": self.file_path,
             "owner_id": str(self.owner_id) if self.owner_id else None,
-            "practitioner_id": str(self.practitioner_id) if getattr(self, "practitioner_id", None) else None,
+            "practitioner_id": str(self.practitioner_id)
+            if getattr(self, "practitioner_id", None)
+            else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "patient_id": str(self.patient_id) if self.patient_id else None,
             "examination_id": str(self.examination_id)
@@ -150,7 +152,9 @@ class DocumentModel(
         # the doc was deleted/superseded).
         dr_status = "current"
         if self.status in ("deleted", "archived"):
-            dr_status = "superseded" if self.status == "archived" else "entered-in-error"
+            dr_status = (
+                "superseded" if self.status == "archived" else "entered-in-error"
+            )
 
         # docStatus: limited enum (preliminary|final|amended|entered-in-error).
         # The app status vocabulary is broader; map the common ones.

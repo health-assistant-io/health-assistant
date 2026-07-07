@@ -18,6 +18,7 @@ Post-fix contract:
 3. **Invite issuance (POST /auth/invite)** — ADMIN+ only. Mints a
    7-day token scoped to the caller's tenant.
 """
+
 from datetime import timedelta
 from typing import Optional
 
@@ -40,7 +41,6 @@ from app.core.security import (
     verify_password,
 )
 from app.models.enums import Role
-from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
 from app.schemas.auth import TokenRefresh, TokenResponse, UserRegister
 from app.schemas.user import TokenData, UserResponse
@@ -64,7 +64,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Authenticate user and return tokens"""
     user = await get_user_by_email(form_data.username)
 
-    if not user or not verify_password(form_data.password, getattr(user, "hashed_password", "")):
+    if not user or not verify_password(
+        form_data.password, getattr(user, "hashed_password", "")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -167,7 +169,9 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     # is held for the duration of this transaction (released on commit /
     # rollback), and the INSERT happens in the same session so the count
     # sees the new row before the lock is released.
-    await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY})
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY}
+    )
 
     count_result = await db.execute(select(func.count()).select_from(UserModel))
     total_users = count_result.scalar() or 0
@@ -176,9 +180,7 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     tenant_name = user_data.email.split("@")[0].capitalize()
     new_tenant = await create_tenant(name=f"{tenant_name} Household")
     if not new_tenant:
-        raise HTTPException(
-            status_code=500, detail="Could not create default tenant"
-        )
+        raise HTTPException(status_code=500, detail="Could not create default tenant")
 
     # The very first user in the system bootstraps as SYSTEM_ADMIN +
     # ADMIN. Later bootstrap registrations (their own household tenant)
@@ -231,7 +233,10 @@ async def create_invite(
         )
 
     target_tenant = tenant_id or str(current_user.tenant_id)
-    if str(current_user.tenant_id) != target_tenant and current_user.role != Role.SYSTEM_ADMIN.value:
+    if (
+        str(current_user.tenant_id) != target_tenant
+        and current_user.role != Role.SYSTEM_ADMIN.value
+    ):
         # Non-SYSTEM_ADMIN can only invite into their own tenant.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -297,6 +302,7 @@ async def refresh_token(token_data: TokenRefresh):
 # ---------------------------------------------------------------------------
 # F19: Service-account token minting (tenant bridge for non-SMART clients)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/service-account")
 async def create_service_account(

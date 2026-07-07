@@ -2,7 +2,6 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.patient_layout import (
@@ -26,9 +25,9 @@ router = APIRouter(prefix="/patients/{patient_id}/layouts", tags=["patient-layou
 
 @router.get("", response_model=List[PatientLayoutResponse])
 async def list_layouts(
-    patient_id: UUID, 
+    patient_id: UUID,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List all layouts for a specific patient for the current user"""
     await check_patient_access(patient_id, current_user, db)
@@ -37,9 +36,9 @@ async def list_layouts(
 
 @router.get("/active", response_model=PatientLayoutResponse)
 async def get_current_active_layout(
-    patient_id: UUID, 
+    patient_id: UUID,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the active layout for a specific patient for the current user"""
     await check_patient_access(patient_id, current_user, db)
@@ -81,7 +80,7 @@ async def update_layout(
     layout_id: UUID,
     layout_data: PatientLayoutUpdate,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update an existing layout"""
     await check_patient_access(patient_id, current_user, db)
@@ -105,7 +104,7 @@ async def delete_layout(
     patient_id: UUID,
     layout_id: UUID,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a layout"""
     await check_patient_access(patient_id, current_user, db)

@@ -62,9 +62,7 @@ def build_fhir_resource(resource_type: str, data: Dict[str, Any]) -> Dict[str, A
             f"Invalid {resource_type}{f' id={rid}' if rid else ''}: {first}"
         ) from e
     except Exception as e:  # unknown resource type, etc.
-        raise FhirSerializationError(
-            f"Could not build {resource_type}: {e}"
-        ) from e
+        raise FhirSerializationError(f"Could not build {resource_type}: {e}") from e
     return validated.model_dump(by_alias=True, exclude_none=True, mode="json")
 
 
@@ -84,7 +82,9 @@ def assert_valid_fhir(obj: Any) -> Dict[str, Any]:
     return obj.to_fhir_dict()
 
 
-def validate_and_filter_observations(observations: list, logger=None) -> Tuple[List[Any], int]:
+def validate_and_filter_observations(
+    observations: list, logger=None
+) -> Tuple[List[Any], int]:
     """Drop observations that cannot be projected to valid FHIR (skip-and-log).
 
     The write-time gate for the integration data path: every Observation is run
@@ -146,9 +146,7 @@ def parse_fhir_resource(resource_type: str, data: Dict[str, Any]):
             f"Invalid {resource_type}{f' id={rid}' if rid else ''}: {first}"
         ) from e
     except Exception as e:  # unknown resource type, etc.
-        raise FhirSerializationError(
-            f"Could not parse {resource_type}: {e}"
-        ) from e
+        raise FhirSerializationError(f"Could not parse {resource_type}: {e}") from e
 
 
 def _clean(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -265,9 +263,9 @@ def build_meta(
     if last_updated:
         meta["lastUpdated"] = last_updated
     meta["versionId"] = meta.get("versionId") or "1"
-    meta["lastUpdated"] = meta.get("lastUpdated") or dt.datetime.now(
-        dt.timezone.utc
-    ).isoformat()
+    meta["lastUpdated"] = (
+        meta.get("lastUpdated") or dt.datetime.now(dt.timezone.utc).isoformat()
+    )
     meta["source"] = PROVENANCE_SYSTEM
     if provenance:
         meta["tag"] = [

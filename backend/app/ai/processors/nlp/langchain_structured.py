@@ -50,7 +50,10 @@ class LangChainStructuredExtractor(NLPExtractor):
         return await self.parse_document_pass_1(text, [], [])
 
     async def map_external_metrics(
-        self, raw_metrics: List[MetricMappingRequest], existing_catalog_str: str, timeout: float = 45.0
+        self,
+        raw_metrics: List[MetricMappingRequest],
+        existing_catalog_str: str,
+        timeout: float = 45.0,
     ) -> MapResponsePayload:
         system_prompt = """You are an expert medical ontologist. Your job is to map raw clinical metric names (like 'Νάτριο ορού') to an existing patient biomarker catalog, or propose a new standardized definition if it does not exist.
 
@@ -66,17 +69,26 @@ CRITICAL RULES:
 3. ONLY if the metric is completely missing from the catalog, set action="create_new", provide a standardized English medical name (new_biomarker_name), and a LOINC code if possible.
 4. Do not create duplicates. For example, if 'Platelet Distribution Width' is in the catalog, map 'Εύρος κατανομής PLT' to it.
 """
-        metrics_str = "\n".join([f"- {m.name}" + (f" (Code: {m.code})" if m.code else "") for m in raw_metrics])
+        metrics_str = "\n".join(
+            [
+                f"- {m.name}" + (f" (Code: {m.code})" if m.code else "")
+                for m in raw_metrics
+            ]
+        )
 
         prompt = ChatPromptTemplate.from_template(system_prompt)
         structured_llm = self.llm.with_structured_output(MapResponsePayload)
-        
+
         try:
             chain = prompt | structured_llm
-            result = await chain.ainvoke({
-                "catalog_str": existing_catalog_str if existing_catalog_str else "Catalog is empty.",
-                "metrics_str": metrics_str
-            })
+            result = await chain.ainvoke(
+                {
+                    "catalog_str": existing_catalog_str
+                    if existing_catalog_str
+                    else "Catalog is empty.",
+                    "metrics_str": metrics_str,
+                }
+            )
             return result
         except Exception as e:
             logger.error(f"LangChain map_external_metrics failed: {e}")

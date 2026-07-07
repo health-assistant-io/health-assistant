@@ -58,7 +58,8 @@ def _validate_patient_scoping(
             )
         if scope == ExportScope.GROUP and not patient_ids:
             raise HTTPException(
-                status_code=400, detail="patient_ids is required for group-scoped export."
+                status_code=400,
+                detail="patient_ids is required for group-scoped export.",
             )
     return patient_ids
 
@@ -83,7 +84,9 @@ async def create_export(
     - `catalog_only` — biomarker/unit + clinical-event-type definitions (`.catalog.json`).
     """
     _authorize_scope(request.scope, current_user)
-    patient_ids = _validate_patient_scoping(request.scope, request.patient_ids, current_user)
+    patient_ids = _validate_patient_scoping(
+        request.scope, request.patient_ids, current_user
+    )
 
     tenant_id = _parse_uuid(str(current_user.tenant_id))
     user_id = _parse_uuid(str(current_user.user_id))

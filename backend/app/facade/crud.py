@@ -11,6 +11,7 @@ endpoint returns a FHIR Bundle, every search honors standard search params,
 every write returns canonical FHIR JSON with proper status codes + headers,
 and deletes soft-delete via ``SoftDeleteMixin`` (tombstones → 410 Gone).
 """
+
 import datetime as _dt
 import json as _json
 import logging
@@ -22,15 +23,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.facade.bundle import build_search_bundle
-from app.facade.registry import RESOURCE_REGISTRY, ResourceEntry
-from app.facade.search_params import FhirSearchParams, parse_search_params
-from app.facade.responses import gone, not_found
-from app.models.base import SoftDeleteMixin
-from app.models.enums import Role
+from app.facade.registry import ResourceEntry
+from app.facade.search_params import parse_search_params
 from app.schemas.user import TokenData
 from app.services.fhir_converter import fhir_to_orm
-from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir, parse_fhir_resource
-from app.services.provenance_service import record_provenance, RECORD_CREATE, RECORD_DELETE, RECORD_UPDATE
+from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
+from app.services.provenance_service import (
+    record_provenance,
+    RECORD_CREATE,
+    RECORD_DELETE,
+    RECORD_UPDATE,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +94,7 @@ def _parse_if_match(header_value: str) -> Optional[Any]:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _tenant_predicate(entry: ResourceEntry, current_user: TokenData):
     """Build the tenant-scoping predicate for the current user.
 
@@ -122,6 +126,7 @@ def _resolve_id(value: str) -> Optional[UUID]:
 # ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
+
 
 async def search(
     entry: ResourceEntry,
@@ -253,9 +258,7 @@ async def search(
     # `id`, and `meta` regardless of _elements. We apply this post-serialization
     # so the projection doesn't bypass the validator.
     if params._elements:
-        resources = [
-            _project_elements(r, params._elements) for r in resources
-        ]
+        resources = [_project_elements(r, params._elements) for r in resources]
 
     # Build the Bundle. Preserve the original query string for self-link.
     raw_qs = "&".join(f"{k}={v}" for k, v in query_params)
@@ -423,7 +426,7 @@ def _value_quantity_match(column, value: str):
     prefix = "eq"
     for p in _QUANTITY_PREFIXES:
         if numeric_part.startswith(p):
-            rest = numeric_part[len(p):]
+            rest = numeric_part[len(p) :]
             if rest:
                 prefix = p
                 numeric_part = rest
@@ -614,7 +617,16 @@ def _build_resource_filter(model, key: str, value: str):
         if pred is None:
             return None
         return not_(pred) if negate else pred
-    if base_key in ("performer", "sender", "recipient", "agent", "target", "partof", "parent", "author"):
+    if base_key in (
+        "performer",
+        "sender",
+        "recipient",
+        "agent",
+        "target",
+        "partof",
+        "parent",
+        "author",
+    ):
         # Reference-bearing fields stored as JSONB. Build a @> containment
         # fragment for {"reference": "Type/uuid"} (single) or
         # [{"reference": "Type/uuid"}] (list). Bare UUIDs are normalized to the
@@ -704,7 +716,9 @@ def _build_resource_filter(model, key: str, value: str):
     return None
 
 
-def _empty_bundle(entry: ResourceEntry, base_url: str, query_params: List[Tuple[str, str]]) -> Dict[str, Any]:
+def _empty_bundle(
+    entry: ResourceEntry, base_url: str, query_params: List[Tuple[str, str]]
+) -> Dict[str, Any]:
     raw_qs = "&".join(f"{k}={v}" for k, v in query_params)
     return build_search_bundle(
         base_url=base_url,
@@ -720,6 +734,7 @@ def _empty_bundle(entry: ResourceEntry, base_url: str, query_params: List[Tuple[
 # ---------------------------------------------------------------------------
 # Read
 # ---------------------------------------------------------------------------
+
 
 async def read(
     entry: ResourceEntry,
@@ -754,6 +769,7 @@ async def read(
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
+
 
 async def create(
     entry: ResourceEntry,
@@ -810,6 +826,7 @@ async def create(
 # ---------------------------------------------------------------------------
 # Update
 # ---------------------------------------------------------------------------
+
 
 async def update(
     entry: ResourceEntry,
@@ -894,6 +911,7 @@ async def update(
 # ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
+
 
 async def delete(
     entry: ResourceEntry,

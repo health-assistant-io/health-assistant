@@ -4,6 +4,7 @@ Public entry point: :func:`get_tools`. Importing this package registers every
 domain tool factory via the ``@register_chat_tool`` decorator (the domain
 modules are imported below for their registration side effect).
 """
+
 from typing import Any, List, Optional
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from app.ai.tools import (  # noqa: F401
     medications,
     patient,
     system,
+    taxonomy,
 )
 from app.ai.tools.registry import ToolContext, get_factories
 

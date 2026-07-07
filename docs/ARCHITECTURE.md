@@ -23,19 +23,18 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 - **users**: Identity & Auth (id, tenant_id, email, role, settings)
 - **fhir_organizations**: Hierarchical grouping (id, tenant_id, name, org_type, part_of_id, created_at, updated_at, deleted_at)
 - **fhir_patients**: Clinical profiles (id, tenant_id, user_id, name, gender, birth_date, mrn)
-- **clinical_event_categories**: Groups for health journeys (Reproductive, Acute, Specialized, etc.)
-- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering.
+- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering; `category_id` FK → `concepts.id`.
 - **clinical_events**: Longitudinal health journeys (patient_id, type_id, status, metadata, occurrences)
 - **event_examination_links**: Many-to-many relationship between events and examinations with clinical reasoning.
-- **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, category)
-- **doctors**: Care team profiles (id, tenant_id, user_id, name, specialty, license_number, contact_info)
-- **documents**: File tracking (id, owner_id, filename, file_path, status, progress, extracted_text, entities)
+- **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_id` FK → `concepts.id`)
+- **doctors**: Care team profiles (id, tenant_id, user_id, name, `specialty_concept_id` FK → `concepts.id`, license_number, contact_info)
+- **documents**: File tracking (id, owner_id, filename, file_path, status, progress, extracted_text, entities, `category_concept_id` FK → `concepts.id`)
 - **fhir_observations**: Biomarkers/Vitals (id, document_id, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime)
 - **units**: Smart units with conversion logic (id, symbol, quantity_type, conversion_multiplier)
-- **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id)
-- **biomarker_groups**: Clinical panels and system groupings (id, name, type)
+- **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id, `class_concept_id` FK → `concepts.id`)
 - **laboratories**: Source tracking for lab reports (id, name, location)
 - **telemetry_data**: Time-series health metrics (id, device_id, timestamp, data)
+- **concepts** + **concept_kind_tags** + **concept_edges**: the unified multi-kind taxonomy / knowledge graph that classifies every entity above. One concept carries multiple domain tags (e.g. "Blood Laboratory" is an examination category, a biomarker class, and a document category). See [TAXONOMY.md](TAXONOMY.md).
 - **notification_triggers**: Scheduling rules for TIME/RECURRING reminders (medication / exam). `TriggerType.EVENT` and the legacy `biomarker_update` hook were removed (use the rules engine below).
 - **notifications**: Immutable notification **event** (1 row per emission). Source/category/severity/type, title/body/payload, nullable `patient_id`/`tenant_id` for system broadcasts, optional `communication_id` + `trigger_id`.
 - **notification_recipients**: Inbox state (N rows, 1 per resolved user). `user_id`, `status` (unread/read/dismissed). Indexed `(user_id, status)`.
@@ -51,7 +50,7 @@ The project follows the **HL7 FHIR** standard but enhances it with a high-perfor
 - **Dynamic Ontology**: The application uses a pluggable Clinical Ontology system. Rather than hardcoding LOINC mappings in Python, administrators can import massive custom catalogs (like the official Open Source Community Catalog via JSON). All biomarker definitions specify their exact `CodingSystem` Enum (e.g., `LOINC`, `SNOMED`, `CUSTOM`) allowing precise FHIR JSON serialization that is robust for external interoperability. (See [Ontology Catalog Schema](ONTOLOGY_CATALOG.md))
 - **Normalized Value**: All measurements are automatically converted to a "System Unit" using database-driven multipliers, enabling smooth longitudinal charts across different labs.
 - **Relative Score (0.0 - 1.0)**: Tracks a result's position within its specific lab's reference range, allowing for lab-agnostic trend analysis.
-- **Clinical Grouping**: Biomarkers are organized into **Groups** (e.g., Lipid Panel, CBC) for diagnostic context.
+- **Clinical Grouping**: Biomarkers are organized into **panels** (e.g., Lipid Panel, CBC) via `biomarker_panel` concepts linked through `MEMBER_OF` `concept_edges` — see [TAXONOMY.md](TAXONOMY.md).
 
 ### Telemetry & IoT Device Synchronization
 

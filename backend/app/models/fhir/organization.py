@@ -27,7 +27,9 @@ class OrganizationModel(
 
     # FHIR Organization resource fields
     active = Column(Boolean, default=True)
-    type = Column(JSONB, nullable=True)  # FHIR CodeableConcept (Hospital, Insurance, etc.)
+    type = Column(
+        JSONB, nullable=True
+    )  # FHIR CodeableConcept (Hospital, Insurance, etc.)
     org_type = Column(
         SQLEnum(OrganizationType),
         nullable=False,

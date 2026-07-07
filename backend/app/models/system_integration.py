@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base
 
+
 class SystemIntegration(Base):
     __tablename__ = "system_integrations"
 

@@ -25,6 +25,7 @@ Endpoint surface:
   POST   /admin/tenants/{tenant_id}/invite    Mint tenant-scoped invite token
   GET    /admin/tenants/{tenant_id}/audit     Audit-log viewer
 """
+
 from typing import Optional
 from uuid import UUID
 

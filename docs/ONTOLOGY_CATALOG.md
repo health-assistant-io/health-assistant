@@ -75,7 +75,7 @@ Defines the medical tests, vital signs, and measurements.
   - `custom` (For proprietary hospital codes or unstandardized metrics)
 - **`code`** (String, Optional): The exact identifier from the `coding_system` (e.g., `"2345-7"` for LOINC Glucose).
 - **`name`** (String, Required): The clean, display name of the biomarker.
-- **`category`** (String, Optional): The clinical grouping used for UI filtering (e.g., `blood_laboratory`, `vital_signs`, `ophthalmology`).
+- **`category`** (String, Optional): The clinical grouping (e.g., `blood_laboratory`, `vital_signs`, `ophthalmology`). On import this is translated — via `biomarker_category_to_concept_slug` — to a `biomarker_class` **concept** stored on `biomarker_definitions.class_concept_id` (see [TAXONOMY.md](TAXONOMY.md)); it is not stored as a free-text column.
 - **`preferred_unit_symbol`** (String, Optional): The `symbol` of the unit defined in the `units` array that this biomarker should default to for rendering charts.
 - **`aliases`** (Array of Strings, Optional): Synonyms or common abbreviations used by the AI to match OCR data to this definition (e.g., `["WBC", "White Count"]`).
 - **`reference_range_min`** (Float, Optional): The standard clinical lower bound.

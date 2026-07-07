@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from typing import List, Optional
@@ -8,7 +8,6 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.clinical_event import (
     ClinicalEvent,
-    ClinicalEventCategory,
     ClinicalEventType,
     EventExaminationLink,
     EventObservationLink,
@@ -25,23 +24,12 @@ from app.schemas.clinical_event import (
     ClinicalEventCreate,
     ClinicalEventUpdate,
     ClinicalEventResponse,
-    ClinicalEventCategoryCreate,
-    ClinicalEventCategoryResponse,
     ClinicalEventTypeCreate,
     ClinicalEventTypeResponse,
     EventExaminationLinkBase,
 )
 
 from app.models.fhir.patient import Patient
-from app.models.examination_model import ExaminationModel
-from app.schemas.clinical_event import (
-    ClinicalEventCreate,
-    ClinicalEventUpdate,
-    ClinicalEventResponse,
-    ClinicalEventTypeCreate,
-    ClinicalEventTypeResponse,
-    EventExaminationLinkBase,
-)
 from sqlalchemy.orm import selectinload
 from app.api.v1.endpoints.utils import (
     check_patient_access,
@@ -55,45 +43,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/clinical-events", tags=["clinical-events"])
-
-
-@router.get("/categories", response_model=List[ClinicalEventCategoryResponse])
-async def list_event_categories(
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(ClinicalEventCategory).where(
-            or_(
-                ClinicalEventCategory.tenant_id == current_user.tenant_id,
-                ClinicalEventCategory.tenant_id.is_(None),
-            )
-        )
-    )
-    return result.scalars().all()
-
-
-@router.post("/categories", response_model=ClinicalEventCategoryResponse)
-async def create_event_category(
-    category_in: ClinicalEventCategoryCreate,
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    existing = await db.execute(
-        select(ClinicalEventCategory).where(
-            ClinicalEventCategory.slug == category_in.slug
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Category slug already exists")
-
-    new_category = ClinicalEventCategory(
-        **category_in.model_dump(), tenant_id=current_user.tenant_id
-    )
-    db.add(new_category)
-    await db.commit()
-    await db.refresh(new_category)
-    return new_category
 
 
 @router.get("/types", response_model=List[ClinicalEventTypeResponse])
@@ -192,11 +141,10 @@ async def list_events(
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
             ),
-            selectinload(ClinicalEvent.observation_links).selectinload(
-                EventObservationLink.observation
-            ).selectinload(Observation.biomarker).selectinload(
-                BiomarkerDefinition.preferred_unit
-            ),
+            selectinload(ClinicalEvent.observation_links)
+            .selectinload(EventObservationLink.observation)
+            .selectinload(Observation.biomarker)
+            .selectinload(BiomarkerDefinition.preferred_unit),
         )
     )
 
@@ -205,7 +153,9 @@ async def list_events(
         query = query.where(ClinicalEvent.patient_id == patient_id)
     elif current_user.role == Role.USER.value:
         # Force filter by user's patients
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
+        patient_ids_query = select(Patient.id).where(
+            Patient.user_id == current_user.user_id
+        )
         query = query.where(ClinicalEvent.patient_id.in_(patient_ids_query))
 
     if examination_id:
@@ -253,7 +203,9 @@ async def create_event(
         for exam_link in event_in.examinations:
             try:
                 # Verify examination belongs to tenant and user has access
-                await check_examination_access(exam_link.examination_id, current_user, db)
+                await check_examination_access(
+                    exam_link.examination_id, current_user, db
+                )
                 link = EventExaminationLink(
                     event_id=new_event.id,
                     examination_id=exam_link.examination_id,
@@ -261,7 +213,9 @@ async def create_event(
                 )
                 db.add(link)
             except HTTPException:
-                logger.warning(f"Skipping examination link {exam_link.examination_id}: access denied or not found")
+                logger.warning(
+                    f"Skipping examination link {exam_link.examination_id}: access denied or not found"
+                )
                 continue
 
     # Handle initial observation links
@@ -269,7 +223,9 @@ async def create_event(
         for obs_link in event_in.observations:
             try:
                 # Verify observation belongs to tenant and user has access
-                await check_observation_access(obs_link.observation_id, current_user, db)
+                await check_observation_access(
+                    obs_link.observation_id, current_user, db
+                )
                 link = EventObservationLink(
                     event_id=new_event.id,
                     observation_id=obs_link.observation_id,
@@ -277,7 +233,9 @@ async def create_event(
                 )
                 db.add(link)
             except HTTPException:
-                logger.warning(f"Skipping observation link {obs_link.observation_id}: access denied or not found")
+                logger.warning(
+                    f"Skipping observation link {obs_link.observation_id}: access denied or not found"
+                )
                 continue
 
     await db.commit()
@@ -302,7 +260,9 @@ async def create_event(
             body="A new clinical event was recorded.",
             patient_id=new_event.patient_id,
             tenant_id=current_user.tenant_id,
-            targets=[{"kind": RecipientKind.PATIENT.value, "id": str(new_event.patient_id)}],
+            targets=[
+                {"kind": RecipientKind.PATIENT.value, "id": str(new_event.patient_id)}
+            ],
             payload={
                 "event_id": str(new_event.id),
                 "actions": [
@@ -310,7 +270,7 @@ async def create_event(
                         "id": "view",
                         "label": "View event",
                         "type": "link",
-                        "url": f"/events",
+                        "url": "/events",
                         "style": "primary",
                     }
                 ],
@@ -333,11 +293,10 @@ async def create_event(
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
             ),
-            selectinload(ClinicalEvent.observation_links).selectinload(
-                EventObservationLink.observation
-            ).selectinload(Observation.biomarker).selectinload(
-                BiomarkerDefinition.preferred_unit
-            ),
+            selectinload(ClinicalEvent.observation_links)
+            .selectinload(EventObservationLink.observation)
+            .selectinload(Observation.biomarker)
+            .selectinload(BiomarkerDefinition.preferred_unit),
         )
     )
     return result.scalar_one().to_dict()
@@ -365,11 +324,10 @@ async def get_event(
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
             ),
-            selectinload(ClinicalEvent.observation_links).selectinload(
-                EventObservationLink.observation
-            ).selectinload(Observation.biomarker).selectinload(
-                BiomarkerDefinition.preferred_unit
-            ),
+            selectinload(ClinicalEvent.observation_links)
+            .selectinload(EventObservationLink.observation)
+            .selectinload(Observation.biomarker)
+            .selectinload(BiomarkerDefinition.preferred_unit),
         )
     )
     event = result.scalar_one_or_none()
@@ -385,7 +343,9 @@ async def update_event(
 ):
     event = await check_event_access(event_id, current_user, db)
 
-    update_data = event_in.model_dump(exclude_unset=True, exclude={"examinations", "observations"})
+    update_data = event_in.model_dump(
+        exclude_unset=True, exclude={"examinations", "observations"}
+    )
     for key, value in update_data.items():
         setattr(event, key, value)
 
@@ -398,7 +358,7 @@ async def update_event(
             .options(selectinload(ClinicalEvent.examination_links))
         )
         event = res.scalar_one()
-        
+
         # Current links
         current_links = {link.examination_id: link for link in event.examination_links}
         new_exam_ids = {exam_link.examination_id for exam_link in event_in.examinations}
@@ -415,7 +375,9 @@ async def update_event(
             else:
                 try:
                     # Verify examination belongs to tenant and user has access
-                    await check_examination_access(exam_link.examination_id, current_user, db)
+                    await check_examination_access(
+                        exam_link.examination_id, current_user, db
+                    )
                     new_link = EventExaminationLink(
                         event_id=event.id,
                         examination_id=exam_link.examination_id,
@@ -434,9 +396,11 @@ async def update_event(
             .options(selectinload(ClinicalEvent.observation_links))
         )
         event = res.scalar_one()
-        
+
         # Current links
-        current_obs_links = {link.observation_id: link for link in event.observation_links}
+        current_obs_links = {
+            link.observation_id: link for link in event.observation_links
+        }
         new_obs_ids = {obs_link.observation_id for obs_link in event_in.observations}
 
         # Remove links not in new list
@@ -451,7 +415,9 @@ async def update_event(
             else:
                 try:
                     # Verify observation belongs to tenant and user has access
-                    await check_observation_access(obs_link.observation_id, current_user, db)
+                    await check_observation_access(
+                        obs_link.observation_id, current_user, db
+                    )
                     new_link = EventObservationLink(
                         event_id=event.id,
                         observation_id=obs_link.observation_id,
@@ -477,11 +443,10 @@ async def update_event(
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
             ),
-            selectinload(ClinicalEvent.observation_links).selectinload(
-                EventObservationLink.observation
-            ).selectinload(Observation.biomarker).selectinload(
-                BiomarkerDefinition.preferred_unit
-            ),
+            selectinload(ClinicalEvent.observation_links)
+            .selectinload(EventObservationLink.observation)
+            .selectinload(Observation.biomarker)
+            .selectinload(BiomarkerDefinition.preferred_unit),
         )
     )
     return result.scalar_one().to_dict()
@@ -542,11 +507,10 @@ async def link_examination(
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
             ),
-            selectinload(ClinicalEvent.observation_links).selectinload(
-                EventObservationLink.observation
-            ).selectinload(Observation.biomarker).selectinload(
-                BiomarkerDefinition.preferred_unit
-            ),
+            selectinload(ClinicalEvent.observation_links)
+            .selectinload(EventObservationLink.observation)
+            .selectinload(Observation.biomarker)
+            .selectinload(BiomarkerDefinition.preferred_unit),
         )
     )
     return result.scalar_one().to_dict()

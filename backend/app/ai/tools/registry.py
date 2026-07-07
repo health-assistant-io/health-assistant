@@ -10,6 +10,7 @@ that close over that context — the same closure pattern the monolithic
 :func:`app.ai.tools.get_tools` builds a ``ToolContext`` and concatenates the
 output of every registered factory.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +36,9 @@ class ToolContext:
 _TOOL_FACTORIES: "Dict[str, Callable[[ToolContext], List[Any]]]" = {}
 
 
-def register_chat_tool(domain: str) -> Callable[[Callable[[ToolContext], List[Any]]], Callable[[ToolContext], List[Any]]]:
+def register_chat_tool(
+    domain: str,
+) -> Callable[[Callable[[ToolContext], List[Any]]], Callable[[ToolContext], List[Any]]]:
     """Decorator: register a tool factory under ``domain``.
 
     Usage in a domain module::

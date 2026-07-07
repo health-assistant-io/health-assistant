@@ -10,6 +10,7 @@ Celery task names now derive from this module (e.g.
 ``app.workers.ai_tasks.ocr_document``); ``celery_app.py``'s ``include`` and
 beat schedule were updated accordingly.
 """
+
 import datetime
 import os
 from pathlib import Path

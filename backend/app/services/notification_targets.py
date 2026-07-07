@@ -21,6 +21,7 @@ Unlinked clinical records (``user_id IS NULL``) are silently dropped — a
 notification cannot be delivered to a record with no login account. This
 matches the platform's "identity linking is optional" model.
 """
+
 from __future__ import annotations
 
 import logging

@@ -22,6 +22,7 @@ Patterns are compiled once at import time and cover the well-known
 patterns documented by OWASP LLM Top 10 (LLM01: Prompt Injection) and
 common jailbreak literature.
 """
+
 import re
 import logging
 from typing import List, Tuple

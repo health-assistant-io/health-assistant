@@ -19,6 +19,7 @@ Design goals:
 - **Caps**: ``INTEGRATION_MAX_TOOLS_PER_SESSION`` bounds the total number of
   integration tools exposed in one chat turn.
 """
+
 from __future__ import annotations
 
 import logging

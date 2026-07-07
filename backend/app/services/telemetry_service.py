@@ -4,6 +4,7 @@ Provides tenant-scoped CRUD over the TimescaleDB ``telemetry_data`` hypertable.
 All read paths take ``tenant_id`` explicitly so a caller cannot read another
 tenant's data even if they guess a ``device_id`` (audit items B3, F8).
 """
+
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
@@ -178,19 +179,16 @@ async def get_telemetry_summary(
 
     next_day = next_day + timedelta(days=1)
 
-    query = (
-        select(
-            func.min(TelemetryDataModel.heart_rate).label("hr_min"),
-            func.max(TelemetryDataModel.heart_rate).label("hr_max"),
-            func.avg(TelemetryDataModel.heart_rate).label("hr_avg"),
-            func.sum(TelemetryDataModel.steps).label("steps_sum"),
-            func.sum(TelemetryDataModel.calories).label("cal_sum"),
-        )
-        .where(
-            TelemetryDataModel.tenant_id == tenant_uuid,
-            TelemetryDataModel.timestamp >= day,
-            TelemetryDataModel.timestamp < next_day,
-        )
+    query = select(
+        func.min(TelemetryDataModel.heart_rate).label("hr_min"),
+        func.max(TelemetryDataModel.heart_rate).label("hr_max"),
+        func.avg(TelemetryDataModel.heart_rate).label("hr_avg"),
+        func.sum(TelemetryDataModel.steps).label("steps_sum"),
+        func.sum(TelemetryDataModel.calories).label("cal_sum"),
+    ).where(
+        TelemetryDataModel.tenant_id == tenant_uuid,
+        TelemetryDataModel.timestamp >= day,
+        TelemetryDataModel.timestamp < next_day,
     )
     if device_id:
         query = query.where(TelemetryDataModel.device_id == device_id)

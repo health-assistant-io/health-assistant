@@ -10,12 +10,11 @@ from app.core.config import settings
 from app.models.biomarker_model import (
     Unit,
     BiomarkerDefinition,
-    BiomarkerGroup,
-    BiomarkerGroupMember,
     BiomarkerEventCorrelation,
 )
 from app.models.clinical_event import ClinicalEventType
 from app.models.enums import QuantityType, CodingSystem
+from app.services.concept_service import resolve_biomarker_class_concept
 
 engine = create_async_engine(settings.DATABASE_URL)
 LocalSession = async_sessionmaker(
@@ -203,7 +202,7 @@ async def seed_data():
                 "category": "activity",
                 "aliases": ["Active Energy", "Calories"],
                 "is_telemetry": True,
-            }
+            },
         ]
 
         bio_map = {}
@@ -211,6 +210,14 @@ async def seed_data():
             pref_sym = b_data.pop("preferred_unit_symbol", None)
             if pref_sym and pref_sym in unit_map:
                 b_data["preferred_unit_id"] = unit_map[pref_sym]
+
+            # Resolve legacy ``category`` (e.g. "vital_signs") to a
+            # ``biomarker_class`` concept ID; pop it off so the dict matches
+            # the new BiomarkerDefinition columns.
+            legacy_category = b_data.pop("category", None)
+            b_data["class_concept_id"] = await resolve_biomarker_class_concept(
+                db, legacy_category
+            )
 
             result = await db.execute(
                 select(BiomarkerDefinition).where(
@@ -223,43 +230,6 @@ async def seed_data():
                 db.add(bio)
                 await db.flush()
             bio_map[bio.slug] = bio.id
-
-        # Seed Groups
-        groups = [
-            {
-                "name": "Blood Pressure",
-                "type": "Panel",
-                "members": ["systolic-bp", "diastolic-bp"],
-            },
-        ]
-
-        for g_data in groups:
-            members_slugs = g_data.pop("members", [])
-            result = await db.execute(
-                select(BiomarkerGroup).where(BiomarkerGroup.name == g_data["name"])
-            )
-            group = result.scalar_one_or_none()
-            if not group:
-                group = BiomarkerGroup(**g_data)
-                db.add(group)
-                await db.flush()
-
-            for i, slug in enumerate(members_slugs):
-                if slug in bio_map:
-                    # check if member exists
-                    mem_result = await db.execute(
-                        select(BiomarkerGroupMember).where(
-                            BiomarkerGroupMember.group_id == str(group.id),
-                            BiomarkerGroupMember.biomarker_id == str(bio_map[slug]),
-                        )
-                    )
-                    if not mem_result.scalar_one_or_none():
-                        member = BiomarkerGroupMember(
-                            group_id=str(group.id),
-                            biomarker_id=str(bio_map[slug]),
-                            display_order=i,
-                        )
-                        db.add(member)
 
         # Seed Correlations
         correlations = [
@@ -298,7 +268,7 @@ async def seed_data():
                         db.add(correlation)
 
         await db.commit()
-        print("Successfully seeded Units, Biomarkers, Groups, and Correlations.")
+        print("Successfully seeded Units, Biomarkers, and Correlations.")
 
 
 if __name__ == "__main__":

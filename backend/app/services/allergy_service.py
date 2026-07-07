@@ -3,11 +3,10 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
-from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance, AllergyCategory
+from sqlalchemy import select
+from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
 from app.core.database import AsyncSessionLocal
-from app.services.fhir_helpers import assert_valid_fhir, FhirSerializationError
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 logger = logging.getLogger(__name__)

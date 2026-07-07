@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { BiomarkerObservation, Biomarker } from '../types/biomarker';
-import { CATEGORY_MAPPING } from '../constants/categories';
+import { getDocumentCategoryLabel } from '../services/conceptService';
 import { getFinalStatus, isAbnormal } from '../utils/biomarkerUtils';
 import { matchBiomarker } from '../utils/searchUtils';
 import biomarkerService from '../services/biomarkerService';
@@ -52,7 +52,7 @@ export function refreshBiomarkerDefinitions(): void {
 }
 
 export const formatGroupName = (name: string) => {
-  return CATEGORY_MAPPING[name] || name.split(/[_-]/).map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  return getDocumentCategoryLabel(name);
 };
 
 interface UseBiomarkersProps {

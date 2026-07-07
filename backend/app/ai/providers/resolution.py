@@ -18,6 +18,7 @@ Resolution rule (unchanged behaviour):
    the refactor plan; deliberately NOT changed here to keep this phase
    behaviour-equivalent.
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -75,8 +76,6 @@ async def resolve_active_assignment(
 
     # 2. Fall back to the "default" task assignment (recurse once).
     if task_type != "default":
-        return await resolve_active_assignment(
-            db, "default", tenant_id, user_id
-        )
+        return await resolve_active_assignment(db, "default", tenant_id, user_id)
 
     return None

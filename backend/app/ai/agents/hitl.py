@@ -13,6 +13,7 @@ The ``chat_agent`` import is lazy (inside ``resume_after_hitl``) to avoid a
 top-level cycle: ``chat_agent`` imports the two simple helpers below at module
 load, while this module needs ``run_reasoning_loop`` only at call time.
 """
+
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -111,7 +112,9 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
             if err:
                 parts.append(f"error={err}")
             lines.append(
-                f"- [{task_type}] {title} ({proposal_id[:8]}): " + ", ".join(parts) + "."
+                f"- [{task_type}] {title} ({proposal_id[:8]}): "
+                + ", ".join(parts)
+                + "."
             )
         elif status_raw == HitlTaskStatus.DISMISSED:
             dismissed += 1
@@ -180,7 +183,9 @@ def _hitl_resolved_brief(tasks: List[Dict[str, Any]]) -> Optional[str]:
         if status_raw not in terminal:
             continue
         # Normalize enum -> plain string for display.
-        status = status_raw.value if isinstance(status_raw, HitlTaskStatus) else status_raw
+        status = (
+            status_raw.value if isinstance(status_raw, HitlTaskStatus) else status_raw
+        )
         task_type = t.get("task_type", "action")
         title = t.get("title") or task_type
         result = (t.get("resolved") or {}).get("result") or {}
@@ -297,7 +302,8 @@ async def resume_after_hitl(
         # summary labels unanswered items as "NOT YET ANSWERED".
         terminal = HitlTaskStatus.terminal()
         pending = [
-            t for t in target.tasks
+            t
+            for t in target.tasks
             if isinstance(t, dict) and t.get("status") not in terminal
         ]
         if pending:

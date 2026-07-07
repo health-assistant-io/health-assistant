@@ -2,6 +2,7 @@
 
 Extracted from ``ChatbotTools`` (Phase 3).
 """
+
 import json
 from typing import Any, List
 from uuid import UUID
@@ -48,9 +49,15 @@ def build(ctx: ToolContext) -> List[Any]:
                     "title": event.title,
                     "type": event.type_entity.name if event.type_entity else "Unknown",
                     "status": event.status.value,
-                    "onset_date": event.onset_date.isoformat() if event.onset_date else None,
-                    "resolved_date": event.resolved_date.isoformat() if event.resolved_date else None,
-                    "description": event.description[:200] if event.description else None,
+                    "onset_date": event.onset_date.isoformat()
+                    if event.onset_date
+                    else None,
+                    "resolved_date": event.resolved_date.isoformat()
+                    if event.resolved_date
+                    else None,
+                    "description": event.description[:200]
+                    if event.description
+                    else None,
                 }
             )
         return json.dumps(summary)
@@ -68,8 +75,13 @@ def build(ctx: ToolContext) -> List[Any]:
             select(ClinicalEvent)
             .options(
                 selectinload(ClinicalEvent.type_entity),
-                selectinload(ClinicalEvent.examination_links).selectinload(EventExaminationLink.examination),
-                selectinload(ClinicalEvent.observation_links).selectinload(EventObservationLink.observation).selectinload(Observation.biomarker).selectinload(BiomarkerDefinition.preferred_unit)
+                selectinload(ClinicalEvent.examination_links).selectinload(
+                    EventExaminationLink.examination
+                ),
+                selectinload(ClinicalEvent.observation_links)
+                .selectinload(EventObservationLink.observation)
+                .selectinload(Observation.biomarker)
+                .selectinload(BiomarkerDefinition.preferred_unit),
             )
             .where(
                 and_(

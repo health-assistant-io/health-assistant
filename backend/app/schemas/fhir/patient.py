@@ -2,7 +2,6 @@
 
 from typing import Optional, Dict, Any, List
 from uuid import UUID
-from enum import Enum
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,7 +23,9 @@ class PatientBase(BaseModel):
     (``"name": [{"family": "Doe"}]``) is accepted rather than 422'd.
     """
 
-    name: List[Dict[str, Any]] = Field(..., description="Patient name objects (FHIR HumanName, 0..*)")
+    name: List[Dict[str, Any]] = Field(
+        ..., description="Patient name objects (FHIR HumanName, 0..*)"
+    )
     user_id: Optional[UUID] = None
     gender: Gender
     birth_date: Optional[date] = None

@@ -42,6 +42,7 @@ class ObservationCreate(ObservationBase):
     performer: Optional[List[Dict[str, Any]]] = None
     component: Optional[List[Dict[str, Any]]] = None
 
+
 class ObservationUpdate(BaseModel):
     """Observation update schema"""
 
@@ -57,6 +58,7 @@ class ObservationUpdate(BaseModel):
     comment: Optional[str] = None
     performer: Optional[List[Dict[str, Any]]] = None
     component: Optional[List[Dict[str, Any]]] = None
+
 
 class ObservationResponse(ObservationBase):
     """Observation response schema"""

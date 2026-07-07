@@ -14,7 +14,7 @@ async def get_tenant(tenant_id: str | UUID) -> Optional[TenantModel]:
     """Get tenant by ID"""
     if not DATABASE_AVAILABLE:
         return None
-        
+
     if isinstance(tenant_id, str):
         try:
             tenant_id = UUID(tenant_id)
@@ -55,7 +55,9 @@ async def create_tenant(name: str, settings: dict = None) -> Optional[TenantMode
     return new_tenant
 
 
-async def update_tenant(tenant_id: str | UUID, name: str = None, settings: dict = None) -> Optional[TenantModel]:
+async def update_tenant(
+    tenant_id: str | UUID, name: str = None, settings: dict = None
+) -> Optional[TenantModel]:
     """Update tenant information"""
     if not DATABASE_AVAILABLE:
         return None
@@ -80,7 +82,7 @@ async def update_tenant(tenant_id: str | UUID, name: str = None, settings: dict 
             update(TenantModel).where(TenantModel.id == tenant_id).values(**update_data)
         )
         await session.commit()
-        
+
     return await get_tenant(tenant_id)
 
 
@@ -110,19 +112,17 @@ async def list_tenants(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
 
     async with AsyncSessionLocal() as session:
         query = select(TenantModel)
-        
+
         # Get total count
         from sqlalchemy import func
+
         count_query = select(func.count()).select_from(query.subquery())
         total = await session.execute(count_query)
         total_count = total.scalar() or 0
-        
+
         # Apply pagination
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         items = result.scalars().all()
-        
-        return {
-            "items": [item.to_dict() for item in items],
-            "total": total_count
-        }
+
+        return {"items": [item.to_dict() for item in items], "total": total_count}

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 from uuid import UUID
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from datetime import date, datetime
 
 
@@ -9,7 +9,6 @@ from app.schemas.doctor import DoctorResponse
 
 from app.schemas.medication import MedicationRecordResponse
 from app.schemas.observation import ObservationResponse
-from app.schemas.examination_category import ExaminationCategoryResponse
 from app.schemas.organization import Organization
 
 
@@ -86,7 +85,7 @@ class ExaminationSummaryResponse(BaseModel):
     error_message: Optional[str] = None
     diagnoses: Optional[List[str]] = Field(default_factory=list)
     impressions: Optional[str] = None
-    category_details: Optional[ExaminationCategoryResponse] = None
+    category_details: Optional[Dict[str, Any]] = None
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []
@@ -100,7 +99,7 @@ class ExaminationSummaryResponse(BaseModel):
 
 class ExaminationResponse(ExaminationBase):
     id: UUID
-    category_details: Optional[ExaminationCategoryResponse] = None
+    category_details: Optional[Dict[str, Any]] = None
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []

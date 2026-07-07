@@ -175,8 +175,7 @@ class ChatSessionService:
 
         if message_id:
             result = await self.db.execute(
-                select(ChatMessage)
-                .where(
+                select(ChatMessage).where(
                     and_(
                         ChatMessage.id == message_id,
                         ChatMessage.session_id == session_id,

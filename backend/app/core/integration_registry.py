@@ -10,29 +10,36 @@ from integrations.base import BaseHealthProvider, BaseConfigFlow
 
 logger = logging.getLogger(__name__)
 
+
 class IntegrationRegistry:
     def __init__(self):
         self._providers: Dict[str, BaseHealthProvider] = {}
         self._config_flows: Dict[str, BaseConfigFlow] = {}
         self._manifests: Dict[str, dict] = {}
-        self._base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "..", "integrations")
+        self._base_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "..",
+            "integrations",
+        )
 
     async def initialize(self, db: AsyncSession):
         logger.info("Initializing Integration Registry...")
         self._load_manifests()
-        
+
         # Load system integrations state from DB
         stmt = select(SystemIntegration)
         result = await db.execute(stmt)
         system_integrations = result.scalars().all()
-        
+
         enabled_domains = {si.domain for si in system_integrations if si.is_enabled}
-        
+
         for domain, manifest in self._manifests.items():
             if domain in enabled_domains:
                 await self._load_integration(domain)
             else:
-                logger.debug(f"Integration {domain} is discovered but not enabled in system_integrations.")
+                logger.debug(
+                    f"Integration {domain} is discovered but not enabled in system_integrations."
+                )
 
     def _load_manifests(self):
         # Scan built-in integrations
@@ -54,32 +61,42 @@ class IntegrationRegistry:
         try:
             # Dynamically import the modules
             provider_module = importlib.import_module(f"integrations.{domain}.provider")
-            config_flow_module = importlib.import_module(f"integrations.{domain}.config_flow")
-            
+            config_flow_module = importlib.import_module(
+                f"integrations.{domain}.config_flow"
+            )
+
             # Find the classes
-            provider_class = self._find_class_by_base(provider_module, BaseHealthProvider)
-            config_flow_class = self._find_class_by_base(config_flow_module, BaseConfigFlow)
-            
+            provider_class = self._find_class_by_base(
+                provider_module, BaseHealthProvider
+            )
+            config_flow_class = self._find_class_by_base(
+                config_flow_module, BaseConfigFlow
+            )
+
             if provider_class and config_flow_class:
                 provider_instance = provider_class()
                 config_flow_instance = config_flow_class()
-                
+
                 # Perform setup
                 await provider_instance.setup({})
-                
+
                 self._providers[domain] = provider_instance
                 self._config_flows[domain] = config_flow_instance
                 logger.info(f"Successfully loaded integration: {domain}")
             else:
                 logger.warning(f"Could not find required classes in {domain}")
-                
+
         except Exception as e:
             logger.error(f"Error loading integration {domain}: {e}")
 
     def _find_class_by_base(self, module: Any, base_class: Type) -> Optional[Type]:
         for item_name in dir(module):
             item = getattr(module, item_name)
-            if isinstance(item, type) and issubclass(item, base_class) and item is not base_class:
+            if (
+                isinstance(item, type)
+                and issubclass(item, base_class)
+                and item is not base_class
+            ):
                 if item.__module__ == module.__name__:
                     return item
         return None
@@ -96,5 +113,6 @@ class IntegrationRegistry:
 
     def get_all_manifests(self) -> List[dict]:
         return list(self._manifests.values())
+
 
 integration_registry = IntegrationRegistry()

@@ -1,5 +1,5 @@
-from typing import Dict, Any, List, Optional, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
 from app.models.enums import CodingSystem
 
 
@@ -7,13 +7,23 @@ class MetricMappingRequest(BaseModel):
     name: str
     code: Optional[str] = None
 
+
 class MappedMetric(BaseModel):
     original_name: str
     action: Literal["map_to_existing", "create_new"]
-    existing_biomarker_id: Optional[str] = Field(None, description="UUID of the existing biomarker if mapped")
-    new_biomarker_name: Optional[str] = Field(None, description="Standardized English name if creating new")
-    new_biomarker_code: Optional[str] = Field(None, description="LOINC code if available, otherwise short custom code")
-    new_biomarker_coding_system: Optional[str] = Field("loinc", description="'loinc' or 'custom'")
+    existing_biomarker_id: Optional[str] = Field(
+        None, description="UUID of the existing biomarker if mapped"
+    )
+    new_biomarker_name: Optional[str] = Field(
+        None, description="Standardized English name if creating new"
+    )
+    new_biomarker_code: Optional[str] = Field(
+        None, description="LOINC code if available, otherwise short custom code"
+    )
+    new_biomarker_coding_system: Optional[str] = Field(
+        "loinc", description="'loinc' or 'custom'"
+    )
+
 
 class MapResponsePayload(BaseModel):
     mappings: List[MappedMetric]
@@ -92,11 +102,11 @@ class NewBiomarkerDefinition(BaseModel):
     )
     proposed_coding_system: CodingSystem = Field(
         default=CodingSystem.CUSTOM,
-        description="The medical coding system to map to (e.g., 'loinc', 'snomed', 'custom'). Try to map standard lab tests to 'loinc'."
+        description="The medical coding system to map to (e.g., 'loinc', 'snomed', 'custom'). Try to map standard lab tests to 'loinc'.",
     )
     proposed_code: Optional[str] = Field(
         None,
-        description="The specific code from the proposed_coding_system (e.g., the LOINC code like '2345-7'). If 'custom', provide a short identifier."
+        description="The specific code from the proposed_coding_system (e.g., the LOINC code like '2345-7'). If 'custom', provide a short identifier.",
     )
     name: str = Field(description="Clean, standard name of the biomarker")
     category: str = Field(description="e.g. blood_laboratory, vital_signs, imaging")
@@ -121,7 +131,7 @@ class NewBiomarkerDefinition(BaseModel):
     )
     is_telemetry: bool = Field(
         False,
-        description="Set to true if this metric is typically tracked continuously via IoT/wearables (e.g., heart rate, steps, continuous glucose)."
+        description="Set to true if this metric is typically tracked continuously via IoT/wearables (e.g., heart rate, steps, continuous glucose).",
     )
 
 

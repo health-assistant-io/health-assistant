@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey, UUID, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
 from app.models.associations import examination_doctors, organization_doctors
@@ -16,7 +16,12 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
         index=True,
     )
     name = Column(String(255), nullable=False)
-    specialty = Column(String(255), nullable=True)
+    specialty_concept_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     license_number = Column(String(100), nullable=True)
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -28,6 +33,7 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
     office_details = Column(Text, nullable=True)
 
     # Relationships
+    specialty_concept = relationship("Concept", lazy="selectin")
     examinations = relationship(
         "ExaminationModel", secondary=examination_doctors, back_populates="doctors"
     )
@@ -36,12 +42,20 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
         "OrganizationModel", secondary=organization_doctors, back_populates="doctors"
     )
 
+    @property
+    def specialty(self):
+        """Convenience accessor returning the concept name (backward compat)."""
+        return self.specialty_concept.name if self.specialty_concept else None
+
     def to_dict(self):
         return {
             "id": str(self.id),
             "tenant_id": str(self.tenant_id),
             "user_id": str(self.user_id) if self.user_id else None,
             "name": self.name,
+            "specialty_concept_id": str(self.specialty_concept_id)
+            if self.specialty_concept_id
+            else None,
             "specialty": self.specialty,
             "license_number": self.license_number,
             "email": self.email,
@@ -68,10 +82,11 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
             telecom = self.telecom
 
         qualifications = []
-        if self.specialty or self.license_number:
+        specialty_name = self.specialty
+        if specialty_name or self.license_number:
             q = {}
-            if self.specialty:
-                q["code"] = {"text": self.specialty}
+            if specialty_name:
+                q["code"] = {"text": specialty_name}
             if self.license_number:
                 q["identifier"] = [{"value": self.license_number}]
             qualifications.append(q)

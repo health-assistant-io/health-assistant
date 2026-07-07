@@ -24,7 +24,8 @@ Future phasing:
 - Phase 3 (pgvector) will add an optional `semantic=True` branch with
   reciprocal rank fusion; see project plan.
 """
-from typing import List, Optional, Type, Any
+
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import select, or_, func
@@ -35,8 +36,10 @@ from app.models.fhir.allergy import AllergyCatalog
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import (
     ClinicalEventType,
-    ClinicalEventCategory,
 )
+from app.models.concept_model import Concept
+from app.services.concept_service import concepts_with_kind
+from app.models.enums import ConceptKind, ConceptStatus
 
 
 DEFAULT_LIMIT = 20
@@ -81,6 +84,7 @@ def _normalize(query: Optional[str]) -> Optional[str]:
 # Medications
 # ---------------------------------------------------------------------------
 
+
 async def search_medications(
     db: AsyncSession,
     tenant_id: UUID,
@@ -109,18 +113,22 @@ async def search_medications(
 
     await _set_similarity_threshold(db, threshold)
 
-    stmt = base.where(
-        or_(
-            MedicationCatalog.name.op("%")(q),  # trigram similarity (uses GIN)
-            MedicationCatalog.indications.op("%")(q),
-            MedicationCatalog.name.ilike(f"%{q}%"),
-            MedicationCatalog.indications.ilike(f"%{q}%"),
-            MedicationCatalog.description.ilike(f"%{q}%"),
+    stmt = (
+        base.where(
+            or_(
+                MedicationCatalog.name.op("%")(q),  # trigram similarity (uses GIN)
+                MedicationCatalog.indications.op("%")(q),
+                MedicationCatalog.name.ilike(f"%{q}%"),
+                MedicationCatalog.indications.ilike(f"%{q}%"),
+                MedicationCatalog.description.ilike(f"%{q}%"),
+            )
         )
-    ).order_by(
-        func.similarity(MedicationCatalog.name, q).desc(),
-        MedicationCatalog.name.asc(),
-    ).limit(limit)
+        .order_by(
+            func.similarity(MedicationCatalog.name, q).desc(),
+            MedicationCatalog.name.asc(),
+        )
+        .limit(limit)
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -129,6 +137,7 @@ async def search_medications(
 # ---------------------------------------------------------------------------
 # Biomarkers
 # ---------------------------------------------------------------------------
+
 
 async def search_biomarkers(
     db: AsyncSession,
@@ -155,18 +164,22 @@ async def search_biomarkers(
 
     await _set_similarity_threshold(db, threshold)
 
-    stmt = base.where(
-        or_(
-            BiomarkerDefinition.name.op("%")(q),
-            BiomarkerDefinition.slug.op("%")(q),
-            BiomarkerDefinition.name.ilike(f"%{q}%"),
-            BiomarkerDefinition.slug.ilike(f"%{q}%"),
-            BiomarkerDefinition.code.ilike(f"%{q}%"),
+    stmt = (
+        base.where(
+            or_(
+                BiomarkerDefinition.name.op("%")(q),
+                BiomarkerDefinition.slug.op("%")(q),
+                BiomarkerDefinition.name.ilike(f"%{q}%"),
+                BiomarkerDefinition.slug.ilike(f"%{q}%"),
+                BiomarkerDefinition.code.ilike(f"%{q}%"),
+            )
         )
-    ).order_by(
-        func.similarity(BiomarkerDefinition.name, q).desc(),
-        BiomarkerDefinition.slug.asc(),
-    ).limit(limit)
+        .order_by(
+            func.similarity(BiomarkerDefinition.name, q).desc(),
+            BiomarkerDefinition.slug.asc(),
+        )
+        .limit(limit)
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -175,6 +188,7 @@ async def search_biomarkers(
 # ---------------------------------------------------------------------------
 # Allergies
 # ---------------------------------------------------------------------------
+
 
 async def search_allergies(
     db: AsyncSession,
@@ -197,15 +211,19 @@ async def search_allergies(
 
     await _set_similarity_threshold(db, threshold)
 
-    stmt = base.where(
-        or_(
-            AllergyCatalog.name.op("%")(q),
-            AllergyCatalog.name.ilike(f"%{q}%"),
+    stmt = (
+        base.where(
+            or_(
+                AllergyCatalog.name.op("%")(q),
+                AllergyCatalog.name.ilike(f"%{q}%"),
+            )
         )
-    ).order_by(
-        func.similarity(AllergyCatalog.name, q).desc(),
-        AllergyCatalog.name.asc(),
-    ).limit(limit)
+        .order_by(
+            func.similarity(AllergyCatalog.name, q).desc(),
+            AllergyCatalog.name.asc(),
+        )
+        .limit(limit)
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -214,6 +232,7 @@ async def search_allergies(
 # ---------------------------------------------------------------------------
 # Clinical event types & categories
 # ---------------------------------------------------------------------------
+
 
 async def search_clinical_event_types(
     db: AsyncSession,
@@ -231,22 +250,28 @@ async def search_clinical_event_types(
         )
     )
     if q is None:
-        result = await db.execute(base.order_by(ClinicalEventType.name.asc()).limit(limit))
+        result = await db.execute(
+            base.order_by(ClinicalEventType.name.asc()).limit(limit)
+        )
         return list(result.scalars().all())
 
     await _set_similarity_threshold(db, threshold)
 
-    stmt = base.where(
-        or_(
-            ClinicalEventType.name.op("%")(q),
-            ClinicalEventType.slug.op("%")(q),
-            ClinicalEventType.name.ilike(f"%{q}%"),
-            ClinicalEventType.slug.ilike(f"%{q}%"),
+    stmt = (
+        base.where(
+            or_(
+                ClinicalEventType.name.op("%")(q),
+                ClinicalEventType.slug.op("%")(q),
+                ClinicalEventType.name.ilike(f"%{q}%"),
+                ClinicalEventType.slug.ilike(f"%{q}%"),
+            )
         )
-    ).order_by(
-        func.similarity(ClinicalEventType.name, q).desc(),
-        ClinicalEventType.slug.asc(),
-    ).limit(limit)
+        .order_by(
+            func.similarity(ClinicalEventType.name, q).desc(),
+            ClinicalEventType.slug.asc(),
+        )
+        .limit(limit)
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -258,32 +283,111 @@ async def search_clinical_event_categories(
     query: Optional[str],
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[ClinicalEventCategory]:
-    """Tenant-scoped fuzzy + substring search over clinical event categories."""
+) -> List[Concept]:
+    """Tenant-scoped fuzzy + substring search over clinical event categories.
+
+    Event categories now live in the unified ``concepts`` table
+    (``kind=event_category``)."""
     q = _normalize(query)
-    base = select(ClinicalEventCategory).where(
+    base = select(Concept).where(
+        concepts_with_kind(ConceptKind.EVENT_CATEGORY),
+        Concept.status == ConceptStatus.ACTIVE,
+        Concept.deleted_at.is_(None),
         or_(
-            ClinicalEventCategory.tenant_id.is_(None),
-            ClinicalEventCategory.tenant_id == tenant_id,
-        )
+            Concept.tenant_id.is_(None),
+            Concept.tenant_id == tenant_id,
+        ),
     )
     if q is None:
-        result = await db.execute(base.order_by(ClinicalEventCategory.name.asc()).limit(limit))
+        result = await db.execute(
+            base.order_by(
+                Concept.display_order.asc(),
+                Concept.name.asc(),
+            ).limit(limit)
+        )
         return list(result.scalars().all())
 
     await _set_similarity_threshold(db, threshold)
 
-    stmt = base.where(
-        or_(
-            ClinicalEventCategory.name.op("%")(q),
-            ClinicalEventCategory.slug.op("%")(q),
-            ClinicalEventCategory.name.ilike(f"%{q}%"),
-            ClinicalEventCategory.slug.ilike(f"%{q}%"),
+    stmt = (
+        base.where(
+            or_(
+                Concept.name.op("%")(q),
+                Concept.slug.op("%")(q),
+                Concept.name.ilike(f"%{q}%"),
+                Concept.slug.ilike(f"%{q}%"),
+            )
         )
-    ).order_by(
-        func.similarity(ClinicalEventCategory.name, q).desc(),
-        ClinicalEventCategory.slug.asc(),
-    ).limit(limit)
+        .order_by(
+            func.similarity(Concept.name, q).desc(),
+            Concept.slug.asc(),
+        )
+        .limit(limit)
+    )
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Concepts (unified taxonomy)
+# ---------------------------------------------------------------------------
+
+
+async def search_concepts(
+    db: AsyncSession,
+    tenant_id: UUID,
+    query: Optional[str],
+    kind: Optional[ConceptKind] = None,
+    limit: int = DEFAULT_LIMIT,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> List[Concept]:
+    """Tenant-scoped fuzzy + substring search over the unified concept table.
+
+    Optionally filtered by ``kind`` (specialty, examination_category,
+    biomarker_panel, …). Matches on name, slug, and aliases (JSONB array
+    containment via ``?|`` operator). Excludes soft-deleted and non-active
+    rows. Ranking: trigram similarity on name first, then slug.
+    """
+    q = _normalize(query)
+    base = select(Concept).where(
+        or_(
+            Concept.tenant_id.is_(None),
+            Concept.tenant_id == tenant_id,
+        ),
+        Concept.status == ConceptStatus.ACTIVE,
+        Concept.deleted_at.is_(None),
+    )
+    if kind is not None:
+        base = base.where(concepts_with_kind(kind))
+
+    if q is None:
+        result = await db.execute(
+            base.order_by(
+                Concept.display_order.asc(),
+                Concept.name.asc(),
+            ).limit(limit)
+        )
+        return list(result.scalars().all())
+
+    await _set_similarity_threshold(db, threshold)
+
+    stmt = (
+        base.where(
+            or_(
+                Concept.name.op("%")(q),
+                Concept.slug.op("%")(q),
+                Concept.name.ilike(f"%{q}%"),
+                Concept.slug.ilike(f"%{q}%"),
+                Concept.aliases.contains([q]),
+            )
+        )
+        .order_by(
+            func.similarity(Concept.name, q).desc(),
+            Concept.slug.asc(),
+        )
+        .limit(limit)
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())

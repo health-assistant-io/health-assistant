@@ -25,7 +25,9 @@ class ResourceEntry:
     fhir_to_orm_fn: Optional[Callable] = None
     search_params: FrozenSet[str] = field(default_factory=frozenset)
     interactions: FrozenSet[str] = field(
-        default_factory=lambda: frozenset({"read", "search-type", "create", "update", "delete"})
+        default_factory=lambda: frozenset(
+            {"read", "search-type", "create", "update", "delete"}
+        )
     )
     versioned: bool = True
     soft_delete: bool = True
@@ -84,7 +86,6 @@ def register_all() -> None:
     in practice — but ``register()`` raises on duplicates, so this function
     is best called from a single import site.
     """
-    from sqlalchemy import and_
 
     from app.models.clinical_event import ClinicalEvent
     from app.models.doctor_model import DoctorModel

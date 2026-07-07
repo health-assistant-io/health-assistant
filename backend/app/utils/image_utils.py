@@ -86,7 +86,10 @@ def edit_image(
                     [(0, 0), (width, 0), (width, height), (0, height)], pb
                 )
                 img = img.transform(
-                    (width, height), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BICUBIC
+                    (width, height),
+                    Image.Transform.PERSPECTIVE,
+                    coeffs,
+                    Image.Resampling.BICUBIC,
                 )
             else:
                 logger.warning(f"Invalid dimensions for perspective: {width}x{height}")

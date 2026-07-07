@@ -7,6 +7,7 @@ Both use ``llm.with_structured_output(<Pydantic>)``.
 ``AIAssistanceService`` keeps thin delegate methods. These handlers do not query
 the DB, so the delegates intentionally do not pass ``self.db``.
 """
+
 import logging
 from typing import Any, Dict, List, Optional
 

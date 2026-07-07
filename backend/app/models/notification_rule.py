@@ -9,6 +9,7 @@ rule's targets.
 This supersedes the legacy ``AlertModel`` (config-only, no operator, no
 biomarker link, no evaluator).
 """
+
 from sqlalchemy import (
     Column,
     String,
@@ -57,7 +58,9 @@ class NotificationRule(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
     )
 
     # Condition
-    operator = Column(Enum(ComparisonOperator, values_callable=_enum_values), nullable=True)
+    operator = Column(
+        Enum(ComparisonOperator, values_callable=_enum_values), nullable=True
+    )
     value = Column(Float, nullable=True)
 
     # Optional scope to a single patient; null = all the owner's patients.

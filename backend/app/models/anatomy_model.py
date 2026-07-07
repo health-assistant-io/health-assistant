@@ -1,20 +1,35 @@
-from sqlalchemy import Column, String, Boolean, Text, Integer, ForeignKey, Enum as SQLEnum, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    Column,
+    String,
+    Boolean,
+    Text,
+    Integer,
+    ForeignKey,
+    Enum as SQLEnum,
+    Index,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, TimestampMixin
-from app.models.enums import AnatomyCategory, AnatomyRelationType, CodingSystem
+from app.models.enums import AnatomyRelationType, CodingSystem
+
 
 class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
     __tablename__ = "anatomy_structures"
 
     name = Column(String(100), nullable=False)
     slug = Column(String(100), nullable=False, unique=True, index=True)
-    category = Column(SQLEnum(AnatomyCategory), nullable=False)
-    
+    class_concept_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Optional standard identifiers
-    standard_system = Column(SQLEnum(CodingSystem), nullable=True) # FMA/SNOMED/CUSTOM
-    standard_code = Column(String(50), nullable=True) # The actual ID, e.g., FMA_7088
-    
+    standard_system = Column(SQLEnum(CodingSystem), nullable=True)  # FMA/SNOMED/CUSTOM
+    standard_code = Column(String(50), nullable=True)  # The actual ID, e.g., FMA_7088
+
     description = Column(Text, nullable=True)
     is_custom = Column(Boolean, default=False, nullable=False)
 
@@ -24,31 +39,34 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
     # highlights data-driven instead of from a hardcoded lookup table.
     display = Column(JSONB, nullable=True)
 
-    # A structure can have many incoming and outgoing relationships
+    # Relationships
+    class_concept = relationship("Concept", lazy="selectin")
     outgoing_relations = relationship(
         "AnatomyRelation",
         foreign_keys="[AnatomyRelation.source_id]",
         back_populates="source_structure",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     incoming_relations = relationship(
         "AnatomyRelation",
         foreign_keys="[AnatomyRelation.target_id]",
         back_populates="target_structure",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
-    __table_args__ = (
-        Index('idx_anatomy_tenant_slug', 'tenant_id', 'slug'),
-    )
+    __table_args__ = (Index("idx_anatomy_tenant_slug", "tenant_id", "slug"),)
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "name": self.name,
             "slug": self.slug,
-            "category": self.category.value,
-            "standard_system": self.standard_system.value if self.standard_system else None,
+            "class_concept_id": str(self.class_concept_id)
+            if self.class_concept_id
+            else None,
+            "standard_system": self.standard_system.value
+            if self.standard_system
+            else None,
             "standard_code": self.standard_code,
             "description": self.description,
             "is_custom": self.is_custom,
@@ -56,27 +74,42 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
         }
 
+
 class AnatomyRelation(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "anatomy_relations"
 
-    source_id = Column(ForeignKey("anatomy_structures.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_id = Column(ForeignKey("anatomy_structures.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(
+        ForeignKey("anatomy_structures.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target_id = Column(
+        ForeignKey("anatomy_structures.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     relation_type = Column(SQLEnum(AnatomyRelationType), nullable=False)
 
     source_structure = relationship(
         "AnatomyStructure",
         foreign_keys=[source_id],
-        back_populates="outgoing_relations"
+        back_populates="outgoing_relations",
     )
-    
+
     target_structure = relationship(
         "AnatomyStructure",
         foreign_keys=[target_id],
-        back_populates="incoming_relations"
+        back_populates="incoming_relations",
     )
 
     __table_args__ = (
-        Index('idx_anatomy_relation_unique', 'source_id', 'target_id', 'relation_type', unique=True),
+        Index(
+            "idx_anatomy_relation_unique",
+            "source_id",
+            "target_id",
+            "relation_type",
+            unique=True,
+        ),
     )
 
     def to_dict(self):
@@ -84,7 +117,7 @@ class AnatomyRelation(Base, UUIDMixin, TimestampMixin):
             "id": str(self.id),
             "source_id": str(self.source_id),
             "target_id": str(self.target_id),
-            "relation_type": self.relation_type.value
+            "relation_type": self.relation_type.value,
         }
 
 
@@ -97,6 +130,7 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     normalized 0-1 relative to the image's pixel dimensions. Managed by
     SYSTEM_ADMIN.
     """
+
     __tablename__ = "anatomy_figures"
 
     slug = Column(String(100), nullable=False, unique=True, index=True)
@@ -117,9 +151,7 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    __table_args__ = (
-        Index('idx_anatomy_figure_group', 'figure_key', 'view_key'),
-    )
+    __table_args__ = (Index("idx_anatomy_figure_group", "figure_key", "view_key"),)
 
     def to_dict(self) -> dict:
         return {

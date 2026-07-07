@@ -21,11 +21,14 @@ def _redact_endpoint(endpoint: str) -> str:
     except Exception:
         return "unknown"
 
+
 # Note: In a real production app, these should be in settings/env
 # For this project, we can generate them if they don't exist or use placeholders
 VAPID_PRIVATE_KEY = getattr(settings, "VAPID_PRIVATE_KEY", None)
 VAPID_PUBLIC_KEY = getattr(settings, "VAPID_PUBLIC_KEY", None)
-VAPID_ADMIN_EMAIL = getattr(settings, "VAPID_ADMIN_EMAIL", "admin@health-assistant.local")
+VAPID_ADMIN_EMAIL = getattr(
+    settings, "VAPID_ADMIN_EMAIL", "admin@health-assistant.local"
+)
 VAPID_CLAIMS = {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"}
 
 
@@ -64,7 +67,9 @@ def send_web_push(subscription_info, data):
     endpoint = subscription_info.get("endpoint", "unknown")
 
     try:
-        logger.info(f"Attempting to send Web Push to endpoint: {_redact_endpoint(endpoint)}")
+        logger.info(
+            f"Attempting to send Web Push to endpoint: {_redact_endpoint(endpoint)}"
+        )
         response = webpush(
             subscription_info=subscription_info,
             data=json.dumps(data) if isinstance(data, dict) else data,

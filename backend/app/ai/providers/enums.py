@@ -9,6 +9,7 @@ columns (``ai_providers.provider_type``, ``ai_task_assignments.task_type``)
 remain plain ``String`` columns and need NO migration. ``TaskType.CHAT == "chat"``
 and ``TaskType.CHAT.value == "chat"`` both hold.
 """
+
 from __future__ import annotations
 
 import enum

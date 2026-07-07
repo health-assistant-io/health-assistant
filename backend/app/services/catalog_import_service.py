@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -7,8 +7,10 @@ from sqlalchemy import select
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.enums import QuantityType
 from app.schemas.biomarker import CatalogImportPayload
+from app.services.concept_service import resolve_biomarker_class_concept
 
 logger = logging.getLogger(__name__)
+
 
 class CatalogImportService:
     def __init__(self, db: AsyncSession):
@@ -43,7 +45,9 @@ class CatalogImportService:
         for unit_data in payload.units:
             try:
                 # Find existing unit by symbol
-                result = await self.db.execute(select(Unit).where(Unit.symbol == unit_data.symbol))
+                result = await self.db.execute(
+                    select(Unit).where(Unit.symbol == unit_data.symbol)
+                )
                 existing_unit = result.scalar_one_or_none()
 
                 q_type = QuantityType.OTHER
@@ -51,7 +55,9 @@ class CatalogImportService:
                     if unit_data.quantity_type:
                         q_type = QuantityType(unit_data.quantity_type.upper())
                 except ValueError:
-                    logger.warning(f"Invalid quantity type '{unit_data.quantity_type}' for unit '{unit_data.symbol}'. Using OTHER.")
+                    logger.warning(
+                        f"Invalid quantity type '{unit_data.quantity_type}' for unit '{unit_data.symbol}'. Using OTHER."
+                    )
 
                 if existing_unit:
                     existing_unit.name = unit_data.name
@@ -62,14 +68,14 @@ class CatalogImportService:
                     new_unit = Unit(
                         symbol=unit_data.symbol,
                         name=unit_data.name,
-                        quantity_type=q_type
+                        quantity_type=q_type,
                     )
                     self.db.add(new_unit)
                     await self.db.flush()
                     stats["units_added"] += 1
                     unit_map[new_unit.symbol.lower()] = new_unit.id
             except Exception as e:
-                 logger.error(f"Error processing unit {unit_data.symbol}: {e}")
+                logger.error(f"Error processing unit {unit_data.symbol}: {e}")
 
         # Re-fetch all units to ensure our map is complete for biomarker mapping
         all_units_result = await self.db.execute(select(Unit))
@@ -85,14 +91,25 @@ class CatalogImportService:
                     pref_unit_id = unit_map.get(bio_data.preferred_unit_symbol.lower())
 
                 # Find existing by slug
-                result = await self.db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_data.slug))
+                result = await self.db.execute(
+                    select(BiomarkerDefinition).where(
+                        BiomarkerDefinition.slug == bio_data.slug
+                    )
+                )
                 existing_bio = result.scalar_one_or_none()
 
                 if existing_bio:
                     existing_bio.name = bio_data.name
                     existing_bio.coding_system = bio_data.coding_system
                     existing_bio.code = bio_data.code
-                    existing_bio.category = bio_data.category
+                    if bio_data.class_concept_id is not None:
+                        existing_bio.class_concept_id = bio_data.class_concept_id
+                    else:
+                        existing_bio.class_concept_id = (
+                            await resolve_biomarker_class_concept(
+                                self.db, bio_data.category
+                            )
+                        )
                     existing_bio.aliases = bio_data.aliases
                     existing_bio.info = bio_data.info
                     existing_bio.reference_range_min = bio_data.reference_range_min
@@ -101,17 +118,22 @@ class CatalogImportService:
                         existing_bio.preferred_unit_id = pref_unit_id
                     stats["biomarkers_updated"] += 1
                 else:
+                    class_concept_id = bio_data.class_concept_id
+                    if class_concept_id is None:
+                        class_concept_id = await resolve_biomarker_class_concept(
+                            self.db, bio_data.category
+                        )
                     new_bio = BiomarkerDefinition(
                         slug=bio_data.slug,
                         name=bio_data.name,
                         coding_system=bio_data.coding_system,
                         code=bio_data.code,
-                        category=bio_data.category,
+                        class_concept_id=class_concept_id,
                         aliases=bio_data.aliases,
                         info=bio_data.info,
                         reference_range_min=bio_data.reference_range_min,
                         reference_range_max=bio_data.reference_range_max,
-                        preferred_unit_id=pref_unit_id
+                        preferred_unit_id=pref_unit_id,
                     )
                     self.db.add(new_bio)
                     stats["biomarkers_added"] += 1

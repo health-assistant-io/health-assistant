@@ -51,12 +51,12 @@ export interface ClinicalEvent {
 }
 
 export const getEventCategories = async (): Promise<ClinicalEventCategory[]> => {
-  const response = await api.get('/clinical-events/categories');
+  const response = await api.get('/concepts?kind=event_category&limit=500');
   return response.data;
 };
 
 export const createEventCategory = async (categoryData: any): Promise<ClinicalEventCategory> => {
-  const response = await api.post('/clinical-events/categories', categoryData);
+  const response = await api.post('/concepts', { ...categoryData, kind: 'event_category' });
   return response.data;
 };
 

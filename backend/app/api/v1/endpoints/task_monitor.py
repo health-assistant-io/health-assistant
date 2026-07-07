@@ -10,17 +10,18 @@ cannot probe for the existence of other tenants' resources.
 ``SYSTEM_ADMIN`` is the deliberate exception: the role is reserved for the
 platform operator and bypasses the tenant filter for global monitoring.
 """
+
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import desc, select, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import RoleChecker, get_current_user
+from app.core.security import get_current_user
 from app.models.document_model import DocumentModel
 from app.models.enums import Role
 from app.models.examination_model import ExaminationModel
@@ -227,9 +228,7 @@ async def get_task_statistics(
     """
     from sqlalchemy import func
 
-    doc_stmt = select(
-        DocumentModel.status, func.count(DocumentModel.id).label("count")
-    )
+    doc_stmt = select(DocumentModel.status, func.count(DocumentModel.id).label("count"))
     doc_stmt = _apply_tenant_filter(doc_stmt, DocumentModel, current_user)
     doc_stmt = doc_stmt.group_by(DocumentModel.status)
     doc_result = await db.execute(doc_stmt)

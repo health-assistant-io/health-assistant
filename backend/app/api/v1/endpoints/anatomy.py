@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, Upload
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, Optional
+from uuid import UUID
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -41,9 +42,10 @@ def _ext_for(upload: UploadFile) -> str:
         return "jpg"
     return "webp"
 
+
 @router.get("", response_model=AnatomyListResponse)
 async def list_anatomy_structures(
-    category: Optional[str] = None,
+    class_concept_id: Optional[UUID] = None,
     search: Optional[str] = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -52,14 +54,19 @@ async def list_anatomy_structures(
 ) -> Any:
     """
     Retrieve anatomy structures (nodes). Includes global items and tenant-specific items.
-    Supports optional ``category`` and ``search`` (ilike on name/slug/code/description)
+    Supports optional ``class_concept_id`` and ``search`` (ilike on name/slug/code/description)
     filtering plus pagination.
     """
     items, total = await anatomy_service.get_anatomy_structures(
-        db, tenant_id=current_user.tenant_id, category=category, search=search,
-        limit=limit, offset=offset
+        db,
+        tenant_id=current_user.tenant_id,
+        class_concept_id=class_concept_id,
+        search=search,
+        limit=limit,
+        offset=offset,
     )
     return {"items": items, "total": total}
+
 
 @router.post("", response_model=AnatomyStructureResponse)
 async def create_anatomy_structure(
@@ -71,10 +78,14 @@ async def create_anatomy_structure(
     Create a new anatomical structure.
     """
     # Check if slug exists
-    existing = await anatomy_service.get_anatomy_structure_by_id_or_slug(db, structure_in.slug, current_user.tenant_id)
+    existing = await anatomy_service.get_anatomy_structure_by_id_or_slug(
+        db, structure_in.slug, current_user.tenant_id
+    )
     if existing:
-        raise HTTPException(status_code=400, detail="Structure with this slug already exists.")
-        
+        raise HTTPException(
+            status_code=400, detail="Structure with this slug already exists."
+        )
+
     # Standard users create tenant-scoped items. System admins create global ones if they don't have a tenant.
     return await anatomy_service.create_anatomy_structure(
         db, structure_in, tenant_id=current_user.tenant_id
@@ -85,6 +96,7 @@ async def create_anatomy_structure(
 # IMPORTANT: these /figures routes MUST be declared before /{identifier}, else
 # FastAPI matches "figures" as an identifier. List + image are readable by any
 # authenticated user; create/update/delete are SYSTEM_ADMIN-only.
+
 
 @router.get("/figures", response_model=list[AnatomyFigureResponse])
 async def list_anatomy_figures(
@@ -139,12 +151,20 @@ async def get_anatomy_figure_source_image(
         raise HTTPException(status_code=404, detail="Figure not found")
     abspath = anatomy_service.figure_source_abspath(figure)
     if not abspath or not abspath.exists():
-        raise HTTPException(status_code=404, detail="No source image stored for this figure")
-    media = "image/webp" if abspath.suffix == ".webp" else ("image/png" if abspath.suffix == ".png" else "image/jpeg")
+        raise HTTPException(
+            status_code=404, detail="No source image stored for this figure"
+        )
+    media = (
+        "image/webp"
+        if abspath.suffix == ".webp"
+        else ("image/png" if abspath.suffix == ".png" else "image/jpeg")
+    )
     return FileResponse(str(abspath), media_type=media)
 
 
-@router.post("/figures", response_model=AnatomyFigureResponse, dependencies=[_admin_only])
+@router.post(
+    "/figures", response_model=AnatomyFigureResponse, dependencies=[_admin_only]
+)
 async def create_anatomy_figure(
     label: str = Form(...),
     figure_key: str = Form(...),
@@ -167,24 +187,28 @@ async def create_anatomy_figure(
     image_bytes = await image.read()
     source_bytes = await source.read() if source else None
     try:
-        return (await anatomy_service.create_anatomy_figure(
-            db,
-            slug=slug_val,
-            label=label,
-            figure_key=figure_key,
-            view_key=view_key,
-            image_data=image_bytes,
-            ext=_ext_for(image),
-            source_data=source_bytes,
-            source_ext=_ext_for(source) if source else "webp",
-            sort_order=sort_order,
-            is_active=is_active,
-        )).to_dict()
+        return (
+            await anatomy_service.create_anatomy_figure(
+                db,
+                slug=slug_val,
+                label=label,
+                figure_key=figure_key,
+                view_key=view_key,
+                image_data=image_bytes,
+                ext=_ext_for(image),
+                source_data=source_bytes,
+                source_ext=_ext_for(source) if source else "webp",
+                sort_order=sort_order,
+                is_active=is_active,
+            )
+        ).to_dict()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/figures/{slug}", response_model=AnatomyFigureResponse, dependencies=[_admin_only])
+@router.patch(
+    "/figures/{slug}", response_model=AnatomyFigureResponse, dependencies=[_admin_only]
+)
 async def update_anatomy_figure(
     slug: str,
     db: AsyncSession = Depends(get_db),
@@ -216,14 +240,22 @@ async def update_anatomy_figure(
     if source:
         source_bytes = await source.read()
         source_ext = _ext_for(source)
-    return (await anatomy_service.update_anatomy_figure(
-        db, figure,
-        label=label, figure_key=figure_key, view_key=view_key,
-        sort_order=sort_order, is_active=is_active,
-        image_data=image_bytes, ext=ext or "webp",
-        source_data=source_bytes, source_ext=source_ext or "webp",
-        clear_source=clear_source,
-    )).to_dict()
+    return (
+        await anatomy_service.update_anatomy_figure(
+            db,
+            figure,
+            label=label,
+            figure_key=figure_key,
+            view_key=view_key,
+            sort_order=sort_order,
+            is_active=is_active,
+            image_data=image_bytes,
+            ext=ext or "webp",
+            source_data=source_bytes,
+            source_ext=source_ext or "webp",
+            clear_source=clear_source,
+        )
+    ).to_dict()
 
 
 @router.delete("/figures/{slug}", dependencies=[_admin_only])
@@ -258,9 +290,13 @@ async def update_anatomy_structure(
 
     is_global = structure.tenant_id is None
     if is_global and current_user.role != Role.SYSTEM_ADMIN:
-        raise HTTPException(status_code=403, detail="Only system admins can edit global anatomy structures")
+        raise HTTPException(
+            status_code=403,
+            detail="Only system admins can edit global anatomy structures",
+        )
 
     return await anatomy_service.update_anatomy_structure(db, structure, structure_in)
+
 
 @router.delete("/{identifier}")
 async def delete_anatomy_structure(
@@ -280,10 +316,14 @@ async def delete_anatomy_structure(
 
     is_global = structure.tenant_id is None
     if is_global and current_user.role != Role.SYSTEM_ADMIN:
-        raise HTTPException(status_code=403, detail="Only system admins can delete global anatomy structures")
+        raise HTTPException(
+            status_code=403,
+            detail="Only system admins can delete global anatomy structures",
+        )
 
     await anatomy_service.delete_anatomy_structure(db, structure)
     return {"detail": "Anatomy structure deleted"}
+
 
 @router.get("/{identifier}", response_model=AnatomyGraphNode)
 async def get_anatomy_structure(
@@ -301,6 +341,7 @@ async def get_anatomy_structure(
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
     return structure
 
+
 @router.post("/relations", response_model=AnatomyRelationResponse)
 async def create_anatomy_relation(
     relation_in: AnatomyRelationCreate,
@@ -311,13 +352,20 @@ async def create_anatomy_relation(
     Create a relationship (edge) between two anatomy structures.
     """
     # Verify both exist
-    source = await anatomy_service.get_anatomy_structure_by_id_or_slug(db, str(relation_in.source_id), current_user.tenant_id)
-    target = await anatomy_service.get_anatomy_structure_by_id_or_slug(db, str(relation_in.target_id), current_user.tenant_id)
-    
+    source = await anatomy_service.get_anatomy_structure_by_id_or_slug(
+        db, str(relation_in.source_id), current_user.tenant_id
+    )
+    target = await anatomy_service.get_anatomy_structure_by_id_or_slug(
+        db, str(relation_in.target_id), current_user.tenant_id
+    )
+
     if not source or not target:
-        raise HTTPException(status_code=404, detail="Source or Target structure not found")
-        
+        raise HTTPException(
+            status_code=404, detail="Source or Target structure not found"
+        )
+
     return await anatomy_service.create_relation(db, relation_in)
+
 
 @router.get("/{identifier}/related", response_model=AnatomyRelatedResponse)
 async def get_related(
@@ -335,25 +383,24 @@ async def get_related(
     )
     if not structure:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
-        
+
     relations = await anatomy_service.get_related_structures(
         db, structure.id, relation_type, direction
     )
-    
+
     # Format the response for the frontend (resolving the target/source objects)
     response = {"outgoing": [], "incoming": []}
     for rel in relations["outgoing"]:
-        response["outgoing"].append({
-            "relation_type": rel.relation_type,
-            "structure": rel.target_structure
-        })
+        response["outgoing"].append(
+            {"relation_type": rel.relation_type, "structure": rel.target_structure}
+        )
     for rel in relations["incoming"]:
-        response["incoming"].append({
-            "relation_type": rel.relation_type,
-            "structure": rel.source_structure
-        })
-        
+        response["incoming"].append(
+            {"relation_type": rel.relation_type, "structure": rel.source_structure}
+        )
+
     return response
+
 
 @router.get("/{identifier}/graph", response_model=AnatomyGraphResponse)
 async def get_anatomy_graph(
@@ -379,14 +426,14 @@ async def get_anatomy_graph(
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
 
     data = await anatomy_service.get_anatomy_graph(
-        db, structure,
+        db,
+        structure,
         tenant_id=current_user.tenant_id,
-        depth=depth, relation_type=relation_type, direction=direction,
+        depth=depth,
+        relation_type=relation_type,
+        direction=direction,
     )
-    nodes = [
-        {**n["structure"].to_dict(), "depth": n["depth"]}
-        for n in data["nodes"]
-    ]
+    nodes = [{**n["structure"].to_dict(), "depth": n["depth"]} for n in data["nodes"]]
     edges = [
         {
             "source_id": str(e.source_id),
@@ -397,6 +444,7 @@ async def get_anatomy_graph(
     ]
     return {"root_id": str(structure.id), "nodes": nodes, "edges": edges}
 
+
 @router.post("/import")
 async def import_anatomy_graph(
     payload: AnatomyImportPayload,
@@ -404,7 +452,7 @@ async def import_anatomy_graph(
     _: UserModel = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
 ) -> Any:
     """
-    Import an Anatomy Graph (nodes and edges) from JSON. 
+    Import an Anatomy Graph (nodes and edges) from JSON.
     Restricted to SYSTEM_ADMIN since it affects the global ontology.
     """
     service = AnatomyImportService(db)

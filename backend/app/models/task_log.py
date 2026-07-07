@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, UUID, DateTime, func, Integer, Text
+from sqlalchemy import Column, String, UUID, DateTime, func, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base, UUIDMixin, TenantMixin
 

@@ -10,6 +10,7 @@ The previous version of this module was entirely broken (wrong
 arity, calls to nonexistent methods). Rewritten against the real signatures
 in ``app.workers.task_logger`` and ``app.core.database``.
 """
+
 import json
 import logging
 from typing import Dict
@@ -175,7 +176,9 @@ async def broadcast_notification(
         targets = [{"kind": RecipientKind.TENANT.value, "id": str(target_tenant)}]
         tenant_scope = target_tenant
     else:
-        raise HTTPException(status_code=400, detail="scope must be 'tenant' or 'system'.")
+        raise HTTPException(
+            status_code=400, detail="scope must be 'tenant' or 'system'."
+        )
 
     notification = await emit(
         source=NotificationSource.SYSTEM,

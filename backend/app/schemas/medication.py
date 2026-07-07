@@ -2,7 +2,6 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from enum import Enum
 
 
 from app.models.enums import MedicationStatus

@@ -3,6 +3,7 @@
 Three tiers: system (SYSTEM_ADMIN), tenant (ADMIN+), user (self).
 Resolution (USER > TENANT > SYSTEM > default) is exposed via /settings/effective.
 """
+
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -63,7 +64,11 @@ async def update_system_override(
     service = SettingsService(db)
     try:
         await service.update_override(
-            SettingLevel.SYSTEM, key, value, current_user.user_id, current_user.tenant_id
+            SettingLevel.SYSTEM,
+            key,
+            value,
+            current_user.user_id,
+            current_user.tenant_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -109,7 +114,11 @@ async def update_tenant_override(
     service = SettingsService(db)
     try:
         await service.update_override(
-            SettingLevel.TENANT, key, value, current_user.user_id, current_user.tenant_id
+            SettingLevel.TENANT,
+            key,
+            value,
+            current_user.user_id,
+            current_user.tenant_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

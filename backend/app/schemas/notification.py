@@ -1,4 +1,5 @@
 """Pydantic schemas for the unified notification system."""
+
 from __future__ import annotations
 
 from datetime import datetime

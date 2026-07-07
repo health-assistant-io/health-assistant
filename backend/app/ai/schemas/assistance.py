@@ -3,7 +3,6 @@ from typing import Optional, Dict, Any, List
 from uuid import UUID
 
 from app.models.enums import (
-    AnatomyCategory,
     AnatomyRelationType,
     CodingSystem,
     HitlTaskStatus,
@@ -60,6 +59,7 @@ class AIAssistanceResponse(BaseModel):
 
 class HitlResolutionRequest(BaseModel):
     """Body for confirming or dismissing a human-in-the-loop task card."""
+
     status: HitlTaskStatus = Field(
         ..., description="Whether the user confirmed or dismissed the proposal."
     )
@@ -70,7 +70,8 @@ class HitlResolutionRequest(BaseModel):
         None, description="Outcome of the commit (e.g., created resource id)"
     )
     error: Optional[str] = Field(
-        None, description="Error message if the commit failed (status should still be 'confirmed' attempt)"
+        None,
+        description="Error message if the commit failed (status should still be 'confirmed' attempt)",
     )
 
 
@@ -78,11 +79,13 @@ class HitlResumeRequest(BaseModel):
     """Body for triggering a HITL continuation turn after the user has resolved
     one or more proposed task cards. Selectors only — outcomes are read from
     the session's tasks JSONB on the server (never trusted from the client)."""
+
     message_id: Optional[UUID] = Field(
         None,
         description="Specific assistant message whose tasks should be summarized. "
         "If omitted, the most recent task-bearing message is used.",
     )
+
 
 class AIAssistanceToolSchema(BaseModel):
     name: str
@@ -208,13 +211,19 @@ class AnatomyImportNode(BaseModel):
         ..., description="Unique kebab-case identifier (e.g., 'left-ventricle')"
     )
     name: str = Field(..., description="Human readable name")
-    category: AnatomyCategory = Field(
-        ..., description="Category like ORGAN, SYSTEM, REGION, ORGAN_PART"
+    class_concept_slug: str = Field(
+        ...,
+        description=(
+            "Lowercase anatomy class slug: 'system', 'region', 'organ', "
+            "'organ-part', 'tissue', 'joint', or 'other-anatomy'"
+        ),
     )
     standard_system: Optional[CodingSystem] = Field(
         None, description="Typically LOINC, SNOMED, or CUSTOM"
     )
-    standard_code: Optional[str] = Field(None, description="The official identifier code")
+    standard_code: Optional[str] = Field(
+        None, description="The official identifier code"
+    )
     description: Optional[str] = Field(None, description="Brief description")
     is_custom: bool = Field(True, description="Always true for AI-generated")
 

@@ -13,12 +13,35 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin
+from app.models.base import (
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+)
 from app.models.enums import Gender
-from app.services.fhir_helpers import _as_list, _clean_quantity, _coerce_human_name_list, _primary_human_name, build_fhir_resource, build_meta
+from app.services.fhir_helpers import (
+    _as_list,
+    _clean_quantity,
+    _coerce_human_name_list,
+    _primary_human_name,
+    build_fhir_resource,
+    build_meta,
+)
 
 
-class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
+class Patient(
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+):
     __tablename__ = "fhir_patients"
 
     user_id = Column(
@@ -35,12 +58,12 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
     deceased_datetime = Column(DateTime(timezone=True), nullable=True)
     address = Column(JSONB, nullable=True)
     telecom = Column(JSONB, nullable=True)
-    
+
     # Additional metadata
     mrn = Column(String, nullable=True, unique=True)  # Medical Record Number
     emergency_contact = Column(JSONB, nullable=True)
     dashboard_layout = Column(JSONB, nullable=True)  # Custom dashboard layout
-    
+
     # Indexes for common queries
     __table_args__ = (
         Index("idx_patient_tenant_mrn", "tenant_id", "mrn"),
@@ -52,20 +75,20 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
         # App code (fhir_service / import_service) normalizes "" → None.
         CheckConstraint("mrn IS NULL OR mrn <> ''", name="mrn_not_empty"),
     )
-    
+
     @property
     def age(self) -> int | None:
         if not self.birth_date:
             return None
         from datetime import date
-        
+
         today = date.today()
         return (
             today.year
             - self.birth_date.year
             - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         )
-    
+
     def to_dict(self):
         return {
             "id": str(self.id),
@@ -114,7 +137,15 @@ class Patient(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Timestam
         )
 
 
-class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
+class Observation(
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+):
     __tablename__ = "fhir_observations"
 
     # Custom linkage for Health Assistant
@@ -173,6 +204,7 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
 
     def to_dict(self):
         from app.services.fhir_helpers import _flatten_interpretation
+
         return {
             "id": str(self.id),
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
@@ -257,7 +289,15 @@ class Observation(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, Time
     )
 
 
-class DiagnosticReport(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
+class DiagnosticReport(
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    AuditMixin,
+    VersionedMixin,
+    TimestampMixin,
+    SoftDeleteMixin,
+):
     __tablename__ = "fhir_diagnostic_reports"
 
     # FHIR DiagnosticReport resource fields

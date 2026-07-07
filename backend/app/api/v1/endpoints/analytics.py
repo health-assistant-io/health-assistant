@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from sqlalchemy import select
-from app.models.user_model import UserModel
 from app.core.security import get_current_user
 from app.api.v1.endpoints.utils import check_patient_access
 from app.models.enums import Role
@@ -31,7 +30,7 @@ async def get_dashboard_endpoint(
     elif current_user.role == Role.USER.value:
         # Standard users must specify a patient or they get nothing
         return {"items": [], "total": 0}
-        
+
     data = await get_dashboard_data(str(current_user.tenant_id), patient_id, period, db)
     return data
 
@@ -152,8 +151,7 @@ async def get_available_categories_endpoint(
     """Get list of categories that have data for the user/patient"""
     if patient_id:
         await check_patient_access(patient_id, current_user, db)
-    
-    from sqlalchemy import select
+
     from app.models.document_model import DocumentModel
     from app.models.fhir.patient import Patient
 
@@ -165,7 +163,9 @@ async def get_available_categories_endpoint(
         query = query.where(DocumentModel.patient_id == patient_id)
     elif current_user.role == Role.USER.value:
         # Filter by all user's patients
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
+        patient_ids_query = select(Patient.id).where(
+            Patient.user_id == current_user.user_id
+        )
         query = query.where(DocumentModel.patient_id.in_(patient_ids_query))
 
     result = await db.execute(query)

@@ -1,64 +1,76 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from uuid import UUID
-from app.models.enums import AnatomyCategory, AnatomyRelationType, CodingSystem
+from app.models.enums import AnatomyRelationType, CodingSystem
+
 
 class AnatomyStructureBase(BaseModel):
     name: str
     slug: str
-    category: AnatomyCategory
+    class_concept_id: Optional[UUID] = None
     standard_system: Optional[CodingSystem] = None
     standard_code: Optional[str] = None
     description: Optional[str] = None
     is_custom: bool = False
     display: Optional[Dict[str, Any]] = None
 
+
 class AnatomyStructureCreate(AnatomyStructureBase):
     pass
+
 
 class AnatomyStructureUpdate(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
-    category: Optional[AnatomyCategory] = None
+    class_concept_id: Optional[UUID] = None
     standard_system: Optional[CodingSystem] = None
     standard_code: Optional[str] = None
     description: Optional[str] = None
     is_custom: Optional[bool] = None
     display: Optional[Dict[str, Any]] = None
 
+
 class AnatomyStructureResponse(AnatomyStructureBase):
     id: UUID
     tenant_id: Optional[UUID] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class AnatomyRelationBase(BaseModel):
     source_id: UUID
     target_id: UUID
     relation_type: AnatomyRelationType
 
+
 class AnatomyRelationCreate(AnatomyRelationBase):
     pass
 
+
 class AnatomyRelationResponse(AnatomyRelationBase):
     id: UUID
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class AnatomyGraphNode(AnatomyStructureResponse):
     """A node in the graph, optionally including its relations."""
+
     outgoing_relations: List[AnatomyRelationResponse] = []
     incoming_relations: List[AnatomyRelationResponse] = []
+
 
 class AnatomyListResponse(BaseModel):
     items: List[AnatomyStructureResponse]
     total: int
 
+
 class AnatomyRelatedNode(BaseModel):
     relation_type: AnatomyRelationType
     structure: AnatomyStructureResponse
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class AnatomyRelatedResponse(BaseModel):
     outgoing: List[AnatomyRelatedNode] = []
@@ -73,6 +85,7 @@ class AnatomyGraphEdge(BaseModel):
 
 class AnatomyGraphNodeItem(AnatomyStructureResponse):
     """A graph node annotated with its hop distance (``depth``) from the root."""
+
     depth: int = 0
 
 
@@ -83,6 +96,7 @@ class AnatomyGraphResponse(BaseModel):
 
 
 # --- Anatomy figures (DB-driven body atlas, raster images) ---
+
 
 class AnatomyFigureResponse(BaseModel):
     id: UUID

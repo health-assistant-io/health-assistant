@@ -34,8 +34,13 @@ async def list_observations_endpoint(
         return {"items": [], "total": 0}
 
     observations = await list_observations(
-        current_user.tenant_id, patient_id, code, start_date, end_date,
-        limit=limit, offset=offset,
+        current_user.tenant_id,
+        patient_id,
+        code,
+        start_date,
+        end_date,
+        limit=limit,
+        offset=offset,
     )
     return observations
 

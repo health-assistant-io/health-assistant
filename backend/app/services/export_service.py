@@ -15,7 +15,6 @@ from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignm
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import (
     ClinicalEvent,
-    ClinicalEventCategory,
     ClinicalEventType,
 )
 from app.models.document_model import DocumentModel
@@ -65,7 +64,9 @@ def _uuid(v: Any) -> Optional[UUID]:
         return None
 
 
-def _patient_filter_conditions(model, patient_ids: List[str], ref_field: str = "patient_id"):
+def _patient_filter_conditions(
+    model, patient_ids: List[str], ref_field: str = "patient_id"
+):
     ids = [p for p in (_uuid(pid) for pid in patient_ids) if p]
     if not ids:
         return None
@@ -117,7 +118,9 @@ class ExportService:
         if status:
             values["status"] = status
         await self.db.execute(
-            sa_update(ExportJobModel).where(ExportJobModel.id == job_id).values(**values)
+            sa_update(ExportJobModel)
+            .where(ExportJobModel.id == job_id)
+            .values(**values)
         )
         await self.db.commit()
 
@@ -161,7 +164,9 @@ class ExportService:
         )
         await self.db.commit()
 
-    async def get_job(self, job_id: UUID, tenant_id: Optional[UUID] = None) -> Optional[ExportJobModel]:
+    async def get_job(
+        self, job_id: UUID, tenant_id: Optional[UUID] = None
+    ) -> Optional[ExportJobModel]:
         q = select(ExportJobModel).where(ExportJobModel.id == job_id)
         if tenant_id:
             q = q.where(ExportJobModel.tenant_id == tenant_id)
@@ -179,7 +184,9 @@ class ExportService:
 
     # ---------------- gather (queries) ----------------
 
-    async def gather_patients(self, tenant_id: UUID, patient_ids: Optional[List[str]]) -> List[Patient]:
+    async def gather_patients(
+        self, tenant_id: UUID, patient_ids: Optional[List[str]]
+    ) -> List[Patient]:
         q = select(Patient).where(Patient.tenant_id == tenant_id)
         cond = _patient_filter_conditions(Patient, patient_ids or [], "id")
         if cond is not None:
@@ -272,7 +279,9 @@ class ExportService:
     async def gather_notification_triggers(
         self, tenant_id: UUID, patient_ids: Optional[List[str]]
     ) -> List[NotificationTrigger]:
-        q = select(NotificationTrigger).where(NotificationTrigger.tenant_id == tenant_id)
+        q = select(NotificationTrigger).where(
+            NotificationTrigger.tenant_id == tenant_id
+        )
         cond = _patient_filter_conditions(NotificationTrigger, patient_ids or [])
         if cond is not None:
             q = q.where(cond)
@@ -300,17 +309,26 @@ class ExportService:
         return list(res.scalars().unique().all())
 
     async def gather_clinical_event_types(self, tenant_id: UUID) -> Dict[str, Any]:
+        from app.models.concept_model import Concept
+        from app.models.enums import ConceptKind
+        from app.services.concept_service import concepts_with_kind
+
         types_res = await self.db.execute(
             select(ClinicalEventType).where(
-                or_(ClinicalEventType.tenant_id == tenant_id, ClinicalEventType.tenant_id.is_(None))
+                or_(
+                    ClinicalEventType.tenant_id == tenant_id,
+                    ClinicalEventType.tenant_id.is_(None),
+                )
             )
         )
         cats_res = await self.db.execute(
-            select(ClinicalEventCategory).where(
+            select(Concept).where(
+                concepts_with_kind(ConceptKind.EVENT_CATEGORY),
+                Concept.deleted_at.is_(None),
                 or_(
-                    ClinicalEventCategory.tenant_id == tenant_id,
-                    ClinicalEventCategory.tenant_id.is_(None),
-                )
+                    Concept.tenant_id == tenant_id,
+                    Concept.tenant_id.is_(None),
+                ),
             )
         )
         return {
@@ -348,7 +366,9 @@ class ExportService:
                     "code": b.code,
                     "name": b.name,
                     "category": b.category,
-                    "preferred_unit_id": str(b.preferred_unit_id) if b.preferred_unit_id else None,
+                    "preferred_unit_id": str(b.preferred_unit_id)
+                    if b.preferred_unit_id
+                    else None,
                     "aliases": b.aliases or [],
                     "info": b.info,
                     "reference_range_min": b.reference_range_min,
@@ -469,9 +489,7 @@ class ExportService:
                 try:
                     fhir = obj.to_fhir_dict()
                 except FhirSerializationError as e:
-                    failures.append(
-                        f"{resource_type} {getattr(obj, 'id', '?')}: {e}"
-                    )
+                    failures.append(f"{resource_type} {getattr(obj, 'id', '?')}: {e}")
                     continue
                 entries.append((f"urn:uuid:{obj.id}", fhir, "POST"))
                 counts[resource_type] = counts.get(resource_type, 0) + 1
@@ -511,7 +529,9 @@ class ExportService:
             "resourceType": "DocumentReference",
             "id": str(doc.id),
             "status": "current",
-            "docStatus": "final" if (doc.status or "").lower() == "completed" else "preliminary",
+            "docStatus": "final"
+            if (doc.status or "").lower() == "completed"
+            else "preliminary",
             "content": content,
             "meta": build_meta(str(doc.id)),
         }
@@ -670,9 +690,15 @@ class ExportService:
         manifest.counts = {
             "units": len(catalog.get("units", [])),
             "biomarkers": len(catalog.get("biomarkers", [])),
-            "clinical_event_types": len(catalog.get("clinical_event_types", {}).get("types", [])),
-            "medication_catalog": len(catalog.get("medication_catalog", {}).get("medications", [])),
-            "allergy_catalog": len(catalog.get("allergy_catalog", {}).get("allergies", [])),
+            "clinical_event_types": len(
+                catalog.get("clinical_event_types", {}).get("types", [])
+            ),
+            "medication_catalog": len(
+                catalog.get("medication_catalog", {}).get("medications", [])
+            ),
+            "allergy_catalog": len(
+                catalog.get("allergy_catalog", {}).get("allergies", [])
+            ),
         }
         return str(file_path), len(payload_bytes), manifest
 
@@ -728,7 +754,10 @@ class ExportService:
                     )
 
             manifest.files = files
-            manifest.counts = {f: sum(1 for x in files if x.path.startswith(f)) for f in ["fhir", "nonfhir", "documents"]}
+            manifest.counts = {
+                f: sum(1 for x in files if x.path.startswith(f))
+                for f in ["fhir", "nonfhir", "documents"]
+            }
             manifest_bytes = manifest.model_dump_json(indent=2).encode("utf-8")
             zf.writestr("manifest.json", manifest_bytes)
             sha256_lines = "\n".join(f"{f.sha256}  {f.path}" for f in files) + "\n"
@@ -789,13 +818,15 @@ class ExportService:
 
             if export_type == ExportType.CATALOG_ONLY:
                 catalog = await self.gather_biomarker_catalog(tenant_id)
-                catalog["clinical_event_types"] = await self.gather_clinical_event_types(
-                    tenant_id
-                )
+                catalog[
+                    "clinical_event_types"
+                ] = await self.gather_clinical_event_types(tenant_id)
                 catalog["medication_catalog"] = await self.gather_medication_catalog(
                     tenant_id
                 )
-                catalog["allergy_catalog"] = await self.gather_allergy_catalog(tenant_id)
+                catalog["allergy_catalog"] = await self.gather_allergy_catalog(
+                    tenant_id
+                )
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
                 file_path, size, manifest = self.write_catalog_file(
                     catalog, tenant_id, job_id, manifest
@@ -831,7 +862,9 @@ class ExportService:
             )
             ok, errs = validate_bundle(bundle)
             if not ok:
-                logger.warning(f"Export bundle validation issues for job {job_id}: {errs}")
+                logger.warning(
+                    f"Export bundle validation issues for job {job_id}: {errs}"
+                )
 
             if export_type == ExportType.FHIR_ONLY:
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
@@ -839,7 +872,9 @@ class ExportService:
                     bundle, tenant_id, job_id, manifest
                 )
                 manifest.counts = {**fhir_counts, **manifest.counts}
-                await self.complete_job(job_id, file_path, size, manifest.counts, manifest)
+                await self.complete_job(
+                    job_id, file_path, size, manifest.counts, manifest
+                )
                 return
 
             examinations = await self.gather_examinations(tenant_id, patient_ids)

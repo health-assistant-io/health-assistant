@@ -10,6 +10,7 @@ work. These handlers do not query the DB, so the delegates intentionally do not
 pass ``self.db`` — this preserves the ``AIAssistanceService.__new__(...)`` call
 shape used in tests.
 """
+
 import logging
 from typing import Any, Dict
 
@@ -120,15 +121,12 @@ async def define_anatomy_graph(
     - Be highly accurate with relation types (PART_OF, BRANCH_OF, DRAINS_INTO, etc.).
     """
 
-    chain = (
-        ChatPromptTemplate.from_messages(
-            [
-                ("system", DEFENSE_PREAMBLE + system_prompt),
-                ("human", "Generate the anatomy graph for: {input}"),
-            ]
-        )
-        | llm.with_structured_output(AnatomyGraphDefinitionOutput)
-    )
+    chain = ChatPromptTemplate.from_messages(
+        [
+            ("system", DEFENSE_PREAMBLE + system_prompt),
+            ("human", "Generate the anatomy graph for: {input}"),
+        ]
+    ) | llm.with_structured_output(AnatomyGraphDefinitionOutput)
     try:
         result = await chain.ainvoke({"input": user_input})
         return {"suggested_data": result.model_dump(), "success": True}

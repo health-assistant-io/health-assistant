@@ -30,7 +30,9 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+        expire = datetime.now(timezone.utc) + timedelta(
+            hours=settings.JWT_EXPIRATION_HOURS
+        )
 
     to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
     encoded_jwt = jwt.encode(
@@ -143,10 +145,15 @@ def get_current_user_with_tenant_override(
 
 class RoleChecker:
     def __init__(self, allowed_roles: List[Role]):
-        self.allowed_roles = [r.value if isinstance(r, Role) else r for r in allowed_roles]
+        self.allowed_roles = [
+            r.value if isinstance(r, Role) else r for r in allowed_roles
+        ]
 
     def __call__(self, current_user: TokenData = Depends(get_current_user)):
-        if current_user.role not in self.allowed_roles and current_user.role != Role.SYSTEM_ADMIN.value:
+        if (
+            current_user.role not in self.allowed_roles
+            and current_user.role != Role.SYSTEM_ADMIN.value
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role {current_user.role} is not authorized to access this resource",
@@ -250,10 +257,12 @@ def verify_invite_token(
         role = Role.USER.value
     return (True, role)
 
+
 async def get_current_user_ws(token: str):
     """Get current user for WebSocket connection"""
     payload = verify_access_token(token)
     if not payload:
         raise Exception("Invalid token")
     from app.schemas.user import TokenData
+
     return TokenData(**payload)

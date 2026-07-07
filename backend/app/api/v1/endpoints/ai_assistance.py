@@ -37,7 +37,14 @@ router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
 # (ownership/no-tasks/pending-task checks); its message is already user-facing
 # and is forwarded verbatim with error_type="guard".
 
-_STREAM_ERROR_TYPES = ("connection", "auth", "rate_limit", "timeout", "generic", "guard")
+_STREAM_ERROR_TYPES = (
+    "connection",
+    "auth",
+    "rate_limit",
+    "timeout",
+    "generic",
+    "guard",
+)
 
 
 def _classify_stream_error(exc: Exception) -> tuple[str, str]:
@@ -210,32 +217,44 @@ async def list_tools(
         examination_id=examination_id,
         user_id=current_user.user_id,
     )
-    
+
     result = []
     for t in built_in_tools:
-        result.append({
-            "name": t.name,
-            "description": t.description,
-            "source": "built-in",
-            "schema": t.args_schema.model_json_schema() if getattr(t, 'args_schema', None) else None
-        })
-        
+        result.append(
+            {
+                "name": t.name,
+                "description": t.description,
+                "source": "built-in",
+                "schema": t.args_schema.model_json_schema()
+                if getattr(t, "args_schema", None)
+                else None,
+            }
+        )
+
     try:
         integration_tools = await integration_aggregate(
             db, current_user.user_id, current_user.tenant_id, patient_id
         )
         for t in integration_tools:
-            result.append({
-                "name": t.name,
-                "description": t.description,
-                "source": "integration",
-                "schema": t.args_schema.model_json_schema() if getattr(t, 'args_schema', None) else None
-            })
+            result.append(
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "source": "integration",
+                    "schema": t.args_schema.model_json_schema()
+                    if getattr(t, "args_schema", None)
+                    else None,
+                }
+            )
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Failed to load integration tools for /tools: {e}")
-        
+
+        logging.getLogger(__name__).warning(
+            f"Failed to load integration tools for /tools: {e}"
+        )
+
     return result
+
 
 @router.post("/sessions/{session_id}/tasks/{proposal_id}/resolve")
 async def resolve_hitl_task(
@@ -320,7 +339,9 @@ async def resolve_hitl_task(
         await chat_service.save_message(
             session_id=session_id,
             role="assistant",
-            content={"text": "The proposed draft was dismissed. Let me know how you'd like to proceed."},
+            content={
+                "text": "The proposed draft was dismissed. Let me know how you'd like to proceed."
+            },
         )
 
     return {"success": True, "task": task}

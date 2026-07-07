@@ -93,51 +93,6 @@ def _has_timescaledb() -> bool:
     return bool(result)
 
 
-def _seed_examination_categories() -> None:
-    """Insert the default examination categories with deterministic UUIDs.
-
-    Uses uuid5 with a fixed namespace so re-runs produce the same IDs. The
-    icon column is JSONB shaped as ``{"type": "lucide", "value": "<name>"}``.
-    """
-    import json
-    import uuid
-
-    namespace = uuid.uuid5(uuid.NAMESPACE_DNS, "health-assistant.examination_categories")
-    categories = [
-        ("Laboratory Tests", "laboratory-tests", "#f97316", "clipboard-list"),
-        ("Imaging & Radiology", "imaging-radiology", "#a855f7", "image"),
-        ("Vital Signs", "vital-signs", "#ef4444", "activity"),
-        ("Blood Laboratory", "blood-laboratory", "#dc2626", "droplet"),
-        ("Urine Laboratory", "urine-laboratory", "#facc15", "test-tube"),
-        ("Cardiology", "cardiology", "#dc2626", "heart"),
-        ("Neurology", "neurology", "#6366f1", "brain"),
-        ("Ophthalmology", "ophthalmology", "#0ea5e9", "eye"),
-        ("Gastroenterology", "gastroenterology", "#10b981", "utensils"),
-        ("Pulmonology", "pulmonology", "#2dd4bf", "wind"),
-        ("Dentistry", "dentistry", "#94a3b8", "smile"),
-        ("Pathology", "pathology", "#b91c1c", "microscope"),
-        ("Audiology", "audiology", "#6d28d9", "ear"),
-        ("Unmapped Results", "auto-generated", "#9ca3af", "help-circle"),
-        ("Other", "other", "#6b7280", "more-horizontal"),
-    ]
-    for name, slug, color, icon_name in categories:
-        category_id = str(uuid.uuid5(namespace, slug))
-        icon_json = json.dumps({"type": "lucide", "value": icon_name})
-        op.execute(
-            sa.text(
-                "INSERT INTO examination_categories (id, name, slug, color, icon) "
-                "VALUES (:id, :name, :slug, :color, CAST(:icon AS JSONB)) "
-                "ON CONFLICT (slug) DO NOTHING"
-            ).bindparams(
-                id=category_id,
-                name=name,
-                slug=slug,
-                color=color,
-                icon=icon_json,
-            )
-        )
-
-
 def upgrade() -> None:
     """Upgrade schema."""
     # --- Extensions -------------------------------------------------------
@@ -1517,8 +1472,10 @@ def upgrade() -> None:
             "if_not_exists => true)"
         )
 
-    # --- Seed data --------------------------------------------------------
-    _seed_examination_categories()
+    # Seed data now lives in backend/data/seeds/*.json — loaded by SeedService
+    # at application startup (see app/main.py lifespan). The old
+    # _seed_examination_categories() inline seeder was removed when the table
+    # was consolidated into the unified concepts table.
 
     # ### end Alembic commands ###
 

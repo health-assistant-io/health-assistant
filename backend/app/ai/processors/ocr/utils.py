@@ -112,7 +112,7 @@ async def _convert_dicom_to_images(file_path: Path) -> List[bytes]:
     try:
         ds = pydicom.dcmread(str(file_path))
         pixel_array = ds.pixel_array
-        
+
         # 1. Determine frames
         frames = []
         if hasattr(ds, "NumberOfFrames") and int(ds.NumberOfFrames) > 1:
@@ -124,6 +124,7 @@ async def _convert_dicom_to_images(file_path: Path) -> List[bytes]:
             frames.append(pixel_array)
 
         from pydicom.pixel_data_handlers.util import apply_voi_lut
+
         processed_images = []
 
         for frame in frames:
@@ -140,15 +141,15 @@ async def _convert_dicom_to_images(file_path: Path) -> List[bytes]:
                 frame = ((frame - p_min) / (p_max - p_min)) * 255.0
             else:
                 frame = np.zeros_like(frame)
-                
+
             frame = frame.astype(np.uint8)
 
             # 4. Handle shape issues (e.g., singleton dimensions)
             frame = np.squeeze(frame)
-            
+
             if frame.ndim == 1:
                 continue
-                
+
             # Ensure it's 2D for Pillow if it's grayscale
             if frame.ndim == 3 and frame.shape[-1] not in [3, 4]:
                 if frame.shape[-1] == 1:
@@ -160,11 +161,11 @@ async def _convert_dicom_to_images(file_path: Path) -> List[bytes]:
             img = Image.fromarray(frame)
             if img.mode != "RGB":
                 img = img.convert("RGB")
-                
+
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=95)
             processed_images.append(buf.getvalue())
-            
+
         return processed_images
     except Exception as e:
         logger.error(f"Error converting DICOM to images: {e}", exc_info=True)

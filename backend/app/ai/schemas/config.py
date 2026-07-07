@@ -40,10 +40,18 @@ class AIProviderCreate(BaseModel):
     settings: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Provider-specific settings"
     )
-    is_local: bool = Field(default=False, description="Whether the provider is run locally")
-    company_name: Optional[str] = Field(None, max_length=200, description="Company Name")
-    company_website: Optional[str] = Field(None, max_length=500, description="Company Website")
-    company_country: Optional[str] = Field(None, max_length=100, description="Company Country")
+    is_local: bool = Field(
+        default=False, description="Whether the provider is run locally"
+    )
+    company_name: Optional[str] = Field(
+        None, max_length=200, description="Company Name"
+    )
+    company_website: Optional[str] = Field(
+        None, max_length=500, description="Company Website"
+    )
+    company_country: Optional[str] = Field(
+        None, max_length=100, description="Company Country"
+    )
     tenant_id: Optional[UUID] = Field(
         None, description="Tenant ID (nullable for global providers)"
     )
@@ -124,7 +132,9 @@ class AIModelCreate(BaseModel):
     temperature: float = Field(
         default=0.7, ge=0.0, le=2.0, description="Temperature setting"
     )
-    is_local: Optional[bool] = Field(None, description="Override provider's is_local setting")
+    is_local: Optional[bool] = Field(
+        None, description="Override provider's is_local setting"
+    )
     settings: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Model-specific settings"
     )

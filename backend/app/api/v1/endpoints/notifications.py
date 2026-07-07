@@ -11,6 +11,7 @@ Tenant isolation: every read/mutation helper in
 :mod:`app.services.notification_service` is constrained by ``user_id`` +
 ``tenant_id``; cross-tenant calls are no-ops surfaced as 404.
 """
+
 from __future__ import annotations
 
 import logging

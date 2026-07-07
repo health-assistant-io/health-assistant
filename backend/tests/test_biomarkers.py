@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 import uuid
 
 
@@ -28,9 +28,15 @@ class MockResult:
             def all(self_inner):
                 return self.data
 
+            def first(self_inner):
+                return self.data[0] if self.data else None
+
         return MockScalars()
 
     def scalar_one_or_none(self):
+        return self.data[0] if self.data else None
+
+    def first(self):
         return self.data[0] if self.data else None
 
     def all(self):
@@ -66,7 +72,7 @@ async def test_get_biomarkers(async_client: AsyncClient):
     mock_bio.id = uuid.uuid4()
     mock_bio.slug = "glucose"
     mock_bio.name = "Glucose"
-    mock_bio.category = "blood_laboratory"
+    mock_bio.category = "Blood Laboratory"  # read-only property -> concept name
     mock_bio.aliases = ["GLU"]
     mock_bio.preferred_unit_id = uuid.uuid4()
     mock_bio.info = "Test info"
@@ -116,53 +122,6 @@ async def test_get_units(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_groups(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
-    from app.core.database import get_db
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
-
-    # Mock Group
-    mock_group = MagicMock()
-    mock_group.id = uuid.uuid4()
-    mock_group.name = "Lipid Panel"
-    mock_group.type = "Panel"
-
-    # Mock Biomarker inside group
-    mock_bio = MagicMock()
-    mock_bio.id = uuid.uuid4()
-    mock_bio.slug = "hdl"
-    mock_bio.name = "HDL"
-    mock_bio.category = "blood_laboratory"
-    mock_bio.aliases = ["HDL-C"]
-
-    async def mock_execute_complex(query):
-        query_str = str(query).lower()
-        if "biomarker_groups" in query_str and "join" not in query_str:
-            return MockResult([mock_group])
-        return MockResult([mock_bio])
-
-    mock_db = AsyncMock()
-    mock_db.execute = mock_execute_complex
-
-    async def get_db_override():
-        yield mock_db
-
-    app.dependency_overrides[get_db] = get_db_override
-
-    response = await async_client.get("/api/v1/biomarkers/groups")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Lipid Panel"
-    assert len(data[0]["members"]) == 1
-    assert data[0]["members"][0]["slug"] == "hdl"
-
-    app.dependency_overrides = {}
-
-
-@pytest.mark.asyncio
 async def test_create_biomarker(async_client: AsyncClient):
     from app.main import app
     from app.core.security import get_current_user
@@ -178,9 +137,12 @@ async def test_create_biomarker(async_client: AsyncClient):
         query_str = str(query).lower()
         # If the query is specifically selecting just the symbol column
         # and NOT selecting other columns like units.name
-        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
+        if (
+            "select units.symbol \nfrom" in query_str
+            or "select unit.symbol \nfrom" in query_str
+        ):
             return MockResult(["mg/dL"])
-            
+
         # Fallback for Unit creation or other queries (select(Unit)...)
         return MockResult([mock_unit])
 
@@ -220,6 +182,7 @@ async def test_create_biomarker(async_client: AsyncClient):
 
     app.dependency_overrides = {}
 
+
 @pytest.mark.asyncio
 async def test_create_telemetry_biomarker(async_client: AsyncClient):
     from app.main import app
@@ -234,10 +197,13 @@ async def test_create_telemetry_biomarker(async_client: AsyncClient):
     async def mock_execute(*args, **kwargs):
         query = args[0] if args else kwargs.get("statement")
         query_str = str(query).lower()
-        
-        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
+
+        if (
+            "select units.symbol \nfrom" in query_str
+            or "select unit.symbol \nfrom" in query_str
+        ):
             return MockResult(["bpm"])
-            
+
         return MockResult([mock_unit])
 
     mock_db = AsyncMock()

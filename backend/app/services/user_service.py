@@ -13,7 +13,7 @@ async def get_user_by_email(email: str) -> Optional[UserModel]:
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_email")
         return None
-    
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserModel).where(UserModel.email == email)
@@ -21,12 +21,14 @@ async def get_user_by_email(email: str) -> Optional[UserModel]:
         return result.scalar_one_or_none()
 
 
-async def get_user_by_id(user_id: str | UUID, tenant_id: Optional[UUID] = None) -> Optional[UserModel]:
+async def get_user_by_id(
+    user_id: str | UUID, tenant_id: Optional[UUID] = None
+) -> Optional[UserModel]:
     """Get user by ID, optionally filtered by tenant"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_id")
         return None
-    
+
     if isinstance(user_id, str):
         try:
             user_id = UUID(user_id)
@@ -38,12 +40,14 @@ async def get_user_by_id(user_id: str | UUID, tenant_id: Optional[UUID] = None) 
         query = select(UserModel).where(UserModel.id == user_id)
         if tenant_id:
             query = query.where(UserModel.tenant_id == tenant_id)
-        
+
         result = await session.execute(query)
         return result.scalar_one_or_none()
 
 
-async def create_user(email: str, hashed_password: str, tenant_id: str | UUID, role: str = "user") -> UserModel:
+async def create_user(
+    email: str, hashed_password: str, tenant_id: str | UUID, role: str = "user"
+) -> UserModel:
     """Create a new user"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for create_user")
@@ -52,9 +56,9 @@ async def create_user(email: str, hashed_password: str, tenant_id: str | UUID, r
             email=email,
             hashed_password=hashed_password,
             tenant_id=str(tenant_id),
-            role=Role(role) if role in [r.value for r in Role] else Role.USER
+            role=Role(role) if role in [r.value for r in Role] else Role.USER,
         )
-    
+
     # Map string role to Enum
     try:
         user_role = Role(role)
@@ -66,23 +70,23 @@ async def create_user(email: str, hashed_password: str, tenant_id: str | UUID, r
         hashed_password=hashed_password,
         tenant_id=str(tenant_id),
         role=user_role,
-        settings={}
+        settings={},
     )
-    
+
     async with AsyncSessionLocal() as session:
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)
-    
+
     return new_user
 
 
 async def update_user(
-    user_id: str | UUID, 
-    email: Optional[str] = None, 
-    role: Optional[str] = None, 
+    user_id: str | UUID,
+    email: Optional[str] = None,
+    role: Optional[str] = None,
     settings: Optional[dict] = None,
-    tenant_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None,
 ) -> Optional[UserModel]:
     """Update user information, optionally filtered by tenant"""
     if not DATABASE_AVAILABLE:
@@ -113,10 +117,10 @@ async def update_user(
         stmt = update(UserModel).where(UserModel.id == user_id)
         if tenant_id:
             stmt = stmt.where(UserModel.tenant_id == tenant_id)
-            
+
         await session.execute(stmt.values(**update_data))
         await session.commit()
-        
+
     return await get_user_by_id(user_id, tenant_id=tenant_id)
 
 
@@ -136,7 +140,7 @@ async def delete_user(user_id: str | UUID, tenant_id: Optional[UUID] = None) -> 
         stmt = delete(UserModel).where(UserModel.id == user_id)
         if tenant_id:
             stmt = stmt.where(UserModel.tenant_id == tenant_id)
-            
+
         result = await session.execute(stmt)
         await session.commit()
         return result.rowcount > 0

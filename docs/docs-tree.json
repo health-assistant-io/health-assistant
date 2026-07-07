@@ -45,6 +45,11 @@
         "title": "Ontology & Catalog"
       },
       {
+        "id": "taxonomy",
+        "file": "TAXONOMY.md",
+        "title": "Taxonomy & Knowledge Graph"
+      },
+      {
         "id": "notification-system",
         "file": "NOTIFICATION_SYSTEM.md",
         "title": "Notification System"

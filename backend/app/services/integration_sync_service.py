@@ -17,6 +17,7 @@ sync endpoint, the webhook path, and the bridge. Both the worker and the
 manual endpoint now delegate here so the error contract, sync-log shape,
 and cursor management stay in lockstep.
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -125,9 +126,7 @@ async def apply_telemetry_split(
             )
         else:
             if not obs.performer:
-                reference = (
-                    f"Integration/{integration_id}" if integration_id else None
-                )
+                reference = f"Integration/{integration_id}" if integration_id else None
                 performer = {
                     "type": "Integration",
                     "display": device_id,
@@ -243,7 +242,10 @@ async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
             severity = NotificationSeverity.WARNING
             ntype = NotificationType.SYNC_FAILURE
             title = f"{integration.provider} sync failed"
-            body = result.error or "The integration sync failed and may need re-authorization."
+            body = (
+                result.error
+                or "The integration sync failed and may need re-authorization."
+            )
             async with AsyncSessionLocal() as session:
                 admin_ids = [
                     row[0]
@@ -279,7 +281,10 @@ async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
             body=body,
             tenant_id=tenant_id,
             targets=targets,
-            payload={"integration_id": str(integration.id), "provider": integration.provider},
+            payload={
+                "integration_id": str(integration.id),
+                "provider": integration.provider,
+            },
             source_ref={
                 "integration_id": str(integration.id),
                 "provider": integration.provider,
@@ -328,7 +333,9 @@ async def run_sync(
     async def _debug(title: str, payload: dict, level: str = "info") -> None:
         if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
             try:
-                await provider.log_debug_payload(integration, title, payload, level=level)
+                await provider.log_debug_payload(
+                    integration, title, payload, level=level
+                )
             except Exception:
                 pass
 
@@ -427,20 +434,30 @@ async def run_sync(
         _write_failed_log(db, integration, started, str(e))
         await db.commit()
         result = SyncResult(
-            status="failed", error=str(e), error_type="auth",
-            started_at=started, completed_at=_now(),
+            status="failed",
+            error=str(e),
+            error_type="auth",
+            started_at=started,
+            completed_at=_now(),
         )
         return result
 
     except IntegrationRateLimitError as e:
         await db.rollback()
         logger.warning("Rate limit for %s: %s", integration.provider, e)
-        await _debug("Rate Limit Error", {"error": str(e), "source": source}, level="warning")
-        _write_failed_log(db, integration, started, "Rate Limit Exceeded. Will retry later.")
+        await _debug(
+            "Rate Limit Error", {"error": str(e), "source": source}, level="warning"
+        )
+        _write_failed_log(
+            db, integration, started, "Rate Limit Exceeded. Will retry later."
+        )
         await db.commit()
         result = SyncResult(
-            status="failed", error=str(e), error_type="rate_limit",
-            started_at=started, completed_at=_now(),
+            status="failed",
+            error=str(e),
+            error_type="rate_limit",
+            started_at=started,
+            completed_at=_now(),
         )
         return result
 
@@ -451,8 +468,11 @@ async def run_sync(
         _write_failed_log(db, integration, started, str(e))
         await db.commit()
         result = SyncResult(
-            status="failed", error=str(e), error_type="data",
-            started_at=started, completed_at=_now(),
+            status="failed",
+            error=str(e),
+            error_type="data",
+            started_at=started,
+            completed_at=_now(),
         )
         return result
 
@@ -525,7 +545,9 @@ async def _filter_specs_by_owner_type_prefs(
         async with AsyncSessionLocal() as session:
             row = (
                 await session.execute(
-                    select(UserModel.settings).where(UserModel.id == integration.user_id)
+                    select(UserModel.settings).where(
+                        UserModel.id == integration.user_id
+                    )
                 )
             ).scalar_one_or_none()
         user_settings = dict(row or {})
@@ -547,7 +569,9 @@ async def _filter_specs_by_owner_type_prefs(
         if user_settings.get(key, True) is False:
             logger.debug(
                 "Filtering integration notification (user=%s domain=%s type_id=%s — muted)",
-                integration.user_id, domain, tid,
+                integration.user_id,
+                domain,
+                tid,
             )
             continue
         out.append(spec)
@@ -577,7 +601,10 @@ async def _emit_provider_notifications(
 
     Failures are logged and swallowed — never propagate to the sync result.
     """
-    if provider is None or not getattr(provider, "supports_notifications", lambda: False)():
+    if (
+        provider is None
+        or not getattr(provider, "supports_notifications", lambda: False)()
+    ):
         return
 
     context = {
@@ -609,9 +636,7 @@ async def _emit_provider_notifications(
     # audience; per-recipient type prefs would require pushing this filter
     # down into emit() and coupling it to integration concepts, which we
     # explicitly avoid.
-    filtered_specs = await _filter_specs_by_owner_type_prefs(
-        integration, specs
-    )
+    filtered_specs = await _filter_specs_by_owner_type_prefs(integration, specs)
     if not filtered_specs:
         return
 
@@ -627,9 +652,15 @@ async def _emit_provider_notifications(
     for spec in filtered_specs:
         try:
             # Category / severity / type — accept both enum and string value.
-            category = _coerce_enum(spec.category, NotificationCategory, NotificationCategory.INTEGRATION)
-            severity = _coerce_enum(spec.severity, NotificationSeverity, NotificationSeverity.INFO)
-            ntype = _coerce_enum(spec.type, NotificationType, NotificationType.INTEGRATION_EVENT)
+            category = _coerce_enum(
+                spec.category, NotificationCategory, NotificationCategory.INTEGRATION
+            )
+            severity = _coerce_enum(
+                spec.severity, NotificationSeverity, NotificationSeverity.INFO
+            )
+            ntype = _coerce_enum(
+                spec.type, NotificationType, NotificationType.INTEGRATION_EVENT
+            )
 
             patient_id = spec.patient_id or integration.patient_id
             targets = spec.targets_override or [
@@ -699,13 +730,8 @@ async def post_sync_notifications(
     try:
         await _notify_sync_outcome(integration, result)
     except Exception:
-        logger.exception(
-            "Sync-outcome notification failed for %s", integration.id
-        )
-    if (
-        status in ("success", "partial")
-        and (fhir_persisted + telemetry_persisted) > 0
-    ):
+        logger.exception("Sync-outcome notification failed for %s", integration.id)
+    if status in ("success", "partial") and (fhir_persisted + telemetry_persisted) > 0:
         try:
             await _emit_provider_notifications(
                 provider, integration, result, observations or []

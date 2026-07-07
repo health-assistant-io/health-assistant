@@ -14,7 +14,6 @@ import ExaminationUpload from './pages/Examinations/ExaminationUpload';
 import ExaminationDetail from './pages/Examinations/ExaminationDetail';
 import ClinicalEventList from './pages/Events/ClinicalEventList';
 import ClinicalEventDetail from './pages/Events/ClinicalEventDetail';
-import { ExaminationCategoryManager } from './pages/Examinations/ExaminationCategoryManager';
 import TaskManager from './pages/TaskManager';
 import Patients from './pages/Patients/PatientList';
 import PatientDetail from './pages/Patients/PatientDetail';
@@ -53,6 +52,7 @@ import TenantDetail from './pages/Admin/TenantDetail';
 import CatalogManagement from './pages/Admin/CatalogManagement';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
 import AtlasManager from './pages/Admin/AtlasManager';
+import TaxonomyManager from './pages/Knowledge/TaxonomyManager';
 
 import { AIConfig } from './pages/Settings/AIConfig';
 import { useProtectedRoute } from './hooks/useProtectedRoute';
@@ -137,6 +137,11 @@ function App() {
   useEffect(() => {
     if (isAuthenticated && !nativeNotificationService.isPermissionGranted()) {
       nativeNotificationService.requestPermission();
+    }
+    if (isAuthenticated) {
+      import('./services/conceptService').then(({ loadDocumentCategories }) =>
+        loadDocumentCategories(),
+      );
     }
   }, [isAuthenticated]);
 
@@ -236,7 +241,7 @@ function App() {
           <Route path="/documents" element={<Documents />} />
           <Route path="/documents/:documentId" element={<DocumentDetail />} />
           <Route path="/examinations" element={<Examinations />} />
-          <Route path="/examinations/categories" element={<ExaminationCategoryManager />} />
+          <Route path="/examinations/categories" element={<TaxonomyManager />} />
           <Route path="/examinations/upload" element={<ExaminationUpload />} />
           <Route path="/examinations/:examinationId" element={<ExaminationDetail />} />
           <Route path="/examinations/:examinationId/:activeTab" element={<ExaminationDetail />} />
@@ -265,6 +270,7 @@ function App() {
               <Route path="/admin/system/users/:userId" element={<UserDetail />} />
               <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
               <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
+              <Route path="/admin/system/taxonomy" element={<TaxonomyManager />} />
               <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
               <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
               <Route path="/admin/system/settings" element={<SystemSettingsPage />} />

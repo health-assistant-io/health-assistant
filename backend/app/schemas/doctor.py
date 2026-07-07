@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from typing import Optional, List
 
@@ -20,7 +20,11 @@ class Address(BaseModel):
 class DoctorBase(BaseModel):
     name: str
     user_id: Optional[UUID] = None
+    # Backward-compat: ``specialty`` remains a readable string (the linked
+    # concept's name). For writes, prefer ``specialty_concept_id`` —
+    # ``specialty`` is best-effort resolved to a concept in doctor_service.
     specialty: Optional[str] = None
+    specialty_concept_id: Optional[UUID] = None
     license_number: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -40,6 +44,7 @@ class DoctorCreate(DoctorBase):
 class DoctorUpdate(BaseModel):
     name: Optional[str] = None
     specialty: Optional[str] = None
+    specialty_concept_id: Optional[UUID] = None
     license_number: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None

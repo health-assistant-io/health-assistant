@@ -1,0 +1,141 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Health Assistant",
+    "last_updated": "2026-07-07"
+  },
+  "items": [
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "cardiovascular-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "nervous-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "neurology",
+      "relation": "PERFORMS"
+    },
+    {
+      "src_slug": "ophthalmology",
+      "dst_slug": "nervous-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "ophthalmology",
+      "dst_slug": "ophthalmology",
+      "relation": "PERFORMS"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "digestive-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "gastroenterology",
+      "relation": "PERFORMS"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "respiratory-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "pulmonology",
+      "relation": "PERFORMS"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "endocrine-system",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "lipid-panel",
+      "relation": "ORDERS"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "endocrine-class",
+      "relation": "ORDERS"
+    },
+    {
+      "src_slug": "atc-c10",
+      "dst_slug": "atc-c10aa",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "atc-c",
+      "dst_slug": "atc-c10",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "atc-a10",
+      "dst_slug": "atc-a10ba",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "atc-a",
+      "dst_slug": "atc-a10",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "atc-n",
+      "dst_slug": "atc-n02",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "atc-j",
+      "dst_slug": "atc-j01",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "heart",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "brain",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "stomach",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "left-lung",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "ophthalmology",
+      "dst_slug": "eyes",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "thyroid",
+      "dst_type": "anatomy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "imaging-radiology",
+      "dst_slug": "chest",
+      "dst_type": "anatomy",
+      "relation": "IMAGES"
+    }
+  ]
+}

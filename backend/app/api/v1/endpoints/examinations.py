@@ -8,7 +8,6 @@ from app.core.security import get_current_user
 from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
 from app.models.doctor_model import DoctorModel
-from app.models.examination_category import ExaminationCategory
 from app.ai.pipeline.service import MedicalProcessingService
 from sqlalchemy.orm import selectinload
 from app.schemas.examination import (
@@ -20,14 +19,9 @@ from app.schemas.examination import (
     ExaminationExtractRequest,
     ExaminationBulkDeleteRequest,
 )
-from app.core.config import settings
-from app.core.constants import CATEGORY_NAMES
 from app.models.enums import Role
 from app.api.v1.endpoints.utils import check_patient_access, check_examination_access
 import logging
-import httpx
-import re
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +169,9 @@ async def update_examination(
         new_date = update_data["examination_date"]
         # Convert date to datetime for FHIR models that use DateTime
         if new_date:
-            new_datetime = datetime.datetime.combine(new_date, datetime.time.min, tzinfo=datetime.timezone.utc)
+            new_datetime = datetime.datetime.combine(
+                new_date, datetime.time.min, tzinfo=datetime.timezone.utc
+            )
 
             # Update Observations
             await db.execute(
@@ -234,22 +230,21 @@ async def list_examination_categories(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.examination_category import ExaminationCategory
+    from app.models.concept_model import Concept
+    from app.models.enums import ConceptKind
+    from app.services.concept_service import concepts_with_kind
 
-    # Fetch from the new managed table
+    # Examination categories now live in the unified concepts table
     result = await db.execute(
-        select(ExaminationCategory.name).where(
+        select(Concept.name).where(
+            concepts_with_kind(ConceptKind.EXAMINATION_CATEGORY),
             or_(
-                ExaminationCategory.tenant_id == current_user.tenant_id,
-                ExaminationCategory.tenant_id.is_(None),
-            )
+                Concept.tenant_id == current_user.tenant_id,
+                Concept.tenant_id.is_(None),
+            ),
         )
     )
-    managed_categories = result.scalars().all()
-
-    # Merge and remove duplicates
-    all_categories = sorted(list(set(list(managed_categories))))
-    return all_categories
+    return sorted(result.scalars().all())
 
 
 @router.get("", response_model=List[ExaminationSummaryResponse])
@@ -279,7 +274,10 @@ async def list_examinations(
     elif current_user.role == Role.USER.value:
         # For standard users, if no patient_id is provided, only show examinations for their patients
         from app.models.fhir.patient import Patient
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
+
+        patient_ids_query = select(Patient.id).where(
+            Patient.user_id == current_user.user_id
+        )
         query = query.where(ExaminationModel.patient_id.in_(patient_ids_query))
 
     query = (
@@ -539,8 +537,9 @@ async def bulk_delete_examinations(
     )
     if current_user.role == Role.USER.value:
         from app.models.fhir.patient import Patient
+
         query = query.join(Patient).where(Patient.user_id == current_user.user_id)
-        
+
     result = await db.execute(query)
     examinations = result.scalars().all()
 

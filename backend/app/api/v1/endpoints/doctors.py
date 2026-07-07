@@ -9,7 +9,6 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.doctor import DoctorCreate, DoctorUpdate, DoctorResponse
 from app.services.doctor_service import (
-    list_doctors,
     get_doctor,
     create_doctor,
     update_doctor,
@@ -28,7 +27,6 @@ async def list_doctors_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.doctor_model import DoctorModel
 
     # Enforce tenant isolation for non-system admins
     final_tenant_id = current_user.tenant_id

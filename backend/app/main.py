@@ -68,9 +68,9 @@ async def lifespan(app: FastAPI):
             from app.core.database import AsyncSessionLocal
 
             async with AsyncSessionLocal() as db:
-                stuck_threshold = _dt.datetime.now(
-                    _dt.timezone.utc
-                ) - _dt.timedelta(minutes=20)
+                stuck_threshold = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(
+                    minutes=20
+                )
                 # Target statuses that indicate the process is active.
                 stuck_statuses = [
                     "aggregating",
@@ -110,30 +110,15 @@ async def lifespan(app: FastAPI):
 
     if DATABASE_AVAILABLE:
         try:
-            logger.info("Syncing medication catalog...")
-            stats = await seed_service.seed_medications()
-            logger.info(f"Medication sync complete: {stats}")
-
-            logger.info("Syncing clinical event types catalog...")
-            stats_events = await seed_service.seed_clinical_event_types()
-            logger.info(f"Clinical event types sync complete: {stats_events}")
-
-            logger.info("Syncing allergy catalog...")
-            stats_allergies = await seed_service.seed_allergies()
-            logger.info(f"Allergy sync complete: {stats_allergies}")
-
-            logger.info("Syncing body parts catalog...")
-            stats_body_parts = await seed_service.seed_body_parts()
-            logger.info(f"Body parts sync complete: {stats_body_parts}")
-
-            logger.info("Syncing anatomy figures...")
-            stats_figures = await seed_service.seed_anatomy_figures()
-            logger.info(f"Anatomy figures sync complete: {stats_figures}")
+            logger.info("Running seed stages in dependency order...")
+            all_stats = await seed_service.seed_all()
+            logger.info("All seed stages complete: %s", all_stats)
         except Exception as e:
             _abort_or_warn(e, "Catalog seeding")
 
         try:
             from app.core.database import AsyncSessionLocal
+
             async with AsyncSessionLocal() as db:
                 await integration_registry.initialize(db)
         except Exception as e:
@@ -143,6 +128,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     try:
         from app.core.integration_registry import integration_registry
+
         for provider in integration_registry.get_all_providers():
             try:
                 await provider.close()

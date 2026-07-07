@@ -1,10 +1,9 @@
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_, delete
-from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
+from sqlalchemy import select, or_, delete
+from app.models.fhir.medication import Medication, MedicationCatalog
 from app.services.notification_manager import NotificationManager
-from app.models.notification import NotificationType, TriggerType
 from app.schemas.medication import (
     MedicationCatalogCreate,
     MedicationCatalogUpdate,

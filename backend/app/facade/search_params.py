@@ -10,14 +10,25 @@ Reference: HL7 FHIR R4 Search — https://hl7.org/fhir/R4/search.html
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 
 
 # Standard FHIR search params recognized on every resource.
 STANDARD_PARAMS = frozenset(
-    {"_id", "_lastUpdated", "_count", "_sort", "_format", "_include", "_revinclude", "_summary", "_elements", "_total"}
+    {
+        "_id",
+        "_lastUpdated",
+        "_count",
+        "_sort",
+        "_format",
+        "_include",
+        "_revinclude",
+        "_summary",
+        "_elements",
+        "_total",
+    }
 )
 
 # Per-resource params we recognize AND honor in facade.crud._build_resource_filter.
@@ -28,18 +39,82 @@ STANDARD_PARAMS = frozenset(
 # reason-code / diagnosis / practitioner, Condition.severity, Provenance.entity)
 # are deliberately omitted — when implementation lands, add them back here.
 RESOURCE_PARAMS: Dict[str, frozenset] = {
-    "Patient": frozenset({"identifier", "name", "family", "given", "birthdate", "gender", "active"}),
-    "Observation": frozenset({"patient", "subject", "code", "date", "status", "category", "value-quantity", "performer"}),
-    "Condition": frozenset({"patient", "subject", "code", "clinical-status", "verification-status", "onset-date", "category", "encounter"}),
+    "Patient": frozenset(
+        {"identifier", "name", "family", "given", "birthdate", "gender", "active"}
+    ),
+    "Observation": frozenset(
+        {
+            "patient",
+            "subject",
+            "code",
+            "date",
+            "status",
+            "category",
+            "value-quantity",
+            "performer",
+        }
+    ),
+    "Condition": frozenset(
+        {
+            "patient",
+            "subject",
+            "code",
+            "clinical-status",
+            "verification-status",
+            "onset-date",
+            "category",
+            "encounter",
+        }
+    ),
     "Encounter": frozenset({"patient", "subject", "status", "date"}),
-    "Device": frozenset({"patient", "subject", "identifier", "type", "status", "parent"}),
-    "MedicationStatement": frozenset({"patient", "subject", "status", "medication", "effective", "context"}),
-    "MedicationRequest": frozenset({"patient", "subject", "status", "intent", "medication", "encounter", "authored-on"}),
+    "Device": frozenset(
+        {"patient", "subject", "identifier", "type", "status", "parent"}
+    ),
+    "MedicationStatement": frozenset(
+        {"patient", "subject", "status", "medication", "effective", "context"}
+    ),
+    "MedicationRequest": frozenset(
+        {
+            "patient",
+            "subject",
+            "status",
+            "intent",
+            "medication",
+            "encounter",
+            "authored-on",
+        }
+    ),
     "Medication": frozenset({"code", "identifier"}),
-    "AllergyIntolerance": frozenset({"patient", "subject", "clinical-status", "verification-status", "category", "criticality", "code", "onset-date"}),
-    "DiagnosticReport": frozenset({"patient", "subject", "status", "code", "category", "date", "encounter"}),
-    "DocumentReference": frozenset({"patient", "subject", "status", "type", "category", "date", "encounter"}),
-    "Communication": frozenset({"patient", "subject", "status", "category", "sent", "received", "sender", "recipient"}),
+    "AllergyIntolerance": frozenset(
+        {
+            "patient",
+            "subject",
+            "clinical-status",
+            "verification-status",
+            "category",
+            "criticality",
+            "code",
+            "onset-date",
+        }
+    ),
+    "DiagnosticReport": frozenset(
+        {"patient", "subject", "status", "code", "category", "date", "encounter"}
+    ),
+    "DocumentReference": frozenset(
+        {"patient", "subject", "status", "type", "category", "date", "encounter"}
+    ),
+    "Communication": frozenset(
+        {
+            "patient",
+            "subject",
+            "status",
+            "category",
+            "sent",
+            "received",
+            "sender",
+            "recipient",
+        }
+    ),
     "Organization": frozenset({"identifier", "name", "active", "type", "partof"}),
     "Practitioner": frozenset({"identifier", "name", "family", "given", "active"}),
     "Provenance": frozenset({"target", "agent", "recorded", "activity"}),
@@ -48,6 +123,7 @@ RESOURCE_PARAMS: Dict[str, frozenset] = {
 # Default and bounds for _count.
 DEFAULT_COUNT = 50
 MAX_COUNT = 250
+
 
 # Sort columns allowlist per resource. Values map a FHIR search param to either:
 # - an ORM column name string (the common case), OR
@@ -84,24 +160,62 @@ def _patient_family_name_sort():
 
 
 SORT_COLUMNS: Dict[str, Dict[str, Any]] = {
-    "Patient": {"_id": "id", "_lastUpdated": "updated_at", "birthdate": "birth_date", "name": _patient_family_name_sort},
-    "Observation": {"_id": "id", "_lastUpdated": "updated_at", "date": "effective_datetime", "code": "code"},
+    "Patient": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "birthdate": "birth_date",
+        "name": _patient_family_name_sort,
+    },
+    "Observation": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "date": "effective_datetime",
+        "code": "code",
+    },
     # F10: Condition.onset-date must map to onset_date (the actual ORM column).
     # Previously mapped to the nonexistent 'fhir_onset_datetime'.
-    "Condition": {"_id": "id", "_lastUpdated": "updated_at", "onset-date": "onset_date"},
-    "Encounter": {"_id": "id", "_lastUpdated": "updated_at", "date": "examination_date"},
+    "Condition": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "onset-date": "onset_date",
+    },
+    "Encounter": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "date": "examination_date",
+    },
     "Device": {"_id": "id", "_lastUpdated": "updated_at"},
-    "MedicationStatement": {"_id": "id", "_lastUpdated": "updated_at", "effective": "start_date"},
+    "MedicationStatement": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "effective": "start_date",
+    },
     # F10: MedicationRequest.authored-on filter uses created_at (the FHIR
     # authoredOn is projected from Medication.created_at — see
     # Medication._to_medication_request). Sort by created_at too so filter
     # and sort agree on the same column. Previously sort used 'start_date',
     # which disagreed with the filter and produced surprising results.
-    "MedicationRequest": {"_id": "id", "_lastUpdated": "updated_at", "authored-on": "created_at"},
+    "MedicationRequest": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "authored-on": "created_at",
+    },
     "Medication": {"_id": "id", "_lastUpdated": "updated_at"},
-    "AllergyIntolerance": {"_id": "id", "_lastUpdated": "updated_at", "onset-date": "onset_date"},
-    "DiagnosticReport": {"_id": "id", "_lastUpdated": "updated_at", "date": "effective_datetime"},
-    "DocumentReference": {"_id": "id", "_lastUpdated": "updated_at", "date": "created_at"},
+    "AllergyIntolerance": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "onset-date": "onset_date",
+    },
+    "DiagnosticReport": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "date": "effective_datetime",
+    },
+    "DocumentReference": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "date": "created_at",
+    },
     "Communication": {"_id": "id", "_lastUpdated": "updated_at", "sent": "sent"},
     "Organization": {"_id": "id", "_lastUpdated": "updated_at", "name": "name"},
     "Practitioner": {"_id": "id", "_lastUpdated": "updated_at", "name": "name"},
@@ -183,7 +297,9 @@ class FhirSearchParams:
     _id: Optional[List[str]] = None
     _lastUpdated: Optional[List[DateFilter]] = None
     _count: int = DEFAULT_COUNT
-    _sort: List[Tuple[str, bool]] = field(default_factory=list)  # (column_name, descending)
+    _sort: List[Tuple[str, bool]] = field(
+        default_factory=list
+    )  # (column_name, descending)
     _format: Optional[str] = None
     _include: List[str] = field(default_factory=list)
     _revinclude: List[str] = field(default_factory=list)
@@ -317,7 +433,7 @@ def _split_date_param(value: str) -> DateFilter:
     """Split a FHIR date param value into optional prefix + value."""
     for prefix in DATE_PREFIXES:
         if value.startswith(prefix):
-            rest = value[len(prefix):]
+            rest = value[len(prefix) :]
             if rest:
                 return DateFilter(prefix=prefix, value=rest)
     return DateFilter(prefix=None, value=value)
@@ -349,7 +465,9 @@ def parse_search_params(
             if key == "_id":
                 params._id = (params._id or []) + [value]
             elif key == "_lastUpdated":
-                params._lastUpdated = (params._lastUpdated or []) + [_split_date_param(value)]
+                params._lastUpdated = (params._lastUpdated or []) + [
+                    _split_date_param(value)
+                ]
             elif key == "_count":
                 try:
                     c = int(value)

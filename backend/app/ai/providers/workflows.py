@@ -5,6 +5,7 @@ assignments (e.g. ``full_reconstruction`` = OCR + NLP). Extracted from
 ``AIProviderService.get_config_summary`` so the composition table is defined
 in one place and can be unit-tested without a DB.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -20,12 +21,12 @@ def build_workflows(task_assignments: Dict[str, Any]) -> Dict[str, List[Any]]:
     """
     return {
         "full_reconstruction": [
-            ta for ta in [task_assignments.get("ocr"), task_assignments.get("nlp")] if ta
+            ta
+            for ta in [task_assignments.get("ocr"), task_assignments.get("nlp")]
+            if ta
         ],
         "fast_extraction": [ta for ta in [task_assignments.get("nlp")] if ta],
-        "smart_extraction_upload": [
-            ta for ta in [task_assignments.get("ocr")] if ta
-        ],
+        "smart_extraction_upload": [ta for ta in [task_assignments.get("ocr")] if ta],
         "magic_fill": [
             ta for ta in [task_assignments.get("magic_fill_examination")] if ta
         ],

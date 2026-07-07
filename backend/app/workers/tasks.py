@@ -282,7 +282,9 @@ async def check_notification_triggers():
         await db.close()
 
 
-@celery_app.task(name="app.workers.tasks.sync_active_integrations", bind=True, max_retries=1)
+@celery_app.task(
+    name="app.workers.tasks.sync_active_integrations", bind=True, max_retries=1
+)
 @async_task
 async def sync_active_integrations(self):
     """Periodic task to sync data from all active user integrations.
@@ -308,62 +310,85 @@ async def sync_active_integrations(self):
             # First ensure registry is initialized if not already (celery workers need this)
             await integration_registry.initialize(db)
 
-            stmt = select(UserIntegration).where(UserIntegration.status == IntegrationStatus.ACTIVE)
+            stmt = select(UserIntegration).where(
+                UserIntegration.status == IntegrationStatus.ACTIVE
+            )
             result = await db.execute(stmt)
             active_integrations = result.scalars().all()
 
-            logger.info(f"Found {len(active_integrations)} active integrations to sync.")
+            logger.info(
+                f"Found {len(active_integrations)} active integrations to sync."
+            )
 
             for integration in active_integrations:
-                    start_time = datetime.datetime.now(datetime.timezone.utc)
+                start_time = datetime.datetime.now(datetime.timezone.utc)
 
-                    # Check if it's time to sync based on user config interval (default to 15 if missing)
-                    sync_interval = 15
-                    if integration.user_config and "sync_interval" in integration.user_config:
-                        sync_interval = int(integration.user_config["sync_interval"])
+                # Check if it's time to sync based on user config interval (default to 15 if missing)
+                sync_interval = 15
+                if (
+                    integration.user_config
+                    and "sync_interval" in integration.user_config
+                ):
+                    sync_interval = int(integration.user_config["sync_interval"])
 
-                    if integration.last_synced_at:
-                        next_sync = integration.last_synced_at + datetime.timedelta(minutes=sync_interval)
-                        # Add a small buffer (e.g. 10 seconds) to avoid missing cycles due to slight execution delays
-                        if start_time < (next_sync - datetime.timedelta(seconds=10)):
-                            logger.debug(f"Skipping sync for {integration.provider} (user {integration.user_id}). Next sync at {next_sync}")
-                            continue
-
-                    provider = integration_registry.get_provider(integration.provider)
-                    if not provider:
-                        logger.warning(f"Provider not found for integration {integration.provider}")
+                if integration.last_synced_at:
+                    next_sync = integration.last_synced_at + datetime.timedelta(
+                        minutes=sync_interval
+                    )
+                    # Add a small buffer (e.g. 10 seconds) to avoid missing cycles due to slight execution delays
+                    if start_time < (next_sync - datetime.timedelta(seconds=10)):
+                        logger.debug(
+                            f"Skipping sync for {integration.provider} (user {integration.user_id}). Next sync at {next_sync}"
+                        )
                         continue
 
-                    logger.info(f"Syncing integration {integration.provider} for user {integration.user_id}")
+                provider = integration_registry.get_provider(integration.provider)
+                if not provider:
+                    logger.warning(
+                        f"Provider not found for integration {integration.provider}"
+                    )
+                    continue
 
-                    # Delegate to the shared sync pipeline (acquires the Redis
-                    # dedup lock internally, handles the 3-tier error contract,
-                    # writes the IntegrationSyncLog).
-                    from app.services.integration_sync_service import run_sync
+                logger.info(
+                    f"Syncing integration {integration.provider} for user {integration.user_id}"
+                )
 
-                    result = await run_sync(db, integration, provider, source="background")
-                    if result.status == "skipped":
-                        logger.debug(
-                            "Sync skipped (lock held) for %s (user %s)",
-                            integration.provider, integration.user_id,
-                        )
-                    elif result.status == "failed":
-                        logger.warning(
-                            "Sync failed for %s (user %s): %s",
-                            integration.provider, integration.user_id, result.error,
-                        )
-                    else:
-                        logger.info(
-                            "Sync %s for %s: pulled=%d fhir=%d telemetry=%d dropped=%d",
-                            result.status, integration.provider,
-                            result.pulled, result.fhir_persisted,
-                            result.telemetry_persisted, result.dropped_invalid,
-                        )
+                # Delegate to the shared sync pipeline (acquires the Redis
+                # dedup lock internally, handles the 3-tier error contract,
+                # writes the IntegrationSyncLog).
+                from app.services.integration_sync_service import run_sync
+
+                result = await run_sync(db, integration, provider, source="background")
+                if result.status == "skipped":
+                    logger.debug(
+                        "Sync skipped (lock held) for %s (user %s)",
+                        integration.provider,
+                        integration.user_id,
+                    )
+                elif result.status == "failed":
+                    logger.warning(
+                        "Sync failed for %s (user %s): %s",
+                        integration.provider,
+                        integration.user_id,
+                        result.error,
+                    )
+                else:
+                    logger.info(
+                        "Sync %s for %s: pulled=%d fhir=%d telemetry=%d dropped=%d",
+                        result.status,
+                        integration.provider,
+                        result.pulled,
+                        result.fhir_persisted,
+                        result.telemetry_persisted,
+                        result.dropped_invalid,
+                    )
 
     except Exception as e:
         logger.error(f"Critical error during integration sync cycle: {e}")
     finally:
         await db.close()
+
+
 @celery_app.task(bind=True)
 @async_task
 async def migrate_biomarker_data(
@@ -380,14 +405,18 @@ async def migrate_biomarker_data(
     biomarker_id = UUID(biomarker_id_str)
     tenant_id = UUID(tenant_id_str)
 
-    logger.info(f"Starting async migration for biomarker {biomarker_id} to_telemetry={to_telemetry}")
+    logger.info(
+        f"Starting async migration for biomarker {biomarker_id} to_telemetry={to_telemetry}"
+    )
 
     db, engine = get_async_session()
     try:
         async with db:
             # 1. Fetch Biomarker
             res = await db.execute(
-                select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+                select(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id == biomarker_id
+                )
             )
             db_biomarker = res.scalar_one_or_none()
             if not db_biomarker:
@@ -410,10 +439,14 @@ async def migrate_biomarker_data(
             if to_telemetry:
                 # Migrate FHIR -> Telemetry
                 count_res = await db.execute(
-                    select(func.count(Observation.id)).where(Observation.biomarker_id == biomarker_id)
+                    select(func.count(Observation.id)).where(
+                        Observation.biomarker_id == biomarker_id
+                    )
                 )
                 total_records = count_res.scalar_one() or 0
-                logger.info(f"Total FHIR records to migrate to telemetry: {total_records}")
+                logger.info(
+                    f"Total FHIR records to migrate to telemetry: {total_records}"
+                )
 
                 if total_records > 0:
                     processed = 0
@@ -424,7 +457,7 @@ async def migrate_biomarker_data(
                             .limit(batch_size)
                         )
                         observations = obs_res.scalars().all()
-                        
+
                         if not observations:
                             break
 
@@ -432,33 +465,57 @@ async def migrate_biomarker_data(
                         obs_ids_to_delete = []
 
                         for obs in observations:
-                            val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if getattr(obs, "value_quantity", None) else None)
-                            
-                            hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                            steps = val if slug == "41950-7" or "steps" in slug else None
+                            val = (
+                                getattr(obs, "normalized_value", None)
+                                or getattr(obs, "raw_value", None)
+                                or (
+                                    obs.value_quantity.get("value")
+                                    if getattr(obs, "value_quantity", None)
+                                    else None
+                                )
+                            )
+
+                            hr = (
+                                val
+                                if slug == "8867-4" or "heart-rate" in slug
+                                else None
+                            )
+                            steps = (
+                                val if slug == "41950-7" or "steps" in slug else None
+                            )
                             cal = val if "calories" in slug else None
-                            
+
                             data_payload = {}
                             if not hr and not steps and not cal:
                                 data_payload[slug] = val
-                                data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if getattr(obs, "value_quantity", None) else ""
+                                data_payload[f"{slug}_unit"] = (
+                                    obs.value_quantity.get("unit", "")
+                                    if getattr(obs, "value_quantity", None)
+                                    else ""
+                                )
 
-                            telemetry_records.append(TelemetryDataModel(
-                                tenant_id=obs.tenant_id,
-                                device_id="fhir_migration",
-                                timestamp=obs.effective_datetime,
-                                heart_rate=hr,
-                                steps=steps,
-                                calories=cal,
-                                data=data_payload if data_payload else None
-                            ))
+                            telemetry_records.append(
+                                TelemetryDataModel(
+                                    tenant_id=obs.tenant_id,
+                                    device_id="fhir_migration",
+                                    timestamp=obs.effective_datetime,
+                                    heart_rate=hr,
+                                    steps=steps,
+                                    calories=cal,
+                                    data=data_payload if data_payload else None,
+                                )
+                            )
                             obs_ids_to_delete.append(obs.id)
-                        
+
                         db.add_all(telemetry_records)
-                        await db.execute(delete(Observation).where(Observation.id.in_(obs_ids_to_delete)))
-                        
+                        await db.execute(
+                            delete(Observation).where(
+                                Observation.id.in_(obs_ids_to_delete)
+                            )
+                        )
+
                         processed += len(observations)
-                        
+
                         # Update progress
                         progress = int((processed / total_records) * 100)
                         meta = dict(db_biomarker.meta_data or {})
@@ -482,7 +539,9 @@ async def migrate_biomarker_data(
                 # can't be attributed to exactly one patient are skipped
                 # and counted in ``meta["migration_skipped_no_patient"]``
                 # so the UI/admin can see the partial-success.
-                stmt = select(TelemetryDataModel).where(TelemetryDataModel.tenant_id == tenant_id)
+                stmt = select(TelemetryDataModel).where(
+                    TelemetryDataModel.tenant_id == tenant_id
+                )
                 if slug == "8867-4" or "heart-rate" in slug:
                     stmt = stmt.where(TelemetryDataModel.heart_rate.is_not(None))
                 elif slug == "41950-7" or "steps" in slug:
@@ -493,13 +552,21 @@ async def migrate_biomarker_data(
                     stmt = stmt.where(TelemetryDataModel.data.has_key(slug))
 
                 # Unfortunately, counting JSONB keys is complex across rows, but we can count total matches
-                count_stmt = select(func.count(TelemetryDataModel.id)).where(stmt.whereclause)
+                count_stmt = select(func.count(TelemetryDataModel.id)).where(
+                    stmt.whereclause
+                )
                 count_res = await db.execute(count_stmt)
                 total_records = count_res.scalar_one() or 0
-                logger.info(f"Total Telemetry records to migrate to FHIR: {total_records}")
+                logger.info(
+                    f"Total Telemetry records to migrate to FHIR: {total_records}"
+                )
 
                 if total_records > 0:
-                    u_res = await db.execute(select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id))
+                    u_res = await db.execute(
+                        select(Unit.symbol).where(
+                            Unit.id == db_biomarker.preferred_unit_id
+                        )
+                    )
                     symbol = u_res.scalar_one_or_none() or ""
 
                     # Pre-build a device_id -> patient_id resolver. We
@@ -509,9 +576,9 @@ async def migrate_biomarker_data(
                     from app.models.user_integration import UserIntegration as _UInt
 
                     uint_res = await db.execute(
-                        select(_UInt.id, _UInt.instance_name, _UInt.provider, _UInt.user_id).where(
-                            _UInt.tenant_id == tenant_id
-                        )
+                        select(
+                            _UInt.id, _UInt.instance_name, _UInt.provider, _UInt.user_id
+                        ).where(_UInt.tenant_id == tenant_id)
                     )
                     uint_rows = uint_res.all()
                     # Map device_id (instance_name OR provider) -> user_id
@@ -576,7 +643,9 @@ async def migrate_biomarker_data(
                         processed = 0
                         skipped_no_patient = 0
                         while processed < total_records:
-                            tel_res = await db.execute(stmt.limit(batch_size).offset(processed))
+                            tel_res = await db.execute(
+                                stmt.limit(batch_size).offset(processed)
+                            )
                             telemetry_records = tel_res.scalars().all()
 
                             if not telemetry_records:
@@ -626,32 +695,45 @@ async def migrate_biomarker_data(
                                 elif val is not None:
                                     obs = Observation(
                                         tenant_id=tr.tenant_id,
-                                        subject={"reference": f"Patient/{resolved_patient_id}"},
+                                        subject={
+                                            "reference": f"Patient/{resolved_patient_id}"
+                                        },
                                         status="final",
                                         code={
-                                            "coding": [{
-                                                "system": db_biomarker.coding_system.fhir_system if db_biomarker.coding_system else "http://loinc.org",
-                                                "code": db_biomarker.code or db_biomarker.slug,
-                                                "display": db_biomarker.name
-                                            }],
-                                            "text": db_biomarker.name
+                                            "coding": [
+                                                {
+                                                    "system": db_biomarker.coding_system.fhir_system
+                                                    if db_biomarker.coding_system
+                                                    else "http://loinc.org",
+                                                    "code": db_biomarker.code
+                                                    or db_biomarker.slug,
+                                                    "display": db_biomarker.name,
+                                                }
+                                            ],
+                                            "text": db_biomarker.name,
                                         },
                                         effective_datetime=tr.timestamp,
                                         value_quantity={
-                                            "value": float(val) if val is not None else None,
-                                            "unit": symbol
+                                            "value": float(val)
+                                            if val is not None
+                                            else None,
+                                            "unit": symbol,
                                         },
-                                        raw_value=float(val) if val is not None else None,
-                                        normalized_value=float(val) if val is not None else None,
-                                        biomarker_id=db_biomarker.id
+                                        raw_value=float(val)
+                                        if val is not None
+                                        else None,
+                                        normalized_value=float(val)
+                                        if val is not None
+                                        else None,
+                                        biomarker_id=db_biomarker.id,
                                     )
                                     fhir_records.append(obs)
 
                                 is_empty = (
-                                    tr.heart_rate is None and
-                                    tr.steps is None and
-                                    tr.calories is None and
-                                    (tr.data is None or len(tr.data) == 0)
+                                    tr.heart_rate is None
+                                    and tr.steps is None
+                                    and tr.calories is None
+                                    and (tr.data is None or len(tr.data) == 0)
                                 )
                                 if is_empty:
                                     await db.delete(tr)
@@ -666,7 +748,9 @@ async def migrate_biomarker_data(
                             meta["migration_status"] = "in_progress"
                             meta["migration_progress"] = progress
                             if skipped_no_patient:
-                                meta["migration_skipped_no_patient"] = skipped_no_patient
+                                meta["migration_skipped_no_patient"] = (
+                                    skipped_no_patient
+                                )
                             db_biomarker.meta_data = meta
                             flag_modified(db_biomarker, "meta_data")
                             await db.commit()
@@ -689,15 +773,23 @@ async def migrate_biomarker_data(
             db_biomarker.meta_data = meta
             flag_modified(db_biomarker, "meta_data")
             await db.commit()
-            logger.info(f"Migration completed successfully for biomarker {biomarker_id}")
+            logger.info(
+                f"Migration completed successfully for biomarker {biomarker_id}"
+            )
 
             return {"status": "success", "biomarker_id": str(biomarker_id)}
-            
+
     except Exception as e:
-        logger.exception(f"Error during async migration for biomarker {biomarker_id}: {e}")
+        logger.exception(
+            f"Error during async migration for biomarker {biomarker_id}: {e}"
+        )
         async with db:
             # Try to mark as failed
-            res = await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id))
+            res = await db.execute(
+                select(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id == biomarker_id
+                )
+            )
             b_err = res.scalar_one_or_none()
             if b_err:
                 meta = dict(b_err.meta_data or {})
@@ -735,7 +827,9 @@ async def export_backup(self, job_id_str: str):
 
 @celery_app.task(bind=True, max_retries=0)
 @async_task
-async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: str, config_json: str = "{}"):
+async def import_backup(
+    self, job_id_str: str, archive_path: str, owner_id_str: str, config_json: str = "{}"
+):
     """Run a backup/restore import job from a ZIP or bare JSON file."""
     from uuid import UUID
     from app.services.import_service import ImportService
@@ -744,10 +838,10 @@ async def import_backup(self, job_id_str: str, archive_path: str, owner_id_str: 
 
     job_id = UUID(job_id_str)
     owner_id = UUID(owner_id_str)
-    
+
     config_dict = json.loads(config_json)
     config = FHIRImportConfig(**config_dict) if config_dict else None
-    
+
     db, engine = get_async_session()
     try:
         async with db:

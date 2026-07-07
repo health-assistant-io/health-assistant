@@ -8,6 +8,7 @@ Extracted from ``AIAssistanceService`` (Phase 6c). Each handler uses
 etc.) so the dispatcher and direct test calls (``svc._magic_fill_examination``)
 continue to work.
 """
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -23,7 +24,6 @@ from app.ai.schemas.assistance import (
     ExaminationMagicFillOutput,
     MedicationFormOutput,
 )
-from app.models.examination_category import ExaminationCategory
 from app.models.fhir.medication import Medication
 from app.models.fhir.patient import Observation
 
@@ -148,16 +148,22 @@ async def magic_fill_examination(
     """AI-driven examination form filler"""
     tenant_id = context.get("tenant_id")
 
-    # Fetch custom categories from the database
+    from app.models.concept_model import Concept
+    from app.models.enums import ConceptKind
+    from app.services.concept_service import concepts_with_kind
+
+    # Fetch examination-category concepts from the database
     cat_res = await db.execute(
-        select(ExaminationCategory).where(
+        select(Concept.slug).where(
+            concepts_with_kind(ConceptKind.EXAMINATION_CATEGORY),
             or_(
-                ExaminationCategory.tenant_id == tenant_id,
-                ExaminationCategory.tenant_id.is_(None),
-            )
+                Concept.tenant_id == tenant_id,
+                Concept.tenant_id.is_(None),
+            ),
+            Concept.deleted_at.is_(None),
         )
     )
-    existing_slugs = [c.slug for c in cat_res.scalars().all()]
+    existing_slugs = list(cat_res.scalars().all())
     if not existing_slugs:
         from app.core.constants import DOCUMENT_CATEGORIES
 

@@ -16,9 +16,8 @@ Audit items resolved by this router (Phase 5+6):
 """
 
 from typing import Any, Dict
-from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,11 +50,16 @@ router = APIRouter(prefix="/fhir/R4", tags=["fhir-r4"])
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _facade_base_url(request: Request) -> str:
     """Compute the absolute base URL of the facade from the incoming request."""
     forwarded_proto = request.headers.get("x-forwarded-proto", "").strip()
     scheme = forwarded_proto or request.url.scheme or "https"
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or "localhost"
+    )
     return f"{scheme}://{host}/api/v1/fhir/R4"
 
 
@@ -77,6 +81,7 @@ def _query_params(request: Request):
 # Metadata
 # ---------------------------------------------------------------------------
 
+
 @router.get("/metadata", response_model=None)
 async def capability_statement(request: Request) -> Dict[str, Any]:
     """FHIR R4 CapabilityStatement (no auth — spec requirement).
@@ -94,6 +99,7 @@ async def capability_statement(request: Request) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Generic search (GET /{Resource})
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{resource_type}", response_model=None)
 async def search_resources(
@@ -140,6 +146,7 @@ async def search_resources(
 # Generic read (GET /{Resource}/{id})
 # ---------------------------------------------------------------------------
 
+
 @router.get("/{resource_type}/{resource_id}", response_model=None)
 async def read_resource(
     resource_type: str,
@@ -169,12 +176,15 @@ async def read_resource(
         return not_found(resource_type, resource_id)
     if isinstance(result, dict) and result.get("_tombstone"):
         return gone(resource_type, resource_id)
-    return ok_response(result, etag=f'W/"{result.get("meta", {}).get("versionId", "1")}"')
+    return ok_response(
+        result, etag=f'W/"{result.get("meta", {}).get("versionId", "1")}"'
+    )
 
 
 # ---------------------------------------------------------------------------
 # Generic create (POST /{Resource})
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{resource_type}", response_model=None, status_code=201)
 async def create_resource(
@@ -212,12 +222,15 @@ async def create_resource(
     location = f"{_facade_base_url(request)}/{resource_type}/{rid}"
     etag = f'W/"{fhir_response.get("meta", {}).get("versionId", "1")}"'
     last_modified = fhir_response.get("meta", {}).get("lastUpdated")
-    return created_response(fhir_response, location=location, etag=etag, last_modified=last_modified)
+    return created_response(
+        fhir_response, location=location, etag=etag, last_modified=last_modified
+    )
 
 
 # ---------------------------------------------------------------------------
 # Generic update (PUT /{Resource}/{id})
 # ---------------------------------------------------------------------------
+
 
 @router.put("/{resource_type}/{resource_id}", response_model=None)
 async def update_resource(
@@ -282,6 +295,7 @@ async def update_resource(
 # ---------------------------------------------------------------------------
 # Generic delete (DELETE /{Resource}/{id})
 # ---------------------------------------------------------------------------
+
 
 @router.delete("/{resource_type}/{resource_id}", response_model=None)
 async def delete_resource(

@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -56,14 +56,17 @@ async def import_backup(
     try:
         job = await svc.create_import_job(user_id, tenant_id, file.filename)
         from app.workers.tasks import import_backup as import_backup_task
-        
+
         import json
+
         config_dict = {
             "auto_map_biomarkers": auto_map_biomarkers,
-            "use_ai_normalization": use_ai_normalization
+            "use_ai_normalization": use_ai_normalization,
         }
 
-        import_backup_task.delay(str(job.id), str(tmp_path), str(user_id), json.dumps(config_dict))
+        import_backup_task.delay(
+            str(job.id), str(tmp_path), str(user_id), json.dumps(config_dict)
+        )
         return ImportJobResponse(**job.to_dict())
     except Exception as e:
         tmp_path.unlink(missing_ok=True)
@@ -96,7 +99,7 @@ async def import_fhir(
         config = FHIRImportConfig(
             validate_profiles=validate_data,
             auto_map_biomarkers=auto_map_biomarkers,
-            use_ai_normalization=use_ai_normalization
+            use_ai_normalization=use_ai_normalization,
         )
         result = await svc.import_from_fhir(
             tmp_path, tenant_id, patient_id=patient_id, config=config
@@ -207,10 +210,10 @@ async def list_import_jobs(
 ):
     """List import jobs for the current tenant."""
     tenant_id = _parse_uuid(str(current_user.tenant_id))
-    
+
     from sqlalchemy import select
     from app.models.export_import_job import ImportJobModel
-    
+
     res = await db.execute(
         select(ImportJobModel)
         .where(ImportJobModel.tenant_id == tenant_id)
@@ -218,11 +221,11 @@ async def list_import_jobs(
         .limit(limit)
     )
     jobs = res.scalars().all()
-    
+
     return ImportJobListResponse(
-        items=[ImportJobResponse(**j.to_dict()) for j in jobs], 
-        total=len(jobs)
+        items=[ImportJobResponse(**j.to_dict()) for j in jobs], total=len(jobs)
     )
+
 
 @router.get("/jobs/{job_id}", response_model=ImportJobResponse)
 async def get_import_job(

@@ -400,7 +400,7 @@ const BiomarkerDetail: React.FC = () => {
               <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.latest_result')}</p>
               <div className="flex items-baseline space-x-1">
                 <span className="text-xl font-black text-gray-900 dark:text-dark-text">{trends.length > 0 ? formatBiomarkerValue(trends[trends.length - 1].value, precisionProfile) : '--'}</span>
-                <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
+                <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : biomarker.preferred_unit_symbol ? formatUnit(biomarker.preferred_unit_symbol) : ''}</span>
               </div>
             </div>
             <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
@@ -804,7 +804,7 @@ const BiomarkerDetail: React.FC = () => {
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.latest_result')}</p>
                 <div className="flex items-baseline space-x-2">
                   <span className="text-4xl font-black text-gray-900 dark:text-dark-text tracking-tighter">{trends.length > 0 ? formatBiomarkerValue(trends[trends.length - 1].value, precisionProfile) : '--'}</span>
-                  <span className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : ''}</span>
+                  <span className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : biomarker.preferred_unit_symbol ? formatUnit(biomarker.preferred_unit_symbol) : ''}</span>
                 </div>
               </div>
               
@@ -849,12 +849,20 @@ const BiomarkerDetail: React.FC = () => {
             </div>
             <div className="space-y-6">
               <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">Category</span>
+                <span className="text-xs font-black text-gray-700 dark:text-dark-text">{biomarker.category || 'Uncategorized'}</span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">{t('biomarkers.standard_unit')}</span>
-                <span className="text-xs font-black text-gray-700 dark:text-dark-text">{trends.length > 0 ? formatUnit(trends[0].unit) : '--'}</span>
+                <span className="text-xs font-black text-gray-700 dark:text-dark-text">
+                  {biomarker.preferred_unit_symbol
+                    ? formatUnit(biomarker.preferred_unit_symbol)
+                    : trends.length > 0 ? formatUnit(trends[0].unit) : '--'}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500 font-bold uppercase tracking-tighter">
-                  {biomarker.coding_system === 'loinc' ? 'LOINC CODE' : 'CUSTOM CODE'}
+                  {(biomarker.coding_system || 'custom').toUpperCase()}
                 </span>
                 <span className="text-[10px] font-mono font-black bg-white dark:bg-dark-surface px-2 py-1 rounded border border-gray-200 dark:border-dark-border shadow-sm">
                   {biomarker.code || biomarker.slug}

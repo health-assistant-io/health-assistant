@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict, Field, ConfigDict
-from typing import Optional, List, Any
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 from app.schemas.doctor import DoctorResponse

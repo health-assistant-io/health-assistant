@@ -12,13 +12,11 @@ from app.models.base import (
 from app.models.associations import examination_doctors
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 from typing import TYPE_CHECKING
-from uuid import uuid4
 import datetime as _dt
 from datetime import timezone
 
 if TYPE_CHECKING:
-    from app.models.doctor_model import DoctorModel
-    from app.models.examination_category import ExaminationCategory
+    pass
 
 
 class ExaminationModel(
@@ -42,7 +40,7 @@ class ExaminationModel(
     patient_notes = Column(Text, nullable=True)
     category_id = Column(
         PG_UUID(as_uuid=True),
-        ForeignKey("examination_categories.id", ondelete="SET NULL"),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -82,8 +80,7 @@ class ExaminationModel(
     )
 
     category_entity = relationship(
-        "ExaminationCategory",
-        back_populates="examinations",
+        "Concept",
         lazy="selectin",
     )
 
@@ -136,7 +133,9 @@ class ExaminationModel(
             if self.organization_id
             else None,
             "organization": self.organization.to_dict() if self.organization else None,
-            "source_integration_id": str(self.source_integration_id) if self.source_integration_id else None,
+            "source_integration_id": str(self.source_integration_id)
+            if self.source_integration_id
+            else None,
             "external_id": self.external_id,
             "auto_extract_metadata": self.auto_extract_metadata,
             "diagnoses": self.diagnoses,

@@ -23,15 +23,16 @@ from app.api.v1.endpoints.task_monitor import router as task_monitor_router
 from app.api.v1.endpoints.ai_assistance import router as ai_assistance_router
 from app.api.v1.endpoints.clinical_events import router as clinical_events_router
 from app.api.v1.endpoints.anatomy import router as anatomy_router
-from app.api.v1.endpoints.examination_categories import (
-    router as examination_categories_router,
-)
 from app.api.v1.endpoints.organizations import router as organizations_router
 from app.api.v1.endpoints.admin import router as admin_router
 from app.api.v1.endpoints.admin_tenants import router as admin_tenants_router
 from app.api.v1.endpoints.integrations import router as integrations_router
 from app.api.v1.endpoints.admin_integrations import router as admin_integrations_router
 from app.api.v1.endpoints.search import router as search_router
+from app.api.v1.endpoints.concepts import (
+    router as concepts_router,
+    edge_router as concept_edges_router,
+)
 from app.api.v1.endpoints.settings import router as settings_router
 from app.api.v1.endpoints.websockets import router as websockets_router
 
@@ -62,11 +63,16 @@ api_router.include_router(task_monitor_router)
 api_router.include_router(ai_assistance_router)
 api_router.include_router(clinical_events_router)
 api_router.include_router(anatomy_router, prefix="/anatomy", tags=["Anatomy Graph"])
-api_router.include_router(examination_categories_router)
 api_router.include_router(admin_router)
 api_router.include_router(admin_tenants_router)
-api_router.include_router(integrations_router, prefix="/integrations", tags=["Integrations"])
-api_router.include_router(admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"])
+api_router.include_router(
+    integrations_router, prefix="/integrations", tags=["Integrations"]
+)
+api_router.include_router(
+    admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"]
+)
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
+api_router.include_router(concepts_router)
+api_router.include_router(concept_edges_router)
 api_router.include_router(settings_router)
 api_router.include_router(websockets_router)

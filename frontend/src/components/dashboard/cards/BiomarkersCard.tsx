@@ -10,7 +10,7 @@ import {
 import { useBiomarkers } from '../../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
-import { DOCUMENT_CATEGORIES } from '../../../constants/categories';
+import { getDocumentCategories } from '../../../services/conceptService';
 import { getFinalStatus, isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
 import { filterBiomarkers } from '../../../utils/searchUtils';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
@@ -271,17 +271,17 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
           <div className="space-y-2">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{t('dashboard.config.layout_display')}</p>
             <div className="flex flex-wrap gap-2">
-              {DOCUMENT_CATEGORIES.map(cat => (
+              {getDocumentCategories().map(cat => (
                 <button
-                  key={cat.id}
-                  onClick={() => toggleCategory(cat.id)}
+                  key={cat.slug}
+                  onClick={() => toggleCategory(cat.slug)}
                   className={`px-2 py-1 text-[10px] font-bold rounded-lg border transition-all ${
-                    selectedCategories.includes(cat.id)
+                    selectedCategories.includes(cat.slug)
                       ? 'bg-blue-600 text-white border-blue-700'
                       : 'bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-text border-gray-200 dark:border-dark-border hover:bg-gray-50'
                   }`}
                 >
-                  {cat.label}
+                  {cat.name}
                 </button>
               ))}
             </div>

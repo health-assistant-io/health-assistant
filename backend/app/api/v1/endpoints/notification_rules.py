@@ -4,6 +4,7 @@ Tenant-scoped. Patient-scoped routes additionally call ``check_patient_access``
 so a ``USER``-role caller can only create rules for patients assigned to
 them; ``ADMIN``/``MANAGER`` see the tenant-wide view.
 """
+
 from __future__ import annotations
 
 import logging

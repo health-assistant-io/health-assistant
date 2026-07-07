@@ -13,6 +13,7 @@ drop columns in P1).
 
 Spec: https://hl7.org/fhir/R4/communication.html
 """
+
 from sqlalchemy import Column, String, ForeignKey, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 
@@ -61,7 +62,9 @@ class CommunicationModel(
     )
 
     topic = Column(JSONB, nullable=True)  # CodeableConcept
-    payload = Column(JSONB, nullable=True)  # [{contentString | contentAttachment | contentReference}]
+    payload = Column(
+        JSONB, nullable=True
+    )  # [{contentString | contentAttachment | contentReference}]
 
     sent = Column(DateTime(timezone=True), nullable=True)
     received = Column(DateTime(timezone=True), nullable=True)
@@ -81,7 +84,9 @@ class CommunicationModel(
             "status": self.status,
             "category": self.category,
             "priority": self.priority,
-            "subject_patient_id": str(self.subject_patient_id) if self.subject_patient_id else None,
+            "subject_patient_id": str(self.subject_patient_id)
+            if self.subject_patient_id
+            else None,
             "encounter_id": str(self.encounter_id) if self.encounter_id else None,
             "topic": self.topic,
             "payload": self.payload,

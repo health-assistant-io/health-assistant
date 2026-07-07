@@ -12,6 +12,7 @@ endpoints call after a successful write. The helper:
 - Uses ``tenant_id = None`` for system-level actions so global catalog writes
   still get a trail.
 """
+
 import logging
 from typing import Any, Dict, Optional
 from uuid import UUID

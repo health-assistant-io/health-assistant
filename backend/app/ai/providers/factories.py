@@ -15,6 +15,7 @@ to end before the SDK wiring lands. To finish a provider:
 2. Implement its builder here.
 3. (No registry change needed — it already points here.)
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,9 +81,7 @@ def build_azure_openai(
     temperature: float,
     max_tokens: int,
 ) -> BaseChatModel:
-    raise NotImplementedError(
-        "Azure OpenAI provider is reserved but not wired."
-    )
+    raise NotImplementedError("Azure OpenAI provider is reserved but not wired.")
 
 
 def build_bedrock(
@@ -93,6 +92,4 @@ def build_bedrock(
     temperature: float,
     max_tokens: int,
 ) -> BaseChatModel:
-    raise NotImplementedError(
-        "Bedrock provider is reserved but not wired."
-    )
+    raise NotImplementedError("Bedrock provider is reserved but not wired.")

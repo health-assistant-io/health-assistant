@@ -33,18 +33,19 @@ async def list_catalog(
 @router.get("/active", response_model=List[AllergyIntoleranceResponse])
 async def get_all_active_allergies(
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all active allergy records for the entire tenant (or just for the user's patients if standard role)"""
     if current_user.role == Role.USER.value:
         from app.models.fhir.allergy import AllergyIntolerance, AllergyClinicalStatus
+
         query = (
             select(AllergyIntolerance)
             .join(Patient)
             .where(
                 Patient.user_id == current_user.user_id,
                 AllergyIntolerance.tenant_id == current_user.tenant_id,
-                AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE
+                AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
             )
         )
         result = await db.execute(query)
@@ -68,9 +69,9 @@ async def create_catalog_entry(
 
 @router.get("/patient/{patient_id}", response_model=List[AllergyIntoleranceResponse])
 async def get_patient_allergies(
-    patient_id: str, 
+    patient_id: str,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all allergy records for a specific patient"""
     await check_patient_access(patient_id, current_user, db)
@@ -84,7 +85,7 @@ async def add_patient_allergy(
     patient_id: str,
     data: AllergyIntoleranceCreate,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Add an allergy record to a patient's profile"""
     await check_patient_access(patient_id, current_user, db)
@@ -98,7 +99,7 @@ async def update_allergy(
     allergy_id: str,
     data: AllergyIntoleranceUpdate,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update an existing allergy record"""
     await check_allergy_access(allergy_id, current_user, db)
@@ -112,9 +113,9 @@ async def update_allergy(
 
 @router.delete("/{allergy_id}")
 async def delete_allergy(
-    allergy_id: str, 
+    allergy_id: str,
     current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Permanently delete an allergy record"""
     await check_allergy_access(allergy_id, current_user, db)

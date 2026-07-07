@@ -16,7 +16,6 @@ from app.ai.schemas.nlp import ExaminationMetadataExtract
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.doctor_model import DoctorModel
 from app.models.document_model import DocumentModel
-from app.models.examination_category import ExaminationCategory
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.medication import MedicationCatalog
 from app.workers.task_logger import TaskLogger, TaskProgressTracker
@@ -31,37 +30,49 @@ class MedicalProcessingService:
         self.db = db
         self.ai_provider_service = AIProviderService(db)
 
-    async def resolve_category(
-        self, category_input: str, tenant_id: UUID
-    ) -> ExaminationCategory:
-        """Resolve a category slug to an ExaminationCategory entity, creating it if needed"""
+    async def resolve_category(self, category_input: str, tenant_id: UUID):
+        """Resolve a category slug/name to a Concept (kind=examination_category),
+        creating it if needed. Replaces the legacy ExaminationCategory upsert."""
         import re
 
+        from app.models.concept_model import Concept, ConceptKindTag
+        from app.models.enums import ConceptKind, ConceptStatus
+        from app.services.concept_service import concepts_with_kind
+
         # Normalize input to slug format (kebab-case)
-        # This handles cases where input might be 'Blood Laboratory' or 'blood-laboratory'
         target_slug = re.sub(r"[^a-z0-9]+", "-", category_input.lower()).strip("-")
 
-        # 1. Try to find existing category by slug
+        # 1. Try to find existing concept by slug + kind (tenant-scoped or global)
         cat_res = await self.db.execute(
-            select(ExaminationCategory).where(ExaminationCategory.slug == target_slug)
+            select(Concept).where(
+                Concept.slug == target_slug,
+                concepts_with_kind(ConceptKind.EXAMINATION_CATEGORY),
+                or_(
+                    Concept.tenant_id == tenant_id,
+                    Concept.tenant_id.is_(None),
+                ),
+                Concept.deleted_at.is_(None),
+            )
         )
         category_entity = cat_res.scalars().first()
 
         if not category_entity:
-            # 2. Create new category
-            # If the original input had spaces or capitals, it's likely a name
-            # Otherwise, it's a slug, so we prettify it for the display name
+            # 2. Create new tenant-scoped concept
             if " " in category_input or any(c.isupper() for c in category_input):
                 name = category_input
             else:
                 name = target_slug.replace("-", " ").title()
 
-            category_entity = ExaminationCategory(
-                name=name,
+            category_entity = Concept(
                 slug=target_slug,
+                name=name,
+                primary_kind=ConceptKind.EXAMINATION_CATEGORY,
                 tenant_id=tenant_id,
                 color="#6b7280",  # Default gray
-                icon="more-horizontal",  # Default icon
+                status=ConceptStatus.ACTIVE,
+            )
+            category_entity.kind_tags.append(
+                ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY)
             )
             self.db.add(category_entity)
             await self.db.flush()
@@ -129,16 +140,22 @@ class MedicalProcessingService:
         self, text: str, tenant_id: UUID, user_id: Optional[UUID] = None
     ) -> Optional[ExaminationMetadataExtract]:
         """Extract high-level examination details from aggregated text"""
-        # Fetch existing categories to help the LLM match
+        from app.models.concept_model import Concept
+        from app.models.enums import ConceptKind
+        from app.services.concept_service import concepts_with_kind
+
+        # Fetch existing examination-category concepts to help the LLM match
         cat_res = await self.db.execute(
-            select(ExaminationCategory).where(
+            select(Concept.slug).where(
+                concepts_with_kind(ConceptKind.EXAMINATION_CATEGORY),
                 or_(
-                    ExaminationCategory.tenant_id == tenant_id,
-                    ExaminationCategory.tenant_id.is_(None),
-                )
+                    Concept.tenant_id == tenant_id,
+                    Concept.tenant_id.is_(None),
+                ),
+                Concept.deleted_at.is_(None),
             )
         )
-        existing_slugs = [c.slug for c in cat_res.scalars().all()]
+        existing_slugs = list(cat_res.scalars().all())
 
         nlp_extractor = await self.ai_provider_service.get_nlp_extractor(
             tenant_id, user_id

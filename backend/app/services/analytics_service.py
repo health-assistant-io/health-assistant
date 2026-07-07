@@ -33,6 +33,7 @@ _ALLOWED_TELEMETRY_BUCKETS = frozenset(
     }
 )
 
+
 def normalize_unit(unit: str) -> str:
     """Normalize common clinical unit variations to a canonical form for better comparison."""
     if not unit:
@@ -256,16 +257,14 @@ async def get_dashboard_data(
     imaging_list = []
 
     # 1. Look for Documents categorized as imaging/radiology or having image extensions
-    from app.models.examination_category import ExaminationCategory
+    from app.models.concept_model import Concept
 
     doc_imaging_query = (
-        select(DocumentModel, ExaminationCategory.name.label("exam_category"))
+        select(DocumentModel, Concept.name.label("exam_category"))
         .outerjoin(
             ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
         )
-        .outerjoin(
-            ExaminationCategory, ExaminationModel.category_id == ExaminationCategory.id
-        )
+        .outerjoin(Concept, ExaminationModel.category_id == Concept.id)
         .where(DocumentModel.tenant_id == tenant_id)
     )
 
@@ -273,12 +272,6 @@ async def get_dashboard_data(
         doc_imaging_query = doc_imaging_query.where(
             DocumentModel.patient_id == patient_id
         )
-
-    from app.models.biomarker_model import (
-        BiomarkerDefinition,
-        BiomarkerGroup,
-        BiomarkerGroupMember,
-    )
 
     doc_imaging_query = doc_imaging_query.where(
         (DocumentModel.entities["document_category"].as_string().ilike("%imaging%"))
@@ -356,6 +349,8 @@ async def get_dashboard_data(
     imaging_list = imaging_list[:6]
 
     # Latest Laboratory Results
+    from app.models.biomarker_model import BiomarkerDefinition
+
     labs_query = (
         select(Observation, BiomarkerDefinition.info.label("biomarker_info"))
         .outerjoin(
@@ -461,8 +456,6 @@ async def get_biomarker_trends(
 
     from app.models.biomarker_model import (
         BiomarkerDefinition,
-        BiomarkerGroup,
-        BiomarkerGroupMember,
         Unit,
     )
 
@@ -489,22 +482,24 @@ async def get_biomarker_trends(
 
         expanded_terms = list(text_codes)
         matched_def_ids = []
-        
+
         def_filters = []
         if text_codes:
-            def_filters.append(or_(
-                *[BiomarkerDefinition.slug.ilike(f"%{c}%") for c in text_codes],
-                *[BiomarkerDefinition.name.ilike(f"%{c}%") for c in text_codes],
-                *[BiomarkerDefinition.code.ilike(f"%{c}%") for c in text_codes],
-            ))
+            def_filters.append(
+                or_(
+                    *[BiomarkerDefinition.slug.ilike(f"%{c}%") for c in text_codes],
+                    *[BiomarkerDefinition.name.ilike(f"%{c}%") for c in text_codes],
+                    *[BiomarkerDefinition.code.ilike(f"%{c}%") for c in text_codes],
+                )
+            )
         if uuid_codes:
-            def_filters.append(BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes]))
-            
+            def_filters.append(
+                BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes])
+            )
+
         if def_filters:
             def_filter = or_(*def_filters)
-            def_res = await db.execute(
-                select(BiomarkerDefinition).where(def_filter)
-            )
+            def_res = await db.execute(select(BiomarkerDefinition).where(def_filter))
             for b in def_res.scalars().all():
                 matched_def_ids.append(b.id)
                 if b.name:
@@ -514,7 +509,9 @@ async def get_biomarker_trends(
 
         # Deduplicate while preserving order
         seen = set()
-        expanded_terms = [t for t in expanded_terms if not (t.lower() in seen or seen.add(t.lower()))]
+        expanded_terms = [
+            t for t in expanded_terms if not (t.lower() in seen or seen.add(t.lower()))
+        ]
 
         # Join with BiomarkerDefinition to filter by slug (mapped observations)
         query = query.outerjoin(
@@ -569,25 +566,39 @@ async def get_biomarker_trends(
                 if alias.lower() not in bio_name_map:
                     bio_name_map[alias.lower()] = b
 
-    # Fetch all groups and their members
-    groups_query = select(BiomarkerGroup)
-    groups_res = await db.execute(groups_query)
-    all_groups = groups_res.scalars().all()
+    # Fetch clinical groups via concept_edges (MEMBER_OF) — replaces the old
+    # BiomarkerGroup/BiomarkerGroupMember tables. A biomarker may belong to one
+    # or more panel concepts; we group by the destination concept's name.
+    from app.models.concept_model import Concept, ConceptEdge
+    from app.models.enums import (
+        EdgeEndpointType,
+        ConceptRelationType,
+        EdgeApprovalStatus,
+    )
 
-    group_members_query = select(BiomarkerGroupMember)
-    group_members_res = await db.execute(group_members_query)
-    all_members = group_members_res.scalars().all()
+    edges_res = await db.execute(
+        select(ConceptEdge).where(
+            ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+            ConceptEdge.relation == ConceptRelationType.MEMBER_OF,
+            ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+        )
+    )
+    all_edges = edges_res.scalars().all()
+    panel_ids = {e.dst_id for e in all_edges}
 
-    # Map biomarker_id to list of group names
+    panel_name_map: dict = {}
+    if panel_ids:
+        panel_res = await db.execute(
+            select(Concept.id, Concept.name).where(Concept.id.in_(panel_ids))
+        )
+        panel_name_map = {pid: name for pid, name in panel_res.all()}
+
+    # Map biomarker_id to list of group (panel) names
     bio_to_groups = {}
-    group_id_to_name = {g.id: g.name for g in all_groups}
-    for member in all_members:
-        b_id = member.biomarker_id
-        g_name = group_id_to_name.get(member.group_id)
+    for edge in all_edges:
+        g_name = panel_name_map.get(edge.dst_id)
         if g_name:
-            if b_id not in bio_to_groups:
-                bio_to_groups[b_id] = []
-            bio_to_groups[b_id].append(g_name)
+            bio_to_groups.setdefault(edge.src_id, []).append(g_name)
 
     # Optimize queries by fetching everything we need for exam info in one go
     # Only fetch doc_ids we actually care about
@@ -595,26 +606,27 @@ async def get_biomarker_trends(
     exam_info_map = {}
 
     if doc_ids:
-        from app.models.examination_category import ExaminationCategory
+        from app.models.concept_model import Concept as _Concept
 
         # Do it in chunks if there are too many documents
         chunk_size = 500
         for i in range(0, len(doc_ids), chunk_size):
-            chunk = doc_ids[i:i + chunk_size]
+            chunk = doc_ids[i : i + chunk_size]
             doc_query = await db.execute(
                 select(
                     DocumentModel.id,
                     ExaminationModel.id.label("exam_id"),
                     ExaminationModel.examination_date,
-                    ExaminationCategory.name.label("exam_category"),
+                    _Concept.name.label("exam_category"),
                     DocumentModel.entities,
                 )
                 .outerjoin(
-                    ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
+                    ExaminationModel,
+                    DocumentModel.examination_id == ExaminationModel.id,
                 )
                 .outerjoin(
-                    ExaminationCategory,
-                    ExaminationModel.category_id == ExaminationCategory.id,
+                    _Concept,
+                    ExaminationModel.category_id == _Concept.id,
                 )
                 .where(cast(DocumentModel.id, String).in_(chunk))
             )
@@ -776,7 +788,10 @@ async def get_biomarker_trends(
                 exam_name = info["exam_name"]
                 if exam_date:
                     from datetime import timezone
-                    obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=timezone.utc)
+
+                    obs_date = datetime.combine(
+                        exam_date, datetime.min.time(), tzinfo=timezone.utc
+                    )
             elif exam_id:
                 # If we have direct exam_id, we might still want the name from the map if it's there
                 # Or we could fetch it, but for now we try to find it in the map
@@ -797,7 +812,11 @@ async def get_biomarker_trends(
             elif obs.document_id:
                 source_type = "document"
                 source_name = "Uploaded Document"
-            elif obs.performer and isinstance(obs.performer, list) and len(obs.performer) > 0:
+            elif (
+                obs.performer
+                and isinstance(obs.performer, list)
+                and len(obs.performer) > 0
+            ):
                 p = obs.performer[0]
                 if p.get("type") == "Integration":
                     source_type = "integration"
@@ -806,7 +825,7 @@ async def get_biomarker_trends(
                     if ref.startswith("Integration/"):
                         source_id = ref.split("/")[1]
                     else:
-                        source_id = source_name # Fallback to domain if no UUID stored
+                        source_id = source_name  # Fallback to domain if no UUID stored
 
             trends[key].append(
                 {
@@ -841,7 +860,7 @@ async def get_biomarker_trends(
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    
+
     PERIOD_MAPPING = {
         "last-1-hour": {"delta": timedelta(hours=1), "bucket": "1 minute"},
         "last-6-hours": {"delta": timedelta(hours=6), "bucket": "5 minutes"},
@@ -854,12 +873,12 @@ async def get_biomarker_trends(
         "last-6-months": {"delta": timedelta(days=180), "bucket": "1 day"},
         "all-time": {"delta": timedelta(days=3650), "bucket": "1 month"},
     }
-    
+
     config = PERIOD_MAPPING.get(period, PERIOD_MAPPING["last-6-months"])
-    
+
     effective_start_date = start_date if start_date else (now - config["delta"])
     effective_end_date = end_date if end_date else now
-    
+
     bucket = aggregation if aggregation else config["bucket"]
     if start_date and end_date and not aggregation:
         # Auto-calculate a sensible bucket if custom dates are provided without one
@@ -885,6 +904,7 @@ async def get_biomarker_trends(
     if biomarker_codes:
         codes = [c.strip() for c in biomarker_codes.split(",")]
         import uuid
+
         uuid_codes = []
         text_codes = []
         for c in codes:
@@ -897,11 +917,17 @@ async def get_biomarker_trends(
         if uuid_codes:
             # Resolve UUIDs to slugs for telemetry querying
             def_res = await db.execute(
-                select(BiomarkerDefinition.slug).where(BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes]))
+                select(BiomarkerDefinition.slug).where(
+                    BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes])
+                )
             )
             text_codes.extend([s for s in def_res.scalars().all() if s])
 
-        telemetry_to_query = [s for s in telemetry_slugs if any(c.lower() in s.lower() for c in text_codes)]
+        telemetry_to_query = [
+            s
+            for s in telemetry_slugs
+            if any(c.lower() in s.lower() for c in text_codes)
+        ]
     else:
         telemetry_to_query = telemetry_slugs
 
@@ -967,62 +993,77 @@ async def get_biomarker_trends(
             GROUP BY bucket, device_id
             ORDER BY bucket
         """
-        
+
         try:
-            res = await db.execute(text(sql), {
-                "tenant_id": tenant_id, 
-                "start_date": effective_start_date, 
-                "end_date": effective_end_date
-            })
+            res = await db.execute(
+                text(sql),
+                {
+                    "tenant_id": tenant_id,
+                    "start_date": effective_start_date,
+                    "end_date": effective_end_date,
+                },
+            )
             rows = res.all()
-            
+
             if rows:
                 if slug not in trends:
                     trends[slug] = []
-                    
+
                 b_def = telemetry_defs[slug]
                 technical_category = b_def.category if b_def else "other"
-                
+
                 clinical_groups = bio_to_groups.get(b_def.id) if b_def else None
                 if not clinical_groups:
                     if b_def and b_def.category:
-                        clinical_groups = [b_def.category.replace("_", " ").replace("-", " ").title()]
+                        clinical_groups = [
+                            b_def.category.replace("_", " ").replace("-", " ").title()
+                        ]
                     else:
                         clinical_groups = ["Telemetry"]
-                
+
                 for row in rows:
                     bucket_date = row.bucket
                     device_id = row.device_id
                     avg_val = row.avg_val
                     max_val = row.max_val
                     min_val = row.min_val
-                    
+
                     if avg_val is None:
-                        continue # Gapfill returned null
-                        
-                    trends[slug].append({
-                        "date": bucket_date.isoformat() if bucket_date else "",
-                        "value": round(avg_val, 2),
-                        "max_value": round(max_val, 2),
-                        "min_value": round(min_val, 2),
-                        "unit": getattr(b_def, "preferred_unit_symbol", ""),
-                        "name": b_def.name if b_def else slug,
-                        "status": "Normal",
-                        "biomarker_id": str(b_def.id) if b_def else None,
-                        "reference_range_min": b_def.reference_range_min if b_def else None,
-                        "reference_range_max": b_def.reference_range_max if b_def else None,
-                        "reference_range_text": f"{b_def.reference_range_min} - {b_def.reference_range_max}" if b_def and b_def.reference_range_min else "--",
-                        "source_type": "telemetry",
-                        "source_name": device_id or "IoT Device",
-                        "source_id": None,
-                        "source_category": "telemetry",
-                        "technical_category": technical_category,
-                        "clinical_groups": clinical_groups,
-                        "examination_id": None,
-                        "examination_name": None,
-                    })
+                        continue  # Gapfill returned null
+
+                    trends[slug].append(
+                        {
+                            "date": bucket_date.isoformat() if bucket_date else "",
+                            "value": round(avg_val, 2),
+                            "max_value": round(max_val, 2),
+                            "min_value": round(min_val, 2),
+                            "unit": getattr(b_def, "preferred_unit_symbol", ""),
+                            "name": b_def.name if b_def else slug,
+                            "status": "Normal",
+                            "biomarker_id": str(b_def.id) if b_def else None,
+                            "reference_range_min": b_def.reference_range_min
+                            if b_def
+                            else None,
+                            "reference_range_max": b_def.reference_range_max
+                            if b_def
+                            else None,
+                            "reference_range_text": f"{b_def.reference_range_min} - {b_def.reference_range_max}"
+                            if b_def and b_def.reference_range_min
+                            else "--",
+                            "source_type": "telemetry",
+                            "source_name": device_id or "IoT Device",
+                            "source_id": None,
+                            "source_category": "telemetry",
+                            "technical_category": technical_category,
+                            "clinical_groups": clinical_groups,
+                            "examination_id": None,
+                            "examination_name": None,
+                        }
+                    )
         except Exception as e:
-            logger.error(f"Failed to query telemetry data for '{slug}': {e}", exc_info=True)
+            logger.error(
+                f"Failed to query telemetry data for '{slug}': {e}", exc_info=True
+            )
             # If timescale is not perfectly configured or missing data, skip
             pass
 
@@ -1283,7 +1324,10 @@ async def get_category_analytics(
                         exam_date = exams_map[doc_obj.examination_id]
                         if exam_date:
                             from datetime import timezone
-                            obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=timezone.utc)
+
+                            obs_date = datetime.combine(
+                                exam_date, datetime.min.time(), tzinfo=timezone.utc
+                            )
 
                 trends[key].append(
                     {

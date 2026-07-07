@@ -10,7 +10,13 @@ from app.models.base import (
     SoftDeleteMixin,
 )
 from app.models.enums import MedicationIntent, MedicationStatus
-from app.services.fhir_helpers import _enum_value, _normalize_timing, build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir_helpers import (
+    _enum_value,
+    _normalize_timing,
+    build_fhir_resource,
+    build_meta,
+    fhir_isoformat,
+)
 
 
 class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
@@ -71,7 +77,13 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
 
 
 class Medication(
-    Base, UUIDMixin, TenantMixin, TimestampMixin, AuditMixin, VersionedMixin, SoftDeleteMixin
+    Base,
+    UUIDMixin,
+    TenantMixin,
+    TimestampMixin,
+    AuditMixin,
+    VersionedMixin,
+    SoftDeleteMixin,
 ):
     __tablename__ = "fhir_medications"
 

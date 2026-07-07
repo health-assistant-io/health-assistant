@@ -1,11 +1,15 @@
 from pydantic import BaseModel, ConfigDict, Field
 from uuid import UUID
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime
-from enum import Enum
 
 
-from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus, ReactionSeverity
+from app.models.enums import (
+    AllergyCategory,
+    AllergyCriticality,
+    AllergyClinicalStatus,
+    ReactionSeverity,
+)
 
 
 # --- Allergy Catalog ---

@@ -53,22 +53,12 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
 
-   **Clinical Catalogs (Optional but Recommended):**
-   The application automatically seeds basic elements (medications, clinical event types, allergies, **anatomy graph**) on startup. The anatomy graph seed (`backend/data/seeds/anatomy_base.json`) includes 54 body structures (systems, organs, regions, joints) with SNOMED CT codes and 67 graph relationships — this powers the Anatomy Explorer UI and body-location selection in clinical events. No manual action is required for the base catalog.
+   **Clinical Catalogs (auto-seeded on every startup):**
+   The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: medications, clinical event types, allergies, **anatomy graph** (54 body structures + 62 topology edges), the unified **taxonomy** (concepts + concept_edges, including specialty→organ links), and the **default biomarker catalog** (units + standard lab-test definitions). No manual action is required for any of these — they reconcile to the JSON seed files on every start.
 
-   However, some installations may also want to import the default comprehensive clinical biomarker ontology (which includes standard lab tests like Fasting Glucose, Cholesterol, Blood Pressure, etc.).
-   
-   If you want to initialize the system with the default catalog, you can import it by running:
-   
-   For Standalone (all-in-one with proxy):
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_default_catalog.py
-   ```
-   
-   Or for Prod (bring-your-own-proxy):
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/seed_default_catalog.py
-   ```
+   The anatomy graph ships as two seed files — `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/anatomy_relations.json` (edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
+
+   The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs are still available if you ever need to **force a re-seed** outside the startup pipeline, but they are no longer required for first-time setup.
 
    **Anatomy Graph Expansion Packs (Optional):**
    The base anatomy catalog (54 nodes) ships with the application and is seeded automatically. For specialized deployments (e.g., ophthalmology clinics, neurology practices), you can import custom anatomy expansion packs:
