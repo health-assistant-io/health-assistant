@@ -20,7 +20,7 @@ interface Examination {
   examination_date: string;
   notes: string;
   category?: string;
-  category_details?: {
+  category_concept?: {
     name: string;
     icon?: any;
     color?: string;
@@ -118,8 +118,8 @@ export const ExaminationCard: React.FC<Props> = ({
                style={categoryIconOnly ? { color: styles.style?.color } : styles.style}
                title={category}
              >
-               {categoryIconOnly && examination.category_details?.icon ? (
-                 <DynamicIcon icon={examination.category_details.icon as any} className="w-4 h-4" />
+               {categoryIconOnly && examination.category_concept?.icon ? (
+                 <DynamicIcon icon={examination.category_concept.icon as any} className="w-4 h-4" />
                ) : (
                  category
                )}
@@ -196,9 +196,9 @@ export const ExaminationCard: React.FC<Props> = ({
                 style={categoryIconOnly ? { color: styles.style?.color } : styles.style}
                 title={category}
               >
-                  {examination.category_details?.icon && (
+                  {examination.category_concept?.icon && (
                     <DynamicIcon 
-                      icon={examination.category_details.icon as any} 
+                      icon={examination.category_concept.icon as any} 
                       className={categoryIconOnly ? "w-5 h-5" : "w-2.5 h-2.5"} 
                     />
                   )}

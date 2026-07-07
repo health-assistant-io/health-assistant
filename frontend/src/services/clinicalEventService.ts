@@ -18,8 +18,8 @@ export interface ClinicalEventType {
   icon?: { type: string; value: string };
   color?: string;
   metadata_schema?: Record<string, any>;
-  category_id?: string;
-  category?: ClinicalEventCategory;
+  category_concept_id?: string;
+  category_concept?: ClinicalEventCategory;
 }
 
 export enum ClinicalEventStatus {

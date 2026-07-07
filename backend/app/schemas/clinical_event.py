@@ -6,6 +6,7 @@ from app.models.enums import ClinicalEventStatus, CodingSystem
 
 
 from app.schemas.biomarker import BiomarkerResponse
+from app.schemas.concept import ConceptResponse
 
 
 class EventObservationLinkBase(BaseModel):
@@ -28,7 +29,7 @@ class ClinicalEventTypeBase(BaseModel):
     icon: Optional[Dict[str, Any]] = None
     color: Optional[str] = None
     metadata_schema: Optional[Dict[str, Any]] = None
-    category_id: Optional[UUID] = None
+    category_concept_id: Optional[UUID] = None
 
 
 class ClinicalEventTypeCreate(ClinicalEventTypeBase):
@@ -38,7 +39,7 @@ class ClinicalEventTypeCreate(ClinicalEventTypeBase):
 class ClinicalEventTypeResponse(ClinicalEventTypeBase):
     id: UUID
     tenant_id: Optional[UUID] = None
-    category: Optional[Dict[str, Any]] = None
+    category_concept: Optional[ConceptResponse] = None
     correlated_biomarkers: List[BiomarkerResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

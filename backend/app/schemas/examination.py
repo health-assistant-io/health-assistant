@@ -7,6 +7,7 @@ from datetime import date, datetime
 from app.schemas.doctor import DoctorResponse
 
 
+from app.schemas.concept import ConceptResponse
 from app.schemas.medication import MedicationRecordResponse
 from app.schemas.observation import ObservationResponse
 from app.schemas.organization import Organization
@@ -27,8 +28,8 @@ class ExaminationBase(BaseModel):
     category: Optional[str] = Field(
         None, description="Category name for resolution or suggestion"
     )
-    category_id: Optional[UUID] = Field(
-        None, description="Direct ID for the managed category"
+    category_concept_id: Optional[UUID] = Field(
+        None, description="Direct ID for the managed category concept"
     )
     organization_id: Optional[UUID] = Field(
         None, description="Direct ID for the linked facility"
@@ -60,7 +61,7 @@ class ExaminationUpdate(BaseModel):
     notes: Optional[str] = None
     patient_notes: Optional[str] = None
     category: Optional[str] = None
-    category_id: Optional[UUID] = None
+    category_concept_id: Optional[UUID] = None
     organization_id: Optional[UUID] = None
     source_integration_id: Optional[UUID] = None
     external_id: Optional[str] = None
@@ -85,7 +86,7 @@ class ExaminationSummaryResponse(BaseModel):
     error_message: Optional[str] = None
     diagnoses: Optional[List[str]] = Field(default_factory=list)
     impressions: Optional[str] = None
-    category_details: Optional[Dict[str, Any]] = None
+    category_concept: Optional[ConceptResponse] = None
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []
@@ -99,7 +100,7 @@ class ExaminationSummaryResponse(BaseModel):
 
 class ExaminationResponse(ExaminationBase):
     id: UUID
-    category_details: Optional[Dict[str, Any]] = None
+    category_concept: Optional[ConceptResponse] = None
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []

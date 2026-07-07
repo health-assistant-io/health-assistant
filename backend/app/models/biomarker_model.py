@@ -67,7 +67,11 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
 
     # Relationships
     preferred_unit = relationship("Unit", lazy="selectin")
-    class_concept = relationship("Concept", lazy="selectin")
+    class_concept = relationship(
+        "Concept",
+        foreign_keys="[BiomarkerDefinition.class_concept_id]",
+        lazy="selectin",
+    )
 
     @property
     def category(self) -> str | None:

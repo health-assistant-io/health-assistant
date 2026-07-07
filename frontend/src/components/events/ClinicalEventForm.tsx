@@ -179,7 +179,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
             const typeId = resolveInitialTypeId(typesData);
             setSelectedTypeId(typeId);
             const type = typesData.find(ty => ty.id === typeId);
-            if (type && type.category_id) setActiveCategoryId(type.category_id);
+            if (type && type.category_concept_id) setActiveCategoryId(type.category_concept_id);
 
           } else if (prefill) {
             const base = buildInitialFormData();
@@ -201,7 +201,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
             const typeId = resolveInitialTypeId(typesData);
             setSelectedTypeId(typeId);
             const type = typesData.find(ty => ty.id === typeId);
-            if (type && type.category_id) setActiveCategoryId(type.category_id);
+            if (type && type.category_concept_id) setActiveCategoryId(type.category_concept_id);
           } else {
             setSelectedTypeId('');
             setActiveCategoryId('All');
@@ -220,7 +220,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
 
     const filteredTypes = useMemo(() => {
       if (activeCategoryId === 'All') return types;
-      return types.filter(t => t.category_id === activeCategoryId);
+      return types.filter(t => t.category_concept_id === activeCategoryId);
     }, [types, activeCategoryId]);
 
     const handleSubmit = async (e?: React.FormEvent) => {
@@ -343,11 +343,11 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   <span className="text-[10px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-widest">
                     {selectedType?.name || t('events.select_type')}
                   </span>
-                  {selectedType?.category && (
+                  {selectedType?.category_concept && (
                     <>
                       <span className="w-1 h-1 rounded-full bg-gray-300" />
                       <span className="text-[10px] text-blue-500 font-black uppercase tracking-widest">
-                        {selectedType.category.name}
+                        {selectedType.category_concept.name}
                       </span>
                     </>
                   )}

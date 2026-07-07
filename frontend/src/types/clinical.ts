@@ -40,9 +40,9 @@ export interface Examination {
   examination_date: string;
   notes?: string;
   patient_notes?: string;
-  category_id?: string;
+  category_concept_id?: string;
   category?: string;
-  category_details?: any;
+  category_concept?: any;
   organization_id?: string;
   organization?: Organization;
   doctors?: Doctor[];

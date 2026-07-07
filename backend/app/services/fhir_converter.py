@@ -464,7 +464,7 @@ def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     - status → ignored (ExaminationModel has no status column for visit state)
     - subject → patient_id
     - period.start → examination_date (date only)
-    - class.code → ignored (no column; category_entity drives app categorization)
+    - class.code → ignored (no column; category_concept drives app categorization)
     - serviceProvider → organization_id
     - reasonCode[0].text → notes
     - diagnosis[].condition.display → diagnoses JSONB list

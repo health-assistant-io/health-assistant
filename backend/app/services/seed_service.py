@@ -138,7 +138,7 @@ class SeedService:
                         "metadata_schema", db_type.metadata_schema
                     )
                     if cat_concept_id:
-                        db_type.category_id = cat_concept_id
+                        db_type.category_concept_id = cat_concept_id
                     stats["updated"] += 1
                 else:
                     new_type = ClinicalEventType(
@@ -149,7 +149,7 @@ class SeedService:
                         icon=type_item.get("icon"),
                         color=type_item.get("color"),
                         metadata_schema=type_item.get("metadata_schema"),
-                        category_id=cat_concept_id,
+                        category_concept_id=cat_concept_id,
                         tenant_id=None,
                         created_at=datetime.now(timezone.utc),
                     )

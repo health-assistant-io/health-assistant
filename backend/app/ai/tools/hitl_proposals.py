@@ -207,7 +207,7 @@ def build(ctx: ToolContext) -> List[Any]:
 
         exam_result = await ctx.db.execute(
             select(ExaminationModel)
-            .options(selectinload(ExaminationModel.category_entity))
+            .options(selectinload(ExaminationModel.category_concept))
             .where(
                 and_(
                     ExaminationModel.id == exam_uuid,
@@ -229,7 +229,7 @@ def build(ctx: ToolContext) -> List[Any]:
             exam.examination_date.isoformat() if exam.examination_date else None
         )
         examination_category = (
-            exam.category_entity.name if exam.category_entity else None
+            exam.category_concept.name if exam.category_concept else None
         )
 
         # --- Resolve the biomarker by name/slug (tenant-scoped or global) ---

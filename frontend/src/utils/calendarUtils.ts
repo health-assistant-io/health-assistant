@@ -151,7 +151,7 @@ export const adaptClinicalEventToEvents = (
           date: date,
           time: occ.time,
           status: event.status,
-          category: event.type_details?.category?.name,
+          category: event.type_details?.category_concept?.name,
           originalData: event
         });
       }
@@ -203,7 +203,7 @@ export const adaptClinicalEventToEvents = (
               date: day,
               time: meta.time_of_day || '12:00',
               status: event.status,
-              category: event.type_details?.category?.name,
+              category: event.type_details?.category_concept?.name,
               originalData: event
             });
           }
@@ -221,7 +221,7 @@ export const adaptClinicalEventToEvents = (
             subtitle: `Started: ${event.type_details?.name || ''}`,
             date: date,
             status: event.status,
-            category: event.type_details?.category?.name,
+            category: event.type_details?.category_concept?.name,
             originalData: event
         });
     }

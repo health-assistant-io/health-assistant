@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy import text as sa_text
+from sqlalchemy.orm import relationship
 from app.models.base import (
     Base,
     UUIDMixin,
@@ -43,6 +44,12 @@ class DocumentModel(
         ForeignKey("fhir_patients.id", ondelete="CASCADE"),
         nullable=True,
     )
+    category_concept_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     examination_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("examinations.id", ondelete="CASCADE"),
@@ -77,6 +84,13 @@ class DocumentModel(
     )
     # updated_at is now handled by TimestampMixin
 
+    # Relationships
+    category_concept = relationship(
+        "Concept",
+        foreign_keys="[DocumentModel.category_concept_id]",
+        lazy="selectin",
+    )
+
     __table_args__ = (
         Index("idx_doc_tenant_owner", "tenant_id", "owner_id"),
         # GIN index on entities JSONB for filtered queries
@@ -103,6 +117,9 @@ class DocumentModel(
             else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "patient_id": str(self.patient_id) if self.patient_id else None,
+            "category_concept_id": str(self.category_concept_id)
+            if getattr(self, "category_concept_id", None)
+            else None,
             "examination_id": str(self.examination_id)
             if getattr(self, "examination_id", None)
             else None,

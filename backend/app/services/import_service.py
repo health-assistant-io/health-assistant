@@ -1900,14 +1900,20 @@ class ImportService:
                 pid = item.get("patient_id")
                 if pid and str(pid) in id_remap:
                     pid = id_remap[str(pid)]
-                # category_id: prefer a concept that was just imported (recorded
-                # in id_remap by _restore_concepts); else resolve by slug
-                # against the target's visible taxonomy (covers the common case
-                # of an exam pointing at a global/seeded concept we did not
-                # export). category_details.slug carries the source slug.
-                category_id = await self._resolve_concept_fk(
-                    item.get("category_id"),
-                    (item.get("category_details") or {}).get("slug"),
+                # category_concept_id: prefer a concept that was just imported
+                # (recorded in id_remap by _restore_concepts); else resolve by
+                # slug against the target's visible taxonomy (covers the common
+                # case of an exam pointing at a global/seeded concept we did
+                # not export). Accept legacy `category_id`/`category_details`
+                # keys from older backups, plus the new `category_concept_id`/
+                # `category_concept` keys.
+                category_concept_id = await self._resolve_concept_fk(
+                    item.get("category_concept_id", item.get("category_id")),
+                    (
+                        item.get("category_concept")
+                        or item.get("category_details")
+                        or {}
+                    ).get("slug"),
                     ConceptKind.EXAMINATION_CATEGORY,
                     tenant_id,
                     id_remap,
@@ -1924,7 +1930,7 @@ class ImportService:
                     examination_date=_parse_date(item.get("examination_date")),
                     notes=item.get("notes"),
                     patient_notes=item.get("patient_notes"),
-                    category_id=category_id,
+                    category_concept_id=category_concept_id,
                     organization_id=organization_id,
                     source_integration_id=_uuid(item.get("source_integration_id")),
                     external_id=item.get("external_id"),

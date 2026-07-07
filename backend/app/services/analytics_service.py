@@ -264,7 +264,7 @@ async def get_dashboard_data(
         .outerjoin(
             ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
         )
-        .outerjoin(Concept, ExaminationModel.category_id == Concept.id)
+        .outerjoin(Concept, ExaminationModel.category_concept_id == Concept.id)
         .where(DocumentModel.tenant_id == tenant_id)
     )
 
@@ -626,7 +626,7 @@ async def get_biomarker_trends(
                 )
                 .outerjoin(
                     _Concept,
-                    ExaminationModel.category_id == _Concept.id,
+                    ExaminationModel.category_concept_id == _Concept.id,
                 )
                 .where(cast(DocumentModel.id, String).in_(chunk))
             )

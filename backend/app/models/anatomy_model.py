@@ -40,7 +40,11 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
     display = Column(JSONB, nullable=True)
 
     # Relationships
-    class_concept = relationship("Concept", lazy="selectin")
+    class_concept = relationship(
+        "Concept",
+        foreign_keys="[AnatomyStructure.class_concept_id]",
+        lazy="selectin",
+    )
     outgoing_relations = relationship(
         "AnatomyRelation",
         foreign_keys="[AnatomyRelation.source_id]",

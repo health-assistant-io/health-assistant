@@ -134,7 +134,7 @@ async def _resolve_examinations(
         await db.execute(select(ExaminationModel).where(ExaminationModel.id.in_(ids)))
     ).scalars().all()
     # Resolve each examination's category concept for a richer label.
-    cat_ids = {r.category_id for r in rows if r.category_id}
+    cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
     cat_map: Dict[UUID, Concept] = {}
     if cat_ids:
         cat_rows = (
@@ -142,7 +142,7 @@ async def _resolve_examinations(
         ).scalars().all()
         cat_map = {c.id: c for c in cat_rows}
     for r in rows:
-        cat = cat_map.get(r.category_id) if r.category_id else None
+        cat = cat_map.get(r.category_concept_id) if r.category_concept_id else None
         date_str = r.examination_date.isoformat() if r.examination_date else "no date"
         label = f"{cat.name + ' ' if cat else ''}Examination ({date_str})"
         out[r.id] = _payload(

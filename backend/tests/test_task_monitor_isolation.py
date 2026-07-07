@@ -52,7 +52,7 @@ def _exam(tenant_id, exam_id=None):
     fake = MagicMock()
     fake.id = exam_id or uuid.uuid4()
     fake.tenant_id = tenant_id
-    fake.category_entity = None
+    fake.category_concept = None
     fake.extraction_status = "processing"
     fake.extraction_progress = 30
     fake.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)

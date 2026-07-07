@@ -102,7 +102,7 @@ async def get_processing_examinations(
     """
     query = (
         select(ExaminationModel)
-        .options(selectinload(ExaminationModel.category_entity))
+        .options(selectinload(ExaminationModel.category_concept))
         .where(
             ExaminationModel.extraction_status.in_(
                 ["processing", "aggregating", "analyzing_text"]
@@ -126,7 +126,7 @@ async def get_processing_examinations(
         {
             "id": str(exam.id),
             "tenant_id": str(exam.tenant_id) if exam.tenant_id else None,
-            "category": exam.category_entity.name if exam.category_entity else None,
+            "category": exam.category_concept.name if exam.category_concept else None,
             "status": exam.extraction_status,
             "progress": exam.extraction_progress,
             "created_at": exam.created_at.isoformat() if exam.created_at else None,

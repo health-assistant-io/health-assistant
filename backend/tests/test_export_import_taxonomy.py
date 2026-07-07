@@ -694,7 +694,7 @@ async def _build_source_dataset(session, tid: UUID) -> Dict[str, Any]:
             tenant_id=tid,
             patient_id=patient.id,
             examination_date=date(2026, 7, 1),
-            category_id=exam_cat.id,
+            category_concept_id=exam_cat.id,
             notes="round-trip exam",
         )
     )
@@ -794,7 +794,7 @@ async def test_full_round_trip_taxonomy_anatomy_exam(db):
             select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid)
         )
     ).scalar_one()
-    assert tgt_exam.category_id == tgt_exam_cat.id
+    assert tgt_exam.category_concept_id == tgt_exam_cat.id
     assert tgt_exam.notes == "round-trip exam"
 
 
@@ -820,7 +820,7 @@ async def test_full_round_trip_examination_category_global_slug_fallback(db):
             tenant_id=src_tid,
             patient_id=patient.id,
             examination_date=date(2026, 7, 2),
-            category_id=g_src.id,
+            category_concept_id=g_src.id,
         )
     )
     await db.commit()
@@ -840,7 +840,7 @@ async def test_full_round_trip_examination_category_global_slug_fallback(db):
             select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid)
         )
     ).scalar_one()
-    assert tgt_exam.category_id == g_src.id  # resolved via global existence
+    assert tgt_exam.category_concept_id == g_src.id  # resolved via global existence
 
 
 @pytest.mark.asyncio

@@ -25,12 +25,12 @@ export const ExaminationSelectorModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState('All');
 
   const categories = useMemo(() => {
-    const cats = new Set(examinations.map(e => e.category_details?.name || e.category || 'Other'));
+    const cats = new Set(examinations.map(e => e.category_concept?.name || e.category || 'Other'));
     return ['All', ...Array.from(cats).sort()];
   }, [examinations]);
 
   const filteredExaminations = examinations.filter(e => {
-    const category = e.category_details?.name || e.category || 'Other';
+    const category = e.category_concept?.name || e.category || 'Other';
     const notes = (e.notes || '').toLowerCase();
     const patientNotes = (e.patient_notes || '').toLowerCase();
     const doctorNames = (e.doctors || []).map((d: any) => d.name.toLowerCase()).join(' ');

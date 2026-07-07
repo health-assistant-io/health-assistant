@@ -226,7 +226,7 @@ class MedicalProcessingService:
                         category_entity = await self.resolve_category(
                             metadata.category, exam.tenant_id
                         )
-                        exam.category_id = category_entity.id
+                        exam.category_concept_id = category_entity.id
                     if metadata.clinical_notes:
                         if exam.notes:
                             exam.notes = f"{exam.notes}\n\nAI Extracted Notes:\n{metadata.clinical_notes}"

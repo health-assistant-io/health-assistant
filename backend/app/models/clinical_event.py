@@ -24,7 +24,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     color = Column(String(50), nullable=True)
     metadata_schema = Column(JSONB, nullable=True)  # { "fields": [...] }
 
-    category_id = Column(
+    category_concept_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("concepts.id", ondelete="SET NULL"),
         nullable=True,
@@ -39,7 +39,11 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     )
 
     # Relationships
-    category_entity = relationship("Concept", lazy="selectin")
+    category_concept = relationship(
+        "Concept",
+        foreign_keys="[ClinicalEventType.category_concept_id]",
+        lazy="selectin",
+    )
     events = relationship("ClinicalEvent", back_populates="type_entity")
 
     def to_dict(self) -> dict:
@@ -51,9 +55,11 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
             "icon": self.icon,
             "color": self.color,
             "metadata_schema": self.metadata_schema,
-            "category_id": str(self.category_id) if self.category_id else None,
-            "category": self.category_entity.to_dict()
-            if self.category_entity
+            "category_concept_id": str(self.category_concept_id)
+            if self.category_concept_id
+            else None,
+            "category_concept": self.category_concept.to_dict()
+            if self.category_concept
             else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
         }

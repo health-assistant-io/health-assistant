@@ -23,10 +23,10 @@ See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
 - **users**: Identity & Auth (id, tenant_id, email, role, settings)
 - **fhir_organizations**: Hierarchical grouping (id, tenant_id, name, org_type, part_of_id, created_at, updated_at, deleted_at)
 - **fhir_patients**: Clinical profiles (id, tenant_id, user_id, name, gender, birth_date, mrn)
-- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering; `category_id` FK → `concepts.id`.
+- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering; `category_concept_id` FK → `concepts.id`.
 - **clinical_events**: Longitudinal health journeys (patient_id, type_id, status, metadata, occurrences)
 - **event_examination_links**: Many-to-many relationship between events and examinations with clinical reasoning.
-- **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_id` FK → `concepts.id`)
+- **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_concept_id` FK → `concepts.id`)
 - **doctors**: Care team profiles (id, tenant_id, user_id, name, `specialty_concept_id` FK → `concepts.id`, license_number, contact_info)
 - **documents**: File tracking (id, owner_id, filename, file_path, status, progress, extracted_text, entities, `category_concept_id` FK → `concepts.id`)
 - **fhir_observations**: Biomarkers/Vitals (id, document_id, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime)

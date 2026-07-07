@@ -185,3 +185,32 @@ The response shape carries `kinds: List[str]` and `primary_kind: str | null`
   the `concept_kind_tags` join table, adds `primary_kind`, swaps the unique
   index to `(slug, tenant)`. Pure schema change — deduplication of legacy
   same-name concepts lives in the seed data (single source of truth).
+- `e1f2a3b4c5d6` — standardizes every classification FK into `concepts.id` on
+  the `<role>_concept_id` naming convention. Renames `examinations.category_id`
+  and `clinical_event_types.category_id` to `category_concept_id` (column +
+  FK constraint + index, data-preserving `ALTER TABLE RENAME`); reconciles the
+  `documents.category_concept_id` model/DB drift (column existed since
+  `2b4ee2367046` but the ORM didn't declare it — now declared, index added);
+  backfills the missing indexes on the rest of the concept-FK family
+  (`anatomy_structures` / `biomarker_definitions.class_concept_id`,
+  `doctors.specialty_concept_id`, `concepts.parent_id`).
+
+## Naming convention
+
+Every domain-specific FK into `concepts.id` is named `<role>_concept_id` and
+has a matching `<role>_concept` relationship declared with **explicit**
+`foreign_keys=[...]` (so SQLAlchemy resolution never relies on single-FK
+guesswork). The only sanctioned exceptions are the owned-child join row
+`concept_kind_tags.concept_id` and the self-reference `concepts.parent_id`.
+
+| Table | Column |
+|-------|--------|
+| `examinations` | `category_concept_id` |
+| `clinical_event_types` | `category_concept_id` |
+| `documents` | `category_concept_id` |
+| `biomarker_definitions` | `class_concept_id` |
+| `anatomy_structures` | `class_concept_id` |
+| `doctors` | `specialty_concept_id` |
+
+This is pinned by `tests/test_concept_fk_naming_convention.py` (regex check +
+explicit-`foreign_keys` resolution check + live-DB drift diff).

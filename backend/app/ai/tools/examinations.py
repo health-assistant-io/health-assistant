@@ -24,7 +24,7 @@ def build(ctx: ToolContext) -> List[Any]:
         Returns exam dates, categories, and summary notes."""
         result = await ctx.db.execute(
             select(ExaminationModel)
-            .options(selectinload(ExaminationModel.category_entity))
+            .options(selectinload(ExaminationModel.category_concept))
             .where(
                 and_(
                     ExaminationModel.patient_id == ctx.patient_id,
@@ -45,8 +45,8 @@ def build(ctx: ToolContext) -> List[Any]:
                     "date": exam.examination_date.isoformat()
                     if exam.examination_date
                     else None,
-                    "category": exam.category_entity.name
-                    if exam.category_entity
+                    "category": exam.category_concept.name
+                    if exam.category_concept
                     else None,
                     "notes": exam.notes[:500]
                     if exam.notes
@@ -67,7 +67,7 @@ def build(ctx: ToolContext) -> List[Any]:
 
         result = await ctx.db.execute(
             select(ExaminationModel)
-            .options(selectinload(ExaminationModel.category_entity))
+            .options(selectinload(ExaminationModel.category_concept))
             .where(
                 and_(
                     ExaminationModel.id == exam_uuid,
@@ -86,7 +86,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "date": exam.examination_date.isoformat()
             if exam.examination_date
             else None,
-            "category": exam.category_entity.name if exam.category_entity else None,
+            "category": exam.category_concept.name if exam.category_concept else None,
             "notes": exam.notes,
             "patient_notes": exam.patient_notes,
             "diagnoses": exam.diagnoses,

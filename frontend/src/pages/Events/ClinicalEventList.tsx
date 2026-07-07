@@ -119,7 +119,7 @@ export const ClinicalEventList = () => {
     
     const matchesCategory = 
       selectedCategories.includes('All') || 
-      selectedCategories.includes(ev.type_details?.category_id || '');
+      selectedCategories.includes(ev.type_details?.category_concept_id || '');
     
     return matchesSearch && matchesCategory;
   });
@@ -129,7 +129,7 @@ export const ClinicalEventList = () => {
   if (loading) return <LoadingState variant="section" showText={true} />;
 
   const nonEmptyCategories = categories.filter(cat => 
-    events.some(e => e.type_details?.category_id === cat.id)
+    events.some(e => e.type_details?.category_concept_id === cat.id)
   );
 
   const tabsWithCounts = [
@@ -137,7 +137,7 @@ export const ClinicalEventList = () => {
     ...nonEmptyCategories.map(cat => ({
       name: t(`categories.${cat.name}`, cat.name) as string, // Attempt translation or fallback to name
       id: cat.id,
-      count: events.filter(e => e.type_details?.category_id === cat.id).length,
+      count: events.filter(e => e.type_details?.category_concept_id === cat.id).length,
       icon: getEventIcon(cat.slug),
       color: cat.color || null
     }))

@@ -33,7 +33,11 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
     office_details = Column(Text, nullable=True)
 
     # Relationships
-    specialty_concept = relationship("Concept", lazy="selectin")
+    specialty_concept = relationship(
+        "Concept",
+        foreign_keys="[DoctorModel.specialty_concept_id]",
+        lazy="selectin",
+    )
     examinations = relationship(
         "ExaminationModel", secondary=examination_doctors, back_populates="doctors"
     )

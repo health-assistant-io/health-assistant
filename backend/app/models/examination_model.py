@@ -38,7 +38,7 @@ class ExaminationModel(
     examination_date = Column(Date, nullable=True, index=True)
     notes = Column(Text, nullable=True)  # Clinician/Doctor notes
     patient_notes = Column(Text, nullable=True)
-    category_id = Column(
+    category_concept_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("concepts.id", ondelete="SET NULL"),
         nullable=True,
@@ -62,7 +62,7 @@ class ExaminationModel(
     @property
     def category(self) -> str | None:
         """Dynamic access to category name via relationship"""
-        return self.category_entity.name if self.category_entity else None
+        return self.category_concept.name if self.category_concept else None
 
     # Cumulative extraction fields
     diagnoses = Column(JSONB, nullable=True, default=list)
@@ -79,8 +79,9 @@ class ExaminationModel(
         lazy="selectin",
     )
 
-    category_entity = relationship(
+    category_concept = relationship(
         "Concept",
+        foreign_keys="[ExaminationModel.category_concept_id]",
         lazy="selectin",
     )
 
@@ -124,9 +125,11 @@ class ExaminationModel(
             else None,
             "notes": self.notes,
             "patient_notes": self.patient_notes,
-            "category_id": str(self.category_id) if self.category_id else None,
-            "category_details": self.category_entity.to_dict()
-            if self.category_entity
+            "category_concept_id": str(self.category_concept_id)
+            if self.category_concept_id
+            else None,
+            "category_concept": self.category_concept.to_dict()
+            if self.category_concept
             else None,
             "category": self.category,
             "organization_id": str(self.organization_id)
@@ -188,7 +191,7 @@ class ExaminationModel(
             "code": "AMB",
             "display": "ambulatory",
         }
-        if self.category_entity and self.category_entity.slug:
+        if self.category_concept and self.category_concept.slug:
             # Map a few common category slugs to ActCode; default to AMB.
             slug_map = {
                 "hospital": "IMP",
@@ -196,7 +199,7 @@ class ExaminationModel(
                 "telemedicine": "TELE",
                 "home": "HH",
             }
-            code = slug_map.get(self.category_entity.slug, "AMB")
+            code = slug_map.get(self.category_concept.slug, "AMB")
             encounter_class["code"] = code
 
         # Period: examination_date (a Date) → period.start at midnight UTC;

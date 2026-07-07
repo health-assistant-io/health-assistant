@@ -1,5 +1,5 @@
 export const getExamCategory = (exam: any) => {
-  if (exam.category_details) return exam.category_details.name;
+  if (exam.category_concept) return exam.category_concept.name;
   if (exam.category) return exam.category;
   
   // Fallback for older exams without category
@@ -12,7 +12,7 @@ export const getExamCategory = (exam: any) => {
 
 export const getCategoryStyles = (exam: any) => {
   const categoryName = getExamCategory(exam);
-  const details = exam.category_details;
+  const details = exam.category_concept;
 
   if (details && details.color) {
     if (details.color.startsWith('#')) {

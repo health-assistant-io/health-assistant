@@ -58,7 +58,7 @@ async def list_event_types(
                 ClinicalEventType.tenant_id.is_(None),
             )
         )
-        .options(selectinload(ClinicalEventType.category_entity))
+        .options(selectinload(ClinicalEventType.category_concept))
     )
     return result.scalars().all()
 
@@ -136,7 +136,7 @@ async def list_events(
         .where(ClinicalEvent.tenant_id == current_user.tenant_id)
         .options(
             selectinload(ClinicalEvent.type_entity).selectinload(
-                ClinicalEventType.category_entity
+                ClinicalEventType.category_concept
             ),
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
@@ -288,7 +288,7 @@ async def create_event(
         .where(ClinicalEvent.id == new_event.id)
         .options(
             selectinload(ClinicalEvent.type_entity).selectinload(
-                ClinicalEventType.category_entity
+                ClinicalEventType.category_concept
             ),
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
@@ -319,7 +319,7 @@ async def get_event(
         )
         .options(
             selectinload(ClinicalEvent.type_entity).selectinload(
-                ClinicalEventType.category_entity
+                ClinicalEventType.category_concept
             ),
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
@@ -438,7 +438,7 @@ async def update_event(
         .where(ClinicalEvent.id == event.id)
         .options(
             selectinload(ClinicalEvent.type_entity).selectinload(
-                ClinicalEventType.category_entity
+                ClinicalEventType.category_concept
             ),
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination
@@ -502,7 +502,7 @@ async def link_examination(
         .where(ClinicalEvent.id == event_id)
         .options(
             selectinload(ClinicalEvent.type_entity).selectinload(
-                ClinicalEventType.category_entity
+                ClinicalEventType.category_concept
             ),
             selectinload(ClinicalEvent.examination_links).selectinload(
                 EventExaminationLink.examination

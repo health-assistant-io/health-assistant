@@ -63,20 +63,20 @@ async def create_examination(
             )
 
     # Resolve category if provided
-    category_id = examination_in.category_id
-    if not category_id and examination_in.category:
+    category_concept_id = examination_in.category_concept_id
+    if not category_concept_id and examination_in.category:
         processing_service = MedicalProcessingService(db)
         category_entity = await processing_service.resolve_category(
             examination_in.category, current_user.tenant_id
         )
-        category_id = category_entity.id
+        category_concept_id = category_entity.id
 
     # Check for potential duplicates (same patient, date, and category/notes)
     existing_query = select(ExaminationModel).where(
         ExaminationModel.tenant_id == current_user.tenant_id,
         ExaminationModel.patient_id == examination_in.patient_id,
         ExaminationModel.examination_date == examination_in.examination_date,
-        ExaminationModel.category_id == category_id,
+        ExaminationModel.category_concept_id == category_concept_id,
         ExaminationModel.notes == examination_in.notes,
     )
     existing_result = await db.execute(existing_query)
@@ -95,7 +95,7 @@ async def create_examination(
         examination_date=examination_in.examination_date,
         notes=examination_in.notes,
         patient_notes=examination_in.patient_notes,
-        category_id=category_id,
+        category_concept_id=category_concept_id,
         organization_id=examination_in.organization_id,
         auto_extract_metadata=examination_in.auto_extract_metadata,
         tenant_id=current_user.tenant_id,
@@ -121,7 +121,7 @@ async def create_examination(
         .options(
             selectinload(ExaminationModel.doctors),
             selectinload(ExaminationModel.organization),
-            selectinload(ExaminationModel.category_entity),
+            selectinload(ExaminationModel.category_concept),
         )
     )
     return result.scalar_one()
@@ -147,9 +147,9 @@ async def update_examination(
             category_entity = await processing_service.resolve_category(
                 category_name, current_user.tenant_id
             )
-            examination.category_id = category_entity.id
+            examination.category_concept_id = category_entity.id
         else:
-            examination.category_id = None
+            examination.category_concept_id = None
 
     # Track if date is changing to update linked clinical records
     date_changed = (
@@ -212,15 +212,21 @@ async def update_examination(
 
     await db.commit()
 
-    # Reload with relationships after commit (objects are expired after commit)
+    # Reload with relationships after commit. ``populate_existing=True`` is
+    # required because the exam was already loaded earlier in this request
+    # (check_examination_access) with category_concept eagerly loaded (as None
+    # before the update). Without it, the identity map returns that same
+    # instance and selectinload skips the already-"loaded" relationship — so a
+    # newly-set category_concept_id would serialize as category_concept=None.
     result = await db.execute(
         select(ExaminationModel)
         .where(ExaminationModel.id == examination.id)
         .options(
             selectinload(ExaminationModel.doctors),
             selectinload(ExaminationModel.organization),
-            selectinload(ExaminationModel.category_entity),
+            selectinload(ExaminationModel.category_concept),
         )
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one()
 
@@ -261,7 +267,7 @@ async def list_examinations(
         .options(
             selectinload(ExaminationModel.doctors),
             selectinload(ExaminationModel.documents),
-            selectinload(ExaminationModel.category_entity),
+            selectinload(ExaminationModel.category_concept),
             selectinload(ExaminationModel.organization),
             selectinload(ExaminationModel.observations),
             selectinload(ExaminationModel.medications),
@@ -299,9 +305,11 @@ async def list_examinations(
             "examination_date": exam.examination_date,
             "notes": exam.notes,
             "patient_notes": exam.patient_notes,
-            "category_id": exam.category_id,
-            "category": exam.category_entity.name if exam.category_entity else None,
-            "category_details": exam.category_entity,
+            "category_concept_id": exam.category_concept_id,
+            "category": exam.category_concept.name
+            if exam.category_concept
+            else None,
+            "category_concept": exam.category_concept,
             "extraction_status": exam.extraction_status,
             "extraction_progress": exam.extraction_progress,
             "error_message": exam.error_message,
@@ -346,7 +354,7 @@ async def get_examination(
             selectinload(ExaminationModel.documents),
             selectinload(ExaminationModel.medications),
             selectinload(ExaminationModel.observations),
-            selectinload(ExaminationModel.category_entity),
+            selectinload(ExaminationModel.category_concept),
             selectinload(ExaminationModel.organization),
         )
     )

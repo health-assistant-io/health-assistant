@@ -438,7 +438,7 @@ class SeedExportService:
                 )
             )
         ).scalars().all()
-        concept_ids = {r.category_id for r in rows if r.category_id}
+        concept_ids = {r.category_concept_id for r in rows if r.category_concept_id}
         concept_slug: Dict[UUID, str] = {}
         if concept_ids:
             crows = (
@@ -448,8 +448,8 @@ class SeedExportService:
         items: List[Dict[str, Any]] = []
         for t in rows:
             item: Dict[str, Any] = {"slug": t.slug, "name": t.name}
-            if t.category_id:
-                cslug = concept_slug.get(t.category_id)
+            if t.category_concept_id:
+                cslug = concept_slug.get(t.category_concept_id)
                 if cslug:
                     item["category_slug"] = cslug
             if t.description:

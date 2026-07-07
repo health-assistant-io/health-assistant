@@ -697,7 +697,7 @@ const ExaminationDetail = () => {
             )}
           </div>
         }
-        icon={examination?.category_details?.icon ? <DynamicIcon icon={examination.category_details.icon} /> : <Stethoscope />}
+        icon={examination?.category_concept?.icon ? <DynamicIcon icon={examination.category_concept.icon} /> : <Stethoscope />}
         breadcrumbs={[
           { label: t('examinations.title'), path: '/examinations' }
         ]}
