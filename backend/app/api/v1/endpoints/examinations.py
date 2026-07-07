@@ -6,6 +6,7 @@ from uuid import UUID
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.examination_model import ExaminationModel
+from app.models.clinical_event import EventExaminationLink
 from app.models.user_model import UserModel
 from app.models.doctor_model import DoctorModel
 from app.ai.pipeline.service import MedicalProcessingService
@@ -271,6 +272,10 @@ async def list_examinations(
             selectinload(ExaminationModel.organization),
             selectinload(ExaminationModel.observations),
             selectinload(ExaminationModel.medications),
+            # Bidirectional: surface the health journeys this visit belongs to.
+            selectinload(ExaminationModel.event_links).selectinload(
+                EventExaminationLink.event
+            ),
         )
     )
 
@@ -356,6 +361,10 @@ async def get_examination(
             selectinload(ExaminationModel.observations),
             selectinload(ExaminationModel.category_concept),
             selectinload(ExaminationModel.organization),
+            # Bidirectional: surface the health journeys this visit belongs to.
+            selectinload(ExaminationModel.event_links).selectinload(
+                EventExaminationLink.event
+            ),
         )
     )
     examination = result.scalar_one_or_none()

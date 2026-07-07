@@ -111,6 +111,7 @@ async def check_event_access(
         select(ClinicalEvent).where(
             ClinicalEvent.id == event_id,
             ClinicalEvent.tenant_id == current_user.tenant_id,
+            ClinicalEvent.deleted_at.is_(None),
         )
     )
     event = result.scalar_one_or_none()

@@ -123,6 +123,17 @@ def _resolve_id(value: str) -> Optional[UUID]:
         return None
 
 
+def _project(row, entry: ResourceEntry) -> Dict[str, Any]:
+    """Project an ORM row to its FHIR resource dict.
+
+    Honors ``ResourceEntry.to_fhir_dict_attr`` so a single ORM model can back
+    multiple FHIR resources via different projection methods (e.g.
+    ``ClinicalEvent`` backs both ``Condition`` via ``to_fhir_dict`` and
+    ``EpisodeOfCare`` via ``to_fhir_episode_of_care_dict``).
+    """
+    return getattr(row, entry.to_fhir_dict_attr)()
+
+
 # ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
@@ -174,9 +185,16 @@ async def search(
 
     # Resource-specific params: token filters applied via JSONB path lookups.
     # We apply a small set per resource (patient/subject, code, status, category).
+    # Per-resource ``entry.param_filter`` (if registered) is consulted first so
+    # resources whose params need a join/EXISTS (e.g. Condition.category /
+    # Condition.encounter) can override without polluting the generic builder.
     for key, values in params.resource_filters.items():
         for value in values:
-            extra_pred = _build_resource_filter(model, key, value)
+            extra_pred = None
+            if entry.param_filter is not None:
+                extra_pred = entry.param_filter(model, key, value)
+            if extra_pred is None:
+                extra_pred = _build_resource_filter(model, key, value)
             if extra_pred is not None:
                 predicates.append(extra_pred)
 
@@ -244,7 +262,7 @@ async def search(
     resources: List[Dict[str, Any]] = []
     for row in rows:
         try:
-            resources.append(row.to_fhir_dict())
+            resources.append(_project(row, entry))
         except FhirSerializationError as e:
             logger.warning(
                 "Skipping invalid %s/%s in search results: %s",
@@ -538,10 +556,18 @@ def _build_resource_filter(model, key: str, value: str):
     if base_key == "code":
         if not hasattr(model, "code"):
             return None
+        # JSONB CodeableConcept (Observation, DiagnosticReport, …) — @> match.
         pred = _jsonb_codeable_concept_match(model.code, value, is_list=False)
-        if pred is None:
-            return None
-        return not_(pred) if negate else pred
+        if pred is not None:
+            return not_(pred) if negate else pred
+        # String column (e.g. ClinicalEvent.code) — direct equality on the bare
+        # code. Honor the "system|code" token form by taking the code segment.
+        col_type = getattr(getattr(model.code, "type", None), "__class__", None)
+        if col_type is not None and col_type.__name__ in ("String", "TEXT"):
+            bare = value.split("|")[-1] if "|" in value else value
+            pred = model.code == bare
+            return not_(pred) if negate else pred
+        return None
     if base_key == "type":
         # DocumentReference.type / DiagnosticReport.type — JSONB CodeableConcept.
         col = getattr(model, "type", None)
@@ -563,10 +589,19 @@ def _build_resource_filter(model, key: str, value: str):
         }
         col_name = col_name_map.get(base_key)
         if not col_name or not hasattr(model, col_name):
-            return None
+            # Fallback: ``clinical-status`` may be stored in a ``status`` column
+            # (ClinicalEvent stores HL7 condition-clinical status in ``status``).
+            if base_key == "clinical-status" and hasattr(model, "status"):
+                col_name = "status"
+            else:
+                return None
         col = getattr(model, col_name)
-        value_upper = value.upper()
-        pred = or_(col == value, col == value_upper)
+        # Compare case-insensitively via a text cast: PG ENUM columns (whose
+        # labels are uppercase, e.g. ClinicalEventStatus) would otherwise reject
+        # a lowercase FHIR token ("active") as "invalid input value for enum".
+        # CAST(col AS TEXT) sidesteps enum-input validation; func.lower makes
+        # the match case-insensitive on both Enum and String columns.
+        pred = func.lower(col.cast(String)) == value.lower()
         return not_(pred) if negate else pred
     if base_key == "category":
         if not hasattr(model, "category"):
@@ -594,8 +629,8 @@ def _build_resource_filter(model, key: str, value: str):
         col = getattr(model, "criticality", None)
         if col is None:
             return None
-        value_upper = value.upper()
-        pred = or_(col == value, col == value_upper)
+        # Case-insensitive via text-cast (see status handler for rationale).
+        pred = func.lower(col.cast(String)) == value.lower()
         return not_(pred) if negate else pred
     if base_key == "medication":
         # MedicationStatement/Request.medication is projected from the same
@@ -674,8 +709,8 @@ def _build_resource_filter(model, key: str, value: str):
             bool_val = value.strip().lower() in ("true", "1", "yes")
             pred = col.is_(bool_val)
         else:
-            value_upper = value.upper()
-            pred = or_(col == value, col == value_upper)
+            # gender is an Enum column — case-insensitive via text-cast.
+            pred = func.lower(col.cast(String)) == value.lower()
         return not_(pred) if negate else pred
     if base_key == "value-quantity":
         # Observation.value-quantity: [prefix][number][||system|code] against
@@ -763,7 +798,7 @@ async def read(
     if entry.soft_delete and hasattr(row, "deleted_at") and row.deleted_at is not None:
         return {"_tombstone": True, "id": str(row.id)}
 
-    return row.to_fhir_dict()
+    return _project(row, entry)
 
 
 # ---------------------------------------------------------------------------
@@ -804,7 +839,7 @@ async def create(
 
     db.add(obj)
     await db.flush()  # assign id without committing
-    fhir_response = obj.to_fhir_dict()
+    fhir_response = _project(obj, entry)
 
     # Best-effort Provenance.
     if entry.resource_type != "Provenance":
@@ -820,7 +855,7 @@ async def create(
 
     await db.commit()
     await db.refresh(obj)
-    return obj.to_fhir_dict()
+    return _project(obj, entry)
 
 
 # ---------------------------------------------------------------------------
@@ -905,7 +940,7 @@ async def update(
 
     await db.commit()
     await db.refresh(obj)
-    return obj.to_fhir_dict()
+    return _project(obj, entry)
 
 
 # ---------------------------------------------------------------------------

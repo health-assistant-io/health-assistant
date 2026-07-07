@@ -60,13 +60,18 @@ RESOURCE_PARAMS: Dict[str, frozenset] = {
             "subject",
             "code",
             "clinical-status",
-            "verification-status",
             "onset-date",
             "category",
             "encounter",
         }
     ),
     "Encounter": frozenset({"patient", "subject", "status", "date"}),
+    # EpisodeOfCare projects from the same ClinicalEvent row as Condition.
+    # `patient`/`status` route through the generic dispatcher; `status` matches
+    # EpisodeOfCare.status values (active|finished|onhold|planned), which the
+    # ClinicalEventStatus enum stores as ACTIVE/RESOLVED/ON_HOLD/UNKNOWN — the
+    # case-insensitive text-cast comparison in crud handles the mapping.
+    "EpisodeOfCare": frozenset({"patient", "subject", "status"}),
     "Device": frozenset(
         {"patient", "subject", "identifier", "type", "status", "parent"}
     ),
@@ -183,6 +188,11 @@ SORT_COLUMNS: Dict[str, Dict[str, Any]] = {
         "_id": "id",
         "_lastUpdated": "updated_at",
         "date": "examination_date",
+    },
+    # EpisodeOfCare sort: same ORM columns as Condition (it's the same row).
+    "EpisodeOfCare": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
     },
     "Device": {"_id": "id", "_lastUpdated": "updated_at"},
     "MedicationStatement": {

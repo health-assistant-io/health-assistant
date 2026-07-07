@@ -158,7 +158,8 @@ async def test_get_event(async_client: AsyncClient):
 
     res_event = MagicMock()
     res_event.scalar_one_or_none.return_value = mock_event
-    
+    res_event.scalar_one.return_value = mock_event
+
     res_patient = MagicMock()
     res_patient.scalar_one_or_none.return_value = mock_patient
 

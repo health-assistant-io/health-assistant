@@ -57,6 +57,7 @@ from .chat_model import ChatSession, ChatMessage
 from .clinical_event import (
     ClinicalEvent,
     ClinicalEventType,
+    ClinicalEventOccurrence,
     EventExaminationLink,
     EventObservationLink,
     EventAnatomyLink,
@@ -110,6 +111,7 @@ __all__ = [
     "ChatMessage",
     "ClinicalEvent",
     "ClinicalEventType",
+    "ClinicalEventOccurrence",
     "EventExaminationLink",
     "EventObservationLink",
     "EventAnatomyLink",

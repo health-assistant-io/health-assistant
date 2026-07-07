@@ -39,6 +39,15 @@ class ResourceEntry:
     # Optional additional filter to apply on every search (e.g. MedicationRequest
     # only sees rows where intent='order'). Use a SQLAlchemy lambda.
     search_filter: Optional[Callable] = None
+    # Optional per-search-param predicate builder for resource-specific params
+    # that the generic dispatcher in ``facade.crud._build_resource_filter``
+    # cannot infer (typically because they require a join/EXISTS against another
+    # table). Signature: ``fn(model, key, value) -> predicate | None``. The
+    # dispatcher consults this *before* the generic builder; a ``None`` return
+    # falls through to the generic logic. This keeps model-specific knowledge in
+    # the registry (where the model mapping already lives) instead of polluting
+    # the generic crud layer.
+    param_filter: Optional[Callable] = None
 
     @property
     def route_path(self) -> str:
@@ -108,6 +117,7 @@ def register_all() -> None:
         fhir_to_diagnostic_report_orm,
         fhir_to_document_reference_orm,
         fhir_to_encounter_orm,
+        fhir_to_episode_of_care_orm,
         fhir_to_medication_orm,
         fhir_to_medication_request_orm,
         fhir_to_observation_orm,
@@ -116,6 +126,82 @@ def register_all() -> None:
         fhir_to_practitioner_orm,
         fhir_to_provenance_orm,
     )
+
+    # ---- Condition-specific search-param filter ----
+    # ClinicalEvent's Condition projection stores its clinical status in a
+    # ``status`` enum column (handled generically), its code in a ``code``
+    # String column (handled generically), but ``category`` and ``encounter``
+    # require joins that the generic dispatcher can't infer. This filter emits
+    # EXISTS-subquery predicates so the params are honored without polluting
+    # the generic crud builder. Returns None to defer to the generic builder
+    # for any other param.
+    def _condition_param_filter(model, key: str, value: str):
+        from sqlalchemy import exists, select as _select
+
+        from app.models.clinical_event import (
+            ClinicalEventType,
+            EventExaminationLink,
+        )
+        from app.models.concept_model import Concept
+
+        # Strip the token modifier (e.g. "encounter:identifier=…") — we honor
+        # the bare form only.
+        base_key = key.split(":", 1)[0]
+
+        if base_key == "encounter":
+            # Condition?encounter=Encounter/{id} — events linked (via
+            # EventExaminationLink) to the given examination.
+            raw = value.split("/")[-1] if "/" in value else value
+            try:
+                from uuid import UUID as _UUID
+
+                rid = _UUID(str(raw))
+            except (ValueError, TypeError):
+                return None
+            return exists().where(
+                EventExaminationLink.event_id == model.id,
+                EventExaminationLink.examination_id == rid,
+            )
+
+        if base_key == "category":
+            # Condition?category=<code> — events whose type's category concept
+            # matches the given slug. Concept.slug is the stable token.
+            return model.type_id.in_(
+                _select(ClinicalEventType.id).where(
+                    ClinicalEventType.category_concept_id.in_(
+                        _select(Concept.id).where(Concept.slug == value)
+                    )
+                )
+            )
+
+        # Defer to the generic builder.
+        return None
+
+    def _episode_of_care_param_filter(model, key: str, value: str):
+        """EpisodeOfCare-specific search params.
+
+        ``status`` translates FHIR EpisodeOfCare status values
+        (active|finished|onhold|planned) back to the ``ClinicalEventStatus``
+        enum stored on the row (ACTIVE|RESOLVED|ON_HOLD|UNKNOWN), since the
+        forward projection maps RESOLVED→finished etc. Without this, a search
+        ``?status=finished`` would compare against the raw 'RESOLVED' value and
+        match nothing.
+        """
+        from sqlalchemy import func, String as _SAString
+
+        base_key = key.split(":", 1)[0]
+        if base_key == "status":
+            status_map = {
+                "active": "ACTIVE",
+                "finished": "RESOLVED",
+                "onhold": "ON_HOLD",
+                "planned": "UNKNOWN",
+            }
+            target = status_map.get(value.lower())
+            if target is None:
+                return None
+            return func.lower(model.status.cast(_SAString)) == target.lower()
+        return None
 
     # ---- Patient-compartment resources ----
     RESOURCE_REGISTRY.register(
@@ -137,6 +223,22 @@ def register_all() -> None:
             resource_type="Condition",
             model=ClinicalEvent,
             fhir_to_orm_fn=fhir_to_condition_orm,
+            # Condition.category / Condition.encounter need joins that the
+            # generic dispatcher can't infer — see ``_condition_param_filter``.
+            param_filter=_condition_param_filter,
+        )
+    )
+    RESOURCE_REGISTRY.register(
+        ResourceEntry(
+            resource_type="EpisodeOfCare",
+            # Same model as Condition — a health journey is BOTH a problem
+            # (Condition) and a journey-over-time (EpisodeOfCare). No new table,
+            # no dual-write; the projection method below emits EpisodeOfCare.
+            model=ClinicalEvent,
+            fhir_to_orm_fn=fhir_to_episode_of_care_orm,
+            to_fhir_dict_attr="to_fhir_episode_of_care_dict",
+            # status translates FHIR EoC values back to ClinicalEventStatus.
+            param_filter=_episode_of_care_param_filter,
         )
     )
     RESOURCE_REGISTRY.register(

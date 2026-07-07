@@ -456,6 +456,55 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def fhir_to_episode_of_care_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a canonical FHIR EpisodeOfCare dict to a ClinicalEvent ORM dict.
+
+    The reverse of :meth:`ClinicalEvent.to_fhir_episode_of_care_dict`. An
+    EpisodeOfCare is the same journey row viewed as a journey rather than a
+    problem, so this maps back onto the same columns. Maps:
+    - status → ClinicalEventStatus (active→ACTIVE, finished→RESOLVED,
+      onhold→ON_HOLD, else ACTIVE)
+    - patient → patient_id
+    - period.start/end → onset_date/resolved_date
+    - type[0].text → title (the journey template name; fallback "Untitled Episode")
+    """
+    from app.models.enums import ClinicalEventStatus
+
+    status_raw = (f.get("status") or "active").lower()
+    if status_raw == "finished":
+        status = ClinicalEventStatus.RESOLVED
+    elif status_raw == "onhold":
+        status = ClinicalEventStatus.ON_HOLD
+    elif status_raw == "planned":
+        status = ClinicalEventStatus.UNKNOWN
+    else:
+        status = ClinicalEventStatus.ACTIVE
+
+    type_list = f.get("type") or []
+    title = None
+    if type_list and isinstance(type_list[0], dict):
+        title = type_list[0].get("text") or "Untitled Episode"
+    if not title:
+        title = "Untitled Episode"
+
+    period = f.get("period") or {}
+    onset_dt = _parse_iso(period.get("start")) if isinstance(period, dict) else None
+    resolved_dt = (
+        _parse_iso(period.get("end")) if isinstance(period, dict) else None
+    )
+
+    return _clean(
+        {
+            "id": f.get("id"),
+            "patient_id": _extract_patient_id(f.get("patient")),
+            "status": status,
+            "title": title,
+            "onset_date": onset_dt,
+            "resolved_date": resolved_dt,
+        }
+    )
+
+
 def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a canonical FHIR Encounter dict to an ExaminationModel ORM dict.
 
@@ -663,6 +712,7 @@ _TO_ORM = {
     "Organization": fhir_to_organization_orm,
     "Practitioner": fhir_to_practitioner_orm,
     "Condition": fhir_to_condition_orm,
+    "EpisodeOfCare": fhir_to_episode_of_care_orm,
     "Encounter": fhir_to_encounter_orm,
     "DocumentReference": fhir_to_document_reference_orm,
     "Provenance": fhir_to_provenance_orm,

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Enum, Index
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Enum, Index, Integer
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -23,6 +23,13 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     icon = Column(JSONB, nullable=True)  # { "type": "lucide", "value": "Activity" }
     color = Column(String(50), nullable=True)
     metadata_schema = Column(JSONB, nullable=True)  # { "fields": [...] }
+
+    # Phase 4a journey-template fields (all optional/nullable). Drive the
+    # ClinicalEventEngine's behavior (current phase, milestones, overdue flag).
+    severity_scale = Column(JSONB, nullable=True)
+    phases = Column(JSONB, nullable=True)
+    milestones = Column(JSONB, nullable=True)
+    default_duration_days = Column(Integer, nullable=True)
 
     category_concept_id = Column(
         PG_UUID(as_uuid=True),
@@ -55,6 +62,10 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
             "icon": self.icon,
             "color": self.color,
             "metadata_schema": self.metadata_schema,
+            "severity_scale": self.severity_scale,
+            "phases": self.phases,
+            "milestones": self.milestones,
+            "default_duration_days": self.default_duration_days,
             "category_concept_id": str(self.category_concept_id)
             if self.category_concept_id
             else None,
@@ -111,6 +122,66 @@ class EventObservationLink(Base, UUIDMixin, TimestampMixin):
     observation = relationship("Observation", backref="event_links")
 
 
+class ClinicalEventOccurrence(Base, UUIDMixin, TimestampMixin):
+    """A discrete episode/point-in-time within a :class:`ClinicalEvent` journey.
+
+    Promotes the legacy untyped ``ClinicalEvent.occurrences`` JSONB array into a
+    queryable first-class model: each row is one occurrence (e.g. a specific
+    migraine with an intensity and a body site). Anatomy is optionally linked
+    to ``anatomy_structures`` so occurrences can be sliced by body region.
+
+    The legacy ``ClinicalEvent.occurrences`` JSONB column is retained for one
+    cycle as read-back fallback; :meth:`ClinicalEvent.to_dict` sources from
+    ``occurrence_links`` when present.
+    """
+
+    __tablename__ = "clinical_event_occurrences"
+
+    event_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("clinical_events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    occurred_at = Column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    title = Column(String(255), nullable=True)
+    severity = Column(String(50), nullable=True)  # 'mild' | 'moderate' | 'severe'
+    intensity = Column(Integer, nullable=True)  # e.g. 1..10 for pain-style types
+    notes = Column(Text, nullable=True)
+    anatomy_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("anatomy_structures.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    metadata_ = Column("metadata", JSONB, nullable=True, default=dict)
+
+    # Relationships
+    event = relationship("ClinicalEvent", back_populates="occurrence_links")
+    anatomy = relationship("AnatomyStructure", lazy="selectin")
+
+    def to_summary(self) -> dict:
+        """Serialize to a dict that is backward-compatible with the legacy
+        ``occurrences`` JSONB shape (``date``/``intensity``/``notes`` keys)
+        while also exposing the richer model fields."""
+        occurred_iso = self.occurred_at.isoformat() if self.occurred_at else None
+        return {
+            "id": str(self.id) if self.id else None,
+            # Legacy-compatible keys (what ClinicalEvent.occurrences held).
+            "date": occurred_iso,
+            "intensity": self.intensity,
+            "notes": self.notes,
+            # Richer fields.
+            "occurred_at": occurred_iso,
+            "title": self.title,
+            "severity": self.severity,
+            "anatomy_id": str(self.anatomy_id) if self.anatomy_id else None,
+            "metadata": self.metadata_,
+        }
+
+
 class ClinicalEvent(
     Base,
     UUIDMixin,
@@ -162,6 +233,17 @@ class ClinicalEvent(
     observation_links = relationship(
         "EventObservationLink", back_populates="event", cascade="all, delete-orphan"
     )
+    occurrence_links = relationship(
+        "ClinicalEventOccurrence",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="ClinicalEventOccurrence.occurred_at.desc()",
+    )
+    anatomy_links = relationship(
+        "EventAnatomyLink",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("idx_clinical_event_patient_type", "patient_id", "type_id"),
@@ -181,7 +263,7 @@ class ClinicalEvent(
             "resolved_date": self.resolved_date.isoformat()
             if self.resolved_date
             else None,
-            "occurrences": self.occurrences,
+            "occurrences": self._serialize_occurrences(),
             "event_metadata": self.event_metadata,
             "coding_system": self.coding_system.value if self.coding_system else None,
             "code": self.code,
@@ -207,9 +289,44 @@ class ClinicalEvent(
                 for link in self.observation_links
                 if link.observation
             ],
+            "anatomy_links": self._serialize_anatomy_links(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+    def _serialize_anatomy_links(self) -> list:
+        """Serialize anatomy links when the relationship is loaded; ``[]``
+        otherwise. Avoids triggering a lazy load during sync serialization."""
+        if "anatomy_links" not in self.__dict__:
+            return []
+        return [
+            {
+                "id": str(link.id) if link.id else None,
+                "anatomy_id": str(link.anatomy_id),
+                "name": link.anatomy.name if link.anatomy else None,
+                "relation_type": link.relation_type,
+            }
+            for link in self.anatomy_links
+        ]
+
+    def _serialize_occurrences(self) -> list:
+        """Source ``occurrences`` from the ``ClinicalEventOccurrence`` table
+        when the relationship is loaded and non-empty; otherwise fall back to
+        the legacy JSONB column.
+
+        After the Phase-3a backfill migration, every legacy JSONB entry has a
+        corresponding model row, so the model is the source of truth and the
+        JSONB is a stale duplicate we ignore. For rows written through the
+        legacy ``occurrences`` JSONB payload after the migration (no model rows
+        yet), the empty model list triggers the JSONB fallback so nothing is
+        silently dropped. The ``__dict__`` check avoids triggering a lazy load
+        during sync serialization paths (e.g. the FHIR facade's bulk search).
+        """
+        if "occurrence_links" in self.__dict__:
+            model_occs = [o.to_summary() for o in self.occurrence_links]
+            if model_occs:
+                return model_occs
+        return self.occurrences or []
 
     def to_fhir_dict(self) -> dict:
         """Project this ClinicalEvent to a FHIR R4B Condition resource.
@@ -279,12 +396,99 @@ class ClinicalEvent(
             if self.created_at
             else None,
             "note": [{"text": self.description}] if self.description else None,
-            "meta": build_meta(str(self.id) if self.id else None),
+            "meta": build_meta(version_id=str(self.version or 1)),
         }
         return build_fhir_resource("Condition", data)
 
+    def to_fhir_episode_of_care_dict(self) -> dict:
+        """Project this ClinicalEvent to a FHIR R4B ``EpisodeOfCare`` resource.
+
+        A Health-Assistant "health journey" (a 9-month pregnancy, a 2-year
+        dental alignment) is semantically a FHIR EpisodeOfCare — *"managing a
+        condition over time, including when the patient is not actively being
+        seen"* — not just a Condition (which captures only the problem). The
+        same row therefore projects to BOTH:
+
+        - ``Condition`` (the problem) via :meth:`to_fhir_dict`,
+        - ``EpisodeOfCare`` (the journey) via this method.
+
+        The two projections share the same ``id`` (legal — FHIR ids are
+        per-resource-type) and the EpisodeOfCare's ``diagnosis[0].condition``
+        references ``Condition/{id}`` so a client can walk between them. No new
+        table, no dual-write — same hybrid-storage pattern as Condition.
+
+        Maps:
+        - ``status`` enum → EpisodeOfCare.status
+          (active→active, resolved→finished, on_hold→onhold, unknown→planned)
+        - ``patient_id`` → EpisodeOfCare.patient
+        - ``onset_date``/``resolved_date`` → EpisodeOfCare.period.start/end
+        - ``type_entity.name`` → EpisodeOfCare.type[0].text (the journey template)
+        - self → EpisodeOfCare.diagnosis[0].condition (Condition/{id})
+
+        Validated by ``fhir.resources`` via ``build_fhir_resource``.
+        """
+        status_name = self.status.name if self.status else "UNKNOWN"
+        eoc_status_map = {
+            "ACTIVE": "active",
+            "RESOLVED": "finished",
+            "ON_HOLD": "onhold",
+            "UNKNOWN": "planned",
+        }
+        eoc_status = eoc_status_map.get(status_name, "active")
+
+        period: dict = {}
+        if self.onset_date:
+            period["start"] = fhir_isoformat(self.onset_date)
+        if self.resolved_date:
+            period["end"] = fhir_isoformat(self.resolved_date)
+
+        type_list = None
+        # Guard against triggering a lazy load during sync serialization (the
+        # facade search path loads rows generically without eager-loading
+        # type_entity). ``type`` is 0..* optional in FHIR, so omitting it when
+        # the relationship isn't loaded is safe.
+        if (
+            "type_entity" in self.__dict__
+            and self.type_entity
+            and self.type_entity.name
+        ):
+            type_list = [{"text": self.type_entity.name}]
+
+        # The Condition this episode manages is this same row's Condition
+        # projection (same id, different resource type).
+        diagnosis = [
+            {
+                "condition": {"reference": f"Condition/{self.id}"},
+                "rank": 1,
+            }
+        ]
+
+        data = {
+            "resourceType": "EpisodeOfCare",
+            "id": str(self.id) if self.id else None,
+            "status": eoc_status,
+            "patient": {"reference": f"Patient/{self.patient_id}"}
+            if self.patient_id
+            else None,
+            "period": period or None,
+            "type": type_list,
+            "diagnosis": diagnosis,
+            "meta": build_meta(version_id=str(self.version or 1)),
+        }
+        return build_fhir_resource("EpisodeOfCare", data)
+
 
 class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
+    """Typed link between a ClinicalEvent and one or more anatomy sites.
+
+    Carries a ``relation_type`` (e.g. ``primary_site``, ``radiates_to``,
+    ``referred_to``) so a journey can record where a symptom originates and
+    where it radiates. The (event_id, anatomy_id) pair is unique. Previously
+    this table existed but was unwired (anatomy was tracked ad-hoc in
+    ``event_metadata.body_part_id`` JSONB); Phase 3b promotes it to the
+    structured path.
+    """
+
     __tablename__ = "event_anatomy_links"
 
     event_id = Column(
@@ -300,6 +504,10 @@ class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
 
     # E.g., 'primary_site', 'radiates_to'
     relation_type = Column(String(50), nullable=True)
+
+    # Relationships
+    event = relationship("ClinicalEvent", back_populates="anatomy_links")
+    anatomy = relationship("AnatomyStructure", lazy="selectin")
 
     __table_args__ = (
         Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),

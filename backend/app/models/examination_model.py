@@ -153,9 +153,36 @@ class ExaminationModel(
             if self.observations
             else [],
             "doctors": [d.to_dict() for d in self.doctors] if self.doctors else [],
+            "clinical_events": self._serialize_clinical_events(),
             "created_at": created_at_value.isoformat() if created_at_value else None,
             "updated_at": updated_at_value.isoformat() if updated_at_value else None,
         }
+
+    def _serialize_clinical_events(self) -> list:
+        """Surface the health journeys this examination belongs to.
+
+        Reads from the ``event_links`` backref (from ``EventExaminationLink``)
+        only when it has been eager-loaded — avoids triggering a lazy load
+        during sync serialization. Returns ``[]`` otherwise. Capped at 20.
+        """
+        if "event_links" not in self.__dict__:
+            return []
+        out = []
+        for link in self.event_links[:20]:
+            event = getattr(link, "event", None)
+            if event is None:
+                continue
+            out.append(
+                {
+                    "id": str(event.id) if event.id else None,
+                    "title": getattr(event, "title", None),
+                    "status": getattr(event.status, "value", None)
+                    if getattr(event, "status", None) is not None
+                    else None,
+                    "reason": getattr(link, "reason", None),
+                }
+            )
+        return out
 
     def to_fhir_dict(self) -> dict:
         """Project this ExaminationModel to a FHIR R4B Encounter resource.
@@ -247,6 +274,32 @@ class ExaminationModel(
                     )
             if not diagnosis:
                 diagnosis = None
+
+        # Close the documented gap: when ClinicalEvent rows are linked via
+        # EventExaminationLink (eager-loaded), emit real Condition references
+        # so the Encounter is properly wired to the patient's problem list.
+        # Previously the comment promised this but it was never implemented.
+        # Guard on __dict__ to avoid a lazy load during facade bulk search.
+        if "event_links" in self.__dict__:
+            for link in self.event_links:
+                event = getattr(link, "event", None)
+                if event is None or event.id is None:
+                    continue
+                diagnosis = diagnosis or []
+                diagnosis.append(
+                    {
+                        "condition": {"reference": f"Condition/{event.id}"},
+                        "use": {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/diagnosis-role",
+                                    "code": "CC",
+                                    "display": "Chief complaint",
+                                }
+                            ]
+                        },
+                    }
+                )
 
         data = {
             "resourceType": "Encounter",

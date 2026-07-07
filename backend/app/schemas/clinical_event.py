@@ -29,6 +29,10 @@ class ClinicalEventTypeBase(BaseModel):
     icon: Optional[Dict[str, Any]] = None
     color: Optional[str] = None
     metadata_schema: Optional[Dict[str, Any]] = None
+    severity_scale: Optional[Dict[str, Any]] = None
+    phases: Optional[List[Dict[str, Any]]] = None
+    milestones: Optional[List[Dict[str, Any]]] = None
+    default_duration_days: Optional[int] = None
     category_concept_id: Optional[UUID] = None
 
 
@@ -97,7 +101,50 @@ class ClinicalEventResponse(ClinicalEventBase):
     type_details: Optional[ClinicalEventTypeResponse] = None
     examinations: List[Dict[str, Any]] = []
     observations: List[Dict[str, Any]] = []
+    anatomy_links: List[Dict[str, Any]] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ClinicalEventOccurrenceCreate(BaseModel):
+    """Payload for ``POST /clinical-events/{id}/occurrences``.
+
+    ``occurred_at`` is required (an occurrence without a timestamp is meaningless
+    and the column is NOT NULL). ``intensity`` is an optional 1..10 scale for
+    pain-style journeys; ``severity`` is a free-text ordinal ('mild'/'moderate'/
+    'severe'); ``anatomy_id`` optionally ties the episode to a body site.
+    """
+
+    occurred_at: datetime
+    title: Optional[str] = None
+    severity: Optional[str] = None
+    intensity: Optional[int] = Field(default=None, ge=1, le=10)
+    notes: Optional[str] = None
+    anatomy_id: Optional[UUID] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class EventAnatomyLinkCreate(BaseModel):
+    """Payload for ``POST /clinical-events/{id}/link-anatomy``.
+
+    ``relation_type`` distinguishes ``primary_site`` / ``radiates_to`` /
+    ``referred_to`` (free-text; defaults to ``primary_site``).
+    """
+
+    anatomy_id: UUID
+    relation_type: Optional[str] = "primary_site"
+
+
+class BiomarkerCorrelationCreate(BaseModel):
+    """Payload for ``POST /clinical-events/types/{id}/biomarkers``.
+
+    Binds a biomarker definition to an event type so the engine can recommend
+    it for journeys of that type. ``correlation_type`` is free-text
+    ('monitoring' / 'diagnostic'); defaults to 'monitoring'.
+    """
+
+    biomarker_id: UUID
+    correlation_type: str = "monitoring"
+    description: Optional[str] = None

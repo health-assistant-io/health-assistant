@@ -104,6 +104,7 @@ class ExaminationResponse(ExaminationBase):
     organization: Optional[Organization] = None
     doctors: List[DoctorResponse] = []
     document_statuses: List[DocumentStatus] = []
+    clinical_events: List[Dict[str, Any]] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
