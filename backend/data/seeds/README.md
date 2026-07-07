@@ -125,7 +125,5 @@ For an instance on another machine: TaxonomyManager → **Seeds** button
 
 ## Not exported / out of scope
 
-- `anatomy_markers.json` — stale unused file (nothing ingests it). Real marker
-  data lives in `AnatomyStructure.display` (carried by `anatomy_structures.json`).
 - `anatomy_figures/` — binary WebP images, managed via the Atlas Editor.
 - `sample_blood_panel.pdf` — a demo OCR fixture, not a seed.

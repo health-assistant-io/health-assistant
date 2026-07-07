@@ -265,13 +265,11 @@ as the source: its rows are emitted with scope stripped. This is how you curate
 the canonical set in a tenant you control via the UI, then promote it to global
 seeds.
 
-### 7.5 Anatomy markers note
+### 7.5 Binary anatomy assets note
 
-The legacy `anatomy_markers.json` file is **not exported** — it's a stale,
-unused file (nothing ingests it). Real marker data lives in
-`AnatomyStructure.display` (JSONB), which is carried by the
-`anatomy_structures.json` export. Binary `anatomy_figures/` images are out of
-scope for the seed ZIP (managed via the Atlas Editor).
+Positional marker data lives in `AnatomyStructure.display` (JSONB) and is
+carried by the `anatomy_structures.json` export. Binary `anatomy_figures/`
+images are out of scope for the seed ZIP (managed via the Atlas Editor).
 
 See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
 
