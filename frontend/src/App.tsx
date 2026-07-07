@@ -42,7 +42,15 @@ import Integrations from './pages/Settings/Integrations';
 import IntegrationDetail from './pages/Settings/IntegrationDetail';
 import OAuthConnected from './pages/Settings/OAuthConnected';
 import ExportImport from './pages/Settings/ExportImport';
-import SettingsLayout from './components/settings/SettingsLayout';
+import SettingsShell from './components/settings/SettingsShell';
+import {
+  userSettingsNav,
+  userSettingsHeader,
+  tenantSettingsNav,
+  tenantSettingsHeader,
+  systemSettingsNav,
+  systemSettingsHeader,
+} from './config/settingsNav';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import UserManagement from './pages/Admin/UserManagement';
@@ -264,26 +272,36 @@ function App() {
           {/* System Administration (System Admin Only) */}
           {user?.role === 'SYSTEM_ADMIN' && (
             <>
+              {/* Full-page admin dashboards — no settings sidebar */}
               <Route path="/admin/system/tenants" element={<TenantManagement />} />
               <Route path="/admin/system/tenants/:tenantId" element={<TenantDetail />} />
               <Route path="/admin/system/users" element={<UserManagement />} />
               <Route path="/admin/system/users/:userId" element={<UserDetail />} />
-              <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
-              <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
-              <Route path="/admin/system/taxonomy" element={<TaxonomyManager />} />
-              <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
-              <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
-              <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
+
+              {/* Configuration surfaces — share the settings shell */}
+              <Route element={<SettingsShell nav={systemSettingsNav} header={systemSettingsHeader} />}>
+                <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
+                <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
+                <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
+                <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
+                <Route path="/admin/system/taxonomy" element={<TaxonomyManager />} />
+                <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
+              </Route>
             </>
           )}
 
           {/* Tenant Management (Admin & System Admin) */}
           {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
             <>
+              {/* Full-page admin dashboards — no settings sidebar */}
               <Route path="/admin/tenant/users" element={<UserManagement />} />
               <Route path="/admin/tenant/users/:userId" element={<UserDetail />} />
-              <Route path="/admin/tenant/ai-config" element={<AIConfig scope="tenant" />} />
-              <Route path="/admin/tenant/settings" element={<TenantSettingsPage />} />
+
+              {/* Configuration surfaces — share the settings shell */}
+              <Route element={<SettingsShell nav={tenantSettingsNav} header={tenantSettingsHeader} />}>
+                <Route path="/admin/tenant/settings" element={<TenantSettingsPage />} />
+                <Route path="/admin/tenant/ai-config" element={<AIConfig scope="tenant" />} />
+              </Route>
             </>
           )}
 
@@ -291,7 +309,7 @@ function App() {
           <Route path="/ai-assistant" element={<AIChatPage />} />
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
           <Route path="/profile" element={<MyAccount />} />
-          <Route path="/settings" element={<SettingsLayout />}>
+          <Route path="/settings" element={<SettingsShell nav={userSettingsNav} header={userSettingsHeader} />}>
             <Route index element={<Navigate to="/settings/appearance" replace />} />
             <Route path="preferences" element={<Preferences />} />
             <Route path="notifications" element={<Notifications />} />

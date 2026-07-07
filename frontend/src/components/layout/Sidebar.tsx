@@ -9,8 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   User,
-  ShieldCheck,
-  Network
+  ShieldCheck
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -161,14 +160,9 @@ function Sidebar() {
         // ── System section ──
         { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/users', labelKey: 'admin.users', roles: ['SYSTEM_ADMIN'] },
-        { path: '/admin/system/catalogs', labelKey: 'Clinical Ontology', roles: ['SYSTEM_ADMIN'] },
-        { path: '/admin/system/taxonomy', labelKey: 'Taxonomy Manager', roles: ['SYSTEM_ADMIN'] },
-        { path: '/admin/system/ai-config', labelKey: 'admin.system_ai_config', roles: ['SYSTEM_ADMIN'] },
-        { path: '/admin/system/integrations', labelKey: 'System Integrations', roles: ['SYSTEM_ADMIN'] },
         { path: '/admin/system/settings', labelKey: 'admin.system_settings', roles: ['SYSTEM_ADMIN'] },
         // ── Tenant section ──
         { path: '/admin/tenant/users', labelKey: 'admin.users', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-        { path: '/admin/tenant/ai-config', labelKey: 'admin.tenant_ai_config', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
