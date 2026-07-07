@@ -301,7 +301,7 @@ function ExaminationUpload() {
           examination_date: isSmartMode ? undefined : examinationDate,
           notes: isSmartMode ? undefined : notes || undefined,
           patient_notes: patientNotes || undefined, // Patient notes are always sent if present
-          category: isSmartMode ? 'Clinical' : category,
+          category: isSmartMode ? (category || undefined) : category,
           doctor_ids: isSmartMode ? [] : selectedDoctorIds,
           organization_id: isSmartMode ? undefined : (selectedOrganizationId || undefined),
           auto_extract_metadata: isSmartMode
@@ -690,6 +690,32 @@ function ExaminationUpload() {
 
         {isSmartMode && !isBulkMode && (
           <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                  {t('examination_detail.header.category', 'Category')} <span className="text-gray-300 normal-case font-medium tracking-normal">(Optional — AI will auto-extract if not set)</span>
+                </label>
+                <AIAssistButton
+                  taskType="magic_fill_examination"
+                  context={{ patientId }}
+                  showLabel={false}
+                  placeholder="Describe the visit to categorize..."
+                  onSuggestedData={(data) => {
+                    if (data.category) {
+                      setCategory(data.category);
+                    }
+                  }}
+                />
+              </div>
+              <CategorySelector
+                categories={dynamicCategories}
+                selectedName={category}
+                onSelect={(name) => setCategory(name)}
+                onCreate={handleCreateCategory}
+                placeholder={t('examination_detail.header.select_category')}
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
                 Patient Notes (Optional)

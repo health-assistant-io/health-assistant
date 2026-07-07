@@ -15,7 +15,7 @@ import {
   ClipboardList, Calendar, ArrowLeft,
   Download, ExternalLink, Search, Clock, Plus, Pill, Cpu,
   Bookmark, Stethoscope, BriefcaseMedical, ChevronDown, 
-  RotateCcw, CloudLightning, Camera, Building2
+  RotateCcw, CloudLightning, Camera, Building2, MoreVertical, Sparkles
 } from 'lucide-react';
 import { listDoctors, createDoctor, Doctor } from '../../services/doctorService';
 import { deleteObservation } from '../../services/observationService';
@@ -111,7 +111,7 @@ const ExaminationDetail = () => {
   
   // Category & Doctor editing states
   const [tempCategory, setTempCategory] = useState('');
-  const [isAnalysisDropdownOpen, setIsAnalysisDropdownOpen] = useState(false);
+  const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
   const [dynamicCategories, setDynamicCategories] = useState<any[]>([]);
   const [availableDoctors, setAvailableDoctors] = useState<Doctor[]>([]);
   const [availableOrganizations, setAvailableOrganizations] = useState<Organization[]>([]);
@@ -135,12 +135,12 @@ const ExaminationDetail = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const analysisDropdownRef = useRef<HTMLDivElement>(null);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (analysisDropdownRef.current && !analysisDropdownRef.current.contains(event.target as Node)) {
-        setIsAnalysisDropdownOpen(false);
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
+        setIsActionsDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -412,6 +412,19 @@ const ExaminationDetail = () => {
     }
   };
 
+  const handleStartEditing = () => {
+    setTempDate(examination?.examination_date?.split('T')[0] || '');
+    setTempCategory(examination?.category || '');
+    setNotesContent(examination?.notes || '');
+    setPatientNotesContent(examination?.patient_notes || '');
+    setSelectedDoctorIds(examination?.doctors?.map((d: any) => d.id) || []);
+    setSelectedOrganizationId(examination?.organization_id || null);
+    setIsGlobalEditing(true);
+    setIsEditingNotes(true);
+    setIsEditingPatientNotes(true);
+    setIsActionsDropdownOpen(false);
+  };
+
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
@@ -587,7 +600,7 @@ const ExaminationDetail = () => {
 
   const handleRunAnalysis = async (mode: 'full' | 'extract_only' = 'full') => {
     if (!examinationId) return;
-    setIsAnalysisDropdownOpen(false);
+    setIsActionsDropdownOpen(false);
     try {
       // Optimistic update
       setExamination((prev: any) => ({
@@ -699,88 +712,116 @@ const ExaminationDetail = () => {
                 <>
                   <input type="file" multiple ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.jpg,.jpeg,.png,.docx,.txt,.dcm" id="add-doc-input" />
                   <input type="file" ref={cameraInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" capture="environment" id="camera-doc-input" />
-                  
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 disabled:opacity-50">
-                      <Plus className="w-5 h-5" />
-                      <span>{uploading ? t('examination_detail.header.processing') : t('examination_detail.header.upload_results')}</span>
-                    </button>
-                    {isMobileDevice() && (
-                      <button onClick={() => cameraInputRef.current?.click()} disabled={uploading} className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-50" title="Take Photo">
-                        <Camera className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative" ref={analysisDropdownRef}>
-                    <button 
-                      onClick={() => setIsAnalysisDropdownOpen(!isAnalysisDropdownOpen)} 
-                      disabled={uploading || (examination?.extraction_status && !['completed', 'failed'].includes(examination.extraction_status))} 
-                      className="flex items-center space-x-2 px-6 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 rounded-xl font-bold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all active:scale-95 disabled:opacity-50"
+
+                  <ExaminationAIActions examinationId={examinationId!} />
+
+                  <div className="relative" ref={actionsDropdownRef}>
+                    <button
+                      onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
+                      disabled={uploading || (examination?.extraction_status && !['completed', 'failed'].includes(examination.extraction_status))}
+                      className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95 disabled:opacity-50"
                     >
-                      <Activity className="w-5 h-5" />
-                      <span>{t('examination_detail.header.run_ai_analysis')}</span>
-                      <ChevronDown className={`w-4 h-4 transition-transform ${isAnalysisDropdownOpen ? 'rotate-180' : ''}`} />
+                      <MoreVertical className="w-5 h-5" />
+                      <span>{t('common.actions', 'Actions')}</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
-                    {isAnalysisDropdownOpen && (
-                      <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-[110] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="p-4 border-b border-gray-50 dark:border-dark-border">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('examination_detail.header.select_extraction_mode')}</p>
-                        </div>
+                    {isActionsDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-[110] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        {/* Add Results */}
                         <div className="p-2">
-                          <button onClick={() => handleRunAnalysis('full')} className="w-full flex items-center space-x-3 p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-colors text-left group">
-                            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Cpu className="w-4 h-4" /></div>
+                          <button
+                            onClick={() => { fileInputRef.current?.click(); setIsActionsDropdownOpen(false); }}
+                            disabled={uploading}
+                            className="w-full flex items-center space-x-3 p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-left group"
+                          >
+                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors"><Plus className="w-4 h-4" /></div>
                             <div>
-                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
-                                {t('examination_detail.header.full_reconstruction')}
-                                <AIBadge workflow="full_reconstruction" className="ml-1" />
-                              </p>
-                              <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.full_reconstruction_desc')}</p>
+                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{t('examination_detail.header.upload_results')}</p>
+                              <p className="text-[10px] text-gray-400 font-medium">{uploading ? t('examination_detail.header.processing') : t('examination_detail.header.upload_results_desc', 'Upload documents for this examination')}</p>
                             </div>
                           </button>
-                          <button onClick={() => handleRunAnalysis('extract_only')} className="w-full flex items-center space-x-3 p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-left group">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors"><FlaskConical className="w-4 h-4" /></div>
+                          {isMobileDevice() && (
+                            <button
+                              onClick={() => { cameraInputRef.current?.click(); setIsActionsDropdownOpen(false); }}
+                              disabled={uploading}
+                              className="w-full flex items-center space-x-3 p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-colors text-left group"
+                            >
+                              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Camera className="w-4 h-4" /></div>
+                              <div>
+                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{t('examination_detail.header.take_photo', 'Take Photo')}</p>
+                                <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.take_photo_desc', 'Capture a photo with the camera')}</p>
+                              </div>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* AI Analysis Section */}
+                        <div className="border-t border-gray-50 dark:border-dark-border">
+                          <div className="px-4 pt-3 pb-1">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('examination_detail.header.select_extraction_mode')}</p>
+                          </div>
+                          <div className="p-2">
+                            <button
+                              onClick={() => handleRunAnalysis('full')}
+                              className="w-full flex items-center space-x-3 p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-colors text-left group"
+                            >
+                              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Cpu className="w-4 h-4" /></div>
+                              <div className="flex-1">
+                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
+                                  {t('examination_detail.header.full_reconstruction')}
+                                  <AIBadge workflow="full_reconstruction" className="ml-1" />
+                                </p>
+                                <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.full_reconstruction_desc')}</p>
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => handleRunAnalysis('extract_only')}
+                              className="w-full flex items-center space-x-3 p-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-left group"
+                            >
+                              <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors"><FlaskConical className="w-4 h-4" /></div>
+                              <div className="flex-1">
+                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
+                                  {t('examination_detail.header.fast_extraction')}
+                                  <AIBadge workflow="fast_extraction" className="ml-1" />
+                                </p>
+                                <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.fast_extraction_desc')}</p>
+                              </div>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Edit & Delete Section */}
+                        <div className="border-t border-gray-50 dark:border-dark-border p-2">
+                          <button
+                            onClick={handleStartEditing}
+                            className="w-full flex items-center space-x-3 p-3 hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors text-left group"
+                          >
+                            <div className="p-2 bg-gray-100 dark:bg-dark-bg rounded-lg text-gray-600 dark:text-dark-muted group-hover:bg-gray-900 group-hover:text-white transition-colors"><Edit2 className="w-4 h-4" /></div>
                             <div>
-                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
-                                {t('examination_detail.header.fast_extraction')}
-                                <AIBadge workflow="fast_extraction" className="ml-1" />
-                              </p>
-                              <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.fast_extraction_desc')}</p>
+                              <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{t('common.edit')}</p>
+                              <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.edit_details_desc', 'Edit date, category, doctors and notes')}</p>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => { setIsActionsDropdownOpen(false); handleDeleteExamination(); }}
+                            className="w-full flex items-center space-x-3 p-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors text-left group"
+                          >
+                            <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors"><Trash2 className="w-4 h-4" /></div>
+                            <div>
+                              <p className="text-xs font-black text-red-600 dark:text-red-400 uppercase">{t('examination_detail.header.discard_record')}</p>
+                              <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.delete_message')}</p>
                             </div>
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
-                  <ExaminationAIActions examinationId={examinationId!} />
                 </>
               )}
             </div>
 
             <div className="flex items-center gap-3">
-              {!isGlobalEditing ? (
-                <div className="flex items-center space-x-2">
-                  <button onClick={handleDeleteExamination} className="p-2 text-gray-400 hover:text-red-600 transition-all active:scale-95" title={t('examination_detail.header.discard_record')}>
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setTempDate(examination?.examination_date?.split('T')[0] || '');
-                      setTempCategory(examination?.category || '');
-                      setNotesContent(examination?.notes || '');
-                      setPatientNotesContent(examination?.patient_notes || '');
-                      setSelectedDoctorIds(examination?.doctors?.map((d: any) => d.id) || []);
-                      setSelectedOrganizationId(examination?.organization_id || null);
-                      setIsGlobalEditing(true);
-                      setIsEditingNotes(true);
-                      setIsEditingPatientNotes(true);
-                    }} 
-                    className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-[#1a2b4b] dark:text-dark-text rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all font-semibold shadow-sm text-sm whitespace-nowrap"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                    <span>{t('common.edit')}</span>
-                  </button>
-                </div>
-              ) : (
+              {isGlobalEditing && (
                 <div className="flex items-center space-x-2">
                   <button onClick={handleCancelAll} className="flex items-center justify-center space-x-2 px-4 py-2 border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all font-semibold text-sm">
                     <X className="w-4 h-4" />
@@ -1319,15 +1360,22 @@ const ExaminationDetail = () => {
                                  <button
                                     type="button"
                                     onClick={() => handleToggleInclusion(doc.id, doc.include_in_extraction)}
-                                    title={doc.include_in_extraction ? "Remove from AI analysis" : "Include in AI extraction & biomarker analysis"}
-                                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${
-                                       doc.include_in_extraction 
-                                          ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20' 
-                                          : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-400 hover:text-blue-500 hover:border-blue-200'
+                                    aria-pressed={doc.include_in_extraction}
+                                    title={doc.include_in_extraction ? 'AI extraction enabled — click to disable' : 'AI extraction disabled — click to enable'}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all border ${
+                                       doc.include_in_extraction
+                                          ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm hover:bg-indigo-500/20'
+                                          : 'bg-gray-500/5 border-transparent hover:bg-gray-500/10 hover:border-gray-300/30'
                                     }`}
                                  >
-                                    <Cpu className="w-3 h-3" />
-                                    <span>{doc.include_in_extraction ? t('examination_detail.repository.selected') : t('examination_detail.repository.analyze')}</span>
+                                    <Sparkles className={`w-3 h-3 shrink-0 transition-colors ${doc.include_in_extraction ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                    <span className={`text-[9px] font-black uppercase tracking-tighter transition-colors ${
+                                       doc.include_in_extraction
+                                          ? 'bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
+                                          : 'text-gray-400'
+                                    }`}>
+                                       {doc.include_in_extraction ? t('examination_detail.repository.ai_extract', 'AI Extract') : t('examination_detail.repository.ai_off', 'AI Off')}
+                                    </span>
                                  </button>
                               </td>
                               <td className="px-8 py-5 whitespace-nowrap text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-tighter">
@@ -1407,14 +1455,22 @@ const ExaminationDetail = () => {
                               <button
                                  type="button"
                                  onClick={(e) => { e.stopPropagation(); handleToggleInclusion(doc.id, doc.include_in_extraction); }}
-                                 className={`w-full flex items-center justify-center space-x-1.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${
-                                    doc.include_in_extraction 
-                                       ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
-                                       : 'bg-gray-50 dark:bg-dark-bg border-gray-100 dark:border-dark-border text-gray-400 hover:text-blue-500 hover:border-blue-200'
+                                 aria-pressed={doc.include_in_extraction}
+                                 title={doc.include_in_extraction ? 'AI extraction enabled — click to disable' : 'AI extraction disabled — click to enable'}
+                                 className={`w-full flex items-center justify-center gap-1 py-1.5 rounded-lg transition-all border ${
+                                    doc.include_in_extraction
+                                       ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm hover:bg-indigo-500/20'
+                                       : 'bg-gray-500/5 border-transparent hover:bg-gray-500/10 hover:border-gray-300/30'
                                  }`}
                               >
-                                 <Cpu className="w-3 h-3" />
-                                 <span>{doc.include_in_extraction ? t('examination_detail.repository.selected') : t('examination_detail.repository.analyze')}</span>
+                                 <Sparkles className={`w-3 h-3 shrink-0 transition-colors ${doc.include_in_extraction ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                 <span className={`text-[9px] font-black uppercase tracking-tighter transition-colors ${
+                                    doc.include_in_extraction
+                                       ? 'bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
+                                       : 'text-gray-400'
+                                 }`}>
+                                    {doc.include_in_extraction ? t('examination_detail.repository.ai_extract', 'AI Extract') : t('examination_detail.repository.ai_off', 'AI Off')}
+                                 </span>
                               </button>
                            </div>
                        </div>
