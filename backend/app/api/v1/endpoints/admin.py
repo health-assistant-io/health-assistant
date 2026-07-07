@@ -17,6 +17,7 @@ from typing import Dict
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal, get_db
@@ -24,6 +25,7 @@ from app.core.security import RoleChecker, TokenData
 from app.models.enums import Role
 from app.schemas.biomarker import CatalogImportPayload
 from app.services.catalog_import_service import CatalogImportService
+from app.services.seed_export_service import SeedExportService
 from app.workers.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
@@ -196,3 +198,28 @@ async def broadcast_notification(
     if notification is None:
         raise HTTPException(status_code=500, detail="Failed to emit notification.")
     return {"status": "success", "notification_id": str(notification.id)}
+
+
+@router.get("/seeds/export.zip")
+async def export_seeds_zip(
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the running instance's global taxonomy/anatomy/catalog data as
+    a ZIP of seed-format JSON files (flat layout, one file per seed).
+
+    The download is read-only — it never touches the server's ``data/seeds/``.
+    A maintainer transfers the ZIP to their dev machine and unpacks it into
+    ``backend/data/seeds/`` (via ``scripts/unpack_seeds_zip.py``, which backs
+    up existing files first), then reviews with ``git diff data/seeds/``.
+
+    SYSTEM_ADMIN-only: seeds are the global canonical taxonomy, not tenant data.
+    """
+    zip_bytes = await SeedExportService(db, tenant_id=None).build_zip_bytes()
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="health-assistant-seeds.zip"',
+        },
+    )

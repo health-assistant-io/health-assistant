@@ -197,3 +197,81 @@ The Anatomy Explorer renders a 2D human body and overlays organ markers so users
 
 No pixel math or JSON editing is required.
 
+## 7. Exporting an Instance Back to Seeds
+
+Seed files are normally hand-edited JSON. But it's often easier to build the
+canonical taxonomy / anatomy / biomarker catalog in a running instance — via
+the TaxonomyManager UI, the Anatomy Atlas editor, the AI chatbot's graph-
+generation tools, or the ontology-catalog import — and then **snapshot that
+instance's data back into the shipped seed format**. `SeedExportService`
+(`backend/app/services/seed_export_service.py`) is the strict inverse of
+`SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
+envelope each `seed_*` stage consumes, covering **all nine seed files** —
+concepts, concept edges, anatomy structures + relations, the default catalog,
+biomarker panels, clinical event types, medications, and allergies.
+
+The output is **deterministic** (sorted by slug/name, fixed field order, only
+meaningful fields, a regenerated `metadata` block), so re-exporting an
+unchanged DB is a git no-op — the point is to review diffs, not blind-replace.
+
+### 7.1 Identity model
+
+**Slug is the stable join key; `name` is mutable display.** Cross-references
+between seed items are by slug (`parent_slug`, `src_slug`/`dst_slug`,
+`panel_slug`, `class_concept_slug`). Where an entity has a real external code,
+`coding_system` + `code` are emitted alongside as **identity evidence**
+(FHIR-aligned, useful for interop/dedup audits) but are *not* the join key —
+see the design discussion in `dev/plans/seed-export-service-2026-07-07.md`.
+
+### 7.2 Three delivery surfaces (same service underneath)
+
+**UI download (SYSTEM_ADMIN)** — the **TaxonomyManager** page
+(`/admin/system/taxonomy`) has a **Seeds** button that calls
+`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the nine files. The
+download is **read-only** — the server never writes its own `data/seeds/`.
+
+**CLI (curator on the same machine as the DB)**:
+```bash
+cd backend && source venv/bin/activate && export PYTHONPATH=.:../
+python scripts/export_seeds.py --dry-run    # preview counts, no writes
+python scripts/export_seeds.py              # global taxonomy -> data/seeds
+python scripts/export_seeds.py --source TENANT_ID   # a template tenant
+python scripts/export_seeds.py --out /tmp/seeds     # custom output dir
+```
+The write is safe: files stage to `.export-staging/`, existing files back up
+to `.backup-<timestamp>/`, then atomic write.
+
+**Dev-side unpack helper** — for the transfer workflow (instance on another
+machine): download the ZIP via the UI, copy it to your dev machine, then:
+```bash
+python scripts/unpack_seeds_zip.py path/to/health-assistant-seeds.zip
+```
+Backs up existing `data/seeds/*.json` to `.backup-<timestamp>/`, then extracts.
+Refuses archives containing unknown or path-traversal entries.
+
+### 7.3 The transfer workflow (instance on another machine)
+
+1. On the running instance: TaxonomyManager → **Seeds** → `health-assistant-seeds.zip`.
+2. Transfer the ZIP to your dev machine (download, scp, USB).
+3. `python scripts/unpack_seeds_zip.py health-assistant-seeds.zip` (backup + extract).
+4. `git diff data/seeds/` → review → commit. The next release ships the new seeds.
+
+### 7.4 Source scope
+
+`--source global` (the default) exports `tenant_id IS NULL` rows — the global
+taxonomy that ships. Pass a tenant UUID (`--source TENANT_ID` or
+`SeedExportService(db, tenant_id=...)`) to treat a dedicated "template tenant"
+as the source: its rows are emitted with scope stripped. This is how you curate
+the canonical set in a tenant you control via the UI, then promote it to global
+seeds.
+
+### 7.5 Anatomy markers note
+
+The legacy `anatomy_markers.json` file is **not exported** — it's a stale,
+unused file (nothing ingests it). Real marker data lives in
+`AnatomyStructure.display` (JSONB), which is carried by the
+`anatomy_structures.json` export. Binary `anatomy_figures/` images are out of
+scope for the seed ZIP (managed via the Atlas Editor).
+
+See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
+

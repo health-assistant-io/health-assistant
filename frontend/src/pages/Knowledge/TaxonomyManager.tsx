@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Plus, Edit2, Trash2, Save, X, Loader2, Network, List, GitBranch, Link2, Unlink, Maximize2,
+  Plus, Edit2, Trash2, Save, X, Loader2, Network, List, GitBranch, Link2, Unlink, Maximize2, Download,
 } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -15,6 +15,7 @@ import {
   getConcept, getConceptNeighbors, createEdge, deleteEdge, listEdges,
 } from '../../services/conceptService';
 import { anatomyService } from '../../services/anatomyService';
+import { downloadSeedsZip } from '../../services/seedService';
 import { IconPicker } from '../../components/ui/IconPicker';
 import { SearchableDropdown, type DropdownOption } from '../../components/ui/SearchableDropdown';
 import type {
@@ -88,6 +89,7 @@ export default function TaxonomyManager() {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [downloadingSeeds, setDownloadingSeeds] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -446,6 +448,17 @@ export default function TaxonomyManager() {
 
   const canEdit = true;
 
+  const handleDownloadSeeds = useCallback(async () => {
+    setDownloadingSeeds(true);
+    try {
+      await downloadSeedsZip();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to download seeds');
+    } finally {
+      setDownloadingSeeds(false);
+    }
+  }, []);
+
   // Searchable domain-selector options (the kind dropdown).
   const kindOptions: DropdownOption[] = useMemo(() => [
     { value: 'all', label: 'All Domains', description: 'every kind' },
@@ -510,6 +523,25 @@ export default function TaxonomyManager() {
               className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-2 text-sm font-medium text-white transition-colors"
             >
               <Plus className="w-4 h-4" /> Add
+            </button>
+          )}
+          {canEdit && viewMode !== 'list' && <div className="ml-auto" />}
+
+          {canEdit && (
+            <button
+              onClick={handleDownloadSeeds}
+              disabled={downloadingSeeds}
+              title="Download the global taxonomy/anatomy/catalog as seed JSON files (for curating the shipped seeds)"
+              className={`${
+                canEdit && viewMode === 'list' ? '' : ''
+              } flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-wait`}
+            >
+              {downloadingSeeds ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Seeds
             </button>
           )}
         </div>

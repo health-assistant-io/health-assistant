@@ -255,11 +255,21 @@ class SeedService:
                 result = await session.execute(stmt)
                 db_part = result.scalar_one_or_none()
 
-                # Resolve the legacy uppercase category string to a concept ID.
-                raw_category = item.get("category", "OTHER")
-                class_concept_id = await _resolve_anatomy_class_concept(
-                    session, raw_category
-                )
+                # Lossless class resolution: prefer an explicit
+                # ``class_concept_slug`` (round-trips any anatomy-class concept,
+                # including ones outside the legacy enum); fall back to the
+                # legacy uppercase ``category`` enum mapping for backward compat
+                # with older seed files.
+                explicit_slug = item.get("class_concept_slug")
+                if explicit_slug:
+                    class_concept_id = await resolve_concept_by_slug(
+                        session, explicit_slug, ConceptKind.ANATOMY_CLASS
+                    )
+                else:
+                    raw_category = item.get("category", "OTHER")
+                    class_concept_id = await _resolve_anatomy_class_concept(
+                        session, raw_category
+                    )
 
                 standard_sys = None
                 if item.get("standard_system"):
@@ -741,6 +751,7 @@ class SeedService:
         # type) keep working unchanged. Add a branch here to support more
         # polymorphic endpoint tables (biomarker, examination, …).
         from app.models.anatomy_model import AnatomyStructure
+        from app.models.biomarker_model import BiomarkerDefinition
 
         async def _resolve_endpoint(slug: str, etype: str):
             if not slug:
@@ -759,6 +770,14 @@ class SeedService:
                 )
                 eid = row.scalar_one_or_none()
                 return (EdgeEndpointType.ANATOMY, eid) if eid else None
+            if etype == "biomarker":
+                row = await session.execute(
+                    select(BiomarkerDefinition.id).where(
+                        BiomarkerDefinition.slug == slug
+                    )
+                )
+                eid = row.scalar_one_or_none()
+                return (EdgeEndpointType.BIOMARKER, eid) if eid else None
             logger.warning(
                 f"Unknown seed endpoint type '{etype}' (slug={slug}); skipping."
             )

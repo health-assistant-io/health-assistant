@@ -1,13 +1,17 @@
 import logging
-from typing import Dict
+from typing import Dict, Optional
+from uuid import UUID
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.biomarker_model import BiomarkerDefinition, Unit
-from app.models.enums import QuantityType
+from app.models.enums import ConceptKind, QuantityType
 from app.schemas.biomarker import CatalogImportPayload
-from app.services.concept_service import resolve_biomarker_class_concept
+from app.services.concept_service import (
+    resolve_biomarker_class_concept,
+    resolve_concept_by_slug,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +19,21 @@ logger = logging.getLogger(__name__)
 class CatalogImportService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _resolve_class_concept(self, bio_data) -> Optional[UUID]:
+        """Resolve a biomarker's class concept, preferring the explicit slug
+        (the backup export path emits the concept slug, which round-trips
+        cleanly) and falling back to the legacy ``category`` name→slug
+        translation (the ontology-catalog-URL path, whose JSON uses the
+        underscore convention ``blood_laboratory``)."""
+        slug = getattr(bio_data, "class_concept_slug", None)
+        if slug:
+            cid = await resolve_concept_by_slug(
+                self.db, slug, ConceptKind.BIOMARKER_CLASS
+            )
+            if cid:
+                return cid
+        return await resolve_biomarker_class_concept(self.db, bio_data.category)
 
     async def fetch_catalog_from_url(self, url: str) -> CatalogImportPayload:
         """Fetch JSON catalog from a URL and parse it."""
@@ -106,9 +125,7 @@ class CatalogImportService:
                         existing_bio.class_concept_id = bio_data.class_concept_id
                     else:
                         existing_bio.class_concept_id = (
-                            await resolve_biomarker_class_concept(
-                                self.db, bio_data.category
-                            )
+                            await self._resolve_class_concept(bio_data)
                         )
                     existing_bio.aliases = bio_data.aliases
                     existing_bio.info = bio_data.info
@@ -120,9 +137,7 @@ class CatalogImportService:
                 else:
                     class_concept_id = bio_data.class_concept_id
                     if class_concept_id is None:
-                        class_concept_id = await resolve_biomarker_class_concept(
-                            self.db, bio_data.category
-                        )
+                        class_concept_id = await self._resolve_class_concept(bio_data)
                     new_bio = BiomarkerDefinition(
                         slug=bio_data.slug,
                         name=bio_data.name,

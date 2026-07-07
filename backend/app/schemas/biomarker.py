@@ -30,6 +30,13 @@ class BiomarkerBase(BaseModel):
     # in the biomarker endpoint / catalog import.
     category: Optional[str] = None
     class_concept_id: Optional[UUID] = None
+    # The class concept *slug* — the canonical key used by the backup
+    # export/import path. ``category`` is the concept *name* and does not
+    # round-trip through ``biomarker_category_to_concept_slug`` (which only
+    # swaps ``_``→``-``), so without this slug the class link is silently
+    # dropped on restore. CatalogImportService resolves this ahead of the
+    # legacy ``category`` string when both are present.
+    class_concept_slug: Optional[str] = None
     aliases: List[str] = []
     info: Optional[str] = None
     reference_range_min: Optional[float] = None

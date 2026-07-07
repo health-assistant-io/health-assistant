@@ -12,11 +12,13 @@ from sqlalchemy import or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
+from app.models.anatomy_model import AnatomyRelation, AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import (
     ClinicalEvent,
     ClinicalEventType,
 )
+from app.models.concept_model import Concept, ConceptEdge
 from app.models.document_model import DocumentModel
 from app.models.enums import ExportScope, ExportType, JobStatus
 from app.models.examination_model import ExaminationModel
@@ -145,7 +147,7 @@ class ExportService:
                 manifest_path=manifest_path,
                 file_size_bytes=file_size,
                 resource_counts=counts,
-                completed_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(timezone.utc),
             )
         )
         await self.db.commit()
@@ -159,7 +161,7 @@ class ExportService:
             .values(
                 status=JobStatus.FAILED,
                 error_message=error,
-                completed_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(timezone.utc),
             )
         )
         await self.db.commit()
@@ -336,6 +338,59 @@ class ExportService:
             "categories": [c.to_dict() for c in cats_res.scalars().all()],
         }
 
+    async def gather_concepts(self, tenant_id: UUID) -> Dict[str, Any]:
+        """Tenant-private concepts (the part of the taxonomy not recreated by
+        the global seed). Global/seeded concepts (``tenant_id IS NULL``) are
+        re-created by ``SeedService`` on the target, so we export only
+        tenant-scoped rows to keep backups small and avoid version-skew
+        clashes. References from tenant-scoped rows back to global concepts are
+        preserved by id-remap + slug fallback on import."""
+        res = await self.db.execute(
+            select(Concept).where(
+                Concept.tenant_id == tenant_id,
+                Concept.deleted_at.is_(None),
+            )
+        )
+        return {"concepts": [c.to_dict() for c in res.scalars().unique().all()]}
+
+    async def gather_concept_edges(self, tenant_id: UUID) -> Dict[str, Any]:
+        """Tenant-scoped knowledge-graph edges. Global/seeded edges are
+        recreated by ``SeedService`` on the target. Endpoints that point at
+        global concepts/anatomy/biomarkers are remapped on import via slug /
+        existence lookup against the target's re-seeded rows."""
+        res = await self.db.execute(
+            select(ConceptEdge).where(ConceptEdge.tenant_id == tenant_id)
+        )
+        return {"edges": [e.to_dict() for e in res.scalars().all()]}
+
+    async def gather_anatomy(self, tenant_id: UUID) -> Dict[str, Any]:
+        """Tenant-scoped anatomy structures and the relations between them.
+
+        Global/seeded body parts (``tenant_id IS NULL``) are recreated by
+        ``SeedService`` on the target, so we export only rows owned by this
+        tenant — that already includes every custom organ an admin here
+        created (custom rows are tenant-scoped). We deliberately do NOT use
+        ``OR is_custom = True``: that would leak other tenants' private custom
+        anatomy and break tenant isolation. Relations are included only when
+        both endpoints are in the exported set."""
+        struct_res = await self.db.execute(
+            select(AnatomyStructure).where(
+                AnatomyStructure.tenant_id == tenant_id
+            )
+        )
+        structures = list(struct_res.scalars().unique().all())
+        exported_ids = {s.id for s in structures}
+        rel_res = await self.db.execute(select(AnatomyRelation))
+        relations = [
+            r
+            for r in rel_res.scalars().all()
+            if r.source_id in exported_ids and r.target_id in exported_ids
+        ]
+        return {
+            "structures": [s.to_dict() for s in structures],
+            "relations": [r.to_dict() for r in relations],
+        }
+
     async def gather_biomarker_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
         units_res = await self.db.execute(select(Unit))
         bios_res = await self.db.execute(
@@ -366,6 +421,16 @@ class ExportService:
                     "code": b.code,
                     "name": b.name,
                     "category": b.category,
+                    # The class concept *slug* — the canonical, stable key the
+                    # import resolves against ``concepts.slug``. The legacy
+                    # ``category`` field above is the concept *name* (human-
+                    # readable) which does NOT round-trip through
+                    # ``biomarker_category_to_concept_slug`` (it only swaps
+                    # ``_``→``-``, leaving spaces). Without this slug the
+                    # biomarker's class link is silently dropped on restore.
+                    "class_concept_slug": b.class_concept.slug
+                    if b.class_concept and getattr(b.class_concept, "slug", None)
+                    else None,
                     "preferred_unit_id": str(b.preferred_unit_id)
                     if b.preferred_unit_id
                     else None,
@@ -553,10 +618,24 @@ class ExportService:
         integrations: Optional[List[UserIntegration]] = None,
         notification_triggers: Optional[List[NotificationTrigger]] = None,
         ai_config: Optional[Dict[str, Any]] = None,
+        concepts: Optional[Dict[str, Any]] = None,
+        concept_edges: Optional[Dict[str, Any]] = None,
+        anatomy: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
         sidecars: Dict[str, Any] = {}
         counts: Dict[str, int] = {}
         notes: List[str] = []
+
+        # Taxonomy + anatomy first: they hold the FK targets for biomarker
+        # classes, examination categories, and edge endpoints. On import they
+        # are restored before the sidecars that reference them.
+        if concepts is not None:
+            sidecars["concepts.json"] = concepts
+            counts["concepts"] = len(concepts.get("concepts", []))
+        if anatomy is not None:
+            sidecars["anatomy.json"] = anatomy
+            counts["anatomy_structures"] = len(anatomy.get("structures", []))
+            counts["anatomy_relations"] = len(anatomy.get("relations", []))
 
         sidecars["examinations.json"] = [e.to_dict() for e in examinations]
         counts["examinations"] = len(examinations)
@@ -608,6 +687,13 @@ class ExportService:
         if ai_config is not None:
             sidecars["ai_config.json"] = ai_config
             counts["ai_providers"] = len(ai_config.get("providers", []))
+
+        # Edges go LAST in the ZIP — they are polymorphic and reference
+        # concepts/anatomy/biomarkers/examinations that the other sidecars (and
+        # the FHIR bundle) materialize first.
+        if concept_edges is not None:
+            sidecars["concept_edges.json"] = concept_edges
+            counts["concept_edges"] = len(concept_edges.get("edges", []))
 
         return sidecars, counts, notes
 
@@ -883,6 +969,9 @@ class ExportService:
             biomarker_catalog = await self.gather_biomarker_catalog(tenant_id)
             medication_catalog = await self.gather_medication_catalog(tenant_id)
             allergy_catalog = await self.gather_allergy_catalog(tenant_id)
+            concepts = await self.gather_concepts(tenant_id)
+            concept_edges = await self.gather_concept_edges(tenant_id)
+            anatomy = await self.gather_anatomy(tenant_id)
             await self.update_job_progress(job_id, 70)
 
             telemetry = None
@@ -912,6 +1001,9 @@ class ExportService:
                 integrations=integrations,
                 notification_triggers=triggers,
                 ai_config=ai_config,
+                concepts=concepts,
+                concept_edges=concept_edges,
+                anatomy=anatomy,
             )
 
             manifest = self.build_manifest(

@@ -489,6 +489,9 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "gather_telemetry", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_integrations", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_notification_triggers", AsyncMock(return_value=[]))
+    monkeypatch.setattr(svc, "gather_concepts", AsyncMock(return_value={"concepts": []}))
+    monkeypatch.setattr(svc, "gather_concept_edges", AsyncMock(return_value={"edges": []}))
+    monkeypatch.setattr(svc, "gather_anatomy", AsyncMock(return_value={"structures": [], "relations": []}))
     monkeypatch.setattr("app.services.export_service.validate_bundle", lambda b: (True, []))
 
     await svc.run_export(jid)
