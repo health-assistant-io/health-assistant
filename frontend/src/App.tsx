@@ -17,7 +17,6 @@ import ClinicalEventDetail from './pages/Events/ClinicalEventDetail';
 import TaskManager from './pages/TaskManager';
 import Patients from './pages/Patients/PatientList';
 import PatientDetail from './pages/Patients/PatientDetail';
-import Telemetry from './pages/Telemetry/TelemetryData';
 import Doctors from './pages/Doctors/DoctorList';
 import MedicationList from './pages/Medications/MedicationList';
 import MedicationCatalog from './pages/Medications/MedicationCatalog';
@@ -305,7 +304,7 @@ function App() {
             </>
           )}
 
-          <Route path="/telemetry" element={<Telemetry />} />
+
           <Route path="/ai-assistant" element={<AIChatPage />} />
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
           <Route path="/profile" element={<MyAccount />} />

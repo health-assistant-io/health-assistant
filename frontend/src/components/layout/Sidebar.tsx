@@ -140,7 +140,6 @@ function Sidebar() {
         { path: '/examinations', labelKey: 'common.examinations' },
         { path: '/documents', labelKey: 'common.documents_explorer' },
         { path: '/anatomy', labelKey: 'common.anatomy_explorer' },
-        { path: '/telemetry', labelKey: 'common.telemetry' },
       ],
     },
 
