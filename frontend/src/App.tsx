@@ -59,7 +59,6 @@ import { CatalogWorkspace } from './pages/Catalogs/CatalogWorkspace';
 import { VaccinationList } from './pages/Vaccinations/VaccinationList';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
 import AtlasManager from './pages/Admin/AtlasManager';
-import TaxonomyManager from './pages/Knowledge/TaxonomyManager';
 
 import { AIConfig } from './pages/Settings/AIConfig';
 import { useProtectedRoute } from './hooks/useProtectedRoute';
@@ -253,7 +252,7 @@ function App() {
           <Route path="/documents" element={<Documents />} />
           <Route path="/documents/:documentId" element={<DocumentDetail />} />
           <Route path="/examinations" element={<Examinations />} />
-          <Route path="/examinations/categories" element={<TaxonomyManager />} />
+          <Route path="/examinations/categories" element={<Navigate to="/catalogs?type=concept" replace />} />
           <Route path="/examinations/upload" element={<ExaminationUpload />} />
           <Route path="/examinations/:examinationId" element={<ExaminationDetail />} />
           <Route path="/examinations/:examinationId/:activeTab" element={<ExaminationDetail />} />
@@ -292,7 +291,7 @@ function App() {
                 <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
                 <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
                 <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
-                <Route path="/admin/system/taxonomy" element={<TaxonomyManager />} />
+                <Route path="/admin/system/taxonomy" element={<Navigate to="/catalogs?type=concept" replace />} />
                 <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
               </Route>
             </>

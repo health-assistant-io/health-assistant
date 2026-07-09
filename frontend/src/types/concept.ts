@@ -173,3 +173,23 @@ export const CONCEPT_KIND_LABELS: Record<ConceptKind, string> = {
   symptom: 'Symptoms',
   organ: 'Organs',
 };
+
+/** Tailwind-safe color per ConceptKind (for chip badges, graph nodes, etc.). */
+export const KIND_COLORS: Record<ConceptKind, string> = {
+  specialty: '#6366f1',
+  examination_category: '#3b82f6',
+  event_category: '#8b5cf6',
+  biomarker_class: '#06b6d4',
+  biomarker_panel: '#0ea5e9',
+  anatomy_class: '#10b981',
+  vaccine_class: '#84cc16',
+  medication_class: '#f59e0b',
+  document_category: '#64748b',
+  disease: '#ef4444',
+  body_system: '#ec4899',
+  procedure: '#14b8a6',
+  lifestyle: '#f97316',
+  factor: '#eab308',
+  symptom: '#f43f5e',
+  organ: '#22c55e',
+};

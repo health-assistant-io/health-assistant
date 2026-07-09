@@ -34,7 +34,7 @@ class CatalogAuditLog(Base, UUIDMixin, TimestampMixin):
     item_id = Column(PG_UUID(as_uuid=True), nullable=False, index=True)
     item_name = Column(Text, nullable=False, default="")
 
-    # The operation: create | update | delete | promote | demote.
+    # The operation: create | update | delete | promote | demote | retire | restore.
     operation = Column(String(20), nullable=False, index=True)
 
     # Scope transition (only set for promote/demote).

@@ -125,7 +125,7 @@ export function SearchLauncher() {
         navigate(`/catalogs?type=vaccine`);
         break;
       case 'concept':
-        navigate(`/admin/system/taxonomy`);
+        navigate(`/catalogs?type=concept`);
         break;
       default:
         break;

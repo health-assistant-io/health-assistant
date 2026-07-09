@@ -42,6 +42,28 @@ def _require_descriptor(type: str):
     return CatalogRegistry.get(type)
 
 
+# Catalog types whose writes are serviced outside the meta-layer. The concept
+# adapter is read-only (taxonomy/catalog merge plan AD-1 r2): all concept writes
+# flow through ``/concepts`` → ``ConceptService``. The generic catalog write
+# endpoints 405 on these types so the read-only contract is enforced server-
+# side, not just by the frontend dispatch.
+_READ_ONLY_CATALOG_TYPES = frozenset({"concept"})
+
+
+def _require_writable_descriptor(type: str):
+    """Resolve the descriptor and reject read-only catalog types on writes."""
+    descriptor = _require_descriptor(type)
+    if type in _READ_ONLY_CATALOG_TYPES:
+        raise HTTPException(
+            status_code=405,
+            detail=(
+                f"Catalog type '{type}' is read-only via /catalogs. "
+                f"Use the /{type} endpoints directly."
+            ),
+        )
+    return descriptor
+
+
 @router.get("")
 async def list_catalog_types(
     current_user: TokenData = Depends(get_current_user),
@@ -111,6 +133,49 @@ async def search_catalogs_endpoint(
         db, current_user.tenant_id, q, types=type_list, limit_total=limit
     )
     return {"results": results}
+
+
+@router.get("/concept/graph")
+async def get_concept_graph(
+    kind: Optional[str] = Query(
+        None,
+        description="Comma-separated ConceptKind values to filter by (e.g. "
+        "'disease,symptom'). A multi-kind concept appears if it carries ANY "
+        "of the requested kinds. Omit for all kinds.",
+    ),
+    include_anatomy: bool = Query(
+        False,
+        description="Also return anatomy_structures nodes + concept↔anatomy edges.",
+    ),
+    limit: int = Query(500, ge=1, le=2000, description="Max nodes to return."),
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Whole-ontology concept graph (rootless, Phase 5 Option B).
+
+    Unlike ``GET /{type}/{id}/relations`` (start-node-bound), this returns the
+    full concept graph — optionally kind-filtered — without requiring a start
+    item. Powers the workspace-level Graph view. Declared before ``/{type}``
+    so the literal path isn't captured by the type path-param.
+
+    The kind filter narrows both the concept set AND the edge set (only edges
+    between visible concepts are returned), keeping the payload proportional
+    to the filtered domain. Returns ``{nodes, edges, truncated}``.
+    """
+    from app.services.catalog_graph_service import whole_concept_graph
+
+    kinds = (
+        [k.strip().lower() for k in kind.split(",") if k.strip()]
+        if kind
+        else None
+    )
+    return await whole_concept_graph(
+        db,
+        tenant_id=current_user.tenant_id,
+        kinds=kinds,
+        include_anatomy=include_anatomy,
+        limit_nodes=limit,
+    )
 
 
 @router.get("/{type}")
@@ -221,7 +286,7 @@ async def create_catalog_item(
     biomarker unit-symbol resolution, medication AI enrichment) stays on the
     domain endpoints.
     """
-    descriptor = _require_descriptor(type)
+    descriptor = _require_writable_descriptor(type)
     return await descriptor.service.create(db, current_user, payload)
 
 
@@ -239,7 +304,7 @@ async def update_catalog_item(
     (→ 403) on insufficient role. Returns 404 when the item is missing or
     outside the caller's scope.
     """
-    descriptor = _require_descriptor(type)
+    descriptor = _require_writable_descriptor(type)
     item = await descriptor.service.update(db, current_user, item_id, payload)
     if item is None:
         raise HTTPException(
@@ -256,7 +321,7 @@ async def delete_catalog_item(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Delete one catalog item (scope + ownership enforced in the adapter)."""
-    descriptor = _require_descriptor(type)
+    descriptor = _require_writable_descriptor(type)
     deleted = await descriptor.service.delete(db, current_user, item_id)
     if not deleted:
         raise HTTPException(
@@ -280,7 +345,7 @@ async def promote_catalog_item(
     requires SYSTEM_ADMIN. On promote-to-system the ``tenant_id`` is cleared
     (canonical); on demote-to-tenant it is set to the actor's tenant.
     """
-    descriptor = _require_descriptor(type)
+    descriptor = _require_writable_descriptor(type)
     target = (payload or {}).get("scope")
     if not target:
         raise HTTPException(status_code=400, detail="body must include 'scope'")

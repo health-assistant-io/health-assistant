@@ -155,6 +155,7 @@ async def create_concept(
             display_order=body.display_order,
             meta_data=body.meta_data,
             created_by=current_user.user_id,
+            actor=current_user,
         )
         await db.commit()
     except PermissionError as exc:
@@ -201,6 +202,7 @@ async def update_concept(
             concept_id,
             current_user.tenant_id,
             current_user.role,
+            actor=current_user,
             **fields,
         )
         await db.commit()
@@ -218,15 +220,49 @@ async def delete_concept(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft-delete (or retire if referenced) a concept."""
+    """Soft-delete (or retire if referenced) a concept.
+
+    A concept with active edges in either direction is **retired** (status set
+    to ``retired``); an edge-less concept is also soft-deleted (``deleted_at``
+    set). Both are reversible via ``POST /{concept_id}/restore``.
+    """
     svc = ConceptService(db)
     try:
-        await svc.delete_concept(concept_id, current_user.tenant_id, current_user.role)
+        await svc.delete_concept(
+            concept_id,
+            current_user.tenant_id,
+            current_user.role,
+            actor=current_user,
+        )
         await db.commit()
     except PermissionError as exc:
         raise HTTPException(403, str(exc))
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+
+
+@router.post("/{concept_id}/restore", response_model=ConceptResponse)
+async def restore_concept(
+    concept_id: UUID,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reverse a prior retire/soft-delete (``status`` → active, clears ``deleted_at``)."""
+    svc = ConceptService(db)
+    try:
+        concept = await svc.restore_concept(
+            concept_id,
+            current_user.tenant_id,
+            current_user.role,
+            actor=current_user,
+        )
+        await db.commit()
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    await db.refresh(concept)
+    return ConceptResponse.model_validate(concept)
 
 
 @router.get("/{concept_id}/neighbors", response_model=List[NeighborResponse])

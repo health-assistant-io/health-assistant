@@ -14,6 +14,7 @@ import { BiomarkerForm } from './BiomarkerForm';
 import { MedicationForm } from './MedicationForm';
 import { AllergyForm } from './AllergyForm';
 import { VaccineForm } from './VaccineForm';
+import { ConceptForm } from './ConceptForm';
 
 export interface CatalogItemFormProps {
   typeMeta: CatalogTypeMeta;
@@ -36,6 +37,7 @@ export const CATALOG_FORMS: CatalogFormConfig[] = [
   { types: ['medication'], Component: MedicationForm },
   { types: ['allergy'], Component: AllergyForm },
   { types: ['vaccine'], Component: VaccineForm },
+  { types: ['concept'], Component: ConceptForm },
 ];
 
 /** Resolve the form for a catalog type (falls back to the generic form). */

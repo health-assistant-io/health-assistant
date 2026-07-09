@@ -12,6 +12,8 @@ import type {
   CatalogListResponse,
   CatalogSearchResponse,
   CatalogRelationResponse,
+  CatalogRelationEndpoint,
+  CatalogRelationEdge,
   CatalogAuditHistoryResponse,
   CatalogType,
   RelationTypeListResponse,
@@ -132,6 +134,24 @@ export async function getCatalogRelations(
     `/catalogs/${type}/${itemId}/relations`,
     { params },
   );
+  return data;
+}
+
+/**
+ * Whole-ontology concept graph (rootless, Phase 5 Option B).
+ * Returns the full concept graph — optionally kind-filtered — without
+ * requiring a start item. Powers the workspace-level Graph view.
+ */
+export async function getConceptGraph(params?: {
+  kind?: string;
+  include_anatomy?: boolean;
+  limit?: number;
+}): Promise<{
+  nodes: CatalogRelationEndpoint[];
+  edges: CatalogRelationEdge[];
+  truncated: boolean;
+}> {
+  const { data } = await api.get('/catalogs/concept/graph', { params });
   return data;
 }
 

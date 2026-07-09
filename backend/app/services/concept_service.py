@@ -1,24 +1,41 @@
-"""Concept service — CRUD, tenancy, RBAC, and graph traversal.
+"""Concept service — CRUD, tenancy, RBAC, graph traversal, and audit.
 
 Encapsulates all business logic for the unified ``concepts`` table and the
-polymorphic ``concept_edges`` graph. Enforces:
+polymorphic ``concept_edges`` graph. **Single write authority for concepts**
+(taxonomy/catalog merge plan AD-1 r2): every caller — REST ``/concepts``, the
+catalog modal (via the frontend write-target dispatch), and interactive tools
+— routes through this service, so kind-sync / retire / RBAC / audit are
+identical regardless of entry point. (Seeds bypass the service and build ORM
+rows directly; they are trusted bulk loads and opt out of audit by construction.)
+
+Enforces:
 
 - **Tenancy**: global rows (``tenant_id IS NULL``) are visible to everyone;
   tenant rows are visible only within their tenant. Writes follow the same
   rule plus the RBAC gate below.
 - **RBAC**: only ``SYSTEM_ADMIN`` may create / edit / delete **global**
   concepts or edges. ``ADMIN`` / ``MANAGER`` may manage **tenant-scoped** rows.
-  ``USER`` is read-only. ``SYSTEM_ADMIN`` bypasses all checks.
+  ``USER`` is read-only (concepts are a *curated* taxonomy — plan AD-9; this
+  diverges deliberately from the catalog's user-contribution model).
+  ``SYSTEM_ADMIN`` bypasses all checks.
+- **Scope invariant**: ``scope`` is derived from ``tenant_id`` on every write
+  (``tenant_id IS NULL`` → ``SYSTEM``, else ``TENANT``) so the catalog read path
+  (which filters on ``scope``) never mis-filters. The model default of
+  ``SYSTEM`` is never relied upon.
 - **Lifecycle**: concepts are soft-deleted (``deleted_at``). A concept with
-  active edges or FK references refuses hard operations — it is retired
-  (``status = RETIRED``) instead. Only ``status='approved'`` edges count for
-  graph queries; ``proposed`` edges are HITL-pending.
+  active edges (in either direction) is **retired** (``status = RETIRED``)
+  rather than deleted, so polymorphic edges (which carry bare UUIDs with no
+  cross-table FK) don't dangle. Retire is reversible via :meth:`restore_concept`.
+- **Audit**: every interactive create / update / delete / restore appends a
+  ``CatalogAuditLog`` row (``catalog_type='concept'``). Best-effort — never
+  aborts the write.
 - **Polymorphic edges**: there is no cross-table FK on ``concept_edges`` —
   the service layer validates endpoint existence before insert.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, List, Optional
 from uuid import UUID
 
@@ -28,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
+    CatalogScope,
     ConceptKind,
     ConceptStatus,
     ConceptProvenance,
@@ -36,6 +54,8 @@ from app.models.enums import (
     ConceptRelationType,
     Role,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def concepts_with_kind(kind: ConceptKind):
@@ -151,6 +171,65 @@ class ConceptService:
         self.db = db
 
     # ------------------------------------------------------------------
+    # Internal helpers — scope invariant + audit
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _scope_for_tenant(tenant_id: Optional[UUID]) -> CatalogScope:
+        """Derive the catalog ``scope`` from ``tenant_id``.
+
+        ``tenant_id IS NULL`` → ``SYSTEM`` (global canonical); otherwise
+        ``TENANT``. This is the single source of truth for the
+        ``scope``/``tenant_id`` invariant — every write path must set both
+        consistently via this helper so the catalog read layer (which filters
+        on ``scope``) never mis-filters. Concepts do not use ``USER`` scope
+        (plan AD-9: curated taxonomy).
+        """
+        return CatalogScope.SYSTEM if tenant_id is None else CatalogScope.TENANT
+
+    async def _audit(
+        self,
+        actor: Any,
+        operation: str,
+        obj: Concept,
+        *,
+        from_scope: Optional[str] = None,
+        to_scope: Optional[str] = None,
+        details: Optional[dict] = None,
+    ) -> None:
+        """Best-effort audit record (plan AD-10).
+
+        Appends a ``CatalogAuditLog`` row with ``catalog_type='concept'``. The
+        audit helper commits internally, which also durably persists the
+        service's flushed write — so the write and its audit trail land
+        atomically. A failure is logged and never aborts the parent operation.
+        Called only when ``actor`` is provided (REST handlers pass the
+        ``TokenData``; seeds bypass the service entirely).
+        """
+        if actor is None:
+            return
+        from app.services.catalog_audit_service import record_from_obj
+
+        try:
+            await record_from_obj(
+                self.db,
+                actor=actor,
+                catalog_type="concept",
+                obj=obj,
+                operation=operation,
+                from_scope=from_scope,
+                to_scope=to_scope,
+                details=details,
+            )
+        except Exception:
+            logger.warning(
+                "concept audit record failed (op=%s item=%s)",
+                operation,
+                getattr(obj, "id", None),
+                exc_info=True,
+            )
+
+    # ------------------------------------------------------------------
     # Concept reads
     # ------------------------------------------------------------------
 
@@ -229,12 +308,18 @@ class ConceptService:
         display_order: int = 0,
         meta_data: Optional[dict] = None,
         created_by: Optional[UUID] = None,
+        actor: Any = None,
     ) -> Concept:
         """Create a concept. Global concepts (tenant_id=None) require SYSTEM_ADMIN.
 
         ``kind`` (legacy, single) and ``kinds`` (new, multi) are mutually
         conveniences; at least one kind must be supplied. ``primary_kind`` is
         set to the first kind.
+
+        ``scope`` is derived from ``tenant_id`` (SYSTEM if global, TENANT
+        otherwise) so the catalog read layer never mis-filters. ``actor`` (a
+        ``TokenData``-like object) triggers a best-effort audit record when
+        provided; pass ``None`` to skip audit (used by non-interactive callers).
 
         Raises ``PermissionError`` if a non-SYSTEM_ADMIN tries to create a
         global concept, or a USER tries any create.
@@ -254,6 +339,7 @@ class ConceptService:
             name=name.strip(),
             primary_kind=resolved_kinds[0],
             tenant_id=tenant_id,
+            scope=self._scope_for_tenant(tenant_id),
             description=description,
             parent_id=parent_id,
             coding_system=coding_system,
@@ -274,6 +360,7 @@ class ConceptService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise ValueError(f"Concept with slug='{slug}' already exists") from exc
+        await self._audit(actor, "create", concept)
         return concept
 
     async def update_concept(
@@ -281,9 +368,15 @@ class ConceptService:
         concept_id: UUID,
         tenant_id: Optional[UUID],
         role: str,
+        *,
+        actor: Any = None,
         **fields: Any,
     ) -> Concept:
-        """Update a concept's mutable fields. Enforces ownership + RBAC."""
+        """Update a concept's mutable fields. Enforces ownership + RBAC.
+
+        When ``actor`` is provided, appends a best-effort audit record after
+        the update flushes.
+        """
         concept = await self.get_concept(concept_id, tenant_id)
         if concept is None:
             raise ValueError("Concept not found")
@@ -318,16 +411,32 @@ class ConceptService:
                 raise ValueError("slug is immutable after creation")
 
         await self.db.flush()
+        await self._audit(actor, "update", concept)
         return concept
 
     async def delete_concept(
-        self, concept_id: UUID, tenant_id: Optional[UUID], role: str
-    ) -> None:
-        """Soft-delete a concept (sets ``deleted_at``).
+        self,
+        concept_id: UUID,
+        tenant_id: Optional[UUID],
+        role: str,
+        *,
+        actor: Any = None,
+    ) -> Concept:
+        """Soft-delete (retire) a concept.
 
-        If the concept has active edges, it is **retired** instead of deleted
-        to preserve graph integrity. A truly orphaned concept (no edges, no FK
-        references) is soft-deleted.
+        A concept with active edges in **either direction** is **retired**
+        (``status = RETIRED``) without setting ``deleted_at``, so polymorphic
+        edges (bare UUIDs, no cross-table FK) don't dangle. An edge-less concept
+        is also retired but additionally soft-deleted (``deleted_at = now()``);
+        it is excluded from default reads but remains restorable. Hard purge is
+        a separate, admin-only action (out of scope).
+
+        Edge counting uses :func:`count_relations_both_directions` — the
+        shared, bidirectional graph helper. Never ``count_relations``
+        (outgoing-only): a concept with only incoming edges is not orphaned.
+
+        When ``actor`` is provided, appends a best-effort audit record
+        (``operation='retire'``). Returns the concept for caller convenience.
         """
         concept = await self.get_concept(concept_id, tenant_id)
         if concept is None:
@@ -338,17 +447,71 @@ class ConceptService:
         if not concept.is_global and role == Role.USER.value:
             raise PermissionError("USER role cannot delete concepts")
 
-        edge_count = await self._count_active_edges_for_concept(concept_id, tenant_id)
-        if edge_count > 0:
-            concept.status = ConceptStatus.RETIRED
-            await self.db.flush()
-            return
+        from app.services.catalog_graph_service import (
+            count_relations_both_directions,
+        )
 
+        counts = await count_relations_both_directions(
+            self.db,
+            EdgeEndpointType.CONCEPT,
+            [concept_id],
+            tenant_id=tenant_id,
+        )
+        has_edges = counts.get(str(concept_id), {}).get("total", 0) > 0
+
+        from_scope = concept.scope.value if concept.scope is not None else None
         concept.status = ConceptStatus.RETIRED
-        from datetime import datetime, timezone
+        operation = "retire"
+        if not has_edges:
+            from datetime import datetime, timezone
 
-        concept.deleted_at = datetime.now(timezone.utc)
+            concept.deleted_at = datetime.now(timezone.utc)
+            operation = "delete"
+
         await self.db.flush()
+        await self._audit(
+            actor, operation, concept, from_scope=from_scope
+        )
+        return concept
+
+    async def restore_concept(
+        self,
+        concept_id: UUID,
+        tenant_id: Optional[UUID],
+        role: str,
+        *,
+        actor: Any = None,
+    ) -> Concept:
+        """Reverse a prior retire/soft-delete.
+
+        Sets ``status = ACTIVE`` and clears ``deleted_at``. Same RBAC as a
+        delete (SYSTEM_ADMIN for global; ADMIN/MANAGER for tenant; USER denied).
+        Appends a ``CatalogAuditLog`` row with ``operation='restore'`` when
+        ``actor`` is provided.
+        """
+        # Load including soft-deleted rows — get_concept filters deleted_at.
+        stmt = select(Concept).where(
+            Concept.id == concept_id,
+            or_(
+                Concept.tenant_id.is_(None),
+                Concept.tenant_id == tenant_id,
+            ),
+        )
+        concept = (await self.db.execute(stmt)).scalar_one_or_none()
+        if concept is None:
+            raise ValueError("Concept not found")
+
+        if concept.is_global and role != Role.SYSTEM_ADMIN.value:
+            raise PermissionError("Only SYSTEM_ADMIN can restore global concepts")
+        if not concept.is_global and role == Role.USER.value:
+            raise PermissionError("USER role cannot restore concepts")
+
+        from_scope = concept.scope.value if concept.scope is not None else None
+        concept.status = ConceptStatus.ACTIVE
+        concept.deleted_at = None
+        await self.db.flush()
+        await self._audit(actor, "restore", concept, from_scope=from_scope)
+        return concept
 
     # ------------------------------------------------------------------
     # Edge reads
@@ -579,22 +742,19 @@ class ConceptService:
     async def _count_active_edges_for_concept(
         self, concept_id: UUID, tenant_id: Optional[UUID]
     ) -> int:
-        """Count approved edges touching this concept (either direction)."""
-        stmt = (
-            select(func.count())
-            .select_from(ConceptEdge)
-            .where(
-                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
-                or_(
-                    ConceptEdge.tenant_id.is_(None),
-                    ConceptEdge.tenant_id == tenant_id,
-                ),
-                or_(
-                    (ConceptEdge.src_type == EdgeEndpointType.CONCEPT)
-                    & (ConceptEdge.src_id == concept_id),
-                    (ConceptEdge.dst_type == EdgeEndpointType.CONCEPT)
-                    & (ConceptEdge.dst_id == concept_id),
-                ),
-            )
+        """Count approved edges touching this concept (either direction).
+
+        .. deprecated::
+            Replaced by the shared, batch-friendly
+            :func:`catalog_graph_service.count_relations_both_directions`.
+            Retained as a thin delegate so any remaining callers keep working;
+            new code should call the shared helper directly.
+        """
+        from app.services.catalog_graph_service import (
+            count_relations_both_directions,
         )
-        return await self.db.scalar(stmt) or 0
+
+        counts = await count_relations_both_directions(
+            self.db, EdgeEndpointType.CONCEPT, [concept_id], tenant_id=tenant_id
+        )
+        return counts.get(str(concept_id), {}).get("total", 0)

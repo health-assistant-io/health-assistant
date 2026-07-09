@@ -62,6 +62,11 @@ export const deleteConcept = async (id: string): Promise<void> => {
   await api.delete(`/concepts/${id}`);
 };
 
+export const restoreConcept = async (id: string): Promise<Concept> => {
+  const response = await api.post(`/concepts/${id}/restore`);
+  return response.data;
+};
+
 export const getConceptNeighbors = async (
   id: string,
   params?: { relation?: string; include_proposed?: boolean },

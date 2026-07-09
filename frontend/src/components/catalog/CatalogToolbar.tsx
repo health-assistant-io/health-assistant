@@ -9,11 +9,12 @@
  * widths.
  */
 import React from 'react';
-import { Plus, List as ListIcon, LayoutGrid } from 'lucide-react';
+import { Plus, List as ListIcon, LayoutGrid, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { CatalogTypeSelect } from './CatalogTypeSelect';
 import { CLASS_COLOR } from '../../types/anatomy';
 import type { CatalogTypeMeta } from '../../types/catalog';
+import { downloadSeedsZip } from '../../services/seedService';
 
 interface CatalogToolbarProps {
   types: CatalogTypeMeta[];
@@ -23,7 +24,7 @@ interface CatalogToolbarProps {
   scopeFilter: string;
   onScopeChange: (scope: string) => void;
 
-  /** Anatomy-only: class concept chips. */
+  /** Anatomy-only: class concept chips. Also reused for concept-kind chips. */
   anatomyClasses: { slug: string; name: string }[];
   classFilter: string;
   onClassChange: (cls: string) => void;
@@ -31,7 +32,11 @@ interface CatalogToolbarProps {
   viewMode: 'list' | 'card';
   onViewModeChange: (mode: 'list' | 'card') => void;
 
-  onNew: () => void;
+  /** When undefined, the New button is hidden (role-gated for curated types). */
+  onNew?: () => void;
+
+  /** When true, shows the SYSTEM_ADMIN-only "Export seeds" button. */
+  canExportSeeds?: boolean;
 }
 
 const SCOPE_OPTIONS: { value: string; labelKey: string; fallback: string }[] = [
@@ -53,6 +58,7 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
   viewMode,
   onViewModeChange,
   onNew,
+  canExportSeeds,
 }) => {
   const { t } = useTranslation();
 
@@ -138,12 +144,25 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
         </button>
       </div>
 
-      <button
-        onClick={onNew}
-        className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 shrink-0"
-      >
-        <Plus className="w-4 h-4" /> {t('common.new', 'New')}
-      </button>
+      {canExportSeeds && (
+        <button
+          onClick={() => downloadSeedsZip()}
+          title={t('catalogs.export_seeds_hint', 'Download the full taxonomy + catalogs as a ZIP of seed JSON')}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 shrink-0"
+        >
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">{t('catalogs.export_seeds', 'Export seeds')}</span>
+        </button>
+      )}
+
+      {onNew && (
+        <button
+          onClick={onNew}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 shrink-0"
+        >
+          <Plus className="w-4 h-4" /> {t('common.new', 'New')}
+        </button>
+      )}
     </div>
   );
 };

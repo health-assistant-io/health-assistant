@@ -661,7 +661,7 @@ class SeedService:
         self, session: AsyncSession, data: List[Dict[str, Any]]
     ) -> Dict[str, int]:
         from app.models.concept_model import Concept, ConceptKindTag
-        from app.models.enums import ConceptKind, ConceptStatus
+        from app.models.enums import CatalogScope, ConceptKind, ConceptStatus
 
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
@@ -728,6 +728,7 @@ class SeedService:
                         name=item["name"],
                         primary_kind=kinds[0],
                         tenant_id=None,
+                        scope=CatalogScope.SYSTEM,
                         description=item.get("description"),
                         coding_system=item.get("coding_system"),
                         code=item.get("code"),

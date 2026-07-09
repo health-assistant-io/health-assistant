@@ -32,7 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY, CatalogAccessPolicy
 from app.models.biomarker_model import BiomarkerDefinition, Unit
-from app.models.concept_model import Concept
+from app.models.concept_model import Concept, ConceptKindTag
+from app.models.enums import ConceptKind
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.anatomy_model import AnatomyStructure
@@ -458,18 +459,109 @@ class AnatomyCatalogAdapter(BaseCatalogAdapter):
 
 
 class ConceptCatalogAdapter(BaseCatalogAdapter):
+    """Read-only adapter for the taxonomy's ``Concept`` nodes.
+
+    Per the taxonomy/catalog merge plan (AD-1 r2), this adapter is **read-only**:
+    it implements only ``list`` / ``get`` / ``search`` / ``_apply_kind`` /
+    ``serialize`` from :class:`BaseCatalogAdapter`. Concept **writes** never go
+    through the catalog meta-layer — the frontend dispatches them to the
+    ``/concepts`` REST surface, and the generic catalog write endpoints return
+    ``405`` for ``type == "concept"`` (plan §4.1/Phase 1b). All write logic
+    (kind-sync, retire-on-edges, RBAC, audit) lives in :class:`ConceptService`,
+    the single authority shared by REST, AI tools, and seeds.
+
+    Kind filtering joins ``concept_kind_tags`` so a multi-kind concept appears
+    under every domain it belongs to (not just its ``primary_kind``).
+    """
+
     model = Concept
-    search_columns = ("name", "slug")
+    search_columns = ("name", "slug", "description")
     order_by = ("display_order", "name")
     soft_delete = True
 
     def _apply_kind(self, stmt, kind: str):
-        # Concepts ARE the taxonomy, so ``kind`` filters by their own
-        # ``primary_kind`` (e.g. ``anatomy_class``, ``disease``). Comma-list OK.
+        # Multi-kind filter via the tag join. A concept carrying several kind
+        # tags must match under *each* of its domains, not only its
+        # ``primary_kind`` (the denormalized column only mirrors one tag).
+        # Comma-separated values are accepted.
         kinds = [k.strip().lower() for k in kind.split(",") if k.strip()]
         if not kinds:
             return stmt
-        return stmt.where(Concept.primary_kind.in_(kinds))
+        try:
+            resolved = [ConceptKind(k) for k in kinds]
+        except ValueError:
+            return stmt.where(False)
+        return (
+            stmt.join(ConceptKindTag, ConceptKindTag.concept_id == Concept.id)
+            .where(ConceptKindTag.kind.in_(resolved))
+            .distinct()
+        )
+
+    async def list(
+        self,
+        db: AsyncSession,
+        tenant_id: Optional[UUID],
+        *,
+        search: Optional[str] = None,
+        kind: Optional[str] = None,
+        scope: Optional[str] = None,
+        concept_class: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        out = await super().list(
+            db,
+            tenant_id,
+            search=search,
+            kind=kind,
+            scope=scope,
+            concept_class=concept_class,
+            limit=limit,
+            offset=offset,
+        )
+        # Batch-resolve ``parent_slug`` for the whole page so the parent picker
+        # can render by slug without an N+1 (the adapter is a singleton, so we
+        # must not cache on ``self`` — mutate the serialized dicts directly).
+        await self._attach_parent_slugs(db, out["items"])
+        return out
+
+    async def get(
+        self,
+        db: AsyncSession,
+        tenant_id: Optional[UUID],
+        item_id: UUID,
+    ) -> Optional[dict[str, Any]]:
+        d = await super().get(db, tenant_id, item_id)
+        if d:
+            await self._attach_parent_slugs(db, [d])
+        return d
+
+    async def _attach_parent_slugs(
+        self, db: AsyncSession, items: list[dict[str, Any]]
+    ) -> None:
+        """Resolve ``parent_id`` → ``parent_slug`` for a batch of serialized
+        concept dicts (one indexed query, not one per row)."""
+        parent_ids = {
+            UUID(it["parent_id"]) for it in items if it.get("parent_id")
+        }
+        if not parent_ids:
+            return
+        rows = (
+            await db.execute(
+                select(Concept.id, Concept.slug).where(Concept.id.in_(parent_ids))
+            )
+        ).all()
+        slug_map = {str(pid): slug for pid, slug in rows}
+        for it in items:
+            pid = it.get("parent_id")
+            if pid:
+                it["parent_slug"] = slug_map.get(pid)
+
+    def serialize(self, obj) -> dict[str, Any]:
+        # ``Concept.to_dict()`` emits every field the form + Info tab need
+        # (incl. ``kinds``, ``scope``). ``parent_slug`` is attached after the
+        # fact by ``list``/``get`` (batch-resolved).
+        return obj.to_dict()
 
 
 class BiomarkerCatalogAdapter(BaseCatalogAdapter):

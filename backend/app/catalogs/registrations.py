@@ -150,7 +150,7 @@ def _register_all() -> None:
             type="concept",
             model=Concept,
             service=ConceptCatalogAdapter(),
-            search_columns=("name", "slug"),
+            search_columns=("name", "slug", "description"),
             concept_link=None,
             edge_endpoint_type=EdgeEndpointType.CONCEPT,
             resolver=_resolve_concepts,

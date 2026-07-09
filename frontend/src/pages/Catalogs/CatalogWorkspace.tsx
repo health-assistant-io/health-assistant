@@ -17,8 +17,8 @@
  * type links out to the dedicated Taxonomy Manager.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Database, X, Save, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Database, X, Save, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw, List as ListIcon, GitBranch } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -31,6 +31,8 @@ import { CatalogRelationsIndex } from '../../components/catalog/CatalogRelations
 import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelationsEditor';
 import { CatalogAuditHistoryModal } from '../../components/catalog/CatalogAuditHistoryModal';
 import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
+import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
+import { ConceptOntologyGraph } from '../../components/catalog/ConceptOntologyGraph';
 import { getCustomTabs } from '../../components/catalog/tabs/catalogTabs';
 import { ScopeBadge } from '../../components/catalog/ScopeBadge';
 import {
@@ -41,6 +43,7 @@ import {
   deleteCatalogItem,
 } from '../../services/catalogService';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
+import { CONCEPT_KIND_LABELS } from '../../types/concept';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
@@ -54,13 +57,14 @@ const MOBILE_BREAKPOINT = 1024;
 export const CatalogWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { isLargeScreen } = useMasterDetail({ breakpoint: MOBILE_BREAKPOINT });
 
   const [types, setTypes] = useState<CatalogTypeMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(INFO);
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  // Concept-only: workspace-level graph exploration mode (Phase 5).
+  const [graphMode, setGraphMode] = useState<'list' | 'graph'>('list');
 
   // Items (owned here so the browser, preview Info + Relations tabs share).
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -87,11 +91,17 @@ export const CatalogWorkspace: React.FC = () => {
   const setPageSearchTerm = useUIStore((s) => s.setPageSearchTerm);
   const setIsPageSearchSupported = useUIStore((s) => s.setIsPageSearchSupported);
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const currentUserRole = useAuthStore((s) => s.user?.role ?? null);
 
   /** Left-rail scope filter: '' (all) | 'system' | 'tenant' | 'mine'. */
   const [scopeFilter, setScopeFilter] = useState<string>('');
 
   const activeType = searchParams.get('type') || '';
+  // Concepts are a curated taxonomy — USER role cannot create/edit (AD-9).
+  // Other catalog types allow USER to create user-scope items.
+  const canCreate = activeType === 'concept'
+    ? currentUserRole !== 'USER' && currentUserRole !== null
+    : true;
   const itemId = searchParams.get('item') || '';
 
   // Register this page as a page-search provider (the header SearchLauncher
@@ -136,11 +146,17 @@ export const CatalogWorkspace: React.FC = () => {
     if (!activeType) return;
     setItemsLoading(true);
     try {
+      // Concepts filter by ``kind`` (the tag join); other catalogs by ``class``
+      // (the class_concept_id FK). The toolbar chips feed the same state.
+      const kindOrClass =
+        activeType === 'concept'
+          ? { kind: classFilter || undefined }
+          : { class: classFilter || undefined };
       const resp = await listCatalogItems(activeType, {
         // 'mine' is a client-side ownership filter over the user-scope set, so
         // fetch it all in one shot (no pagination — offset would be wrong).
         scope: isMineScope ? 'user' : scopeFilter || undefined,
-        class: classFilter || undefined,
+        ...kindOrClass,
         include: 'relations',
         limit: isMineScope ? 500 : PAGE_SIZE,
         offset: 0,
@@ -160,9 +176,13 @@ export const CatalogWorkspace: React.FC = () => {
     if (!activeType || loadingMore || isMineScope) return;
     setLoadingMore(true);
     try {
+      const kindOrClass =
+        activeType === 'concept'
+          ? { kind: classFilter || undefined }
+          : { class: classFilter || undefined };
       const resp = await listCatalogItems(activeType, {
         scope: scopeFilter || undefined,
-        class: classFilter || undefined,
+        ...kindOrClass,
         include: 'relations',
         limit: PAGE_SIZE,
         offset: items.length,
@@ -208,7 +228,18 @@ export const CatalogWorkspace: React.FC = () => {
   }, [activeType]);
 
   // Anatomy-only: load the anatomy_class concepts for the filter chips.
+  // Concept-only: the kind chips are the static ConceptKind enum (no fetch).
   useEffect(() => {
+    if (activeType === 'concept') {
+      // Kind chips for concepts come from the static enum labels.
+      setAnatomyClasses(
+        Object.entries(CONCEPT_KIND_LABELS).map(([slug, name]) => ({
+          slug,
+          name,
+        })),
+      );
+      return;
+    }
     if (activeType !== 'anatomy') {
       setAnatomyClasses([]);
       return;
@@ -265,18 +296,29 @@ export const CatalogWorkspace: React.FC = () => {
     if (!editing || saving) return;
     setSaving(true);
     try {
+      const writeTarget = getWriteTarget(activeType);
       if (isNew) {
-        await createCatalogItem(activeType, editing);
+        if (writeTarget) {
+          await writeTarget.create(buildWritePayload(activeType, editing, 'create'));
+        } else {
+          await createCatalogItem(activeType, editing);
+        }
       } else {
         const id = String(editing.id);
-        const saved = await updateCatalogItem(activeType, id, editing);
-        // Patch the returned row into the local list so the Info preview
-        // reflects the edit immediately (the response is the updated item).
-        setItems((prev) =>
-          prev.map((it) =>
-            String(it.id) === String(saved.id) ? { ...it, ...saved } : it,
-          ),
-        );
+        if (writeTarget) {
+          await writeTarget.update(id, buildWritePayload(activeType, editing, 'edit'));
+          // No returned row to patch locally for concept writes; a full
+          // load() below reconciles the list.
+        } else {
+          const saved = await updateCatalogItem(activeType, id, editing);
+          // Patch the returned row into the local list so the Info preview
+          // reflects the edit immediately (the response is the updated item).
+          setItems((prev) =>
+            prev.map((it) =>
+              String(it.id) === String(saved.id) ? { ...it, ...saved } : it,
+            ),
+          );
+        }
       }
       toast.success(t('common.save_success', 'Saved'));
       setEditing(null);
@@ -309,7 +351,12 @@ export const CatalogWorkspace: React.FC = () => {
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await deleteCatalogItem(activeType, String(item.id));
+          const writeTarget = getWriteTarget(activeType);
+          if (writeTarget) {
+            await writeTarget.remove(String(item.id));
+          } else {
+            await deleteCatalogItem(activeType, String(item.id));
+          }
           toast.success(t('common.delete_success', 'Deleted'));
           load();
         } catch (e: any) {
@@ -322,6 +369,24 @@ export const CatalogWorkspace: React.FC = () => {
         }
       },
     });
+  };
+
+  const handleRestore = async (item: CatalogItem) => {
+    try {
+      const writeTarget = getWriteTarget(activeType);
+      if (writeTarget?.restore) {
+        await writeTarget.restore(String(item.id));
+        toast.success(t('catalogs.restore_success', 'Restored'));
+        load();
+      }
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      toast.error(
+        typeof detail === 'string'
+          ? detail
+          : t('catalogs.restore_failed', 'Could not restore'),
+      );
+    }
   };
 
   const labelField = (item: CatalogItem): string =>
@@ -438,6 +503,15 @@ export const CatalogWorkspace: React.FC = () => {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+              {selectedItem.status === 'retired' && getWriteTarget(activeType)?.restore && (
+                <button
+                  onClick={() => handleRestore(selectedItem)}
+                  title={t('catalogs.restore', 'Restore')}
+                  className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
               {domainRoute(selectedItem) && (
                 <a
                   href={domainRoute(selectedItem)!}
@@ -510,23 +584,6 @@ export const CatalogWorkspace: React.FC = () => {
     </Portal>
   );
 
-  const conceptPlaceholder = (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-        {t('catalogs.concept_hint', {
-          defaultValue:
-            'The taxonomy (concepts) is managed in the dedicated Taxonomy Manager — concepts are the most complex catalog with multi-kind tags, parent hierarchies, and a full graph view.',
-        })}
-      </p>
-      <button
-        onClick={() => navigate('/admin/system/taxonomy')}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-      >
-        {t('catalogs.open_taxonomy', 'Open Taxonomy Manager')}
-      </button>
-    </div>
-  );
-
   return (
     <PageContainer>
       <PageHeader
@@ -553,20 +610,58 @@ export const CatalogWorkspace: React.FC = () => {
               onClassChange={setClassFilter}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
-              onNew={() => {
+              onNew={canCreate ? () => {
                 setEditing({ name: '' });
                 setIsNew(true);
-              }}
+              } : undefined}
+              canExportSeeds={currentUserRole === 'SYSTEM_ADMIN'}
             />
           </div>
 
+          {/* Concept-only: List | Graph exploration toggle (Phase 5) */}
+          {activeType === 'concept' && (
+            <div className="shrink-0 flex items-center gap-2 py-1">
+              <div className="flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
+                <button
+                  onClick={() => setGraphMode('list')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
+                    graphMode === 'list'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <ListIcon className="w-3.5 h-3.5" /> {t('catalogs.view_list', 'List')}
+                </button>
+                <button
+                  onClick={() => setGraphMode('graph')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
+                    graphMode === 'graph'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <GitBranch className="w-3.5 h-3.5" /> {t('catalogs.view_graph', 'Graph')}
+                </button>
+              </div>
+            </div>
+          )}
+
           {active ? (
-            active.type === 'concept' ? (
-              conceptPlaceholder
+            activeType === 'concept' && graphMode === 'graph' ? (
+              /* Whole-ontology graph view (Phase 5 Option B) */
+              <div className="flex-1 min-h-0">
+                <ConceptOntologyGraph
+                  refreshKey={relationsRevision}
+                  onFocusNode={(id) => {
+                    selectItem(id);
+                  }}
+                  onSelectNode={(id) => selectItem(id)}
+                />
+              </div>
             ) : (
-              <div className="flex gap-4 flex-1 min-h-0">
-                {/* List pane */}
-                <div className="w-full lg:w-[42%] xl:w-[38%] shrink-0 flex flex-col min-h-0">
+            <div className="flex gap-4 flex-1 min-h-0">
+              {/* List pane */}
+              <div className="w-full lg:w-[42%] xl:w-[38%] shrink-0 flex flex-col min-h-0">
                   <CatalogBrowser
                     key={active.type}
                     items={filteredItems}
@@ -604,7 +699,7 @@ export const CatalogWorkspace: React.FC = () => {
                     {renderPreviewPane()}
                   </div>
                 )}
-              </div>
+            </div>
             )
           ) : (
             <p className="text-sm text-gray-500">{t('catalogs.select_type', 'Select a catalog type.')}</p>
@@ -613,7 +708,7 @@ export const CatalogWorkspace: React.FC = () => {
       )}
 
       {/* Mobile full-screen preview popup */}
-      {!isLargeScreen && selectedItem && active && active.type !== 'concept' && renderMobilePopup()}
+      {!isLargeScreen && selectedItem && active && renderMobilePopup()}
 
       {/* Audit history modal */}
       <CatalogAuditHistoryModal
