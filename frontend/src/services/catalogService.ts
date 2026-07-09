@@ -146,6 +146,7 @@ export async function getCatalogRelations(
 export async function getCatalogGraph(params?: {
   types?: string;
   kind?: string;
+  include_isolated?: boolean;
   limit?: number;
 }): Promise<{
   nodes: CatalogRelationEndpoint[];

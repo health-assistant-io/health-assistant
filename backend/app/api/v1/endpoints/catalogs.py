@@ -149,6 +149,12 @@ async def get_catalog_graph(
         "endpoints by (e.g. 'disease,symptom'). Non-concept endpoints are "
         "unaffected. Omit for all kinds.",
     ),
+    include_isolated: bool = Query(
+        False,
+        description="Also load items with no edges from each catalog table "
+        "(lets you browse the full catalog in graph mode, not just "
+        "connected items).",
+    ),
     limit: int = Query(10000, ge=1, le=50000, description="Max edges to return."),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -168,11 +174,23 @@ async def get_catalog_graph(
     """
     from app.services.catalog_graph_service import whole_catalog_graph
 
-    type_list = (
+    # Map catalog type names (e.g. "vaccine") to EdgeEndpointType values
+    # (e.g. "immunization") via the registry. Most match directly, but
+    # "vaccine" → "immunization" is the one mismatch.
+    raw_types = (
         [t.strip().lower() for t in types.split(",") if t.strip()]
         if types
         else None
     )
+    type_list = None
+    if raw_types:
+        type_list = []
+        for t in raw_types:
+            if CatalogRegistry.is_registered(t):
+                desc = CatalogRegistry.get(t)
+                type_list.append(desc.edge_endpoint_type.value)
+            else:
+                type_list.append(t)  # might be a raw EdgeEndpointType value
     kinds = (
         [k.strip().lower() for k in kind.split(",") if k.strip()]
         if kind
@@ -183,6 +201,7 @@ async def get_catalog_graph(
         tenant_id=current_user.tenant_id,
         types=type_list,
         kinds=kinds,
+        include_isolated=include_isolated,
         limit_edges=limit,
     )
 

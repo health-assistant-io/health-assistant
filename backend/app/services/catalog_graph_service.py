@@ -263,7 +263,9 @@ async def whole_catalog_graph(
     tenant_id: Optional[UUID],
     types: Optional[list[str]] = None,
     kinds: Optional[list[str]] = None,
+    include_isolated: bool = False,
     limit_edges: int = 10000,
+    limit_nodes: int = 5000,
 ) -> dict[str, Any]:
     """Rootless whole-graph loader for the entire cross-catalog ontology.
 
@@ -277,8 +279,9 @@ async def whole_catalog_graph(
     :func:`resolve_endpoints` registry. This naturally handles all catalog
     types (concept, biomarker, medication, anatomy, allergy, vaccine) without
     querying each model table separately — the resolver does the per-type
-    loading. Only nodes with at least one edge appear (the graph is about
-    relationships; isolated nodes are visible in the List view).
+    loading. Only nodes with at least one edge appear by default (the graph is
+    about relationships); set ``include_isolated=True`` to also load items
+    with no edges from each catalog table.
 
     Parameters:
         tenant_id: standard tenant scope.
@@ -290,8 +293,13 @@ async def whole_catalog_graph(
             concept endpoints that don't carry any of the requested kinds are
             filtered out (and their edges removed). Non-concept endpoints are
             unaffected.
-        limit_edges: cap. ``truncated`` in the response tells the client if
-            results were capped.
+        include_isolated: when ``True``, also loads all items from each
+            requested catalog type's model table (tenant-scoped, not
+            deleted/retired) and adds them to the node set — even if they have
+            no edges. Lets the user browse the full catalog in graph mode,
+            not just connected items.
+        limit_edges / limit_nodes: caps. ``truncated`` in the response tells
+            the client if results were capped.
 
     Returns ``{"nodes": [...], "edges": [...], "truncated": bool}`` where nodes
     and edges match :func:`traverse`'s shapes (resolved via
@@ -302,6 +310,12 @@ async def whole_catalog_graph(
 
     truncated = False
 
+    # Determine which catalog types are in scope.
+    if types:
+        resolved_types = [EdgeEndpointType(t) for t in types if t]
+    else:
+        resolved_types = None  # all types
+
     # 1. Load approved edges (tenant-scoped), optionally filtered by types.
     edge_stmt = select(ConceptEdge).where(
         ConceptEdge.status == EdgeApprovalStatus.APPROVED,
@@ -310,13 +324,11 @@ async def whole_catalog_graph(
             ConceptEdge.tenant_id == tenant_id,
         ),
     )
-    if types:
-        resolved_types = [EdgeEndpointType(t) for t in types if t]
-        if resolved_types:
-            edge_stmt = edge_stmt.where(
-                ConceptEdge.src_type.in_(resolved_types),
-                ConceptEdge.dst_type.in_(resolved_types),
-            )
+    if resolved_types:
+        edge_stmt = edge_stmt.where(
+            ConceptEdge.src_type.in_(resolved_types),
+            ConceptEdge.dst_type.in_(resolved_types),
+        )
     edge_stmt = edge_stmt.limit(limit_edges)
     edge_rows = (await db.execute(edge_stmt)).scalars().all()
     if len(edge_rows) >= limit_edges:
@@ -327,6 +339,24 @@ async def whole_catalog_graph(
     for e in edge_rows:
         visible.add((e.src_type, e.src_id))
         visible.add((e.dst_type, e.dst_id))
+
+    # 2b. If include_isolated, also load all items from each catalog type's
+    #     model table — even those with no edges.
+    if include_isolated:
+        types_to_load = resolved_types or [
+            EdgeEndpointType.CONCEPT,
+            EdgeEndpointType.BIOMARKER,
+            EdgeEndpointType.MEDICATION,
+            EdgeEndpointType.ALLERGY,
+            EdgeEndpointType.ANATOMY,
+            EdgeEndpointType.IMMUNIZATION,
+        ]
+        for etype in types_to_load:
+            isolated_ids = await _load_catalog_ids(db, etype, tenant_id, limit_nodes)
+            if len(isolated_ids) >= limit_nodes:
+                truncated = True
+            for eid in isolated_ids:
+                visible.add((etype, eid))
 
     # 3. Optional concept-kind filter: remove concept endpoints whose kinds
     #    don't match any of the requested values.
@@ -388,6 +418,114 @@ async def whole_catalog_graph(
             nodes.append(resolved.get(eid) or _fallback(etype, eid))
 
     return {"nodes": nodes, "edges": edges, "truncated": truncated}
+
+
+async def _load_catalog_ids(
+    db: AsyncSession,
+    etype: EdgeEndpointType,
+    tenant_id: Optional[UUID],
+    limit: int,
+) -> list[UUID]:
+    """Load all item IDs for a catalog type (tenant-scoped, not deleted)."""
+    from app.models.enums import ConceptStatus
+
+    tenant_filter = or_(
+        # tenant_id is on each model; we reference it via the model class
+    )
+
+    if etype == EdgeEndpointType.CONCEPT:
+        from app.models.concept_model import Concept
+
+        rows = (
+            await db.execute(
+                select(Concept.id)
+                .where(
+                    or_(Concept.tenant_id.is_(None), Concept.tenant_id == tenant_id),
+                    Concept.deleted_at.is_(None),
+                    Concept.status == ConceptStatus.ACTIVE,
+                )
+                .limit(limit)
+            )
+        ).all()
+    elif etype == EdgeEndpointType.BIOMARKER:
+        from app.models.biomarker_model import BiomarkerDefinition
+
+        rows = (
+            await db.execute(
+                select(BiomarkerDefinition.id)
+                .where(
+                    or_(
+                        BiomarkerDefinition.tenant_id.is_(None),
+                        BiomarkerDefinition.tenant_id == tenant_id,
+                    )
+                )
+                .limit(limit)
+            )
+        ).all()
+    elif etype == EdgeEndpointType.MEDICATION:
+        from app.models.fhir.medication import MedicationCatalog
+
+        rows = (
+            await db.execute(
+                select(MedicationCatalog.id)
+                .where(
+                    or_(
+                        MedicationCatalog.tenant_id.is_(None),
+                        MedicationCatalog.tenant_id == tenant_id,
+                    )
+                )
+                .limit(limit)
+            )
+        ).all()
+    elif etype == EdgeEndpointType.ALLERGY:
+        from app.models.fhir.allergy import AllergyCatalog
+
+        rows = (
+            await db.execute(
+                select(AllergyCatalog.id)
+                .where(
+                    or_(
+                        AllergyCatalog.tenant_id.is_(None),
+                        AllergyCatalog.tenant_id == tenant_id,
+                    )
+                )
+                .limit(limit)
+            )
+        ).all()
+    elif etype == EdgeEndpointType.ANATOMY:
+        from app.models.anatomy_model import AnatomyStructure
+
+        rows = (
+            await db.execute(
+                select(AnatomyStructure.id)
+                .where(
+                    or_(
+                        AnatomyStructure.tenant_id.is_(None),
+                        AnatomyStructure.tenant_id == tenant_id,
+                    ),
+                    AnatomyStructure.deleted_at.is_(None),
+                )
+                .limit(limit)
+            )
+        ).all()
+    elif etype == EdgeEndpointType.IMMUNIZATION:
+        from app.models.fhir.vaccine import VaccineCatalog
+
+        rows = (
+            await db.execute(
+                select(VaccineCatalog.id)
+                .where(
+                    or_(
+                        VaccineCatalog.tenant_id.is_(None),
+                        VaccineCatalog.tenant_id == tenant_id,
+                    )
+                )
+                .limit(limit)
+            )
+        ).all()
+    else:
+        return []
+    return [row[0] for row in rows]
 
 
 async def whole_concept_graph(

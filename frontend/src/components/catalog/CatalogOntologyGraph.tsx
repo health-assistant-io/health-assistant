@@ -55,6 +55,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   // Server-side filters
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
   const [activeKinds, setActiveKinds] = useState<Set<ConceptKind>>(new Set());
+  const [includeIsolated, setIncludeIsolated] = useState(false);
 
   // Client-side filters
   const [selectedNode, setSelectedNode] = useState<string | undefined>();
@@ -73,6 +74,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
       const resp = await getCatalogGraph({
         types: typesParam,
         kind: kindParam,
+        include_isolated: includeIsolated,
         limit: 10000,
       });
       setRawNodes(
@@ -105,7 +107,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [activeTypes, activeKinds]);
+  }, [activeTypes, activeKinds, includeIsolated]);
 
   useEffect(() => {
     load();
@@ -174,36 +176,85 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-[500px] gap-2">
-      {/* Controls bar */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
-        {/* Catalog-type filter chips (server-side) */}
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
-          {t('catalogs.graph_types', 'Types')}:
-        </span>
-        <div className="flex flex-wrap gap-1">
-          {ALL_CATALOG_TYPES.map((type) => {
-            const active = activeTypes.size === 0 || activeTypes.has(type);
-            return (
-              <button
-                key={type}
-                onClick={() => toggleType(type)}
-                className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
-                  active
-                    ? 'text-white border-transparent'
-                    : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
-                }`}
-                style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
-              >
-                {CATALOG_TYPE_LABELS[type]}
-              </button>
-            );
-          })}
+      {/* Controls bar — two rows */}
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-2">
+        {/* Row 1: catalog-type chips + depth + counts */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
+            {t('catalogs.graph_types', 'Types')}:
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {ALL_CATALOG_TYPES.map((type) => {
+              const active = activeTypes.size === 0 || activeTypes.has(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleType(type)}
+                  className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
+                    active
+                      ? 'text-white border-transparent'
+                      : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
+                  }`}
+                  style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
+                >
+                  {CATALOG_TYPE_LABELS[type]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Show-isolated toggle */}
+          <button
+            onClick={() => setIncludeIsolated((v) => !v)}
+            className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ml-1 ${
+              includeIsolated
+                ? 'bg-indigo-600 text-white border-transparent'
+                : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+            title={t('catalogs.graph_isolated_hint', 'Show items with no relations')}
+          >
+            {t('catalogs.graph_isolated', 'Include isolated')}
+          </button>
+
+          {/* Depth chips */}
+          {selectedNode && (
+            <div className="flex items-center gap-1 ml-2">
+              <span className="text-[10px] text-gray-400">
+                {t('catalogs.graph_depth', 'Depth')}:
+              </span>
+              {[0, 1, 2, 3, 4].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDepth(d)}
+                  className={`w-6 h-6 text-[11px] rounded-md font-medium ${
+                    depth === d
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {d === 0 ? '∞' : d}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex-1" />
+
+          {truncated && (
+            <span className="text-[10px] text-amber-500">
+              {t('catalogs.graph_truncated', 'Capped — narrow with filters')}
+            </span>
+          )}
+          <span className="text-[10px] text-gray-400">
+            {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')} ·{' '}
+            {displayedGraph.edges.length} {t('catalogs.graph_edges', 'edges')}
+          </span>
         </div>
 
-        {/* Concept-kind sub-chips (only when concepts are active) */}
+        {/* Row 2: concept-kind sub-chips (only when concepts are active) */}
         {conceptActive && (
-          <>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 ml-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
               {t('catalogs.graph_kinds', 'Kinds')}:
             </span>
             <div className="flex flex-wrap gap-1">
@@ -225,42 +276,8 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
                 );
               })}
             </div>
-          </>
-        )}
-
-        {/* Depth chips (client-side BFS) */}
-        {selectedNode && (
-          <div className="flex items-center gap-1 ml-2">
-            <span className="text-[10px] text-gray-400">
-              {t('catalogs.graph_depth', 'Depth')}:
-            </span>
-            {[0, 1, 2, 3, 4].map((d) => (
-              <button
-                key={d}
-                onClick={() => setDepth(d)}
-                className={`w-6 h-6 text-[11px] rounded-md font-medium ${
-                  depth === d
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-              >
-                {d === 0 ? '∞' : d}
-              </button>
-            ))}
           </div>
         )}
-
-        <div className="flex-1" />
-
-        {truncated && (
-          <span className="text-[10px] text-amber-500">
-            {t('catalogs.graph_truncated', 'Capped at 10k edges — narrow with filters')}
-          </span>
-        )}
-        <span className="text-[10px] text-gray-400">
-          {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')} ·{' '}
-          {displayedGraph.edges.length} {t('catalogs.graph_edges', 'edges')}
-        </span>
       </div>
 
       {/* Graph canvas */}
