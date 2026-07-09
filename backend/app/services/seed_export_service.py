@@ -33,7 +33,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.anatomy_model import AnatomyRelation, AnatomyStructure
+from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept, ConceptEdge
@@ -407,18 +407,30 @@ class SeedExportService:
                 .all()
             )
             slug_by_id = {r.id: r.slug for r in rows}
-        all_relations = (await self.db.execute(select(AnatomyRelation))).scalars().all()
+        all_edges = (
+            (
+                await self.db.execute(
+                    select(ConceptEdge).where(
+                        ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         items: List[Dict[str, Any]] = []
-        for r in all_relations:
-            src = slug_by_id.get(r.source_id)
-            dst = slug_by_id.get(r.target_id)
+        for e in all_edges:
+            src = slug_by_id.get(e.src_id)
+            dst = slug_by_id.get(e.dst_id)
             if not src or not dst:
                 continue
             items.append(
                 {
                     "source_slug": src,
                     "target_slug": dst,
-                    "relation_type": r.relation_type.value,
+                    "relation_type": e.relation.value,
                 }
             )
         items.sort(key=lambda x: (x["source_slug"], x["target_slug"]))
@@ -667,7 +679,6 @@ class SeedExportService:
         "diseases.json": "export_diseases",
         "concept_edges.json": "export_concept_edges",
         "anatomy_structures.json": "export_anatomy_structures",
-        "anatomy_relations.json": "export_anatomy_relations",
         "default_catalog.json": "export_default_catalog",
         "biomarker_panels.json": "export_biomarker_panels",
         "clinical_event_types.json": "export_clinical_event_types",

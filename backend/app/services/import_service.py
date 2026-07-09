@@ -18,14 +18,13 @@ from app.models.clinical_event import (
     ClinicalEvent,
     ClinicalEventType,
 )
-from app.models.anatomy_model import AnatomyRelation, AnatomyStructure
+from app.models.anatomy_model import AnatomyStructure
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.document_model import DocumentModel
 from app.models.enums import (
     AllergyCategory,
     AllergyClinicalStatus,
     AllergyCriticality,
-    AnatomyRelationType,
     ConceptKind,
     ConceptProvenance,
     ConceptRelationType,
@@ -2373,21 +2372,28 @@ class ImportService:
                 if not rel_type:
                     continue
                 try:
-                    rt = AnatomyRelationType(rel_type)
+                    rt = ConceptRelationType(rel_type)
                 except ValueError:
                     continue
                 res = await self.db.execute(
-                    select(AnatomyRelation).where(
-                        AnatomyRelation.source_id == src,
-                        AnatomyRelation.target_id == dst,
-                        AnatomyRelation.relation_type == rt,
+                    select(ConceptEdge).where(
+                        ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.src_id == src,
+                        ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.dst_id == dst,
+                        ConceptEdge.relation == rt,
                     )
                 )
                 if res.scalar_one_or_none():
                     continue
                 self.db.add(
-                    AnatomyRelation(
-                        source_id=src, target_id=dst, relation_type=rt
+                    ConceptEdge(
+                        src_type=EdgeEndpointType.ANATOMY,
+                        src_id=src,
+                        dst_type=EdgeEndpointType.ANATOMY,
+                        dst_id=dst,
+                        relation=rt,
+                        status=EdgeApprovalStatus.APPROVED,
                     )
                 )
                 rel_count += 1

@@ -1,10 +1,16 @@
 import logging
 from typing import Dict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
-from app.models.anatomy_model import AnatomyStructure, AnatomyRelation
-from app.models.enums import ConceptKind
+from app.models.anatomy_model import AnatomyStructure
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    ConceptKind,
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+)
 from app.schemas.anatomy_import import AnatomyImportPayload
 from app.services.concept_service import resolve_concept_by_slug
 
@@ -82,7 +88,7 @@ class AnatomyImportService:
         for slug, node_id in all_nodes_result.all():
             node_id_map[slug] = node_id
 
-        # 2. Process Edges
+        # 2. Process Edges — insert into the unified concept_edges table.
         for edge_data in payload.edges:
             try:
                 source_id = node_id_map.get(edge_data.source_slug)
@@ -95,27 +101,30 @@ class AnatomyImportService:
                     stats["errors"] += 1
                     continue
 
-                # Check for existing edge
+                rel_type = ConceptRelationType(edge_data.relation_type.value)
+
+                # Check for existing edge (dedup).
                 existing_edge_result = await self.db.execute(
-                    select(AnatomyRelation).where(
-                        and_(
-                            AnatomyRelation.source_id == source_id,
-                            AnatomyRelation.target_id == target_id,
-                            AnatomyRelation.relation_type == edge_data.relation_type,
-                        )
+                    select(ConceptEdge).where(
+                        ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.src_id == source_id,
+                        ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                        ConceptEdge.dst_id == target_id,
+                        ConceptEdge.relation == rel_type,
                     )
                 )
                 existing_edge = existing_edge_result.scalar_one_or_none()
 
                 if existing_edge:
-                    stats["edges_updated"] += (
-                        1  # Technically a no-op right now since it has no extra attributes
-                    )
+                    stats["edges_updated"] += 1
                 else:
-                    new_edge = AnatomyRelation(
-                        source_id=source_id,
-                        target_id=target_id,
-                        relation_type=edge_data.relation_type,
+                    new_edge = ConceptEdge(
+                        src_type=EdgeEndpointType.ANATOMY,
+                        src_id=source_id,
+                        dst_type=EdgeEndpointType.ANATOMY,
+                        dst_id=target_id,
+                        relation=rel_type,
+                        status=EdgeApprovalStatus.APPROVED,
                     )
                     self.db.add(new_edge)
                     stats["edges_added"] += 1

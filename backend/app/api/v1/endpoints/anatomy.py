@@ -22,7 +22,7 @@ from app.schemas.anatomy import (
     AnatomyFigureResponse,
 )
 from app.schemas.anatomy_import import AnatomyImportPayload
-from app.models.enums import AnatomyRelationType
+from app.models.enums import ConceptRelationType
 from app.models.user_model import Role
 from app.services import anatomy_service
 from app.services.anatomy_import_service import AnatomyImportService
@@ -381,13 +381,19 @@ async def create_anatomy_relation(
             status_code=404, detail="Source or Target structure not found"
         )
 
-    return await anatomy_service.create_relation(db, relation_in)
+    edge = await anatomy_service.create_relation(db, relation_in)
+    return {
+        "id": edge.id,
+        "source_id": edge.src_id,
+        "target_id": edge.dst_id,
+        "relation_type": edge.relation.value,
+    }
 
 
 @router.get("/{identifier}/related", response_model=AnatomyRelatedResponse)
 async def get_related(
     identifier: str,
-    relation_type: Optional[AnatomyRelationType] = None,
+    relation_type: Optional[ConceptRelationType] = None,
     direction: str = Query("both", pattern="^(both|outgoing|incoming)$"),
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
@@ -405,15 +411,22 @@ async def get_related(
         db, structure.id, relation_type, direction
     )
 
-    # Format the response for the frontend (resolving the target/source objects)
+    # Format the response for the frontend (structures already resolved by the
+    # service — just extract the fields the schema expects).
     response = {"outgoing": [], "incoming": []}
     for rel in relations["outgoing"]:
         response["outgoing"].append(
-            {"relation_type": rel.relation_type, "structure": rel.target_structure}
+            {
+                "relation_type": rel["relation_type"],
+                "structure": rel["structure"],
+            }
         )
     for rel in relations["incoming"]:
         response["incoming"].append(
-            {"relation_type": rel.relation_type, "structure": rel.source_structure}
+            {
+                "relation_type": rel["relation_type"],
+                "structure": rel["structure"],
+            }
         )
 
     return response
@@ -423,7 +436,7 @@ async def get_related(
 async def get_anatomy_graph(
     identifier: str,
     depth: int = Query(1, ge=1, le=3),
-    relation_type: Optional[AnatomyRelationType] = None,
+    relation_type: Optional[ConceptRelationType] = None,
     direction: str = Query("both", pattern="^(both|outgoing|incoming)$"),
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
@@ -453,9 +466,9 @@ async def get_anatomy_graph(
     nodes = [{**n["structure"].to_dict(), "depth": n["depth"]} for n in data["nodes"]]
     edges = [
         {
-            "source_id": str(e.source_id),
-            "target_id": str(e.target_id),
-            "relation_type": e.relation_type.value,
+            "source_id": str(e["source_id"]),
+            "target_id": str(e["target_id"]),
+            "relation_type": e["relation_type"].value,
         }
         for e in data["edges"]
     ]

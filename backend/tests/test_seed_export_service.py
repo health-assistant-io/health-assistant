@@ -297,13 +297,21 @@ async def test_export_anatomy_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_anatomy_relations_preserves_seeded_data(seeded_db):
+    """The export function queries concept_edges for anatomy→anatomy edges
+    (the anatomy_relations table is dropped; edges were merged into
+    concept_edges.json)."""
     from app.services.seed_export_service import SeedExportService
 
     svc = SeedExportService(seeded_db)
     out = await svc.export_anatomy_relations()
-    shipped = _load_shipped("anatomy_relations.json")["items"]
+    # The anatomy edges are now in concept_edges.json (src_type=anatomy,
+    # dst_type=anatomy). Load them and map to the same {source_slug,
+    # target_slug, relation_type} shape the exporter emits.
+    shipped_edges = _load_shipped("concept_edges.json")["items"]
     shipped_set = {
-        (s["source_slug"], s["target_slug"], s["relation_type"]) for s in shipped
+        (e["src_slug"], e["dst_slug"], e["relation"])
+        for e in shipped_edges
+        if e.get("src_type") == "anatomy" and e.get("dst_type") == "anatomy"
     }
     got_set = {
         (it["source_slug"], it["target_slug"], it["relation_type"])
@@ -522,7 +530,6 @@ async def test_cli_write_creates_files_and_backup(tmp_path, monkeypatch, capsys)
         "concepts.json",
         "concept_edges.json",
         "anatomy_structures.json",
-        "anatomy_relations.json",
         "default_catalog.json",
         "biomarker_panels.json",
         "clinical_event_types.json",

@@ -26,7 +26,6 @@ SEED_FILENAMES = {
     "concepts.json",
     "concept_edges.json",
     "anatomy_structures.json",
-    "anatomy_relations.json",
     "default_catalog.json",
     "biomarker_panels.json",
     "clinical_event_types.json",

@@ -11,7 +11,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
-from app.models.enums import AnatomyRelationType, CodingSystem, CatalogScope
+from app.models.enums import CodingSystem, CatalogScope
 
 
 class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
@@ -52,18 +52,6 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
         foreign_keys="[AnatomyStructure.class_concept_id]",
         lazy="selectin",
     )
-    outgoing_relations = relationship(
-        "AnatomyRelation",
-        foreign_keys="[AnatomyRelation.source_id]",
-        back_populates="source_structure",
-        cascade="all, delete-orphan",
-    )
-    incoming_relations = relationship(
-        "AnatomyRelation",
-        foreign_keys="[AnatomyRelation.target_id]",
-        back_populates="target_structure",
-        cascade="all, delete-orphan",
-    )
 
     __table_args__ = (Index("idx_anatomy_tenant_slug", "tenant_id", "slug"),)
 
@@ -98,52 +86,6 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
-        }
-
-
-class AnatomyRelation(Base, UUIDMixin, TimestampMixin):
-    __tablename__ = "anatomy_relations"
-
-    source_id = Column(
-        ForeignKey("anatomy_structures.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    target_id = Column(
-        ForeignKey("anatomy_structures.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    relation_type = Column(SQLEnum(AnatomyRelationType), nullable=False)
-
-    source_structure = relationship(
-        "AnatomyStructure",
-        foreign_keys=[source_id],
-        back_populates="outgoing_relations",
-    )
-
-    target_structure = relationship(
-        "AnatomyStructure",
-        foreign_keys=[target_id],
-        back_populates="incoming_relations",
-    )
-
-    __table_args__ = (
-        Index(
-            "idx_anatomy_relation_unique",
-            "source_id",
-            "target_id",
-            "relation_type",
-            unique=True,
-        ),
-    )
-
-    def to_dict(self):
-        return {
-            "id": str(self.id),
-            "source_id": str(self.source_id),
-            "target_id": str(self.target_id),
-            "relation_type": self.relation_type.value,
         }
 
 

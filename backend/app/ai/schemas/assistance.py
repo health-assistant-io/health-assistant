@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 from uuid import UUID
 
 from app.models.enums import (
-    AnatomyRelationType,
+    ConceptRelationType,
     CodingSystem,
     HitlTaskStatus,
 )
@@ -231,7 +231,7 @@ class AnatomyImportNode(BaseModel):
 class AnatomyImportEdge(BaseModel):
     source_slug: str = Field(..., description="Source node slug")
     target_slug: str = Field(..., description="Target node slug")
-    relation_type: AnatomyRelationType = Field(..., description="Type of relationship")
+    relation_type: ConceptRelationType = Field(..., description="Type of relationship")
 
 
 class AnatomyGraphDefinitionOutput(BaseModel):

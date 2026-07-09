@@ -1,18 +1,24 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from pathlib import Path
 
-from app.models.anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
+from app.models.anatomy_model import AnatomyStructure, AnatomyFigure
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+    ConceptKind,
+)
 from app.schemas.anatomy import (
     AnatomyStructureCreate,
     AnatomyStructureUpdate,
     AnatomyRelationCreate,
 )
-from app.models.enums import AnatomyRelationType, ConceptKind
 from app.core.config import settings
 from app.services.concept_service import resolve_concept_by_slug
 
@@ -71,10 +77,7 @@ async def get_anatomy_structure_by_id_or_slug(
     db: AsyncSession, identifier: str, tenant_id: Optional[UUID] = None
 ) -> Optional[AnatomyStructure]:
 
-    query = select(AnatomyStructure).options(
-        selectinload(AnatomyStructure.outgoing_relations),
-        selectinload(AnatomyStructure.incoming_relations),
-    )
+    query = select(AnatomyStructure)
 
     try:
         uuid_val = UUID(identifier)
@@ -148,60 +151,98 @@ async def delete_anatomy_structure(
 
 async def create_relation(
     db: AsyncSession, relation_in: AnatomyRelationCreate
-) -> AnatomyRelation:
-    # Optional: Check if relation exists to avoid UniqueViolation
-    existing_query = select(AnatomyRelation).where(
-        and_(
-            AnatomyRelation.source_id == relation_in.source_id,
-            AnatomyRelation.target_id == relation_in.target_id,
-            AnatomyRelation.relation_type == relation_in.relation_type,
+) -> ConceptEdge:
+    """Create an anatomy→anatomy edge in the unified ``concept_edges`` table.
+
+    The legacy ``anatomy_relations`` table is gone (migration
+    ``h9c0d1e2f3a4``); all anatomy hierarchy edges now live in
+    ``concept_edges`` with ``src_type='anatomy', dst_type='anatomy'``.
+    """
+    rel_type = ConceptRelationType(relation_in.relation_type.value)
+
+    # Dedup: check if an identical edge already exists.
+    existing = await db.execute(
+        select(ConceptEdge).where(
+            ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+            ConceptEdge.src_id == relation_in.source_id,
+            ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+            ConceptEdge.dst_id == relation_in.target_id,
+            ConceptEdge.relation == rel_type,
         )
     )
-    result = await db.execute(existing_query)
-    existing = result.scalars().first()
-    if existing:
-        return existing
+    found = existing.scalars().first()
+    if found:
+        return found
 
-    db_relation = AnatomyRelation(**relation_in.model_dump())
-    db.add(db_relation)
+    edge = ConceptEdge(
+        src_type=EdgeEndpointType.ANATOMY,
+        src_id=relation_in.source_id,
+        dst_type=EdgeEndpointType.ANATOMY,
+        dst_id=relation_in.target_id,
+        relation=rel_type,
+        status=EdgeApprovalStatus.APPROVED,
+    )
+    db.add(edge)
     await db.commit()
-    await db.refresh(db_relation)
-    return db_relation
+    await db.refresh(edge)
+    return edge
 
 
 async def get_related_structures(
     db: AsyncSession,
     structure_id: UUID,
-    relation_type: Optional[AnatomyRelationType] = None,
+    relation_type: Optional[ConceptRelationType] = None,
     direction: str = "both",  # "outgoing", "incoming", "both"
 ) -> Dict[str, Any]:
-    """
-    Returns the related structures for a given node.
-    Useful for the Graph Traversal in the UI.
-    """
-    response = {"outgoing": [], "incoming": []}
+    """Returns related anatomy structures for a given node, queried from the
+    unified ``concept_edges`` table (anatomy→anatomy edges only).
 
-    if direction in ["both", "outgoing"]:
+    Returns ``{"outgoing": [{"relation_type": str, "structure": AnatomyStructure}],
+    "incoming": [...]}`` — the endpoint serializes this directly.
+    """
+    response: Dict[str, Any] = {"outgoing": [], "incoming": []}
+
+    if direction in ("both", "outgoing"):
         q = (
-            select(AnatomyRelation)
-            .options(selectinload(AnatomyRelation.target_structure))
-            .where(AnatomyRelation.source_id == structure_id)
+            select(ConceptEdge, AnatomyStructure)
+            .join(
+                AnatomyStructure,
+                AnatomyStructure.id == ConceptEdge.dst_id,
+            )
+            .where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.src_id == structure_id,
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
         )
         if relation_type:
-            q = q.where(AnatomyRelation.relation_type == relation_type)
-        res = await db.execute(q)
-        response["outgoing"] = res.scalars().all()
+            q = q.where(ConceptEdge.relation == relation_type)
+        for edge, struct in (await db.execute(q)).all():
+            response["outgoing"].append(
+                {"relation_type": edge.relation, "structure": struct}
+            )
 
-    if direction in ["both", "incoming"]:
+    if direction in ("both", "incoming"):
         q = (
-            select(AnatomyRelation)
-            .options(selectinload(AnatomyRelation.source_structure))
-            .where(AnatomyRelation.target_id == structure_id)
+            select(ConceptEdge, AnatomyStructure)
+            .join(
+                AnatomyStructure,
+                AnatomyStructure.id == ConceptEdge.src_id,
+            )
+            .where(
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_id == structure_id,
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
         )
         if relation_type:
-            q = q.where(AnatomyRelation.relation_type == relation_type)
-        res = await db.execute(q)
-        response["incoming"] = res.scalars().all()
+            q = q.where(ConceptEdge.relation == relation_type)
+        for edge, struct in (await db.execute(q)).all():
+            response["incoming"].append(
+                {"relation_type": edge.relation, "structure": struct}
+            )
 
     return response
 
@@ -211,16 +252,15 @@ async def get_anatomy_graph(
     root: AnatomyStructure,
     tenant_id: Optional[UUID] = None,
     depth: int = 1,
-    relation_type: Optional[AnatomyRelationType] = None,
+    relation_type: Optional[ConceptRelationType] = None,
     direction: str = "both",
 ) -> Dict[str, Any]:
-    """Breadth-first traversal of the anatomy graph from ``root`` up to ``depth`` hops.
+    """Breadth-first traversal of the anatomy graph from ``root`` up to ``depth``
+    hops, querying the unified ``concept_edges`` table (anatomy→anatomy edges
+    only).
 
     Returns ``{"nodes": [{"structure": AnatomyStructure, "depth": int}, ...],
-    "edges": [AnatomyRelation, ...]}``. The root is included at depth 0 and
-    edges are deduplicated by ``(source_id, target_id, relation_type)``. Each hop
-    issues a single query per direction, so cost scales with ``depth`` (not with
-    node count). Nodes are tenant-scoped (tenant or global) to prevent leakage.
+    "edges": [{"source_id": UUID, "target_id": UUID, "relation_type": str}, ...]}``.
     """
     if depth < 1:
         depth = 1
@@ -229,7 +269,7 @@ async def get_anatomy_graph(
     nodes: Dict[UUID, Dict[str, Any]] = {root_id: {"structure": root, "depth": 0}}
     visible_ids: set = {root_id}
     edges_seen: set = set()
-    edge_rows: List[AnatomyRelation] = []
+    edge_rows: List[Dict[str, Any]] = []
     frontier: set = {root_id}
 
     for hop in range(1, depth + 1):
@@ -237,29 +277,45 @@ async def get_anatomy_graph(
             break
 
         neighbor_ids: set = set()
-        new_edges: List[AnatomyRelation] = []
+        new_edges: List[tuple] = []
 
         if direction in ("both", "outgoing"):
-            q = select(AnatomyRelation).where(AnatomyRelation.source_id.in_(frontier))
+            q = select(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.src_id.in_(frontier),
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
             if relation_type:
-                q = q.where(AnatomyRelation.relation_type == relation_type)
-            for r in (await db.execute(q)).scalars().all():
-                new_edges.append(r)
-                neighbor_ids.add(r.target_id)
+                q = q.where(ConceptEdge.relation == relation_type)
+            for e in (await db.execute(q)).scalars().all():
+                new_edges.append((e.src_id, e.dst_id, e.relation, e))
+                neighbor_ids.add(e.dst_id)
 
         if direction in ("both", "incoming"):
-            q = select(AnatomyRelation).where(AnatomyRelation.target_id.in_(frontier))
+            q = select(ConceptEdge).where(
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_id.in_(frontier),
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
             if relation_type:
-                q = q.where(AnatomyRelation.relation_type == relation_type)
-            for r in (await db.execute(q)).scalars().all():
-                new_edges.append(r)
-                neighbor_ids.add(r.source_id)
+                q = q.where(ConceptEdge.relation == relation_type)
+            for e in (await db.execute(q)).scalars().all():
+                new_edges.append((e.src_id, e.dst_id, e.relation, e))
+                neighbor_ids.add(e.src_id)
 
-        for r in new_edges:
-            key = (r.source_id, r.target_id, r.relation_type)
+        for src_id, dst_id, rel, edge in new_edges:
+            key = (src_id, dst_id, rel)
             if key not in edges_seen:
                 edges_seen.add(key)
-                edge_rows.append(r)
+                edge_rows.append(
+                    {
+                        "source_id": src_id,
+                        "target_id": dst_id,
+                        "relation_type": rel,
+                    }
+                )
 
         # Load structures for newly discovered neighbors (tenant-scoped).
         to_load = [nid for nid in neighbor_ids if nid not in nodes]
@@ -284,7 +340,7 @@ async def get_anatomy_graph(
     edge_rows = [
         e
         for e in edge_rows
-        if e.source_id in visible_ids and e.target_id in visible_ids
+        if e["source_id"] in visible_ids and e["target_id"] in visible_ids
     ]
 
     return {"nodes": list(nodes.values()), "edges": edge_rows}

@@ -64,7 +64,7 @@ from .clinical_event import (
     EventAnatomyLink,
     ClinicalEventStatus,
 )
-from .anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
+from .anatomy_model import AnatomyStructure, AnatomyFigure
 from .concept_model import Concept, ConceptEdge, ConceptKindTag
 from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
@@ -122,7 +122,6 @@ __all__ = [
     "EventAnatomyLink",
     "ClinicalEventStatus",
     "AnatomyStructure",
-    "AnatomyRelation",
     "AnatomyFigure",
     "Concept",
     "ConceptEdge",

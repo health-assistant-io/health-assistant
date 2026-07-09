@@ -12,7 +12,7 @@ from sqlalchemy import or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
-from app.models.anatomy_model import AnatomyRelation, AnatomyStructure
+from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import (
     ClinicalEvent,
@@ -20,7 +20,13 @@ from app.models.clinical_event import (
 )
 from app.models.concept_model import Concept, ConceptEdge
 from app.models.document_model import DocumentModel
-from app.models.enums import ExportScope, ExportType, JobStatus
+from app.models.enums import (
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+    ExportScope,
+    ExportType,
+    JobStatus,
+)
 from app.models.examination_model import ExaminationModel
 from app.models.export_import_job import ExportJobModel
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
@@ -380,15 +386,30 @@ class ExportService:
         )
         structures = list(struct_res.scalars().unique().all())
         exported_ids = {s.id for s in structures}
-        rel_res = await self.db.execute(select(AnatomyRelation))
+        rel_res = await self.db.execute(
+            select(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                or_(
+                    ConceptEdge.tenant_id == tenant_id,
+                    ConceptEdge.tenant_id.is_(None),
+                ),
+            )
+        )
         relations = [
-            r
-            for r in rel_res.scalars().all()
-            if r.source_id in exported_ids and r.target_id in exported_ids
+            {
+                "id": str(e.id),
+                "source_id": str(e.src_id),
+                "target_id": str(e.dst_id),
+                "relation_type": e.relation.value,
+            }
+            for e in rel_res.scalars().all()
+            if e.src_id in exported_ids and e.dst_id in exported_ids
         ]
         return {
             "structures": [s.to_dict() for s in structures],
-            "relations": [r.to_dict() for r in relations],
+            "relations": relations,
         }
 
     async def gather_biomarker_catalog(self, tenant_id: UUID) -> Dict[str, Any]:

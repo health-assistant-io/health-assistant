@@ -94,6 +94,38 @@ _RELATION_META: dict[ConceptRelationType, RelationTypeMeta] = {
         "Share2",
     ),
 
+    # --- anatomy hierarchy (migrated from AnatomyRelationType) -----------
+    ConceptRelationType.BRANCH_OF: RelationTypeMeta(
+        "BRANCH_OF", "Branch of", GROUP_STRUCTURAL,
+        "Vascular or neural branching — e.g. the left coronary artery is a branch of the ascending aorta.",
+        "GitBranch",
+    ),
+    ConceptRelationType.DRAINS_INTO: RelationTypeMeta(
+        "DRAINS_INTO", "Drains into", GROUP_STRUCTURAL,
+        "Lymphatic or venous drainage — e.g. a vein drains into a larger vessel.",
+        "ArrowDownToLine",
+    ),
+    ConceptRelationType.ARTICULATES_WITH: RelationTypeMeta(
+        "ARTICULATES_WITH", "Articulates with", GROUP_STRUCTURAL,
+        "Joint formation between two bones — e.g. the femur articulates with the tibia.",
+        "Link",
+    ),
+    ConceptRelationType.INNERVATED_BY: RelationTypeMeta(
+        "INNERVATED_BY", "Innervated by", GROUP_STRUCTURAL,
+        "Nerve supply to a structure — e.g. the diaphragm is innervated by the phrenic nerve.",
+        "Cable",
+    ),
+    ConceptRelationType.SUPPLIED_BY: RelationTypeMeta(
+        "SUPPLIED_BY", "Supplied by", GROUP_STRUCTURAL,
+        "Blood supply to a structure — e.g. the heart is supplied by the coronary arteries.",
+        "Droplet",
+    ),
+    ConceptRelationType.CONTINUOUS_WITH: RelationTypeMeta(
+        "CONTINUOUS_WITH", "Continuous with", GROUP_STRUCTURAL,
+        "Direct anatomical continuity — e.g. the stomach is continuous with the duodenum.",
+        "Minus",
+    ),
+
     # --- semantic / medical knowledge --------------------------------------
     ConceptRelationType.AFFECTS: RelationTypeMeta(
         "AFFECTS", "Affects", GROUP_MEDICAL,

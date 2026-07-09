@@ -2,14 +2,13 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.clinical_event import ClinicalEventType
-from app.models.anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
+from app.models.anatomy_model import AnatomyStructure, AnatomyFigure
 from app.models.enums import (
-    AnatomyRelationType,
     CodingSystem,
     ConceptKind,
 )
@@ -162,20 +161,21 @@ class SeedService:
 
     async def seed_body_parts(self, session: AsyncSession = None) -> Dict[str, int]:
         """
-        Sync anatomy structures and relations from JSON to Database.
+        Sync anatomy structures from JSON to Database.
 
-        Reads two standard-envelope seed files — ``anatomy_structures.json``
-        (nodes) and ``anatomy_relations.json`` (edges) — and feeds them to
-        :meth:`_process_body_parts` as a combined ``{nodes, edges}`` payload.
+        Reads ``anatomy_structures.json`` (nodes only). The anatomy hierarchy
+        edges (PART_OF, SUPPLIED_BY, etc.) now live in ``concept_edges.json``
+        and are seeded by :meth:`seed_concept_edges` — this method no longer
+        loads ``anatomy_relations.json`` (that file is deleted; the table is
+        dropped in migration ``h9c0d1e2f3a4``).
         """
         nodes = self._load_seed_json("anatomy_structures.json")
-        edges = self._load_seed_json("anatomy_relations.json")
-        if nodes is None or edges is None:
+        if nodes is None:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
 
         anatomy_data = {
             "nodes": nodes.get("items", []) if isinstance(nodes, dict) else nodes,
-            "edges": edges.get("items", []) if isinstance(edges, dict) else edges,
+            "edges": [],
         }
 
         if session:
@@ -281,46 +281,10 @@ class SeedService:
         for slug, node_id in all_nodes_result.all():
             slug_to_id[slug] = node_id
 
-        for edge in edges:
-            try:
-                source_id = slug_to_id.get(edge["source_slug"])
-                target_id = slug_to_id.get(edge["target_slug"])
-                if not source_id or not target_id:
-                    logger.warning(
-                        f"Skipping edge: missing slug {edge.get('source_slug')} -> {edge.get('target_slug')}"
-                    )
-                    stats["errors"] += 1
-                    continue
-
-                rel_type_val = AnatomyRelationType.PART_OF
-                try:
-                    rel_type_val = AnatomyRelationType(edge["relation_type"])
-                except ValueError:
-                    pass
-
-                existing_edge = await session.execute(
-                    select(AnatomyRelation).where(
-                        and_(
-                            AnatomyRelation.source_id == source_id,
-                            AnatomyRelation.target_id == target_id,
-                            AnatomyRelation.relation_type == rel_type_val,
-                        )
-                    )
-                )
-                if not existing_edge.scalar_one_or_none():
-                    new_relation = AnatomyRelation(
-                        id=uuid4(),
-                        source_id=source_id,
-                        target_id=target_id,
-                        relation_type=rel_type_val,
-                        created_at=datetime.now(timezone.utc),
-                    )
-                    session.add(new_relation)
-            except Exception as e:
-                logger.error(
-                    f"Error seeding anatomy edge {edge.get('source_slug')} -> {edge.get('target_slug')}: {e}"
-                )
-                stats["errors"] += 1
+        # Anatomy hierarchy edges (PART_OF, SUPPLIED_BY, etc.) are now seeded
+        # by seed_concept_edges from concept_edges.json (src_type=anatomy,
+        # dst_type=anatomy). The legacy anatomy_relations.json + edge loop is
+        # gone — the table was dropped in migration h9c0d1e2f3a4.
 
         return stats
 

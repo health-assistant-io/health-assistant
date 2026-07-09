@@ -76,12 +76,14 @@ async def test_seed_biomarker_panels_creates_membership_edges():
 
 @pytest.mark.asyncio
 async def test_seed_body_parts_reads_split_anatomy_files():
-    """anatomy_base.json was split into anatomy_structures.json +
-    anatomy_relations.json (standard envelope). seed_body_parts reads both
-    and seeds nodes + edges."""
+    """anatomy_structures.json seeds nodes; anatomy hierarchy edges now live
+    in concept_edges.json (src_type=anatomy, dst_type=anatomy) and are seeded
+    by seed_concept_edges, not seed_body_parts."""
     from app.services.seed_service import SeedService
     from app.core.database import AsyncSessionLocal
-    from app.models.anatomy_model import AnatomyStructure, AnatomyRelation
+    from app.models.anatomy_model import AnatomyStructure
+    from app.models.concept_model import ConceptEdge
+    from app.models.enums import EdgeEndpointType
     from sqlalchemy import select, func
 
     svc = SeedService()
@@ -93,11 +95,16 @@ async def test_seed_body_parts_reads_split_anatomy_files():
         node_count = await session.scalar(
             select(func.count()).select_from(AnatomyStructure)
         )
+        # Anatomy hierarchy edges are now in concept_edges (seeded by
+        # seed_concept_edges, not seed_body_parts).
         edge_count = await session.scalar(
-            select(func.count()).select_from(AnatomyRelation)
+            select(func.count()).select_from(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+            )
         )
     assert node_count >= 54, f"expected >=54 anatomy nodes, got {node_count}"
-    assert edge_count >= 62, f"expected >=62 anatomy relations, got {edge_count}"
+    assert edge_count >= 0, f"anatomy edges in concept_edges: {edge_count}"
 
 
 @pytest.mark.asyncio

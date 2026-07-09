@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from uuid import UUID
-from app.models.enums import AnatomyRelationType, CodingSystem
+from app.models.enums import ConceptRelationType, CodingSystem
 
 
 class AnatomyStructureBase(BaseModel):
@@ -45,7 +45,7 @@ class AnatomyStructureResponse(AnatomyStructureBase):
 class AnatomyRelationBase(BaseModel):
     source_id: UUID
     target_id: UUID
-    relation_type: AnatomyRelationType
+    relation_type: ConceptRelationType
 
 
 class AnatomyRelationCreate(AnatomyRelationBase):
@@ -71,7 +71,7 @@ class AnatomyListResponse(BaseModel):
 
 
 class AnatomyRelatedNode(BaseModel):
-    relation_type: AnatomyRelationType
+    relation_type: ConceptRelationType
     structure: AnatomyStructureResponse
 
     model_config = ConfigDict(from_attributes=True)
@@ -85,7 +85,7 @@ class AnatomyRelatedResponse(BaseModel):
 class AnatomyGraphEdge(BaseModel):
     source_id: UUID
     target_id: UUID
-    relation_type: AnatomyRelationType
+    relation_type: ConceptRelationType
 
 
 class AnatomyGraphNodeItem(AnatomyStructureResponse):

@@ -322,6 +322,13 @@ class JobStatus(str, enum.Enum):
 
 
 class AnatomyRelationType(str, enum.Enum):
+    """.. deprecated:: Migrated into :class:`ConceptRelationType`.
+
+    Retained as a thin alias so schema/endpoint code that still references it
+    by name compiles during the transition. All anatomy hierarchy edges now
+    live in ``concept_edges`` with these same string values.
+    """
+
     PART_OF = "PART_OF"
     BRANCH_OF = "BRANCH_OF"
     DRAINS_INTO = "DRAINS_INTO"
@@ -431,6 +438,14 @@ class ConceptRelationType(str, enum.Enum):
     ORDERS = "ORDERS"
     LOCATED_IN = "LOCATED_IN"
     PART_OF = "PART_OF"
+
+    # --- anatomy hierarchy (migrated from AnatomyRelationType) ---------------
+    BRANCH_OF = "BRANCH_OF"
+    DRAINS_INTO = "DRAINS_INTO"
+    ARTICULATES_WITH = "ARTICULATES_WITH"
+    INNERVATED_BY = "INNERVATED_BY"
+    SUPPLIED_BY = "SUPPLIED_BY"
+    CONTINUOUS_WITH = "CONTINUOUS_WITH"
 
     # --- semantic / medical knowledge ----------------------------------------
     AFFECTS = "AFFECTS"

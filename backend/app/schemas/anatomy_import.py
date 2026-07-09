@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from app.models.enums import AnatomyRelationType, CodingSystem
+from app.models.enums import ConceptRelationType, CodingSystem
 
 
 class AnatomyImportNode(BaseModel):
@@ -21,7 +21,7 @@ class AnatomyImportNode(BaseModel):
 class AnatomyImportEdge(BaseModel):
     source_slug: str
     target_slug: str
-    relation_type: AnatomyRelationType
+    relation_type: ConceptRelationType
 
 
 class AnatomyImportPayload(BaseModel):

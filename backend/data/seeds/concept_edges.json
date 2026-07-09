@@ -479,6 +479,440 @@
       "src_type": "vaccine",
       "dst_slug": "pneumococcal-pneumonia",
       "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "head",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "neck",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "chest",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "abdomen",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "upper-back",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "lower-back",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "arm-left",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "arm-right",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "leg-left",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "leg-right",
+      "src_type": "anatomy",
+      "dst_slug": "whole-body",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "face",
+      "src_type": "anatomy",
+      "dst_slug": "head",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "brain",
+      "src_type": "anatomy",
+      "dst_slug": "head",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "eyes",
+      "src_type": "anatomy",
+      "dst_slug": "face",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "ears",
+      "src_type": "anatomy",
+      "dst_slug": "face",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "nose",
+      "src_type": "anatomy",
+      "dst_slug": "face",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "mouth",
+      "src_type": "anatomy",
+      "dst_slug": "face",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "throat",
+      "src_type": "anatomy",
+      "dst_slug": "neck",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "thyroid",
+      "src_type": "anatomy",
+      "dst_slug": "neck",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "heart",
+      "src_type": "anatomy",
+      "dst_slug": "chest",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "left-lung",
+      "src_type": "anatomy",
+      "dst_slug": "chest",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "right-lung",
+      "src_type": "anatomy",
+      "dst_slug": "chest",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "liver",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "stomach",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "pancreas",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "spleen",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "left-kidney",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "right-kidney",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "small-intestine",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "large-intestine",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "bladder",
+      "src_type": "anatomy",
+      "dst_slug": "abdomen",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "shoulder-left",
+      "src_type": "anatomy",
+      "dst_slug": "arm-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "elbow-left",
+      "src_type": "anatomy",
+      "dst_slug": "arm-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "wrist-left",
+      "src_type": "anatomy",
+      "dst_slug": "arm-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "hand-left",
+      "src_type": "anatomy",
+      "dst_slug": "arm-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "shoulder-right",
+      "src_type": "anatomy",
+      "dst_slug": "arm-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "elbow-right",
+      "src_type": "anatomy",
+      "dst_slug": "arm-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "wrist-right",
+      "src_type": "anatomy",
+      "dst_slug": "arm-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "hand-right",
+      "src_type": "anatomy",
+      "dst_slug": "arm-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "hip-left",
+      "src_type": "anatomy",
+      "dst_slug": "leg-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "knee-left",
+      "src_type": "anatomy",
+      "dst_slug": "leg-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "ankle-left",
+      "src_type": "anatomy",
+      "dst_slug": "leg-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "foot-left",
+      "src_type": "anatomy",
+      "dst_slug": "leg-left",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "hip-right",
+      "src_type": "anatomy",
+      "dst_slug": "leg-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "knee-right",
+      "src_type": "anatomy",
+      "dst_slug": "leg-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "ankle-right",
+      "src_type": "anatomy",
+      "dst_slug": "leg-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "foot-right",
+      "src_type": "anatomy",
+      "dst_slug": "leg-right",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "heart",
+      "src_type": "anatomy",
+      "dst_slug": "cardiovascular-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "left-lung",
+      "src_type": "anatomy",
+      "dst_slug": "respiratory-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "right-lung",
+      "src_type": "anatomy",
+      "dst_slug": "respiratory-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "brain",
+      "src_type": "anatomy",
+      "dst_slug": "nervous-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "liver",
+      "src_type": "anatomy",
+      "dst_slug": "digestive-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "stomach",
+      "src_type": "anatomy",
+      "dst_slug": "digestive-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "pancreas",
+      "src_type": "anatomy",
+      "dst_slug": "digestive-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "small-intestine",
+      "src_type": "anatomy",
+      "dst_slug": "digestive-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "large-intestine",
+      "src_type": "anatomy",
+      "dst_slug": "digestive-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "thyroid",
+      "src_type": "anatomy",
+      "dst_slug": "endocrine-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "left-kidney",
+      "src_type": "anatomy",
+      "dst_slug": "urinary-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "right-kidney",
+      "src_type": "anatomy",
+      "dst_slug": "urinary-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "bladder",
+      "src_type": "anatomy",
+      "dst_slug": "urinary-system",
+      "dst_type": "anatomy",
+      "relation": "PART_OF"
+    },
+    {
+      "src_slug": "heart",
+      "src_type": "anatomy",
+      "dst_slug": "cardiovascular-system",
+      "dst_type": "anatomy",
+      "relation": "SUPPLIED_BY"
+    },
+    {
+      "src_slug": "brain",
+      "src_type": "anatomy",
+      "dst_slug": "nervous-system",
+      "dst_type": "anatomy",
+      "relation": "SUPPLIED_BY"
+    },
+    {
+      "src_slug": "brain",
+      "src_type": "anatomy",
+      "dst_slug": "cardiovascular-system",
+      "dst_type": "anatomy",
+      "relation": "SUPPLIED_BY"
     }
   ]
 }

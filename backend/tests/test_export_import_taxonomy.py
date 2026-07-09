@@ -28,11 +28,10 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import func, select
 
-from app.models.anatomy_model import AnatomyRelation, AnatomyStructure
+from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
-    AnatomyRelationType,
     CodingSystem,
     ConceptKind,
     ConceptProvenance,
@@ -289,15 +288,21 @@ async def test_gather_anatomy_returns_tenant_scoped_only(db):
     await db.flush()
     db.add_all(
         [
-            AnatomyRelation(
-                source_id=custom.id,
-                target_id=tenant_only.id,
-                relation_type=AnatomyRelationType.PART_OF,
+            ConceptEdge(
+                src_type=EdgeEndpointType.ANATOMY,
+                src_id=custom.id,
+                dst_type=EdgeEndpointType.ANATOMY,
+                dst_id=tenant_only.id,
+                relation=ConceptRelationType.PART_OF,
+                status=EdgeApprovalStatus.APPROVED,
             ),
-            AnatomyRelation(
-                source_id=custom.id,
-                target_id=global_seeded.id,
-                relation_type=AnatomyRelationType.PART_OF,
+            ConceptEdge(
+                src_type=EdgeEndpointType.ANATOMY,
+                src_id=custom.id,
+                dst_type=EdgeEndpointType.ANATOMY,
+                dst_id=global_seeded.id,
+                relation=ConceptRelationType.PART_OF,
+                status=EdgeApprovalStatus.APPROVED,
             ),
         ]
     )
