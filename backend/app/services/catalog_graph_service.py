@@ -503,7 +503,6 @@ async def _load_catalog_ids(
                         AnatomyStructure.tenant_id.is_(None),
                         AnatomyStructure.tenant_id == tenant_id,
                     ),
-                    AnatomyStructure.deleted_at.is_(None),
                 )
                 .limit(limit)
             )
