@@ -193,3 +193,25 @@ export const KIND_COLORS: Record<ConceptKind, string> = {
   symptom: '#f43f5e',
   organ: '#22c55e',
 };
+
+/** Colors for non-concept catalog types (biomarker, medication, etc.) used
+ *  as fallbacks when the resolver doesn't populate ``color`` from
+ *  ``class_concept``. */
+export const CATALOG_TYPE_COLORS: Record<string, string> = {
+  concept: '#6366f1',
+  biomarker: '#06b6d4',
+  medication: '#f59e0b',
+  allergy: '#eab308',
+  anatomy: '#10b981',
+  vaccine: '#84cc16',
+};
+
+/** Human-readable labels for catalog types (used in graph filter chips). */
+export const CATALOG_TYPE_LABELS: Record<string, string> = {
+  concept: 'Concepts',
+  biomarker: 'Biomarkers',
+  medication: 'Medications',
+  allergy: 'Allergies',
+  anatomy: 'Anatomy',
+  vaccine: 'Vaccines',
+};

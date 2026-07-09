@@ -138,20 +138,21 @@ export async function getCatalogRelations(
 }
 
 /**
- * Whole-ontology concept graph (rootless, Phase 5 Option B).
- * Returns the full concept graph — optionally kind-filtered — without
- * requiring a start item. Powers the workspace-level Graph view.
+ * Whole cross-catalog ontology graph (rootless).
+ * Returns the full polymorphic graph — concepts, biomarkers, medications,
+ * anatomy, allergies, vaccines — and all approved edges between them.
+ * Powers the workspace-level Graph view.
  */
-export async function getConceptGraph(params?: {
+export async function getCatalogGraph(params?: {
+  types?: string;
   kind?: string;
-  include_anatomy?: boolean;
   limit?: number;
 }): Promise<{
   nodes: CatalogRelationEndpoint[];
   edges: CatalogRelationEdge[];
   truncated: boolean;
 }> {
-  const { data } = await api.get('/catalogs/concept/graph', { params });
+  const { data } = await api.get('/catalogs/graph', { params });
   return data;
 }
 

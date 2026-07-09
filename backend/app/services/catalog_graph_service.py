@@ -257,6 +257,139 @@ async def count_relations_both_directions(
     return counts
 
 
+async def whole_catalog_graph(
+    db: AsyncSession,
+    *,
+    tenant_id: Optional[UUID],
+    types: Optional[list[str]] = None,
+    kinds: Optional[list[str]] = None,
+    limit_edges: int = 10000,
+) -> dict[str, Any]:
+    """Rootless whole-graph loader for the entire cross-catalog ontology.
+
+    Unlike :func:`traverse` (start-node-bound), this returns the full graph —
+    optionally filtered by endpoint types and/or concept kinds — without
+    requiring a start node. Used by the workspace-level Graph view.
+
+    **Edge-driven design:** loads all approved ``concept_edges`` (optionally
+    filtered by ``src_type``/``dst_type``), collects every endpoint ``(type,
+    id)`` pair, and resolves them via the polymorphic
+    :func:`resolve_endpoints` registry. This naturally handles all catalog
+    types (concept, biomarker, medication, anatomy, allergy, vaccine) without
+    querying each model table separately — the resolver does the per-type
+    loading. Only nodes with at least one edge appear (the graph is about
+    relationships; isolated nodes are visible in the List view).
+
+    Parameters:
+        tenant_id: standard tenant scope.
+        types: optional list of ``EdgeEndpointType`` values to filter by
+            (e.g. ``["concept", "biomarker"]``). Only edges where *both*
+            endpoints are of a requested type are returned. ``None`` = all
+            types.
+        kinds: optional list of ``ConceptKind`` values. When specified,
+            concept endpoints that don't carry any of the requested kinds are
+            filtered out (and their edges removed). Non-concept endpoints are
+            unaffected.
+        limit_edges: cap. ``truncated`` in the response tells the client if
+            results were capped.
+
+    Returns ``{"nodes": [...], "edges": [...], "truncated": bool}`` where nodes
+    and edges match :func:`traverse`'s shapes (resolved via
+    :func:`resolve_endpoints`).
+    """
+    from app.models.concept_model import ConceptEdge, ConceptKindTag
+    from app.models.enums import EdgeApprovalStatus
+
+    truncated = False
+
+    # 1. Load approved edges (tenant-scoped), optionally filtered by types.
+    edge_stmt = select(ConceptEdge).where(
+        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+        or_(
+            ConceptEdge.tenant_id.is_(None),
+            ConceptEdge.tenant_id == tenant_id,
+        ),
+    )
+    if types:
+        resolved_types = [EdgeEndpointType(t) for t in types if t]
+        if resolved_types:
+            edge_stmt = edge_stmt.where(
+                ConceptEdge.src_type.in_(resolved_types),
+                ConceptEdge.dst_type.in_(resolved_types),
+            )
+    edge_stmt = edge_stmt.limit(limit_edges)
+    edge_rows = (await db.execute(edge_stmt)).scalars().all()
+    if len(edge_rows) >= limit_edges:
+        truncated = True
+
+    # 2. Collect all endpoint (type, id) pairs from the loaded edges.
+    visible: set[tuple[EdgeEndpointType, UUID]] = set()
+    for e in edge_rows:
+        visible.add((e.src_type, e.src_id))
+        visible.add((e.dst_type, e.dst_id))
+
+    # 3. Optional concept-kind filter: remove concept endpoints whose kinds
+    #    don't match any of the requested values.
+    if kinds:
+        from app.models.enums import ConceptKind
+
+        resolved_kinds = [ConceptKind(k) for k in kinds if k]
+        if resolved_kinds:
+            concept_ids = {
+                eid
+                for (etype, eid) in visible
+                if etype == EdgeEndpointType.CONCEPT
+            }
+            if concept_ids:
+                valid = set(
+                    row[0]
+                    for row in (
+                        await db.execute(
+                            select(ConceptKindTag.concept_id).where(
+                                ConceptKindTag.concept_id.in_(concept_ids),
+                                ConceptKindTag.kind.in_(resolved_kinds),
+                            )
+                        )
+                    ).all()
+                )
+                visible = {
+                    (etype, eid)
+                    for (etype, eid) in visible
+                    if etype != EdgeEndpointType.CONCEPT or eid in valid
+                }
+
+    # 4. Filter edges: only keep edges where both endpoints survived filtering.
+    visible_keys = {(etype.value, str(eid)) for (etype, eid) in visible}
+    edges: list[dict[str, Any]] = []
+    for e in edge_rows:
+        src_key = (e.src_type.value, str(e.src_id))
+        dst_key = (e.dst_type.value, str(e.dst_id))
+        if src_key in visible_keys and dst_key in visible_keys:
+            edges.append(
+                {
+                    "id": str(e.id),
+                    "src": {"type": e.src_type.value, "id": str(e.src_id)},
+                    "dst": {"type": e.dst_type.value, "id": str(e.dst_id)},
+                    "relation": e.relation.value,
+                    "status": e.status.value,
+                }
+            )
+
+    # 5. Resolve all endpoints via the polymorphic resolver registry.
+    endpoint_pairs = list(visible)
+    resolved = await resolve_endpoints(db, endpoint_pairs) if endpoint_pairs else {}
+
+    # 6. Build nodes list (deduped, stable order).
+    seen: set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    for etype, eid in visible:
+        if str(eid) not in seen:
+            seen.add(str(eid))
+            nodes.append(resolved.get(eid) or _fallback(etype, eid))
+
+    return {"nodes": nodes, "edges": edges, "truncated": truncated}
+
+
 async def whole_concept_graph(
     db: AsyncSession,
     *,
@@ -266,180 +399,22 @@ async def whole_concept_graph(
     limit_nodes: int = 1000,
     limit_edges: int = 10000,
 ) -> dict[str, Any]:
-    """Rootless whole-graph loader for the concept ontology (Phase 5, Option B).
+    """.. deprecated:: Use :func:`whole_catalog_graph` instead.
 
-    Unlike :func:`traverse` (which is start-node-bound), this returns the full
-    concept graph — optionally kind-filtered — without requiring a start node.
-    Used by the workspace-level Graph view to reproduce TaxonomyManager's
-    whole-ontology exploration.
-
-    **Scalability design:** the kind filter narrows both the concept set AND
-    the edge set (only edges where *both* endpoints are in the visible concept
-    set are returned, not all edges in the ontology). This keeps the payload
-    proportional to the filtered domain, not the full graph. For very large
-    ontologies, cursor pagination can be added later without changing the
-    response shape.
-
-    Parameters:
-        tenant_id: standard tenant scope (``or_(NULL, caller)``).
-        kinds: optional list of ``ConceptKind`` values to filter by (via the
-            ``concept_kind_tags`` join — a multi-kind concept appears if it
-            carries *any* of the requested kinds). ``None`` = all kinds.
-        include_anatomy: when ``True``, also returns anatomy_structures nodes
-            + concept↔anatomy polymorphic edges (the "anatomy overlay").
-        limit_nodes / limit_edges: caps. ``truncated`` in the response tells
-            the client if results were capped.
-
-    Returns ``{"nodes": [...], "edges": [...], "truncated": bool}`` where nodes
-    and edges match :func:`traverse`'s shapes (resolved via
-    :func:`resolve_endpoints`).
+    Thin delegate preserved for backward compatibility (existing tests +
+    the ``/catalogs/concept/graph`` endpoint). The new function generalizes
+    to all catalog types via the ``types`` parameter.
     """
-    from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
-    from app.models.enums import ConceptStatus, EdgeApprovalStatus
-    from app.services.concept_service import concepts_with_kind
-
-    truncated = False
-
-    # 1. Load concepts (optionally kind-filtered via the tag join).
-    concept_stmt = (
-        select(Concept)
-        .where(
-            or_(
-                Concept.tenant_id.is_(None),
-                Concept.tenant_id == tenant_id,
-            ),
-            Concept.deleted_at.is_(None),
-            Concept.status == ConceptStatus.ACTIVE,
-        )
-    )
-    if kinds:
-        from app.models.enums import ConceptKind
-
-        resolved_kinds = [ConceptKind(k) for k in kinds if k]
-        if resolved_kinds:
-            # A concept appears if it carries ANY of the requested kinds.
-            concept_stmt = concept_stmt.where(
-                Concept.id.in_(
-                    select(ConceptKindTag.concept_id).where(
-                        ConceptKindTag.kind.in_(resolved_kinds)
-                    )
-                )
-            )
-    concept_stmt = concept_stmt.limit(limit_nodes)
-    concepts = (await db.execute(concept_stmt)).scalars().all()
-    if len(concepts) >= limit_nodes:
-        truncated = True
-    concept_ids = {c.id for c in concepts}
-
-    # 2. Load approved edges between those concepts only (not all edges).
-    edges: list[dict[str, Any]] = []
-    if concept_ids:
-        edge_stmt = (
-            select(ConceptEdge)
-            .where(
-                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
-                or_(
-                    ConceptEdge.tenant_id.is_(None),
-                    ConceptEdge.tenant_id == tenant_id,
-                ),
-                ConceptEdge.src_type == EdgeEndpointType.CONCEPT,
-                ConceptEdge.src_id.in_(concept_ids),
-                ConceptEdge.dst_type == EdgeEndpointType.CONCEPT,
-                ConceptEdge.dst_id.in_(concept_ids),
-            )
-            .limit(limit_edges)
-        )
-        edge_rows = (await db.execute(edge_stmt)).scalars().all()
-        if len(edge_rows) >= limit_edges:
-            truncated = True
-        for e in edge_rows:
-            edges.append(
-                {
-                    "id": str(e.id),
-                    "src": {"type": EdgeEndpointType.CONCEPT.value, "id": str(e.src_id)},
-                    "dst": {"type": EdgeEndpointType.CONCEPT.value, "id": str(e.dst_id)},
-                    "relation": e.relation.value,
-                    "status": e.status.value,
-                }
-            )
-
-    # 3. Optionally load anatomy nodes + concept↔anatomy edges.
-    anatomy_ids: set[UUID] = set()
+    types = ["concept"]
     if include_anatomy:
-        from app.models.anatomy_model import AnatomyStructure
-
-        anatomy_stmt = (
-            select(AnatomyStructure)
-            .where(
-                or_(
-                    AnatomyStructure.tenant_id.is_(None),
-                    AnatomyStructure.tenant_id == tenant_id,
-                ),
-                AnatomyStructure.deleted_at.is_(None),
-            )
-            .limit(limit_nodes)
-        )
-        anatomy_rows = (await db.execute(anatomy_stmt)).scalars().all()
-        anatomy_ids = {a.id for a in anatomy_rows}
-
-        if anatomy_ids and concept_ids:
-            anat_edge_stmt = (
-                select(ConceptEdge)
-                .where(
-                    ConceptEdge.status == EdgeApprovalStatus.APPROVED,
-                    or_(
-                        ConceptEdge.tenant_id.is_(None),
-                        ConceptEdge.tenant_id == tenant_id,
-                    ),
-                    or_(
-                        # concept → anatomy
-                        (ConceptEdge.src_type == EdgeEndpointType.CONCEPT)
-                        & (ConceptEdge.src_id.in_(concept_ids))
-                        & (ConceptEdge.dst_type == EdgeEndpointType.ANATOMY)
-                        & (ConceptEdge.dst_id.in_(anatomy_ids)),
-                        # anatomy → concept
-                        (ConceptEdge.src_type == EdgeEndpointType.ANATOMY)
-                        & (ConceptEdge.src_id.in_(anatomy_ids))
-                        & (ConceptEdge.dst_type == EdgeEndpointType.CONCEPT)
-                        & (ConceptEdge.dst_id.in_(concept_ids)),
-                    ),
-                )
-                .limit(limit_edges)
-            )
-            anat_edge_rows = (await db.execute(anat_edge_stmt)).scalars().all()
-            for e in anat_edge_rows:
-                edges.append(
-                    {
-                        "id": str(e.id),
-                        "src": {"type": e.src_type.value, "id": str(e.src_id)},
-                        "dst": {"type": e.dst_type.value, "id": str(e.dst_id)},
-                        "relation": e.relation.value,
-                        "status": e.status.value,
-                    }
-                )
-
-    # 4. Resolve all node endpoints (concepts + anatomy) via the resolver.
-    endpoint_pairs: list[tuple[EdgeEndpointType, UUID]] = []
-    for cid in concept_ids:
-        endpoint_pairs.append((EdgeEndpointType.CONCEPT, cid))
-    for aid in anatomy_ids:
-        endpoint_pairs.append((EdgeEndpointType.ANATOMY, aid))
-
-    resolved = await resolve_endpoints(db, endpoint_pairs) if endpoint_pairs else {}
-
-    # Dedup nodes by id, concepts first then anatomy (stable order).
-    seen: set[str] = set()
-    nodes: list[dict[str, Any]] = []
-    for cid in concept_ids:
-        if str(cid) not in seen:
-            seen.add(str(cid))
-            nodes.append(resolved.get(cid) or _fallback(EdgeEndpointType.CONCEPT, cid))
-    for aid in anatomy_ids:
-        if str(aid) not in seen:
-            seen.add(str(aid))
-            nodes.append(resolved.get(aid) or _fallback(EdgeEndpointType.ANATOMY, aid))
-
-    return {"nodes": nodes, "edges": edges, "truncated": truncated}
+        types = ["concept", "anatomy"]
+    return await whole_catalog_graph(
+        db,
+        tenant_id=tenant_id,
+        types=types,
+        kinds=kinds,
+        limit_edges=limit_edges,
+    )
 
 
 __all__ = [
@@ -447,4 +422,5 @@ __all__ = [
     "count_relations",
     "count_relations_both_directions",
     "whole_concept_graph",
+    "whole_catalog_graph",
 ]

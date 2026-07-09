@@ -135,46 +135,55 @@ async def search_catalogs_endpoint(
     return {"results": results}
 
 
-@router.get("/concept/graph")
-async def get_concept_graph(
+@router.get("/graph")
+async def get_catalog_graph(
+    types: Optional[str] = Query(
+        None,
+        description="Comma-separated EdgeEndpointType values to filter by "
+        "(e.g. 'concept,biomarker,medication'). Only edges where both "
+        "endpoints are of a requested type are returned. Omit for all types.",
+    ),
     kind: Optional[str] = Query(
         None,
-        description="Comma-separated ConceptKind values to filter by (e.g. "
-        "'disease,symptom'). A multi-kind concept appears if it carries ANY "
-        "of the requested kinds. Omit for all kinds.",
+        description="Comma-separated ConceptKind values to filter concept "
+        "endpoints by (e.g. 'disease,symptom'). Non-concept endpoints are "
+        "unaffected. Omit for all kinds.",
     ),
-    include_anatomy: bool = Query(
-        False,
-        description="Also return anatomy_structures nodes + concept↔anatomy edges.",
-    ),
-    limit: int = Query(500, ge=1, le=2000, description="Max nodes to return."),
+    limit: int = Query(10000, ge=1, le=50000, description="Max edges to return."),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Whole-ontology concept graph (rootless, Phase 5 Option B).
+    """Whole cross-catalog ontology graph (rootless).
 
-    Unlike ``GET /{type}/{id}/relations`` (start-node-bound), this returns the
-    full concept graph — optionally kind-filtered — without requiring a start
-    item. Powers the workspace-level Graph view. Declared before ``/{type}``
-    so the literal path isn't captured by the type path-param.
+    Returns the full polymorphic graph — concepts, biomarkers, medications,
+    anatomy, allergies, vaccines — and all approved ``concept_edges`` between
+    them. Powers the workspace-level Graph view for exploring cross-catalog
+    relationships (e.g. "which medications treat diseases that affect this
+    organ?").
 
-    The kind filter narrows both the concept set AND the edge set (only edges
-    between visible concepts are returned), keeping the payload proportional
-    to the filtered domain. Returns ``{nodes, edges, truncated}``.
+    The ``types`` filter narrows the graph to specific catalog types. The
+    ``kind`` filter further narrows concept endpoints by their ConceptKind
+    tags. Returns ``{nodes, edges, truncated}`` where nodes are resolved via
+    the polymorphic resolver (label, icon, color, kind per node).
     """
-    from app.services.catalog_graph_service import whole_concept_graph
+    from app.services.catalog_graph_service import whole_catalog_graph
 
+    type_list = (
+        [t.strip().lower() for t in types.split(",") if t.strip()]
+        if types
+        else None
+    )
     kinds = (
         [k.strip().lower() for k in kind.split(",") if k.strip()]
         if kind
         else None
     )
-    return await whole_concept_graph(
+    return await whole_catalog_graph(
         db,
         tenant_id=current_user.tenant_id,
+        types=type_list,
         kinds=kinds,
-        include_anatomy=include_anatomy,
-        limit_nodes=limit,
+        limit_edges=limit,
     )
 
 

@@ -638,13 +638,30 @@ async def test_whole_concept_graph_kind_filter_narrows(clean_concept_namespace):
 async def test_whole_concept_graph_endpoint_works(
     async_client, system_admin_headers, clean_concept_namespace
 ):
-    """``GET /catalogs/concept/graph`` returns a valid payload via HTTP."""
+    """``GET /catalogs/graph`` returns a valid payload via HTTP."""
     p = clean_concept_namespace
-    await _make_concept(
-        slug=f"{p}-ep", name=f"Endpoint {p}", kinds=[ConceptKind.ORGAN]
+    # Create two concepts + an edge so they appear in the edge-driven graph.
+    a_id = await _make_concept(
+        slug=f"{p}-ep-a", name=f"EndpointA {p}", kinds=[ConceptKind.ORGAN]
     )
+    b_id = await _make_concept(
+        slug=f"{p}-ep-b", name=f"EndpointB {p}", kinds=[ConceptKind.BODY_SYSTEM]
+    )
+    async with AsyncSessionLocal() as session:
+        svc = ConceptService(session)
+        await svc.create_edge(
+            src_type=EdgeEndpointType.CONCEPT,
+            src_id=a_id,
+            dst_type=EdgeEndpointType.CONCEPT,
+            dst_id=b_id,
+            relation=ConceptRelationType.PART_OF,
+            tenant_id=None,
+            role="SYSTEM_ADMIN",
+        )
+        await session.commit()
+
     resp = await async_client.get(
-        f"/api/v1/catalogs/concept/graph?kind=organ",
+        f"/api/v1/catalogs/graph?types=concept&kind=organ,body_system",
         headers=system_admin_headers,
     )
     assert resp.status_code == 200
@@ -652,4 +669,52 @@ async def test_whole_concept_graph_endpoint_works(
     assert "nodes" in body
     assert "edges" in body
     assert "truncated" in body
-    assert any(n["label"] == f"Endpoint {p}" for n in body["nodes"])
+    assert any(n["label"] == f"EndpointA {p}" for n in body["nodes"])
+
+
+@pytest.mark.asyncio
+async def test_whole_catalog_graph_returns_cross_catalog_nodes(
+    async_client, system_admin_headers, clean_concept_namespace
+):
+    """``GET /catalogs/graph`` returns biomarker/medication nodes + their
+    cross-catalog edges to concepts (the graph is polymorphic, not concept-only)."""
+    p = clean_concept_namespace
+    # Create a concept + biomarker with an AFFECTS edge between them.
+    concept_id = await _make_concept(
+        slug=f"{p}-xcat-disease", name=f"XCatDisease {p}", kinds=[ConceptKind.DISEASE]
+    )
+    async with AsyncSessionLocal() as session:
+        from app.models.biomarker_model import BiomarkerDefinition
+        from app.models.concept_model import ConceptEdge
+        from app.models.enums import EdgeApprovalStatus
+
+        bio = BiomarkerDefinition(
+            slug=f"{p}-xcat-bio",
+            name=f"XCatBiomarker {p}",
+            tenant_id=None,
+        )
+        session.add(bio)
+        await session.flush()
+        edge = ConceptEdge(
+            src_type=EdgeEndpointType.BIOMARKER,
+            src_id=bio.id,
+            dst_type=EdgeEndpointType.CONCEPT,
+            dst_id=concept_id,
+            relation=ConceptRelationType.AFFECTS,
+            status=EdgeApprovalStatus.APPROVED,
+        )
+        session.add(edge)
+        await session.commit()
+
+    resp = await async_client.get(
+        f"/api/v1/catalogs/graph?types=biomarker,concept",
+        headers=system_admin_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # Both a biomarker node and a concept node should appear.
+    node_types = {n["type"] for n in body["nodes"]}
+    assert "biomarker" in node_types
+    assert "concept" in node_types
+    # The AFFECTS edge should be present.
+    assert any(e["relation"] == "AFFECTS" for e in body["edges"])

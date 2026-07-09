@@ -1,14 +1,18 @@
 /**
- * Whole-ontology graph view for the concept catalog (Phase 5, Option B).
+ * Whole cross-catalog ontology graph view.
  *
- * Calls the rootless ``GET /catalogs/concept/graph`` endpoint (one server-
- * filtered call) and renders the full concept graph via ``<ConceptGraphView>``.
- * Supports kind filtering (reloads from server), depth limiting (client-side
- * BFS from selected node), anatomy overlay toggle, and PNG export.
+ * Calls the rootless ``GET /catalogs/graph`` endpoint (one server-filtered
+ * call) and renders the full polymorphic graph — concepts, biomarkers,
+ * medications, anatomy, allergies, vaccines — via ``<ConceptGraphView>``.
  *
- * This replaces TaxonomyManager's client-side two-call assembly with a single
- * server-side endpoint that filters both concepts and edges by kind — keeping
- * the payload proportional to the filtered domain, not the full ontology.
+ * Two filter rows:
+ * 1. **Catalog-type chips** (concept, biomarker, medication, ...) — toggles
+ *    which catalog types are included. Server-side filter (reloads on change).
+ * 2. **Concept-kind sub-chips** (disease, symptom, ...) — appears only when
+ *    "concept" is active. Also server-side.
+ *
+ * Additional client-side controls: depth BFS, dim chips, anatomy overlay
+ * (subsumed by the catalog-type chips).
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,14 +21,18 @@ import {
   type ConceptGraphNode,
   type ConceptGraphEdgeData,
 } from '../ui/ConceptGraphView';
-import { getConceptGraph } from '../../services/catalogService';
+import { getCatalogGraph } from '../../services/catalogService';
 import {
   CONCEPT_KIND_LABELS,
   KIND_COLORS,
+  CATALOG_TYPE_COLORS,
+  CATALOG_TYPE_LABELS,
   type ConceptKind,
 } from '../../types/concept';
 
-interface ConceptOntologyGraphProps {
+const ALL_CATALOG_TYPES = Object.keys(CATALOG_TYPE_LABELS);
+
+interface CatalogOntologyGraphProps {
   /** Called when a node is double-clicked (focus). */
   onFocusNode?: (conceptId: string) => void;
   /** Called when a node is single-clicked (select). */
@@ -33,7 +41,7 @@ interface ConceptOntologyGraphProps {
   refreshKey?: number;
 }
 
-export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
+export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   onFocusNode,
   onSelectNode,
   refreshKey = 0,
@@ -44,32 +52,43 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
   const [loading, setLoading] = useState(true);
   const [truncated, setTruncated] = useState(false);
 
-  // Interactive state
+  // Server-side filters
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
   const [activeKinds, setActiveKinds] = useState<Set<ConceptKind>>(new Set());
-  const [includeAnatomy, setIncludeAnatomy] = useState(false);
+
+  // Client-side filters
   const [selectedNode, setSelectedNode] = useState<string | undefined>();
-  const [depth, setDepth] = useState(0); // 0 = unlimited
+  const [depth, setDepth] = useState(0);
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const typesParam = activeTypes.size > 0
+        ? [...activeTypes].join(',')
+        : undefined;
       const kindParam = activeKinds.size > 0
         ? [...activeKinds].join(',')
         : undefined;
-      const resp = await getConceptGraph({
+      const resp = await getCatalogGraph({
+        types: typesParam,
         kind: kindParam,
-        include_anatomy: includeAnatomy,
-        limit: 500,
+        limit: 10000,
       });
       setRawNodes(
-        resp.nodes.map((n) => ({
-          id: n.id,
-          name: n.label || `${n.type}:${n.id.slice(0, 8)}`,
-          primary_kind: n.kind || n.type,
-          kinds: [n.kind || n.type],
-          color: n.color || KIND_COLORS[(n.kind || n.type) as ConceptKind] || '#6b7280',
-        })),
+        resp.nodes.map((n) => {
+          const kindOrType = n.kind || n.type;
+          return {
+            id: n.id,
+            name: n.label || `${n.type}:${n.id.slice(0, 8)}`,
+            primary_kind: kindOrType,
+            kinds: [kindOrType],
+            color: n.color
+              || KIND_COLORS[kindOrType as ConceptKind]
+              || CATALOG_TYPE_COLORS[kindOrType]
+              || '#6b7280',
+          };
+        }),
       );
       setRawEdges(
         resp.edges.map((e) => ({
@@ -86,7 +105,7 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [activeKinds, includeAnatomy]);
+  }, [activeTypes, activeKinds]);
 
   useEffect(() => {
     load();
@@ -118,14 +137,22 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
       }
       frontier = next;
     }
-    const visSet = visited;
     return {
-      nodes: rawNodes.filter((n) => visSet.has(n.id)),
+      nodes: rawNodes.filter((n) => visited.has(n.id)),
       edges: rawEdges.filter(
-        (e) => visSet.has(e.source) && visSet.has(e.target),
+        (e) => visited.has(e.source) && visited.has(e.target),
       ),
     };
   }, [rawNodes, rawEdges, depth, selectedNode]);
+
+  const toggleType = (type: string) => {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
 
   const toggleKind = (kind: ConceptKind) => {
     setActiveKinds((prev) => {
@@ -143,46 +170,63 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
   };
 
   const allKinds = Object.keys(CONCEPT_KIND_LABELS) as ConceptKind[];
+  const conceptActive = activeTypes.size === 0 || activeTypes.has('concept');
 
   return (
     <div className="flex flex-col h-full min-h-[500px] gap-2">
       {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
-        {/* Kind filter chips (server-side filter — reloads on change) */}
+        {/* Catalog-type filter chips (server-side) */}
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
-          {t('catalogs.graph_filter_kinds', 'Filter')}:
+          {t('catalogs.graph_types', 'Types')}:
         </span>
         <div className="flex flex-wrap gap-1">
-          {allKinds.map((kind) => {
-            const active = activeKinds.has(kind);
+          {ALL_CATALOG_TYPES.map((type) => {
+            const active = activeTypes.size === 0 || activeTypes.has(type);
             return (
               <button
-                key={kind}
-                onClick={() => toggleKind(kind)}
-                className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border transition-all ${
+                key={type}
+                onClick={() => toggleType(type)}
+                className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
                   active
                     ? 'text-white border-transparent'
-                    : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
                 }`}
-                style={active ? { backgroundColor: KIND_COLORS[kind] } : undefined}
+                style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
               >
-                {CONCEPT_KIND_LABELS[kind]}
+                {CATALOG_TYPE_LABELS[type]}
               </button>
             );
           })}
         </div>
 
-        {/* Anatomy overlay toggle */}
-        <button
-          onClick={() => setIncludeAnatomy((v) => !v)}
-          className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ${
-            includeAnatomy
-              ? 'bg-green-600 text-white border-transparent'
-              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
-        >
-          {t('catalogs.graph_anatomy', 'Anatomy')}
-        </button>
+        {/* Concept-kind sub-chips (only when concepts are active) */}
+        {conceptActive && (
+          <>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 ml-2">
+              {t('catalogs.graph_kinds', 'Kinds')}:
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {allKinds.map((kind) => {
+                const active = activeKinds.has(kind);
+                return (
+                  <button
+                    key={kind}
+                    onClick={() => toggleKind(kind)}
+                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border transition-all ${
+                      active
+                        ? 'text-white border-transparent'
+                        : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                    style={active ? { backgroundColor: KIND_COLORS[kind] } : undefined}
+                  >
+                    {CONCEPT_KIND_LABELS[kind]}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* Depth chips (client-side BFS) */}
         {selectedNode && (
@@ -208,14 +252,14 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
 
         <div className="flex-1" />
 
-        {/* Truncation indicator */}
         {truncated && (
           <span className="text-[10px] text-amber-500">
-            {t('catalogs.graph_truncated', 'Showing first 500 — narrow with kind filter')}
+            {t('catalogs.graph_truncated', 'Capped at 10k edges — narrow with filters')}
           </span>
         )}
         <span className="text-[10px] text-gray-400">
-          {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')}
+          {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')} ·{' '}
+          {displayedGraph.edges.length} {t('catalogs.graph_edges', 'edges')}
         </span>
       </div>
 
@@ -227,7 +271,7 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
           </div>
         ) : displayedGraph.nodes.length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400">
-            {t('catalogs.graph_empty', 'No concepts to visualize.')}
+            {t('catalogs.graph_empty', 'No graph data. Add relations between catalog items to see them here.')}
           </div>
         ) : (
           <ConceptGraphView
@@ -247,7 +291,7 @@ export const ConceptOntologyGraph: React.FC<ConceptOntologyGraphProps> = ({
         )}
       </div>
 
-      {/* Hidden-kind dimming chips (client-side, doesn't reload) */}
+      {/* Hidden-kind dimming chips (client-side) */}
       <div className="flex flex-wrap items-center gap-1">
         <span className="text-[10px] text-gray-400">
           {t('catalogs.graph_dim', 'Dim')}:

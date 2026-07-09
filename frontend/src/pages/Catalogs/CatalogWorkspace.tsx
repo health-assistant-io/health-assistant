@@ -32,7 +32,7 @@ import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelation
 import { CatalogAuditHistoryModal } from '../../components/catalog/CatalogAuditHistoryModal';
 import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
 import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
-import { ConceptOntologyGraph } from '../../components/catalog/ConceptOntologyGraph';
+import { CatalogOntologyGraph } from '../../components/catalog/CatalogOntologyGraph';
 import { getCustomTabs } from '../../components/catalog/tabs/catalogTabs';
 import { ScopeBadge } from '../../components/catalog/ScopeBadge';
 import {
@@ -618,8 +618,8 @@ export const CatalogWorkspace: React.FC = () => {
             />
           </div>
 
-          {/* Concept-only: List | Graph exploration toggle (Phase 5) */}
-          {activeType === 'concept' && (
+          {/* List | Graph exploration toggle (all catalog types) */}
+          {active && (
             <div className="shrink-0 flex items-center gap-2 py-1">
               <div className="flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
                 <button
@@ -647,10 +647,10 @@ export const CatalogWorkspace: React.FC = () => {
           )}
 
           {active ? (
-            activeType === 'concept' && graphMode === 'graph' ? (
-              /* Whole-ontology graph view (Phase 5 Option B) */
+            graphMode === 'graph' ? (
+              /* Whole cross-catalog ontology graph view */
               <div className="flex-1 min-h-0">
-                <ConceptOntologyGraph
+                <CatalogOntologyGraph
                   refreshKey={relationsRevision}
                   onFocusNode={(id) => {
                     selectItem(id);
