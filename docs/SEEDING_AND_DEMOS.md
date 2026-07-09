@@ -11,15 +11,15 @@ Every application startup runs a single ordered, idempotent seed pipeline agains
 | 1 | `medications` | — |
 | 2 | `clinical_event_types` | — |
 | 3 | `allergies` | — |
-| 4 | `body_parts` (anatomy structures + relations) | — |
+| 4 | `body_parts` (anatomy structures) | — |
 | 5 | `anatomy_figures` | body_parts |
 | 6 | `concepts` (taxonomy) | — |
-| 7 | `concept_edges` (incl. concept→anatomy) | concepts + body_parts |
+| 7 | `concept_edges` (incl. concept→anatomy + anatomy→anatomy) | concepts + body_parts |
 | 8 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
 | 9 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
 
 **Conventions:**
-- **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
+- **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; the latter is now **deleted** — anatomy hierarchy edges live in `concept_edges.json` with `src_type=anatomy, dst_type=anatomy`. `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
 - **Stats contract** — every `seed_*` returns `{added, updated, skipped, errors}`. `seed_default_catalog` additionally carries a `details: {units_added, units_updated, biomarkers_added, biomarkers_updated}` sub-dict.
 - **Idempotency + reconciliation** — re-runs upsert by the natural key (slug / `(src, dst, relation)` for edges) and reconcile existing rows to the JSON. Editing a concept's `kinds` array and restarting will diff its kind tags into place; nothing is ever deleted by a seed.
 - **`main.py`** calls `seed_all()` in one place; the whole pipeline is wrapped in `_abort_or_warn` (fail-soft in dev, abort boot in prod).
@@ -72,20 +72,19 @@ If you see "No patient selected" in the Dashboard or AI Chat:
 The anatomy graph is a modular, directed-graph ontology of the human body. It replaces the old flat `body_parts` table with two interconnected models:
 
 - **`AnatomyStructure`** (nodes): body parts, organs, systems, tissues, cells, joints, etc.
-- **`AnatomyRelation`** (edges): relationships between structures (`PART_OF`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`).
+- **`AnatomyRelation`** (edges): **deleted** — replaced by `concept_edges` rows (`src_type='anatomy'`, `dst_type='anatomy'`). The relation types (`PART_OF`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`) are now `ConceptRelationType` values.
 
 Each node carries a `class_concept_slug` referencing an `anatomy_class` concept (e.g. `organ`, `system`, `region`, `organ-part`, `tissue`, `joint`) and optional standard identifiers (`standard_system` + `standard_code` for SNOMED CT, LOINC, or CUSTOM coding). The legacy `category` enum (`SYSTEM`, `REGION`, `ORGAN`, …) was replaced by the unified taxonomy — the import service maps a `class_concept_slug` to a `class_concept_id` FK.
 
 ### 6.1 Automatic Seeding on Startup
 
-The base anatomy catalog is seeded automatically on application startup by `SeedService.seed_all()` (stage `body_parts`). It reads two standard-envelope seed files:
+The base anatomy catalog is seeded automatically on application startup by `SeedService.seed_all()` (stage `body_parts`). It reads one standard-envelope seed file for nodes:
 
 ```
 backend/data/seeds/anatomy_structures.json   (nodes — AnatomyStructure rows)
-backend/data/seeds/anatomy_relations.json    (edges — AnatomyRelation rows)
 ```
 
-Together they contain **54 nodes** (major body systems, organs, regions, and joints with SNOMED codes) and **62 edges** (PART_OF and SUPPLIED_BY relationships). The seeding is idempotent — existing nodes are updated by slug, new ones are inserted, and duplicate edges are skipped.
+Anatomy hierarchy **edges** are no longer a separate file — `anatomy_relations.json` is **deleted**; the edges now live in `concept_edges.json` (seeded at the `concept_edges` stage) with `src_type=anatomy, dst_type=anatomy`. The structures file contains **54 nodes** (major body systems, organs, regions, and joints with SNOMED codes). The seeding is idempotent — existing nodes are updated by slug, new ones are inserted, and duplicate edges are skipped.
 
 The startup log (emitted by `seed_all`) shows:
 ```
@@ -158,7 +157,7 @@ Alternatively, use the REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_A
 
 **Import rules:**
 - **Nodes** are upserted by `slug`. If a node with the same slug exists, it is updated; otherwise, it is created. Records are never deleted.
-- **Edges** are deduplicated by the unique constraint `(source_id, target_id, relation_type)`. Duplicate edges are silently skipped.
+- **Edges** are deduplicated by the unique constraint `(source_id, target_id, relation_type)`. Duplicate edges are silently skipped. (The former `AnatomyRelation` table and this schema are replaced by `concept_edges` rows — `src_type=anatomy, dst_type=anatomy`.)
 - Edge `source_slug` and `target_slug` must resolve to existing nodes (either in the payload or already in the database). Unresolvable edges are skipped with a warning.
 - `class_concept_slug` is optional and must resolve to an existing `anatomy_class` concept (e.g. `organ`, `system`, `region`, `organ-part`, `tissue`, `joint`). This is the only accepted form — the legacy uppercase `category` enum (`SYSTEM`, `REGION`, `ORGAN`, …) was removed (clean rebuild); seed files must carry `class_concept_slug` directly.
 - `relation_type` must be one of: `PART_OF`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`.
@@ -175,7 +174,7 @@ The AI task type `define_anatomy_graph` can also be called directly via `POST /a
 
 To extend the base anatomy catalog that ships with the application:
 
-1. Edit `backend/data/seeds/anatomy_structures.json` (add nodes to `items`) and/or `backend/data/seeds/anatomy_relations.json` (add edges to `items`).
+1. Edit `backend/data/seeds/anatomy_structures.json` (add nodes to `items`) and/or `backend/data/seeds/concept_edges.json` (add anatomy→anatomy edges to `items`, with `src_type=anatomy, dst_type=anatomy`).
 2. Ensure node `slug` values are unique, and that edge `source_slug`/`target_slug` reference existing slugs.
 3. Restart the application (or run the manual re-seed command in §6.2). The upsert logic will add new nodes and edges without affecting existing data.
 
@@ -201,13 +200,13 @@ No pixel math or JSON editing is required.
 
 Seed files are normally hand-edited JSON. But it's often easier to build the
 canonical taxonomy / anatomy / biomarker catalog in a running instance — via
-the TaxonomyManager UI, the Anatomy Atlas editor, the AI chatbot's graph-
+the Catalogs workspace, the Anatomy Atlas editor, the AI chatbot's graph-
 generation tools, or the ontology-catalog import — and then **snapshot that
 instance's data back into the shipped seed format**. `SeedExportService`
 (`backend/app/services/seed_export_service.py`) is the strict inverse of
 `SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
-envelope each `seed_*` stage consumes, covering **all nine seed files** —
-concepts, concept edges, anatomy structures + relations, the default catalog,
+envelope each `seed_*` stage consumes, covering **all eight seed files** —
+concepts, concept edges, anatomy structures, the default catalog,
 biomarker panels, clinical event types, medications, and allergies.
 
 The output is **deterministic** (sorted by slug/name, fixed field order, only
@@ -225,9 +224,9 @@ see the design discussion in `dev/plans/seed-export-service-2026-07-07.md`.
 
 ### 7.2 Three delivery surfaces (same service underneath)
 
-**UI download (SYSTEM_ADMIN)** — the **TaxonomyManager** page
-(`/admin/system/taxonomy`) has a **Seeds** button that calls
-`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the nine files. The
+**UI download (SYSTEM_ADMIN)** — the **Catalogs workspace** toolbar
+(`/catalogs`) has an **Export seeds** button that calls
+`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the eight files. The
 download is **read-only** — the server never writes its own `data/seeds/`.
 
 **CLI (curator on the same machine as the DB)**:
@@ -251,7 +250,7 @@ Refuses archives containing unknown or path-traversal entries.
 
 ### 7.3 The transfer workflow (instance on another machine)
 
-1. On the running instance: TaxonomyManager → **Seeds** → `health-assistant-seeds.zip`.
+1. On the running instance: Catalogs workspace → **Export seeds** → `health-assistant-seeds.zip`.
 2. Transfer the ZIP to your dev machine (download, scp, USB).
 3. `python scripts/unpack_seeds_zip.py health-assistant-seeds.zip` (backup + extract).
 4. `git diff data/seeds/` → review → commit. The next release ships the new seeds.

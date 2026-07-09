@@ -56,7 +56,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    **Clinical Catalogs (auto-seeded on every startup):**
    The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: medications, clinical event types, allergies, **anatomy graph** (54 body structures + 62 topology edges), the unified **taxonomy** (concepts + concept_edges, including specialty→organ links), and the **default biomarker catalog** (units + standard lab-test definitions). No manual action is required for any of these — they reconcile to the JSON seed files on every start.
 
-   The anatomy graph ships as two seed files — `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/anatomy_relations.json` (edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
+   The anatomy graph ships as `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/concept_edges.json` (edges, including anatomy hierarchy edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
 
    The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs are still available if you ever need to **force a re-seed** outside the startup pipeline, but they are no longer required for first-time setup.
 

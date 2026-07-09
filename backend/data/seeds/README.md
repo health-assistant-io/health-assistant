@@ -48,7 +48,9 @@ Required fields are marked **(req)**. `?` = optional.
 - `relation` **(req)** — a `ConceptRelationType`: `MEMBER_OF`, `HAS_SPECIALTY`,
   `CLASSIFIED_AS`, `EXAMINES`, `IMAGES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`,
   `PART_OF`, `AFFECTS`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`,
-  `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`
+  `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`,
+  `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`,
+  `SUPPLIED_BY`, `CONTINUOUS_WITH`
 
 ### `diseases.json` — disease reference concepts (`kind=disease`)
 Same item shape as `concepts.json` (it's loaded by the same `_process_concepts`
@@ -72,10 +74,12 @@ is independently maintainable. Must run AFTER `seed_concepts` and BEFORE
   `description`?, `display`? (JSONB; holds body-map markers under
   `display.map.markers[<figure-slug>] = {nx, ny, nr}` — normalized 0–1)
 
-### `anatomy_relations.json` — edges between anatomy structures
-- `source_slug` **(req)**, `target_slug` **(req)**
-- `relation_type` **(req)** — `PART_OF`, `BRANCH_OF`, `DRAINS_INTO`,
-  `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`
+### Anatomy hierarchy edges (formerly `anatomy_relations.json`)
+The separate `anatomy_relations.json` file is **deleted**. Anatomy hierarchy
+edges now live in `concept_edges.json` with `src_type=anatomy`,
+`dst_type=anatomy`. The relation types (`PART_OF`, `BRANCH_OF`, `DRAINS_INTO`,
+`ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`) are
+`ConceptRelationType` values.
 
 ### `default_catalog.json` — biomarker units + definitions
 - `units[]`: `symbol` **(req)**, `name` **(req)**, `quantity_type`?
@@ -130,7 +134,7 @@ python scripts/export_seeds.py --source TENANT_ID  # a template tenant as source
 python scripts/unpack_seeds_zip.py seeds.zip       # unpack a downloaded ZIP (backup + extract)
 ```
 
-For an instance on another machine: TaxonomyManager → **Seeds** button
+For an instance on another machine: Catalogs workspace → **Export seeds** button
 (SYSTEM_ADMIN) downloads a ZIP → transfer → `unpack_seeds_zip.py` →
 `git diff data/seeds/` → review → commit.
 

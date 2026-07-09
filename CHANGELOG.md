@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Taxonomy ↔ Catalogs merge:** concept CRUD folded into the unified Catalogs workspace; `TaxonomyManager.tsx` (1129 LOC) deleted; routes redirect to `/catalogs?type=concept`. `ConceptCatalogAdapter` is read-only (405 on writes); all concept writes flow through `ConceptService` (audit + restore + scope invariant). New `ConceptForm` + `KindChips` + `writeTarget.ts` dispatcher in the frontend. Whole-ontology graph view (`CatalogOntologyGraph`) with List|Graph toggle for all catalog types.
+- **Anatomy relations unified into `concept_edges`:** the legacy `anatomy_relations` table is dropped; all ~62 anatomy hierarchy edges (PART_OF, SUPPLIED_BY, BRANCH_OF, etc.) now live in `concept_edges` as `src_type=anatomy, dst_type=anatomy`. The `AnatomyRelation` model + `AnatomyRelationType` enum are deprecated. 6 relation types added to `ConceptRelationType` (now 25 values).
+- **Cross-catalog ontology graph:** new `GET /catalogs/graph` endpoint + `whole_catalog_graph()` function returns the full polymorphic graph (concepts, biomarkers, medications, anatomy, allergies, vaccines). Catalog-type filter chips + concept-kind sub-chips + depth BFS + PNG export + "include isolated" toggle.
+- **Scope invariant fix:** `ConceptService.create_concept` now derives `scope` from `tenant_id` (was relying on the model default, producing inconsistent `tenant_id`/`scope` pairs).
+- **Audit logging:** `ConceptService` now appends `CatalogAuditLog` rows for create/update/delete/restore when an `actor` is provided (REST + AI tools covered; seeds bypass).
+
 ### Added
 - **Relation-type reference metadata + endpoint.** Each `ConceptRelationType` now carries a human-facing label, an icon, a grouping, and a one-line "when to use this" description, as a single source of truth in a new `app/catalogs/relation_types.py` registry (the "seed" for relation semantics). Exposed via `GET /catalogs/relation-types` → `{"items": [{value, label, group, description, icon}]}`. The registry fails fast at import if it drifts from the enum. The frontend caches it once per session (`loadRelationTypes`/`getRelationType` in `catalogService`) and the `RelationTypeSelect` dropdown renders each option with its icon (`DynamicIcon`, lucide SVG — same convention as catalog-type metadata) and a description, plus an info affordance. New backend test; catalog test suite green.
 

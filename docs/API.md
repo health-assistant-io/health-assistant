@@ -937,6 +937,22 @@ within `depth` hops. Powers "which organ does this biomarker affect? what treats
 that disease?" via a depth-bounded, cycle-safe recursive CTE
 (`app/services/catalog_graph_service.py`).
 
+#### Whole-catalog ontology graph
+`GET /api/v1/catalogs/graph?types=&kind=&include_isolated=&limit=` → the
+entire cross-catalog ontology graph (rootless) as `{nodes, edges}`, with all
+endpoints resolved to display payloads. Filters: `types` (comma-separated
+`EdgeEndpointType` values), `kind` (comma-separated `ConceptKind` values),
+`include_isolated` (bool, default false), `limit`.
+
+#### Concept lifecycle — restore
+`POST /api/v1/concepts/{id}/restore` — reverses a retire/soft-delete: sets
+`status` back to `active` and clears `deleted_at`.
+
+> **Read-only concept catalog adapter:** `POST`/`PUT`/`DELETE` on
+> `/catalogs/concept` return **405** — the `ConceptCatalogAdapter` is
+> read-only. All concept writes go through the `/concepts` domain endpoints
+> (`ConceptService` enforces audit + retire/restore + RBAC).
+
 #### Unified catalog search
 `GET /api/v1/catalogs/search?q=&types=&limit=` → `{results: [{type, id, label}, …]}`
 — typo-tolerant (`pg_trgm`) search across **all** registered catalogs at once,

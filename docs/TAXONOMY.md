@@ -56,7 +56,7 @@ service-layer concern.
 
 | Aspect | Values |
 |---|---|
-| `relation` | `MEMBER_OF`, `HAS_SPECIALTY`, `CLASSIFIED_AS`, `EXAMINES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`, `PART_OF`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`, `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR` |
+| `relation` | `MEMBER_OF`, `HAS_SPECIALTY`, `CLASSIFIED_AS`, `EXAMINES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`, `PART_OF`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`, `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH` |
 | `source` | `seed` / `integration` / `ai` / `manual` (drives curated-wins conflict resolution) |
 | `status` | `approved` / `proposed` / `rejected` — **only `approved` counts for graph queries**; `proposed` rows are HITL-pending (AI suggestions) |
 
@@ -135,6 +135,7 @@ All under `/api/v1`, standard JWT auth, tenancy-scoped.
 | `GET` | `/concepts/{id}` | Fetch one |
 | `PUT` | `/concepts/{id}` | Update — `kinds` replaces the full tag set (≥1 required) |
 | `DELETE` | `/concepts/{id}` | Soft-delete (or retire if referenced) |
+| `POST` | `/concepts/{id}/restore` | Reverse a retire/soft-delete (status → active, clears `deleted_at`) |
 | `GET` | `/concepts/{id}/neighbors?relation=&include_proposed=` | One-hop graph traversal |
 | `GET` | `/concept-edges?src_type=&src_id=&...` | List edges |
 | `POST` | `/concept-edges` | Create a typed edge |
@@ -144,22 +145,29 @@ The response shape carries `kinds: List[str]` and `primary_kind: str | null`
 (not a single `kind`). The create endpoint accepts either `kinds: [...]`
 (preferred) or a legacy single `kind: "..."` for backward compatibility.
 
-## TaxonomyManager UI (`/admin/system/taxonomy`, SYSTEM_ADMIN)
+> **Sole write authority:** `ConceptService` is the only concept write path —
+> it enforces audit logging, the retire/restore lifecycle, and RBAC. The
+> `ConceptCatalogAdapter` (`/catalogs/concept`) is **read-only**: `POST`/
+> `PUT`/`DELETE` return `405` (use the `/concepts` endpoints above instead).
+> `GET /catalogs/graph` returns the whole cross-catalog ontology graph
+> (rootless) with `types`, `kind`, `include_isolated`, and `limit` filters.
 
-`frontend/src/pages/Knowledge/TaxonomyManager.tsx` — full CRUD with:
+## Catalogs workspace UI (`/catalogs`, SYSTEM_ADMIN for writes)
 
-- A **searchable domain selector** (the 16 kinds + "All Domains") and a
-  list/graph view toggle.
-- **List items** show icon + color + one badge per kind.
-- **Create/Edit form**: a multi-domain chip selector (a concept can carry
-  several kinds), color picker, a searchable **IconPicker** dropdown (all
-  Lucide icons), a **parent-concept picker** (server-backed typeahead), and a
-  relationships panel for adding/removing typed edges (also via typeahead).
-- **Graph view**: force-directed layout, kind-filter chips, depth-limited
-  BFS from a selected node, click a node to edit it.
-- A reusable `<TaxonomyTypeahead>` component (`components/ui/TaxonomyTypeahead.tsx`)
-  backs both the parent picker and the relationship linker — server-side
-  trigram search showing icon + name + description per result.
+`TaxonomyManager.tsx` is **deleted**. Concept CRUD now lives in the
+unified **Catalogs workspace** (`CatalogWorkspace`) at `/catalogs?type=concept`:
+
+- **Concept form** (`ConceptForm`): multi-kind chips (`KindChips`), a
+  parent-concept picker, a searchable **IconPicker**, coding
+  (`coding_system` + `code`), aliases, and status (`draft` / `active` /
+  `retired`).
+- **List | Graph toggle** available for all catalog types — not just concepts.
+- **`CatalogOntologyGraph`** renders the cross-catalog graph with
+  type/kind filters, depth-limited BFS traversal, and PNG export.
+- **"Export seeds" button** in the `CatalogToolbar` (SYSTEM_ADMIN) — calls
+  `GET /api/v1/admin/seeds/export.zip` (see Seeds & import below).
+- The legacy routes `/admin/system/taxonomy` and `/examinations/categories`
+  **redirect** to `/catalogs?type=concept`.
 
 ## Seeds & import (`backend/data/seeds/`)
 
@@ -194,6 +202,12 @@ The response shape carries `kinds: List[str]` and `primary_kind: str | null`
   backfills the missing indexes on the rest of the concept-FK family
   (`anatomy_structures` / `biomarker_definitions.class_concept_id`,
   `doctors.specialty_concept_id`, `concepts.parent_id`).
+- `g8b9c0d1e2f3` — re-backfills the `scope` column on `concepts` rows.
+- `h9c0d1e2f3a4` — unifies `anatomy_relations` into `concept_edges`
+  (`src_type='anatomy'`, `dst_type='anatomy'`); drops the `anatomy_relations`
+  table and its enum. Adds the 6 anatomy relation types (`BRANCH_OF`,
+  `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`,
+  `CONTINUOUS_WITH`) to `ConceptRelationType`.
 
 ## Naming convention
 
@@ -225,7 +239,7 @@ concept↔concept, but any entity↔any entity. The `EdgeEndpointType` enum (11
 values: `concept`, `anatomy`, `biomarker`, `medication`, `allergy`,
 `clinical_event_type`, `immunization`, `examination`, `doctor`, `observation`,
 `document`) tags which table each UUID endpoint references. The
-`ConceptRelationType` enum (19 values) carries the semantic:
+`ConceptRelationType` enum (25 values) carries the semantic:
 
 | Relation | Example | Seeded in |
 |----------|---------|-----------|

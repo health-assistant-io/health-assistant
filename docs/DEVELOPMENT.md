@@ -176,9 +176,9 @@ python scripts/export_seeds.py                     # global -> data/seeds (backe
 python scripts/export_seeds.py --source TENANT_ID  # a template tenant as source
 python scripts/unpack_seeds_zip.py seeds.zip       # unpack a downloaded ZIP (backup + extract)
 ```
-There's also a UI path for instances on another machine: TaxonomyManager →
-**Seeds** button (`GET /admin/seeds/export.zip`, SYSTEM_ADMIN) downloads a ZIP,
-which you transfer to the dev machine and unpack. See
+There's also a UI path for instances on another machine: the **Export seeds**
+button in the Catalogs workspace toolbar (`/catalogs`, SYSTEM_ADMIN-gated)
+downloads a ZIP, which you transfer to the dev machine and unpack. See
 [SEEDING_AND_DEMOS.md §7](SEEDING_AND_DEMOS.md#7-exporting-an-instance-back-to-seeds)
 and [`backend/data/seeds/README.md`](../backend/data/seeds/README.md).
 
