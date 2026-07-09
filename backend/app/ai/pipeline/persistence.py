@@ -46,8 +46,8 @@ def _fhir_observation_category(concept=None) -> List[Dict[str, Any]]:
 
     The FHIR observation-category code is stored on the concept itself in
     ``meta_data["fhir_observation_category"]`` (seeded via ``concepts.json``,
-    editable via the TaxonomyManager UI). Falls back to ``"laboratory"`` when
-    the concept or the meta_data key is missing.
+    editable via the Catalogs workspace at ``/catalogs?type=concept``). Falls
+    back to ``"laboratory"`` when the concept or the meta_data key is missing.
     """
     code = "laboratory"
     if concept and concept.meta_data:
