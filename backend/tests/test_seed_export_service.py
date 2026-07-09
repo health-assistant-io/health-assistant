@@ -108,7 +108,9 @@ async def test_anatomy_seed_class_concept_slug_handles_non_legacy_class(db):
     The legacy path couldn't represent this — the lossless-field guard."""
     svc = SeedService()
     niche = _make_concept(
-        _uslug("lymphatic-structure"), "Lymphatic Structure", [ConceptKind.ANATOMY_CLASS]
+        _uslug("lymphatic-structure"),
+        "Lymphatic Structure",
+        [ConceptKind.ANATOMY_CLASS],
     )
     db.add(niche)
     await db.flush()
@@ -136,56 +138,12 @@ async def test_anatomy_seed_class_concept_slug_handles_non_legacy_class(db):
 
 
 @pytest.mark.asyncio
-async def test_anatomy_seed_falls_back_to_legacy_category(db):
-    """Backward compat: an item with only the legacy ``category`` enum still
-    resolves via ``_ANATOMY_CATEGORY_TO_CONCEPT_SLUG`` (requires the matching
-    global concept to exist, which seed_concepts provides)."""
-    svc = SeedService()
-    # Get-or-create the global "organ" concept the legacy ORGAN maps to (the
-    # shared test DB may already have it from prior seed runs).
-    existing = (
-        await db.execute(
-            select(Concept).where(Concept.slug == "organ", Concept.tenant_id.is_(None))
-        )
-    ).scalar_one_or_none()
-    if existing:
-        organ = existing
-    else:
-        organ = _make_concept("organ", "Organ", [ConceptKind.ANATOMY_CLASS])
-        db.add(organ)
-        await db.flush()
-
-    node_slug = _uslug("legacy-heart")
-    payload = {
-        "nodes": [
-            {
-                "slug": node_slug,
-                "name": "Legacy Heart",
-                "category": "ORGAN",  # legacy only — no class_concept_slug
-            }
-        ],
-        "edges": [],
-    }
-    await svc._process_body_parts(db, payload)
-    await db.commit()
-
-    struct = (
-        await db.execute(
-            select(AnatomyStructure).where(AnatomyStructure.slug == node_slug)
-        )
-    ).scalar_one()
-    assert struct.class_concept_id == organ.id
-
-
-@pytest.mark.asyncio
 async def test_concept_edge_seed_resolves_biomarker_endpoint(db):
     """The concept-edge seed ingest resolves a ``biomarker`` endpoint type by
     BiomarkerDefinition.slug (not just concept/anatomy). Unblocks round-tripping
     biomarker-level edges beyond panel membership."""
     svc = SeedService()
-    panel = _make_concept(
-        _uslug("my-panel"), "My Panel", [ConceptKind.BIOMARKER_PANEL]
-    )
+    panel = _make_concept(_uslug("my-panel"), "My Panel", [ConceptKind.BIOMARKER_PANEL])
     db.add(panel)
     bio_slug = _uslug("widget-biomarker")
     bio = BiomarkerDefinition(
@@ -228,6 +186,7 @@ async def test_concept_edge_seed_resolves_biomarker_endpoint(db):
 # Phase 2 — SeedExportService (inverse of SeedService)
 # ===========================================================================
 
+
 # The shipped seeds live in backend/data/seeds/. Used for the round-trip test.
 def _shipped_seeds_dir() -> Path:
     from pathlib import Path
@@ -248,12 +207,14 @@ async def seeded_db():
     svc = SeedService()
     # Ordered so dependencies exist (concepts before edges/catalog/panels).
     await svc.seed_concepts()
+    await svc.seed_diseases()
     await svc.seed_body_parts()
+    await svc.seed_vaccines()
+    await svc.seed_medications()
     await svc.seed_concept_edges()
     await svc.seed_default_catalog()
     await svc.seed_biomarker_panels()
     await svc.seed_clinical_event_types()
-    await svc.seed_medications()
     await svc.seed_allergies()
     async with AsyncSessionLocal() as session:
         yield session
@@ -287,11 +248,33 @@ async def test_export_concept_edges_preserves_seeded_data(seeded_db):
 
     out = await SeedExportService(seeded_db).export_concept_edges()
     shipped = _load_shipped("concept_edges.json")["items"]
-    shipped_set = {
-        (s["src_slug"], s["dst_slug"], s["relation"]) for s in shipped
-    }
+    shipped_set = {(s["src_slug"], s["dst_slug"], s["relation"]) for s in shipped}
     got_set = {(it["src_slug"], it["dst_slug"], it["relation"]) for it in out["items"]}
     assert shipped_set <= got_set, "export dropped edges"
+
+
+@pytest.mark.asyncio
+async def test_export_diseases_preserves_seeded_data(seeded_db):
+    """Every shipped disease concept is exported with matching coding_system +
+    code. Also verifies diseases are NOT duplicated into concepts.json (the
+    export keeps the two files as the true inverse of the seed pipeline)."""
+    from app.services.seed_export_service import SeedExportService
+
+    out = await SeedExportService(seeded_db).export_diseases()
+    shipped = _load_shipped("diseases.json")["items"]
+    by_slug = _by_key(out["items"])
+    assert len(out["items"]) >= len(shipped), "export dropped diseases"
+    for s in shipped:
+        got = by_slug.get(s["slug"])
+        assert got is not None, f"missing disease {s['slug']}"
+        assert got["coding_system"] == s["coding_system"]
+        assert got["code"] == s["code"]
+
+    # Diseases must NOT appear in the concepts.json export (separate file).
+    concepts_out = await SeedExportService(seeded_db).export_concepts()
+    concept_slugs = {c["slug"] for c in concepts_out["items"]}
+    disease_slugs = {s["slug"] for s in shipped}
+    assert not (disease_slugs & concept_slugs), "diseases leaked into concepts.json"
 
 
 @pytest.mark.asyncio
@@ -383,9 +366,7 @@ async def test_export_medications_and_allergies_preserve_seeded_data(seeded_db):
     meds = await svc.export_medications()
     allergies = await svc.export_allergies()
     shipped_meds = {m["name"] for m in _load_shipped("medications.json")["items"]}
-    shipped_allergies = {
-        a["name"] for a in _load_shipped("allergies.json")["items"]
-    }
+    shipped_allergies = {a["name"] for a in _load_shipped("allergies.json")["items"]}
     assert shipped_meds <= {m["name"] for m in meds["items"]}
     assert shipped_allergies <= {a["name"] for a in allergies["items"]}
 
@@ -670,7 +651,9 @@ async def test_seeds_export_endpoint_rejects_non_system_admin(monkeypatch):
         app.dependency_overrides[get_current_user] = lambda t=token: t
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 resp = await client.get("/api/v1/admin/seeds/export.zip")
             assert resp.status_code == 403, f"{role} should be forbidden"
         finally:
@@ -698,11 +681,16 @@ def test_unpack_seeds_zip_backs_up_and_extracts(tmp_path, monkeypatch):
         zf.writestr("concepts.json", '{"metadata": {}, "items": []}')
         zf.writestr("allergies.json", '{"metadata": {}, "items": []}')
 
-    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
+    monkeypatch.setattr(
+        sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)]
+    )
     unpack.main()
 
     # extracted
-    assert json.loads((out / "concepts.json").read_text()) == {"metadata": {}, "items": []}
+    assert json.loads((out / "concepts.json").read_text()) == {
+        "metadata": {},
+        "items": [],
+    }
     assert (out / "allergies.json").exists()
     # old content backed up
     backups = list(out.glob(".backup-*"))
@@ -723,7 +711,9 @@ def test_unpack_seeds_zip_rejects_unknown_entries(tmp_path, monkeypatch):
         zf.writestr("concepts.json", "{}")
         zf.writestr("../../etc/evil", "pwned")  # path traversal / unknown entry
 
-    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
+    monkeypatch.setattr(
+        sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)]
+    )
     with pytest.raises(SystemExit):
         unpack.main()
     # nothing extracted

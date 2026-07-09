@@ -9,7 +9,6 @@ from app.models.fhir.allergy import AllergyCatalog
 from app.models.clinical_event import ClinicalEventType
 from app.models.anatomy_model import AnatomyStructure, AnatomyRelation, AnatomyFigure
 from app.models.enums import (
-    AnatomyCategory,
     AnatomyRelationType,
     CodingSystem,
     ConceptKind,
@@ -24,35 +23,6 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-
-
-# Map the legacy ``AnatomyCategory`` enum values (stored uppercase in the seed
-# JSON) to the seeded ``anatomy_class`` concept slugs (lowercase). The
-# ``anatomy_structures.category`` column was replaced by ``class_concept_id``
-# (FK to ``concepts.id``) in the taxonomy consolidation.
-_ANATOMY_CATEGORY_TO_CONCEPT_SLUG = {
-    AnatomyCategory.SYSTEM.value: "system",
-    AnatomyCategory.REGION.value: "region",
-    AnatomyCategory.ORGAN.value: "organ",
-    AnatomyCategory.ORGAN_PART.value: "organ-part",
-    AnatomyCategory.TISSUE.value: "tissue",
-    AnatomyCategory.JOINT.value: "joint",
-    AnatomyCategory.CELL.value: "other-anatomy",
-    AnatomyCategory.SUBSTANCE.value: "other-anatomy",
-    AnatomyCategory.OTHER.value: "other-anatomy",
-}
-
-
-async def _resolve_anatomy_class_concept(
-    session: AsyncSession, raw_category: str
-) -> Any:
-    """Resolve the legacy uppercase category string to a concept ID."""
-    slug = _ANATOMY_CATEGORY_TO_CONCEPT_SLUG.get(
-        (raw_category or "").strip().upper(), "other-anatomy"
-    )
-    return await resolve_concept_by_slug(
-        session, slug, ConceptKind.ANATOMY_CLASS, tenant_id=None
-    )
 
 
 class SeedService:
@@ -255,20 +225,14 @@ class SeedService:
                 result = await session.execute(stmt)
                 db_part = result.scalar_one_or_none()
 
-                # Lossless class resolution: prefer an explicit
-                # ``class_concept_slug`` (round-trips any anatomy-class concept,
-                # including ones outside the legacy enum); fall back to the
-                # legacy uppercase ``category`` enum mapping for backward compat
-                # with older seed files.
+                # Resolve the anatomy-class concept slug (lowercase, e.g.
+                # ``organ``) to a ``class_concept_id``. The seed JSON carries
+                # ``class_concept_slug`` directly (the lossless form).
+                class_concept_id = None
                 explicit_slug = item.get("class_concept_slug")
                 if explicit_slug:
                     class_concept_id = await resolve_concept_by_slug(
                         session, explicit_slug, ConceptKind.ANATOMY_CLASS
-                    )
-                else:
-                    raw_category = item.get("category", "OTHER")
-                    class_concept_id = await _resolve_anatomy_class_concept(
-                        session, raw_category
                     )
 
                 standard_sys = None
@@ -397,7 +361,7 @@ class SeedService:
                 )
                 local["errors"] = 1
                 return local
-            dest_dir = _figures_base_dir()
+            _figures_base_dir()  # ensure the upload dir exists (side effect)
             for slug, fname, label, fkey, vkey, order in spec:
                 try:
                     src = seeds_dir / fname
@@ -519,6 +483,86 @@ class SeedService:
                 logger.error(f"Error seeding medication {item.get('name')}: {e}")
                 stats["errors"] += 1
 
+        return stats
+
+    async def seed_vaccines(self, session: AsyncSession = None) -> Dict[str, int]:
+        """Sync CVX-coded vaccine reference definitions from JSON (Phase 5).
+
+        Upserts by ``slug`` (global, ``tenant_id=None``). ``PREVENTS`` edges to
+        disease concepts are seeded separately in Phase 6.
+        """
+        file_path = self.seeds_dir / "vaccines.json"
+        if not file_path.exists():
+            logger.warning(f"Vaccine seed file not found: {file_path}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load vaccine seeds: {e}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
+        if session:
+            return await self._process_vaccines(session, data)
+        async with AsyncSessionLocal() as new_session:
+            result = await self._process_vaccines(new_session, data)
+            await new_session.commit()
+            return result
+
+    async def _process_vaccines(
+        self, session: AsyncSession, data: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        from app.models.fhir.vaccine import VaccineCatalog
+
+        stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        data = data if isinstance(data, list) else data.get("items", [])
+        if not await self._table_exists(session, "vaccine_catalog"):
+            logger.error("Table 'vaccine_catalog' does not exist. Skipping vaccines.")
+            return {"added": 0, "updated": 0, "skipped": len(data), "errors": 0}
+        for item in data:
+            try:
+                stmt = select(VaccineCatalog).where(
+                    VaccineCatalog.slug == item["slug"],
+                    VaccineCatalog.tenant_id.is_(None),
+                )
+                db_vac = (await session.execute(stmt)).scalar_one_or_none()
+                if db_vac:
+                    db_vac.name = item.get("name", db_vac.name)
+                    db_vac.description = item.get("description", db_vac.description)
+                    db_vac.code = item.get("code", db_vac.code)
+                    db_vac.coding_system = item.get(
+                        "coding_system", db_vac.coding_system
+                    )
+                    db_vac.target_diseases = item.get(
+                        "target_diseases", db_vac.target_diseases
+                    )
+                    db_vac.dose_schedule = item.get(
+                        "dose_schedule", db_vac.dose_schedule
+                    )
+                    db_vac.contraindications = item.get(
+                        "contraindications", db_vac.contraindications
+                    )
+                    db_vac.side_effects = item.get("side_effects", db_vac.side_effects)
+                    stats["updated"] += 1
+                else:
+                    new_vac = VaccineCatalog(
+                        id=uuid4(),
+                        slug=item["slug"],
+                        name=item["name"],
+                        description=item.get("description"),
+                        coding_system=item.get("coding_system", "cvx"),
+                        code=item.get("code"),
+                        target_diseases=item.get("target_diseases"),
+                        dose_schedule=item.get("dose_schedule"),
+                        contraindications=item.get("contraindications"),
+                        side_effects=item.get("side_effects"),
+                        tenant_id=None,  # system-wide
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    session.add(new_vac)
+                    stats["added"] += 1
+            except Exception as e:
+                logger.error(f"Error seeding vaccine {item.get('slug')}: {e}")
+                stats["errors"] += 1
         return stats
 
     async def seed_allergies(self, session: AsyncSession = None) -> Dict[str, int]:
@@ -707,6 +751,36 @@ class SeedService:
         await session.flush()
         return stats
 
+    async def seed_diseases(self, session: AsyncSession = None) -> Dict[str, int]:
+        """Sync disease reference concepts (``kind=disease``, ICD-10 codes) from JSON.
+
+        Diseases live as concepts — they inherit full CRUD/search/edges/FHIR for
+        free via the concept layer. This stage loads ``diseases.json`` (same
+        envelope format as ``concepts.json``) through :meth:`_process_concepts`
+        so the upsert + kind-tag reconciliation logic is shared. Must run AFTER
+        :meth:`seed_concepts` (for any parent_slug refs) and BEFORE
+        :meth:`seed_concept_edges` (so specialty/medication/vaccine → disease
+        edges resolve).
+        """
+        file_path = self.seeds_dir / "diseases.json"
+        if not file_path.exists():
+            logger.warning(f"Diseases seed file not found: {file_path}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load diseases seed: {e}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
+
+        if session:
+            return await self._process_concepts(session, data)
+        async with AsyncSessionLocal() as new_session:
+            result = await self._process_concepts(new_session, data)
+            await new_session.commit()
+            return result
+
     async def seed_concept_edges(self, session: AsyncSession = None) -> Dict[str, int]:
         """Sync concept relationships (edges) from JSON to Database."""
         file_path = self.seeds_dir / "concept_edges.json"
@@ -752,6 +826,8 @@ class SeedService:
         # polymorphic endpoint tables (biomarker, examination, …).
         from app.models.anatomy_model import AnatomyStructure
         from app.models.biomarker_model import BiomarkerDefinition
+        from app.models.fhir.medication import MedicationCatalog
+        from app.models.fhir.vaccine import VaccineCatalog
 
         async def _resolve_endpoint(slug: str, etype: str):
             if not slug:
@@ -778,6 +854,26 @@ class SeedService:
                 )
                 eid = row.scalar_one_or_none()
                 return (EdgeEndpointType.BIOMARKER, eid) if eid else None
+            if etype == "medication":
+                # MedicationCatalog has no slug — resolve by name (case-insensitive).
+                row = await session.execute(
+                    select(MedicationCatalog.id).where(
+                        func.lower(MedicationCatalog.name) == slug.lower(),
+                        MedicationCatalog.tenant_id.is_(None),
+                    )
+                )
+                eid = row.scalar_one_or_none()
+                return (EdgeEndpointType.MEDICATION, eid) if eid else None
+            if etype == "vaccine":
+                # VaccineCatalog has a slug — resolve directly (global rows only).
+                row = await session.execute(
+                    select(VaccineCatalog.id).where(
+                        VaccineCatalog.slug == slug,
+                        VaccineCatalog.tenant_id.is_(None),
+                    )
+                )
+                eid = row.scalar_one_or_none()
+                return (EdgeEndpointType.IMMUNIZATION, eid) if eid else None
             logger.warning(
                 f"Unknown seed endpoint type '{etype}' (slug={slug}); skipping."
             )
@@ -1021,13 +1117,17 @@ class SeedService:
     # place to review ordering, replacing the hardcoded call sequence that
     # used to live in ``main.py``.
     _SEED_STAGE_NAMES: list[str] = [
+        "concepts",  # FIRST — anatomy_class/biomarker_class/… are referenced by
+        #   body_parts (class_concept_slug→id), default_catalog (biomarker_class)
+        #   and concept_edges. Must run before any stage that resolves a concept.
+        "diseases",  # after concepts (disease concepts — kind=disease, ICD-10)
         "medications",  # standalone
+        "vaccines",  # standalone (Phase 5; CVX-coded)
         "clinical_event_types",  # standalone
         "allergies",  # standalone
-        "body_parts",  # standalone (anatomy_structures)
+        "body_parts",  # after concepts (resolves anatomy_class)
         "anatomy_figures",  # after body_parts
-        "concepts",  # standalone (taxonomy)
-        "concept_edges",  # after concepts + body_parts
+        "concept_edges",  # after concepts + diseases + body_parts + vaccines
         "default_catalog",  # after concepts (biomarker_class)
         "biomarker_panels",  # after concepts + default_catalog
     ]

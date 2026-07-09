@@ -48,6 +48,15 @@ class ResourceEntry:
     # the registry (where the model mapping already lives) instead of polluting
     # the generic crud layer.
     param_filter: Optional[Callable] = None
+    # Optional custom read/search callables for "computed" resources that don't
+    # map 1:1 to a single table (e.g. ``CodeSystem``/``ValueSet`` which project
+    # from the ``concepts`` table as a single aggregate resource). When set, the
+    # facade dispatcher delegates to these instead of the generic table-query
+    # path. Signatures:
+    #   read_fn(db, resource_id, current_user) -> dict | None
+    #   search_fn(db, query_params, current_user, base_url) -> dict (Bundle)
+    read_fn: Optional[Callable] = None
+    search_fn: Optional[Callable] = None
 
     @property
     def route_path(self) -> str:
@@ -97,6 +106,7 @@ def register_all() -> None:
     """
 
     from app.models.clinical_event import ClinicalEvent
+    from app.models.concept_model import Concept
     from app.models.doctor_model import DoctorModel
     from app.models.document_model import DocumentModel
     from app.models.examination_model import ExaminationModel
@@ -104,6 +114,7 @@ def register_all() -> None:
     from app.models.fhir.communication import CommunicationModel
     from app.models.fhir.device import DeviceModel
     from app.models.fhir.medication import Medication, MedicationCatalog
+    from app.models.fhir.vaccine import PatientImmunization
     from app.models.fhir.organization import OrganizationModel
     from app.models.fhir.patient import DiagnosticReport, Observation, Patient
     from app.models.fhir.provenance import ProvenanceModel
@@ -273,6 +284,38 @@ def register_all() -> None:
             search_filter=lambda: Medication.intent != MedicationIntent.STATEMENT,
         )
     )
+
+    def _immunization_param_filter(model, key: str, value: str):
+        """Immunization-specific search params (Phase 5).
+
+        The generic ``date`` filter maps to ``examination_date`` (wrong column
+        for immunizations); redirect it to ``administered_at``. ``vaccine-code``
+        matches the vaccine_code JSONB CodeableConcept text. Returns None to
+        defer to the generic builder otherwise.
+        """
+        base_key = key.split(":", 1)[0]
+        if base_key == "date":
+            from app.facade.search_params import _split_date_param
+
+            col = getattr(model, "administered_at", None)
+            if col is None:
+                return None
+            return _split_date_param(value).to_orm_filter(col)
+        if base_key in ("vaccine-code", "vaccine"):
+            return model.vaccine_code["text"].astext.ilike(f"%{value}%")
+        return None
+
+    RESOURCE_REGISTRY.register(
+        ResourceEntry(
+            resource_type="Immunization",
+            model=PatientImmunization,
+            # Read-only over FHIR for Phase 5 (search + read). REST CRUD lives
+            # at /vaccines/*; a fhir_to_immunization_orm converter can add
+            # create/update later.
+            interactions=frozenset({"read", "search-type"}),
+            param_filter=_immunization_param_filter,
+        )
+    )
     RESOURCE_REGISTRY.register(
         ResourceEntry(
             resource_type="DiagnosticReport",
@@ -340,6 +383,38 @@ def register_all() -> None:
             model=ProvenanceModel,
             fhir_to_orm_fn=fhir_to_provenance_orm,
             interactions=frozenset({"read", "search-type", "create"}),
+            versioned=False,
+            soft_delete=False,
+        )
+    )
+
+    # ---- Terminology resources (computed — no backing table) ----
+    # CodeSystem + ValueSet publish the curated disease reference (kind=disease,
+    # ICD-10 codes) as standard FHIR terminology resources. They use custom
+    # read_fn/search_fn hooks that project from the concepts table (see
+    # app.facade.terminology) instead of the generic table-query dispatcher.
+    from app.facade.terminology import make_read_fn, make_search_fn
+
+    RESOURCE_REGISTRY.register(
+        ResourceEntry(
+            resource_type="CodeSystem",
+            model=Concept,  # projection source (not queried generically)
+            interactions=frozenset({"read", "search-type"}),
+            read_fn=make_read_fn("CodeSystem"),
+            search_fn=make_search_fn("CodeSystem"),
+            tenant_scope="none",
+            versioned=False,
+            soft_delete=False,
+        )
+    )
+    RESOURCE_REGISTRY.register(
+        ResourceEntry(
+            resource_type="ValueSet",
+            model=Concept,
+            interactions=frozenset({"read", "search-type"}),
+            read_fn=make_read_fn("ValueSet"),
+            search_fn=make_search_fn("ValueSet"),
+            tenant_scope="none",
             versioned=False,
             soft_delete=False,
         )

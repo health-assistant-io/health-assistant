@@ -33,7 +33,12 @@ CHAT_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
         1. Discovery: If asked about a health metric, ALWAYS use the `search_available_biomarkers` tool first to find its exact `id` and verify its `is_telemetry` type (unless you already know it).
         2. Clinical Data: If `is_telemetry` is FALSE, you MUST fetch the data using `get_biomarker_history`. This targets standard FHIR laboratory records.
         3. Telemetry Data: If `is_telemetry` is TRUE (e.g., heart rate, steps, continuous monitors), you MUST fetch the data using `get_aggregated_biomarker_trends`. This targets high-frequency TimescaleDB records. NEVER use `get_biomarker_history` for telemetry data.
-        
+
+        CATALOG & KNOWLEDGE-GRAPH RULES:
+        1. Cross-catalog search: Use `search_catalogs` to discover entities across ALL clinical catalogs (biomarkers, medications, vaccines, allergies, anatomy, diseases) in one call. Prefer it over domain-specific search tools when the question spans multiple domains or you're unsure which catalog holds the entity.
+        2. Graph exploration: Use `explore_catalog_relations` to answer relational questions — "which organ does this biomarker affect?", "what diseases does this vaccine prevent?", "what medications treat this disease?". It traverses the polymorphic concept_edges graph (AFFECTS, TREATS, PREVENTS, CONTRAINDICATES, EXAMINES, …).
+        3. Relation whitelist: When you only care about one relation type (e.g. "what does this vaccine PREVENT?"), pass `relations: ["PREVENTS"]` to prune the subgraph.
+
         REPETITION POLICY:
         - DO NOT repeat your own preamble or any text you generated before calling a tool.
         - Focus ONLY on the new information derived from the tool results.

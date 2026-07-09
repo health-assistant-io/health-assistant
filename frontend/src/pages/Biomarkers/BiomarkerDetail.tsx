@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock, Save } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Activity, Info, Calendar, TrendingUp, Tag, Layers, Share2, Printer, Trash2, Search, Filter, ZoomIn, RefreshCw, Grid, Box, Edit2, Check, X, Lock, Unlock, Save, Database } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { NoPatientState } from '../../components/ui/NoPatientState';
 import { formatUnit, getFinalStatus, getStatusColorClass, isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
@@ -124,7 +124,7 @@ const BiomarkerDetail: React.FC = () => {
   
   // Memoize breadcrumbs and subtitle to prevent PageHeader re-renders
   const breadcrumbs = React.useMemo(() => [
-    { label: t('biomarker_catalog.title'), path: '/biomarkers/catalog' }
+    { label: t('biomarker_catalog.title'), path: '/catalogs?type=biomarker' }
   ], [t]);
 
   const subtitle = React.useMemo(() => (
@@ -201,7 +201,7 @@ const BiomarkerDetail: React.FC = () => {
         try {
           await biomarkerService.deleteBiomarker(biomarker.id);
           refreshBiomarkerDefinitions();
-          navigate('/biomarkers/catalog');
+          navigate('/catalogs?type=biomarker');
         } catch (error) {
           console.error("Failed to delete biomarker", error);
         } finally {
@@ -386,6 +386,13 @@ const BiomarkerDetail: React.FC = () => {
             <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
               <Printer className="w-5 h-5" />
             </button>
+            <a
+              href={`/catalogs?type=biomarker&item=${biomarkerId}`}
+              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-sm"
+              title="Manage in Catalogs"
+            >
+              <Database className="w-5 h-5" />
+            </a>
           </div>
         }
       />
@@ -649,7 +656,7 @@ const BiomarkerDetail: React.FC = () => {
                                 setIsEditingInfo(true);
                              }} className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_clinical_info')}</button>
                           ) : (
-                             <Link to="/biomarkers/catalog" className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_to_catalog')}</Link>
+                             <Link to="/catalogs?type=biomarker" className="mt-4 text-blue-600 font-bold hover:underline text-sm uppercase tracking-tighter">{t('biomarkers.add_to_catalog')}</Link>
                           )}
                         </div>
                       )}

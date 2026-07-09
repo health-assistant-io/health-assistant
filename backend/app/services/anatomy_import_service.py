@@ -36,8 +36,8 @@ class AnatomyImportService:
                 )
                 existing_node = result.scalar_one_or_none()
 
-                # Resolve the legacy AnatomyCategory value (now a slug string)
-                # to an ``anatomy_class`` concept ID.
+                # Resolve the anatomy-class concept slug (e.g. ``organ``) to a
+                # ``class_concept_id``.
                 class_concept_id = None
                 if getattr(node_data, "class_concept_slug", None):
                     class_concept_id = await resolve_concept_by_slug(

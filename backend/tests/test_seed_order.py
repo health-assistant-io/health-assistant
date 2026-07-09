@@ -1,0 +1,46 @@
+"""Seed-order regression test.
+
+`seed_all` must seed ``concepts`` (the ``anatomy_class`` / ``biomarker_class``
+taxonomy) BEFORE the stages that resolve a ``class_concept_slug`` to a
+``class_concept_id``. An earlier ordering ran ``body_parts`` before ``concepts``,
+so on a fresh DB every anatomy row got ``class_concept_id = NULL`` (the slug
+could not resolve). This test guards the dependency order end-to-end.
+"""
+
+import pytest
+from sqlalchemy import func, select
+
+from app.core.database import AsyncSessionLocal
+from app.models.anatomy_model import AnatomyStructure
+from app.services.seed_service import SeedService
+
+
+@pytest.mark.asyncio
+async def test_seed_all_resolves_anatomy_class():
+    """Every seeded anatomy structure must resolve its anatomy_class concept."""
+    await SeedService().seed_all()
+    async with AsyncSessionLocal() as db:
+        total = (
+            await db.execute(select(func.count()).select_from(AnatomyStructure))
+        ).scalar()
+        with_class = (
+            await db.execute(
+                select(func.count())
+                .select_from(AnatomyStructure)
+                .where(AnatomyStructure.class_concept_id.isnot(None))
+            )
+        ).scalar()
+        thyroid = (
+            await db.execute(
+                select(AnatomyStructure).where(AnatomyStructure.slug == "thyroid")
+            )
+        ).scalar_one()
+
+    assert total > 0
+    assert with_class == total, (
+        f"only {with_class}/{total} anatomy rows resolved a class_concept_id "
+        "— concepts must seed before body_parts"
+    )
+    assert thyroid.class_concept_id is not None
+    assert thyroid.class_concept.slug == "organ"
+    assert thyroid.class_concept.name == "Organ"

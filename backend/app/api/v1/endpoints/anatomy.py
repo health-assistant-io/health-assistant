@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Any, Optional
 from uuid import UUID
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user_model import UserModel
+from app.models.concept_model import Concept
 from app.schemas.anatomy import (
     AnatomyStructureResponse,
     AnatomyStructureCreate,
@@ -46,6 +48,12 @@ def _ext_for(upload: UploadFile) -> str:
 @router.get("", response_model=AnatomyListResponse)
 async def list_anatomy_structures(
     class_concept_id: Optional[UUID] = None,
+    class_: Optional[str] = Query(
+        None,
+        alias="class",
+        description="Anatomy-class concept slug(s) to filter by, e.g. "
+        "``organ`` or ``organ,organ-part``.",
+    ),
     search: Optional[str] = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -54,13 +62,22 @@ async def list_anatomy_structures(
 ) -> Any:
     """
     Retrieve anatomy structures (nodes). Includes global items and tenant-specific items.
-    Supports optional ``class_concept_id`` and ``search`` (ilike on name/slug/code/description)
-    filtering plus pagination.
+    Supports optional ``class_concept_id`` / ``?class=<slug>`` and ``search``
+    (ilike on name/slug/code/description) filtering plus pagination. Each item
+    is annotated with its ``class_concept_slug`` / ``class_concept_name``.
     """
+    class_concept_ids = None
+    if class_:
+        slugs = [s.strip().lower() for s in class_.split(",") if s.strip()]
+        if slugs:
+            res = await db.execute(select(Concept.id).where(Concept.slug.in_(slugs)))
+            class_concept_ids = [row[0] for row in res.all()] or None
+
     items, total = await anatomy_service.get_anatomy_structures(
         db,
         tenant_id=current_user.tenant_id,
         class_concept_id=class_concept_id,
+        class_concept_ids=class_concept_ids,
         search=search,
         limit=limit,
         offset=offset,

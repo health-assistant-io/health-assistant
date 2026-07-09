@@ -391,3 +391,60 @@ async def search_concepts(
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Unified dispatcher (Phase 4) — registry-driven cross-catalog search
+# ---------------------------------------------------------------------------
+
+
+async def search_catalogs(
+    db: AsyncSession,
+    tenant_id: Optional[UUID],
+    query: str,
+    *,
+    types: Optional[List[str]] = None,
+    limit_per_type: int = 5,
+    limit_total: int = 20,
+) -> List[dict]:
+    """Search across all (or a subset of) registered catalogs in one call.
+
+    Registry-driven: iterates ``CatalogRegistry`` (filtered by ``types``) and
+    calls each adapter's ``search()``. Returns a flat list of
+    ``{"type", "id", "label"}`` hits — anatomy, concepts, allergies,
+    clinical-event-types, etc. are included automatically as catalogs register.
+    Tenant-scoped; empty/too-short queries return ``[]``. This is the single
+    search surface the ``/catalogs/search`` endpoint, the global ``/search``
+    catalog portion, and the future LLM ``search_catalogs`` tool consume.
+
+    The same ``db`` session is used sequentially (async sessions are not safe
+    for concurrent queries), which is fine at catalog cardinality.
+    """
+    # Lazy import avoids a cycle: this module is imported by the adapters at
+    # runtime (inside search()), and the registry imports the adapters.
+    from app.catalogs.registry import CatalogRegistry
+
+    if _normalize(query) is None:
+        return []
+
+    selected = types if types else CatalogRegistry.types()
+    hits: List[dict] = []
+    for type_name in selected:
+        if not CatalogRegistry.is_registered(type_name):
+            continue
+        descriptor = CatalogRegistry.get(type_name)
+        try:
+            rows = await descriptor.service.search(
+                db, tenant_id, query, limit=limit_per_type
+            )
+        except Exception as exc:  # pragma: no cover - defensive; one catalog's
+            # failure must never break the whole search.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "catalog search '%s' failed: %s", type_name, exc
+            )
+            rows = []
+        for row in rows:
+            hits.append({"type": type_name, "id": row["id"], "label": row["label"]})
+    return hits[:limit_total]

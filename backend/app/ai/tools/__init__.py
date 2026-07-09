@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Kept as explicit re-imports (no re-exports) — callers use ``get_tools``.
 from app.ai.tools import (  # noqa: F401
     biomarkers,
+    catalogs,
     clinical_events,
     documents,
     examinations,

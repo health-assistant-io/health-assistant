@@ -72,6 +72,11 @@ export interface AnatomyStructure {
   name: string;
   slug: string;
   category: AnatomyCategory;
+  /** Anatomy-class concept (lowercase slug, e.g. ``organ``). Projected by the
+   * backend alongside the legacy uppercase ``category``. */
+  class_concept_id?: string | null;
+  class_concept_slug?: string | null;
+  class_concept_name?: string | null;
   standard_system?: CodingSystem | null;
   standard_code?: string | null;
   description?: string | null;
@@ -169,6 +174,40 @@ export const CATEGORY_COLORS: Record<AnatomyCategory, string> = {
   JOINT: '#eab308',
   OTHER: '#6b7280',
 };
+
+/**
+ * Lowercase anatomy-class concept slug → color/label. The canonical form now
+ * that the legacy uppercase ``AnatomyCategory`` enum is dropped on the backend
+ * (items carry ``class_concept_slug``). Mirrors the uppercase map's palette.
+ */
+export const CLASS_COLORS: Record<string, string> = {
+  system: '#3b82f6',
+  region: '#22c55e',
+  organ: '#ef4444',
+  'organ-part': '#f97316',
+  tissue: '#a855f7',
+  cell: '#ec4899',
+  substance: '#14b8a6',
+  joint: '#eab308',
+  other: '#6b7280',
+  'other-anatomy': '#6b7280',
+};
+
+export const CLASS_LABELS: Record<string, string> = {
+  system: 'System',
+  region: 'Region',
+  organ: 'Organ',
+  'organ-part': 'Organ Part',
+  tissue: 'Tissue',
+  cell: 'Cell',
+  substance: 'Substance',
+  joint: 'Joint',
+  other: 'Other',
+  'other-anatomy': 'Other',
+};
+
+export const CLASS_COLOR = (slug?: string | null): string =>
+  (slug && CLASS_COLORS[slug]) || '#6b7280';
 
 export const RELATION_LABELS: Record<AnatomyRelationType, string> = {
   PART_OF: 'Part of',

@@ -7,6 +7,7 @@ from .allergy import (
     AllergyCriticality,
     AllergyClinicalStatus,
 )
+from .vaccine import VaccineCatalog, PatientImmunization
 
 __all__ = [
     "Patient",
@@ -21,4 +22,6 @@ __all__ = [
     "AllergyCategory",
     "AllergyCriticality",
     "AllergyClinicalStatus",
+    "VaccineCatalog",
+    "PatientImmunization",
 ]

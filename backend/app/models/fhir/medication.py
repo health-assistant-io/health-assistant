@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Enum, Text, ForeignKey, Date, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
 from app.models.base import (
     Base,
     UUIDMixin,
@@ -9,7 +10,7 @@ from app.models.base import (
     TimestampMixin,
     SoftDeleteMixin,
 )
-from app.models.enums import MedicationIntent, MedicationStatus
+from app.models.enums import MedicationIntent, MedicationStatus, CatalogScope
 from app.services.fhir_helpers import (
     _enum_value,
     _normalize_timing,
@@ -29,11 +30,35 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     contraindications = Column(Text, nullable=True)  # Allergies info, etc.
     dosage_info = Column(Text, nullable=True)
 
+    # Taxonomy classification (Phase 2): the drug-class concept (e.g. an ATC
+    # class). Follows the established ``class_concept_id`` convention.
+    class_concept_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     tenant_id = Column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=True,  # NULL means system-wide default
         index=True,
+    )
+
+    scope = Column(
+        Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=CatalogScope.SYSTEM,
+        index=True,
+    )
+
+    # Explicit foreign_keys= so SQLAlchemy resolves the single concept FK
+    # unambiguously (mirrors biomarker/anatomy/examination).
+    class_concept = relationship(
+        "Concept",
+        foreign_keys="[MedicationCatalog.class_concept_id]",
+        lazy="selectin",
     )
 
     @property
@@ -49,6 +74,12 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "side_effects": self.side_effects or [],
             "contraindications": self.contraindications,
             "dosage_info": self.dosage_info,
+            "class_concept_id": str(self.class_concept_id)
+            if self.class_concept_id
+            else None,
+            "scope": self.scope.value if self.scope else "system",
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "created_by": str(self.created_by) if self.created_by else None,
             "is_custom": self.is_custom,
         }
 

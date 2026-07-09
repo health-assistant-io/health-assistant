@@ -15,8 +15,17 @@ from app.schemas.medication import (
     MedicationRecordResponse,
 )
 from app.services import medication_service
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
 router = APIRouter(prefix="/medications", tags=["medications"])
+
+
+def _enforce_catalog_create(current_user: TokenData) -> None:
+    """Catalog creates are role-derived-scope: SYSTEM_ADMIN→system,
+    ADMIN/MANAGER→tenant, USER→user. Any authenticated role may create (the
+    scope varies). Raises ``CatalogPermissionDenied`` (→ HTTP 403) never —
+    kept as a hook for future per-type lock-down (Phase F)."""
+    DEFAULT_CATALOG_POLICY.create_scope(current_user.role)
 
 
 @router.get("/catalog", response_model=List[MedicationCatalogResponse])
@@ -50,8 +59,10 @@ async def create_catalog_medication(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
+    """Create a medication catalog entry (scope derived from role)."""
+    _enforce_catalog_create(current_user)
     return await medication_service.create_catalog_medication(
-        db, current_user.tenant_id, data
+        db, current_user, data
     )
 
 
@@ -62,12 +73,29 @@ async def update_catalog_medication(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
+    """Update a medication catalog entry. Scope + ownership enforced in the
+    service (raises ``CatalogPermissionDenied`` → 403)."""
     result = await medication_service.update_catalog_medication(
-        db, catalog_id, current_user.tenant_id, data
+        db, catalog_id, current_user, data
     )
     if not result:
         raise HTTPException(status_code=404, detail="Medication not found in catalog")
     return result
+
+
+@router.delete("/catalog/{catalog_id}")
+async def delete_catalog_medication(
+    catalog_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Delete a medication catalog entry (scope + ownership enforced)."""
+    success = await medication_service.delete_catalog_medication(
+        db, catalog_id, current_user
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Medication not found in catalog")
+    return {"message": "Medication catalog entry deleted"}
 
 
 @router.get("/patient/{patient_id}", response_model=List[MedicationRecordResponse])

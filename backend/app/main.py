@@ -8,6 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.catalogs.policy import CatalogPermissionDenied
 from app.services.fhir_helpers import FhirSerializationError
 
 # Configure logging
@@ -192,6 +193,20 @@ async def fhir_validation_handler(request: Request, exc: FhirSerializationError)
         status_code=400,
         content={"message": "FHIR validation failed", "detail": str(exc)},
     )
+
+
+@app.exception_handler(CatalogPermissionDenied)
+async def catalog_permission_denied_handler(
+    request: Request, exc: CatalogPermissionDenied
+):
+    """Map the uniform catalog RBAC exception to HTTP 403.
+
+    Both the ``/catalogs`` meta-layer adapters and the domain catalog endpoints
+    (biomarkers/medications/allergies) raise ``CatalogPermissionDenied`` from
+    :class:`~app.catalogs.policy.CatalogAccessPolicy.check_write``; this single
+    handler turns it into a 403 without per-route try/except.
+    """
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
 # CORS middleware

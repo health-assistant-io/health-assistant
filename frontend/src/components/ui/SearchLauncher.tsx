@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../../store/slices/uiSlice';
-import { Search, X, FileText, Activity, Users, Settings, ChevronRight, Pill, Droplet } from 'lucide-react';
+import { Search, X, FileText, Activity, Users, Settings, ChevronRight, Pill, Droplet, PersonStanding, ShieldAlert, Syringe, Network } from 'lucide-react';
 import api from '../../api/axios';
 
 export function SearchLauncher() {
@@ -74,19 +74,13 @@ export function SearchLauncher() {
     if (searchMode === 'global' && globalSearchTerm.length >= 2) {
       setIsSearching(true);
       const timer = setTimeout(async () => {
-        try {
-          // Placeholder for real global search implementation
-          // You would call a unified search endpoint here
-          const { data } = await api.get(`/search?q=${encodeURIComponent(globalSearchTerm)}`);
-          setGlobalResults(data?.results || []);
-        } catch (error) {
-          console.error('Global search error:', error);
-          // For now, mock results if API fails or doesn't exist yet
-          setGlobalResults([
-             { id: '1', type: 'patient', title: 'John Doe', subtitle: 'MRN: 12345' },
-             { id: '2', type: 'examination', title: 'Blood Test', subtitle: 'Oct 12, 2023' }
-          ].filter(item => item.title.toLowerCase().includes(globalSearchTerm.toLowerCase())));
-        } finally {
+      try {
+        const { data } = await api.get(`/search?q=${encodeURIComponent(globalSearchTerm)}`);
+        setGlobalResults(data?.results || []);
+      } catch (error) {
+        console.error('Global search error:', error);
+        setGlobalResults([]);
+      } finally {
           setIsSearching(false);
         }
       }, 300);
@@ -121,6 +115,18 @@ export function SearchLauncher() {
       case 'biomarker':
         navigate(`/biomarkers/details/${result.id}`);
         break;
+      case 'anatomy':
+        navigate(`/anatomy/${result.id}`);
+        break;
+      case 'allergy':
+        navigate(`/alerts`);
+        break;
+      case 'vaccine':
+        navigate(`/catalogs?type=vaccine`);
+        break;
+      case 'concept':
+        navigate(`/admin/system/taxonomy`);
+        break;
       default:
         break;
     }
@@ -134,6 +140,10 @@ export function SearchLauncher() {
       case 'event': return <Activity className="w-4 h-4 text-orange-500" />;
       case 'medication': return <Pill className="w-4 h-4 text-pink-500" />;
       case 'biomarker': return <Droplet className="w-4 h-4 text-red-500" />;
+      case 'anatomy': return <PersonStanding className="w-4 h-4 text-emerald-500" />;
+      case 'allergy': return <ShieldAlert className="w-4 h-4 text-amber-500" />;
+      case 'vaccine': return <Syringe className="w-4 h-4 text-rose-500" />;
+      case 'concept': return <Network className="w-4 h-4 text-slate-500" />;
       default: return <Search className="w-4 h-4 text-gray-500" />;
     }
   };

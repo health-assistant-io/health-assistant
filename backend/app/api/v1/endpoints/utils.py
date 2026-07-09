@@ -8,6 +8,7 @@ from app.schemas.user import TokenData
 
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.medication import Medication
+from app.models.fhir.vaccine import PatientImmunization
 from app.models.clinical_event import ClinicalEvent
 from app.models.fhir.allergy import AllergyIntolerance
 
@@ -95,6 +96,35 @@ async def check_medication_access(
     await check_patient_access(medication.patient_id, current_user, db)
 
     return medication
+
+
+async def check_immunization_access(
+    immunization_id: str | UUID, current_user: TokenData, db: AsyncSession
+):
+    """Verify access to a patient-immunization record (Phase 5).
+
+    Selects by id + tenant (cross-tenant → 404), then delegates to
+    ``check_patient_access`` for the USER own-patient gate."""
+    if isinstance(immunization_id, str):
+        try:
+            immunization_id = UUID(immunization_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid immunization ID format"
+            )
+
+    result = await db.execute(
+        select(PatientImmunization).where(
+            PatientImmunization.id == immunization_id,
+            PatientImmunization.tenant_id == current_user.tenant_id,
+            PatientImmunization.deleted_at.is_(None),
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Immunization record not found")
+    await check_patient_access(record.patient_id, current_user, db)
+    return record
 
 
 async def check_event_access(

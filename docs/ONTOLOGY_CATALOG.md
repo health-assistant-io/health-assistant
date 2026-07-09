@@ -4,6 +4,8 @@ The Health Assistant platform uses a dynamic, JSON-based clinical ontology. This
 
 Catalogs can be imported via the **System Administration -> Clinical Ontology** UI by providing a URL to a JSON file (e.g., a raw GitHub URL) or uploading a `.json` file directly.
 
+> **Catalog Registry (Phase 0–5 + access-control/audit/UI rework):** biomarker definitions, medication catalog, allergy catalog, and vaccine catalog are now unified under a declarative `CatalogRegistry` (`app/catalogs/`) with one CRUD/scope-tier-access/search/FHIR/edge contract. They're accessible via the `/catalogs/{type}` meta-layer and appear in unified search (`GET /catalogs/search`) and the cross-domain knowledge graph (`GET /catalogs/{type}/{id}/relations`). Access is ownership-based via scope tiers (`system`/`tenant`/`user`); every write is audit-logged (`GET /catalogs/{type}/{id}/history`). See [ARCHITECTURE.md § Catalog Registry](ARCHITECTURE.md#catalog-registry--cross-domain-knowledge-graph-appcatalogs) and [API.md § Catalogs & Search](API.md). The import flow below remains the primary path for bulk-loading LOINC biomarker definitions.
+
 ## JSON Schema Structure
 
 The root of the JSON file must contain three main arrays/objects: `metadata`, `units`, and `biomarkers`.

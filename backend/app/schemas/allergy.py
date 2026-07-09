@@ -26,6 +26,15 @@ class AllergyCatalogCreate(AllergyCatalogBase):
     pass
 
 
+class AllergyCatalogUpdate(BaseModel):
+    """Partial update for an allergy catalog entry (all fields optional)."""
+
+    name: Optional[str] = None
+    category: Optional[AllergyCategory] = None
+    description: Optional[str] = None
+    typical_reactions: Optional[List[str]] = None
+
+
 class AllergyCatalogResponse(AllergyCatalogBase):
     id: UUID
     is_custom: bool

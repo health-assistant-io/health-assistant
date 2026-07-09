@@ -12,14 +12,16 @@ from app.schemas.anatomy import (
     AnatomyStructureUpdate,
     AnatomyRelationCreate,
 )
-from app.models.enums import AnatomyRelationType
+from app.models.enums import AnatomyRelationType, ConceptKind
 from app.core.config import settings
+from app.services.concept_service import resolve_concept_by_slug
 
 
 async def get_anatomy_structures(
     db: AsyncSession,
     tenant_id: Optional[UUID] = None,
     class_concept_id: Optional[UUID] = None,
+    class_concept_ids: Optional[List[UUID]] = None,
     search: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
@@ -39,6 +41,9 @@ async def get_anatomy_structures(
 
     if class_concept_id:
         query = query.where(AnatomyStructure.class_concept_id == class_concept_id)
+
+    if class_concept_ids:
+        query = query.where(AnatomyStructure.class_concept_id.in_(class_concept_ids))
 
     if search:
         term = f"%{search.strip()}%"
@@ -96,8 +101,15 @@ async def create_anatomy_structure(
     structure_in: AnatomyStructureCreate,
     tenant_id: Optional[UUID] = None,
 ) -> AnatomyStructure:
-
-    db_structure = AnatomyStructure(**structure_in.model_dump(), tenant_id=tenant_id)
+    data = structure_in.model_dump()
+    # Resolve the friendly class slug to a class_concept_id (takes precedence
+    # over an explicit class_concept_id if both are supplied).
+    slug = data.pop("class_concept_slug", None)
+    if slug:
+        data["class_concept_id"] = await resolve_concept_by_slug(
+            db, slug, ConceptKind.ANATOMY_CLASS
+        )
+    db_structure = AnatomyStructure(**data, tenant_id=tenant_id)
     db.add(db_structure)
     await db.commit()
     await db.refresh(db_structure)
@@ -111,6 +123,13 @@ async def update_anatomy_structure(
 ) -> AnatomyStructure:
     """Patch an existing anatomy structure with the provided fields."""
     update_data = structure_in.model_dump(exclude_unset=True)
+    slug = update_data.pop("class_concept_slug", None)
+    if slug is not None:
+        update_data["class_concept_id"] = (
+            await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS)
+            if slug
+            else None
+        )
     for field, value in update_data.items():
         setattr(structure, field, value)
     await db.commit()

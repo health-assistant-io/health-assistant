@@ -8,6 +8,9 @@ class AnatomyStructureBase(BaseModel):
     name: str
     slug: str
     class_concept_id: Optional[UUID] = None
+    # Write-friendly: the anatomy-class concept slug (e.g. ``organ``). Resolved
+    # to ``class_concept_id`` by the service, so callers don't need the UUID.
+    class_concept_slug: Optional[str] = None
     standard_system: Optional[CodingSystem] = None
     standard_code: Optional[str] = None
     description: Optional[str] = None
@@ -23,6 +26,7 @@ class AnatomyStructureUpdate(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
     class_concept_id: Optional[UUID] = None
+    class_concept_slug: Optional[str] = None
     standard_system: Optional[CodingSystem] = None
     standard_code: Optional[str] = None
     description: Optional[str] = None
@@ -32,6 +36,7 @@ class AnatomyStructureUpdate(BaseModel):
 
 class AnatomyStructureResponse(AnatomyStructureBase):
     id: UUID
+    class_concept_name: Optional[str] = None
     tenant_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)

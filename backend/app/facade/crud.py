@@ -152,6 +152,10 @@ async def search(
     allowlist of resource-specific params. Tenant-scoped by default; soft-deleted
     rows excluded unless ``_deleted=true``.
     """
+    # Computed resources (CodeSystem/ValueSet) override the generic table path.
+    if entry.search_fn is not None:
+        return await entry.search_fn(db, query_params, current_user, base_url)
+
     params = parse_search_params(entry.resource_type, query_params)
     model = entry.model
 
@@ -779,6 +783,10 @@ async def read(
 ) -> Optional[Dict[str, Any]]:
     """Fetch one resource by id. Returns the FHIR dict or None (with a 'reason'
     indicator the caller uses to choose 404 vs 410)."""
+    # Computed resources (CodeSystem/ValueSet) override the generic table path.
+    if entry.read_fn is not None:
+        return await entry.read_fn(db, resource_id, current_user)
+
     rid = _resolve_id(resource_id)
     if rid is None:
         return None

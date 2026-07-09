@@ -38,29 +38,20 @@ from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept, ConceptEdge
 from app.models.enums import (
+    ConceptKind,
     ConceptRelationType,
     EdgeApprovalStatus,
     EdgeEndpointType,
 )
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
-from app.services.seed_service import _ANATOMY_CATEGORY_TO_CONCEPT_SLUG
+from app.models.fhir.vaccine import VaccineCatalog
+from app.services.concept_service import concepts_with_kind
 
 logger = logging.getLogger(__name__)
 
 SEED_VERSION = "1.0.0"
 SEED_SOURCE = "exported-from-instance"
-
-# Inverse of _ANATOMY_CATEGORY_TO_CONCEPT_SLUG (many-to-one → pick a canonical
-# legacy enum for the ambiguous "other-anatomy" bucket). Used to ALSO emit the
-# legacy ``category`` field for backward compat with older seed readers, but
-# only when the class concept maps cleanly back. New/niche class concepts emit
-# only ``class_concept_slug`` (the lossless form).
-_CONCEPT_SLUG_TO_ANATOMY_CATEGORY: Dict[str, str] = {}
-for _cat, _slug in _ANATOMY_CATEGORY_TO_CONCEPT_SLUG.items():
-    # _cat is already the enum's string value (the seed map stores .value keys).
-    # First category wins; "OTHER" claims the "other-anatomy" bucket.
-    _CONCEPT_SLUG_TO_ANATOMY_CATEGORY.setdefault(_slug, _cat)
 
 
 class SeedExportService:
@@ -95,23 +86,38 @@ class SeedExportService:
     # ------------------------------------------------------------------
 
     async def export_concepts(self) -> Dict[str, Any]:
+        # Exclude disease-kind concepts — they ship in ``diseases.json`` (the
+        # inverse of the seed pipeline's separate ``seed_diseases`` stage) so
+        # re-exporting an unchanged DB is a git no-op.
         rows = (
-            await self.db.execute(
-                select(Concept)
-                .where(
-                    self._tenant_cond(Concept),
-                    Concept.deleted_at.is_(None),
+            (
+                await self.db.execute(
+                    select(Concept)
+                    .where(
+                        self._tenant_cond(Concept),
+                        Concept.deleted_at.is_(None),
+                        ~concepts_with_kind(ConceptKind.DISEASE),
+                    )
+                    .order_by(Concept.slug)
                 )
-                .order_by(Concept.slug)
             )
-        ).scalars().unique().all()
+            .scalars()
+            .unique()
+            .all()
+        )
 
         parent_ids = {r.parent_id for r in rows if r.parent_id}
         parent_slug: Dict[UUID, str] = {}
         if parent_ids:
             pres = (
-                await self.db.execute(select(Concept).where(Concept.id.in_(parent_ids)))
-            ).scalars().all()
+                (
+                    await self.db.execute(
+                        select(Concept).where(Concept.id.in_(parent_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
             parent_slug = {p.id: p.slug for p in pres}
 
         items: List[Dict[str, Any]] = []
@@ -140,20 +146,69 @@ class SeedExportService:
             items.append(item)
         return self._envelope("concepts", items)
 
+    async def export_diseases(self) -> Dict[str, Any]:
+        """Export disease-kind concepts (``diseases.json``).
+
+        The inverse of :meth:`SeedService.seed_diseases` — disease concepts live
+        in the same ``concepts`` table but ship in a separate seed file so the
+        curated disease reference (ICD-10 codes) is independently maintainable.
+        Same item shape as :meth:`export_concepts`.
+        """
+        rows = (
+            (
+                await self.db.execute(
+                    select(Concept)
+                    .where(
+                        self._tenant_cond(Concept),
+                        Concept.deleted_at.is_(None),
+                        concepts_with_kind(ConceptKind.DISEASE),
+                    )
+                    .order_by(Concept.slug)
+                )
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+
+        items: List[Dict[str, Any]] = []
+        for c in rows:
+            kinds = [t.kind.value for t in (c.kind_tags or [])]
+            item: Dict[str, Any] = {"slug": c.slug, "name": c.name}
+            if kinds:
+                item["kinds"] = sorted(kinds)
+            if c.coding_system:
+                item["coding_system"] = c.coding_system
+            if c.code:
+                item["code"] = c.code
+            if c.aliases:
+                item["aliases"] = list(c.aliases)
+            if c.description:
+                item["description"] = c.description
+            if c.icon:
+                item["icon"] = c.icon
+            if c.color:
+                item["color"] = c.color
+            items.append(item)
+        return self._envelope("diseases", items)
+
     # ------------------------------------------------------------------
     # concept edges
     # ------------------------------------------------------------------
 
     async def export_concept_edges(self) -> Dict[str, Any]:
         rows = (
-            await self.db.execute(
-                select(ConceptEdge)
-                .where(
-                    self._tenant_cond(ConceptEdge),
-                    ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            (
+                await self.db.execute(
+                    select(ConceptEdge).where(
+                        self._tenant_cond(ConceptEdge),
+                        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         slug_maps = await self._build_endpoint_slug_maps(rows)
         items: List[Dict[str, Any]] = []
@@ -187,6 +242,8 @@ class SeedExportService:
             EdgeEndpointType.CONCEPT: set(),
             EdgeEndpointType.ANATOMY: set(),
             EdgeEndpointType.BIOMARKER: set(),
+            EdgeEndpointType.MEDICATION: set(),
+            EdgeEndpointType.IMMUNIZATION: set(),
         }
         for e in edges:
             if e.src_type in ids_by_type:
@@ -197,39 +254,84 @@ class SeedExportService:
         maps: Dict[EdgeEndpointType, Dict[UUID, str]] = {}
         if ids_by_type[EdgeEndpointType.CONCEPT]:
             rows = (
-                await self.db.execute(
-                    select(Concept).where(
-                        Concept.id.in_(ids_by_type[EdgeEndpointType.CONCEPT])
-                    )
-                )
-            ).scalars().all()
-            maps[EdgeEndpointType.CONCEPT] = {r.id: r.slug for r in rows}
-        if ids_by_type[EdgeEndpointType.ANATOMY]:
-            rows = (
-                await self.db.execute(
-                    select(AnatomyStructure).where(
-                        AnatomyStructure.id.in_(ids_by_type[EdgeEndpointType.ANATOMY])
-                    )
-                )
-            ).scalars().all()
-            maps[EdgeEndpointType.ANATOMY] = {r.id: r.slug for r in rows}
-        if ids_by_type[EdgeEndpointType.BIOMARKER]:
-            rows = (
-                await self.db.execute(
-                    select(BiomarkerDefinition).where(
-                        BiomarkerDefinition.id.in_(
-                            ids_by_type[EdgeEndpointType.BIOMARKER]
+                (
+                    await self.db.execute(
+                        select(Concept).where(
+                            Concept.id.in_(ids_by_type[EdgeEndpointType.CONCEPT])
                         )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
+            maps[EdgeEndpointType.CONCEPT] = {r.id: r.slug for r in rows}
+        if ids_by_type[EdgeEndpointType.ANATOMY]:
+            rows = (
+                (
+                    await self.db.execute(
+                        select(AnatomyStructure).where(
+                            AnatomyStructure.id.in_(
+                                ids_by_type[EdgeEndpointType.ANATOMY]
+                            )
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            maps[EdgeEndpointType.ANATOMY] = {r.id: r.slug for r in rows}
+        if ids_by_type[EdgeEndpointType.BIOMARKER]:
+            rows = (
+                (
+                    await self.db.execute(
+                        select(BiomarkerDefinition).where(
+                            BiomarkerDefinition.id.in_(
+                                ids_by_type[EdgeEndpointType.BIOMARKER]
+                            )
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
             maps[EdgeEndpointType.BIOMARKER] = {r.id: r.slug for r in rows}
+        if ids_by_type[EdgeEndpointType.MEDICATION]:
+            # MedicationCatalog has no slug — the seed loader resolves edges by
+            # case-insensitive ``name``, so emit ``name`` as the join key.
+            rows = (
+                (
+                    await self.db.execute(
+                        select(MedicationCatalog).where(
+                            MedicationCatalog.id.in_(
+                                ids_by_type[EdgeEndpointType.MEDICATION]
+                            )
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            maps[EdgeEndpointType.MEDICATION] = {r.id: r.name for r in rows}
+        if ids_by_type[EdgeEndpointType.IMMUNIZATION]:
+            # VaccineCatalog has a slug — emit it as the join key.
+            rows = (
+                (
+                    await self.db.execute(
+                        select(VaccineCatalog).where(
+                            VaccineCatalog.id.in_(
+                                ids_by_type[EdgeEndpointType.IMMUNIZATION]
+                            )
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            maps[EdgeEndpointType.IMMUNIZATION] = {r.id: r.slug for r in rows}
         return maps
 
     @staticmethod
-    def _endpoint_slug(
-        etype: EdgeEndpointType, eid: UUID, maps: Dict
-    ) -> Optional[str]:
+    def _endpoint_slug(etype: EdgeEndpointType, eid: UUID, maps: Dict) -> Optional[str]:
         m = maps.get(etype)
         return m.get(eid) if m else None
 
@@ -241,12 +343,17 @@ class SeedExportService:
         self, structure_cache: Optional[Dict[UUID, str]] = None
     ) -> Dict[str, Any]:
         rows = (
-            await self.db.execute(
-                select(AnatomyStructure)
-                .where(self._tenant_cond(AnatomyStructure))
-                .order_by(AnatomyStructure.slug)
+            (
+                await self.db.execute(
+                    select(AnatomyStructure)
+                    .where(self._tenant_cond(AnatomyStructure))
+                    .order_by(AnatomyStructure.slug)
+                )
             )
-        ).scalars().unique().all()
+            .scalars()
+            .unique()
+            .all()
+        )
 
         if structure_cache is not None:
             structure_cache.update({r.id: r.slug for r in rows})
@@ -255,8 +362,14 @@ class SeedExportService:
         concept_slug: Dict[UUID, str] = {}
         if concept_ids:
             crows = (
-                await self.db.execute(select(Concept).where(Concept.id.in_(concept_ids)))
-            ).scalars().all()
+                (
+                    await self.db.execute(
+                        select(Concept).where(Concept.id.in_(concept_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
             concept_slug = {c.id: c.slug for c in crows}
 
         items: List[Dict[str, Any]] = []
@@ -266,9 +379,6 @@ class SeedExportService:
                 cslug = concept_slug.get(s.class_concept_id)
                 if cslug:
                     item["class_concept_slug"] = cslug
-                    legacy = _CONCEPT_SLUG_TO_ANATOMY_CATEGORY.get(cslug)
-                    if legacy:
-                        item["category"] = legacy
             if s.standard_system:
                 item["standard_system"] = s.standard_system.value
             if s.standard_code:
@@ -285,16 +395,19 @@ class SeedExportService:
     ) -> Dict[str, Any]:
         if slug_by_id is None:
             rows = (
-                await self.db.execute(
-                    select(AnatomyStructure).where(
-                        self._tenant_cond(AnatomyStructure)
+                (
+                    await self.db.execute(
+                        select(AnatomyStructure).where(
+                            self._tenant_cond(AnatomyStructure)
+                        )
                     )
                 )
-            ).scalars().unique().all()
+                .scalars()
+                .unique()
+                .all()
+            )
             slug_by_id = {r.id: r.slug for r in rows}
-        all_relations = (
-            await self.db.execute(select(AnatomyRelation))
-        ).scalars().all()
+        all_relations = (await self.db.execute(select(AnatomyRelation))).scalars().all()
         items: List[Dict[str, Any]] = []
         for r in all_relations:
             src = slug_by_id.get(r.source_id)
@@ -317,29 +430,41 @@ class SeedExportService:
 
     async def export_default_catalog(self) -> Dict[str, Any]:
         units = (
-            await self.db.execute(select(Unit).order_by(Unit.symbol))
-        ).scalars().all()
+            (await self.db.execute(select(Unit).order_by(Unit.symbol))).scalars().all()
+        )
         bios = (
-            await self.db.execute(
-                select(BiomarkerDefinition)
-                .where(self._tenant_cond(BiomarkerDefinition))
-                .order_by(BiomarkerDefinition.slug)
+            (
+                await self.db.execute(
+                    select(BiomarkerDefinition)
+                    .where(self._tenant_cond(BiomarkerDefinition))
+                    .order_by(BiomarkerDefinition.slug)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         concept_ids = {b.class_concept_id for b in bios if b.class_concept_id}
         unit_ids = {b.preferred_unit_id for b in bios if b.preferred_unit_id}
         concept_slug: Dict[UUID, str] = {}
         if concept_ids:
             crows = (
-                await self.db.execute(select(Concept).where(Concept.id.in_(concept_ids)))
-            ).scalars().all()
+                (
+                    await self.db.execute(
+                        select(Concept).where(Concept.id.in_(concept_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
             concept_slug = {c.id: c.slug for c in crows}
         unit_symbol: Dict[UUID, str] = {}
         if unit_ids:
             urows = (
-                await self.db.execute(select(Unit).where(Unit.id.in_(unit_ids)))
-            ).scalars().all()
+                (await self.db.execute(select(Unit).where(Unit.id.in_(unit_ids))))
+                .scalars()
+                .all()
+            )
             unit_symbol = {u.id: u.symbol for u in urows}
 
         units_out = [
@@ -397,16 +522,20 @@ class SeedExportService:
 
     async def export_biomarker_panels(self) -> Dict[str, Any]:
         edges = (
-            await self.db.execute(
-                select(ConceptEdge).where(
-                    self._tenant_cond(ConceptEdge),
-                    ConceptEdge.relation == ConceptRelationType.MEMBER_OF,
-                    ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
-                    ConceptEdge.dst_type == EdgeEndpointType.CONCEPT,
-                    ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            (
+                await self.db.execute(
+                    select(ConceptEdge).where(
+                        self._tenant_cond(ConceptEdge),
+                        ConceptEdge.relation == ConceptRelationType.MEMBER_OF,
+                        ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                        ConceptEdge.dst_type == EdgeEndpointType.CONCEPT,
+                        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if not edges:
             return self._envelope("biomarker_panels", [])
         slug_maps = await self._build_endpoint_slug_maps(edges)
@@ -426,24 +555,33 @@ class SeedExportService:
 
     async def export_clinical_event_types(self) -> Dict[str, Any]:
         rows = (
-            await self.db.execute(
-                select(ClinicalEventType)
-                .where(
-                    or_(
-                        ClinicalEventType.tenant_id.is_(None),
-                        ClinicalEventType.tenant_id == self.tenant_id,
+            (
+                await self.db.execute(
+                    select(ClinicalEventType).where(
+                        or_(
+                            ClinicalEventType.tenant_id.is_(None),
+                            ClinicalEventType.tenant_id == self.tenant_id,
+                        )
+                        if self.tenant_id is not None
+                        else ClinicalEventType.tenant_id.is_(None)
                     )
-                    if self.tenant_id is not None
-                    else ClinicalEventType.tenant_id.is_(None)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         concept_ids = {r.category_concept_id for r in rows if r.category_concept_id}
         concept_slug: Dict[UUID, str] = {}
         if concept_ids:
             crows = (
-                await self.db.execute(select(Concept).where(Concept.id.in_(concept_ids)))
-            ).scalars().all()
+                (
+                    await self.db.execute(
+                        select(Concept).where(Concept.id.in_(concept_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
             concept_slug = {c.id: c.slug for c in crows}
         items: List[Dict[str, Any]] = []
         for t in rows:
@@ -470,12 +608,16 @@ class SeedExportService:
 
     async def export_medications(self) -> Dict[str, Any]:
         rows = (
-            await self.db.execute(
-                select(MedicationCatalog)
-                .where(self._tenant_cond(MedicationCatalog))
-                .order_by(MedicationCatalog.name)
+            (
+                await self.db.execute(
+                    select(MedicationCatalog)
+                    .where(self._tenant_cond(MedicationCatalog))
+                    .order_by(MedicationCatalog.name)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         items: List[Dict[str, Any]] = []
         for m in rows:
             item: Dict[str, Any] = {"name": m.name}
@@ -494,12 +636,16 @@ class SeedExportService:
 
     async def export_allergies(self) -> Dict[str, Any]:
         rows = (
-            await self.db.execute(
-                select(AllergyCatalog)
-                .where(self._tenant_cond(AllergyCatalog))
-                .order_by(AllergyCatalog.name)
+            (
+                await self.db.execute(
+                    select(AllergyCatalog)
+                    .where(self._tenant_cond(AllergyCatalog))
+                    .order_by(AllergyCatalog.name)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         items: List[Dict[str, Any]] = []
         for a in rows:
             item: Dict[str, Any] = {"name": a.name}
@@ -518,6 +664,7 @@ class SeedExportService:
 
     EXPORTERS: Dict[str, str] = {
         "concepts.json": "export_concepts",
+        "diseases.json": "export_diseases",
         "concept_edges.json": "export_concept_edges",
         "anatomy_structures.json": "export_anatomy_structures",
         "anatomy_relations.json": "export_anatomy_relations",
@@ -561,9 +708,7 @@ class SeedExportService:
     def _serialize(payload: Dict[str, Any]) -> bytes:
         return json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
 
-    async def write_all(
-        self, out_dir: Path, backup: bool = True
-    ) -> Dict[str, Any]:
+    async def write_all(self, out_dir: Path, backup: bool = True) -> Dict[str, Any]:
         """Write every seed file into ``out_dir`` with the safety pipeline.
 
         - writes to ``<out_dir>/.export-staging/`` first
@@ -591,7 +736,10 @@ class SeedExportService:
             }
 
         if backup and out_dir.exists():
-            backup_dir = out_dir / f".backup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+            backup_dir = (
+                out_dir
+                / f".backup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+            )
             backup_dir.mkdir(parents=True, exist_ok=True)
             for filename in self.EXPORTERS:
                 src = out_dir / filename

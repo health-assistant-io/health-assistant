@@ -17,6 +17,7 @@ from app.api.v1.endpoints.patient_layout import router as patient_layout_router
 from app.api.v1.endpoints.doctors import router as doctors_router
 from app.api.v1.endpoints.allergies import router as allergies_router
 from app.api.v1.endpoints.medications import router as medications_router
+from app.api.v1.endpoints.vaccines import router as vaccines_router
 from app.api.v1.endpoints.biomarkers import router as biomarkers_router
 from app.api.v1.endpoints.ai_config import router as ai_config_router
 from app.api.v1.endpoints.task_monitor import router as task_monitor_router
@@ -33,6 +34,7 @@ from app.api.v1.endpoints.concepts import (
     router as concepts_router,
     edge_router as concept_edges_router,
 )
+from app.api.v1.endpoints.catalogs import router as catalogs_router
 from app.api.v1.endpoints.settings import router as settings_router
 from app.api.v1.endpoints.websockets import router as websockets_router
 
@@ -57,6 +59,7 @@ api_router.include_router(doctors_router)
 api_router.include_router(organizations_router)
 api_router.include_router(allergies_router)
 api_router.include_router(medications_router)
+api_router.include_router(vaccines_router)
 api_router.include_router(biomarkers_router)
 api_router.include_router(ai_config_router)
 api_router.include_router(task_monitor_router)
@@ -74,5 +77,6 @@ api_router.include_router(
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
 api_router.include_router(concepts_router)
 api_router.include_router(concept_edges_router)
+api_router.include_router(catalogs_router)
 api_router.include_router(settings_router)
 api_router.include_router(websockets_router)

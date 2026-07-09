@@ -211,6 +211,14 @@ class ImportStatus(str, enum.Enum):
     PARTIAL = "PARTIAL"
 
 
+class ImmunizationStatus(str, enum.Enum):
+    """FHIR R4 Immunization.status (closed value set)."""
+
+    COMPLETED = "completed"
+    ENTERED_IN_ERROR = "entered-in-error"
+    NOT_DONE = "not-done"
+
+
 class AllergyCategory(str, enum.Enum):
     FOOD = "FOOD"
     MEDICATION = "MEDICATION"
@@ -242,6 +250,24 @@ class Role(str, enum.Enum):
     ADMIN = "ADMIN"
     MANAGER = "MANAGER"
     USER = "USER"
+
+
+class CatalogScope(str, enum.Enum):
+    """The visibility/ownership tier of a catalog item.
+
+    Drives the ownership-based access model (plan §1):
+
+    - ``SYSTEM``  — canonical reference (shipped seeds / curated). ``tenant_id``
+      is NULL; only SYSTEM_ADMIN may modify.
+    - ``TENANT``  — shared across the tenant. ADMIN/MANAGER of that tenant may
+      modify.
+    - ``USER``    — personal entry by ``created_by``. The creator + ADMIN may
+      modify; visible to the whole tenant (read).
+    """
+
+    SYSTEM = "system"
+    TENANT = "tenant"
+    USER = "user"
 
 
 class OrganizationType(str, enum.Enum):
@@ -293,18 +319,6 @@ class JobStatus(str, enum.Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
-
-
-class AnatomyCategory(str, enum.Enum):
-    SYSTEM = "SYSTEM"
-    REGION = "REGION"
-    ORGAN = "ORGAN"
-    ORGAN_PART = "ORGAN_PART"
-    TISSUE = "TISSUE"
-    CELL = "CELL"
-    SUBSTANCE = "SUBSTANCE"
-    JOINT = "JOINT"
-    OTHER = "OTHER"
 
 
 class AnatomyRelationType(str, enum.Enum):
@@ -419,6 +433,7 @@ class ConceptRelationType(str, enum.Enum):
     PART_OF = "PART_OF"
 
     # --- semantic / medical knowledge ----------------------------------------
+    AFFECTS = "AFFECTS"
     TREATS = "TREATS"
     INDICATES = "INDICATES"
     PREVENTS = "PREVENTS"

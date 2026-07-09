@@ -9,7 +9,7 @@ from app.models.base import (
     VersionedMixin,
     TimestampMixin,
 )
-from app.models.enums import QuantityType, CodingSystem
+from app.models.enums import QuantityType, CodingSystem, CatalogScope
 
 
 class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
@@ -59,6 +59,12 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     reference_range_max = Column(Float, nullable=True)
     is_telemetry = Column(Boolean, nullable=False, default=False)
     meta_data = Column(JSONB, nullable=True)
+    scope = Column(
+        Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=CatalogScope.SYSTEM,
+        index=True,
+    )
     tenant_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -80,28 +86,6 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         return self.class_concept.name if self.class_concept else None
 
 
-class BiomarkerRelationship(Base, UUIDMixin, AuditMixin, TimestampMixin):
-    __tablename__ = "biomarker_relationships"
-
-    source_biomarker_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    target_biomarker_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    relation_type = Column(String(100), nullable=False)
-
-    # Relationships
-    source = relationship("BiomarkerDefinition", foreign_keys=[source_biomarker_id])
-    target = relationship("BiomarkerDefinition", foreign_keys=[target_biomarker_id])
-
-
 class Laboratory(Base, UUIDMixin, AuditMixin, TimestampMixin, TenantMixin):
     __tablename__ = "laboratories"
 
@@ -115,27 +99,8 @@ class Laboratory(Base, UUIDMixin, AuditMixin, TimestampMixin, TenantMixin):
     )
 
 
-class BiomarkerEventCorrelation(Base, UUIDMixin, TimestampMixin):
-    __tablename__ = "biomarker_event_correlations"
-
-    biomarker_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    event_type_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("clinical_event_types.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    correlation_type = Column(
-        String(100), nullable=True
-    )  # e.g., "diagnostic", "monitoring"
-    description = Column(Text, nullable=True)
-
-    # Relationships
-    biomarker = relationship("BiomarkerDefinition", backref="event_correlations")
-    # Using string reference to avoid circular import
-    event_type = relationship("ClinicalEventType", backref="biomarker_correlations")
+# NOTE (Phase 3): ``BiomarkerRelationship`` and ``BiomarkerEventCorrelation``
+# were dropped — their data migrated into the polymorphic ``concept_edges``
+# graph (CORRELATES_WITH for biomarker↔biomarker, MONITORS for
+# biomarker↔clinical_event_type). See ``dev/plans/unified-catalog-
+# architecture-2026-07-08.md`` §3.5.

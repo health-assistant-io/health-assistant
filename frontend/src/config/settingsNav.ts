@@ -11,7 +11,6 @@ import {
   Building2,
   Globe,
   Database,
-  Network,
   Bone,
 } from 'lucide-react';
 
@@ -96,8 +95,7 @@ export const systemSettingsNav: SettingsNavItem[] = [
   { to: '/admin/system/settings', icon: Globe, labelKey: 'settings.nav_general', labelFallback: 'General', end: true },
   { to: '/admin/system/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
   { to: '/admin/system/integrations', icon: Plug, labelKey: 'common.integrations', labelFallback: 'Integrations' },
-  { to: '/admin/system/catalogs', icon: Database, labelKey: 'settings.nav_catalogs', labelFallback: 'Clinical Ontology' },
-  { to: '/admin/system/taxonomy', icon: Network, labelKey: 'settings.nav_taxonomy', labelFallback: 'Taxonomy' },
+  // Catalogs moved to top-level nav (/catalogs, all users) — Phase C.
   { to: '/admin/anatomy-atlas', icon: Bone, labelKey: 'settings.nav_anatomy_atlas', labelFallback: 'Anatomy Atlas' },
 ];
 

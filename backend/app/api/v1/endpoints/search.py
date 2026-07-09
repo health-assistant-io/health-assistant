@@ -9,10 +9,7 @@ from app.models.fhir.patient import Patient
 from app.models.examination_model import ExaminationModel
 from app.models.document_model import DocumentModel
 from app.models.clinical_event import ClinicalEvent
-from app.services.catalog_search_service import (
-    search_medications,
-    search_biomarkers,
-)
+from app.services.catalog_search_service import search_catalogs
 
 router = APIRouter()
 
@@ -25,6 +22,11 @@ async def global_search(
 ):
     """
     Perform a global search across all main entities for the current tenant.
+
+    Patient/examination/document/clinical-event blocks are inline (tenant-scoped
+    ILIKE); the catalog portion (biomarker, medication, allergy, anatomy,
+    concept, …) is delegated to the registry-driven ``search_catalogs``
+    dispatcher so every registered catalog appears automatically.
     """
     tenant_id = current_user.tenant_id
     search_pattern = f"%{q}%"
@@ -135,29 +137,18 @@ async def global_search(
             }
         )
 
-    # 5. Search Medication Catalog (trigram + substring via service)
-    medications = await search_medications(db, tenant_id, q, limit=5)
-
-    for m in medications:
+    # 5. Search all clinical catalogs via the unified dispatcher (trigram,
+    #    tenant-scoped). Replaces the hardcoded medication + biomarker blocks —
+    #    anatomy, concepts, allergies, etc. now appear automatically as they
+    #    register. See app.catalogs + catalog_search_service.search_catalogs.
+    catalog_hits = await search_catalogs(db, tenant_id, q, limit_per_type=5)
+    for hit in catalog_hits:
         results.append(
             {
-                "id": str(m.id),
-                "type": "medication",
-                "title": m.name,
-                "subtitle": "Medication Catalog",
-            }
-        )
-
-    # 6. Search Biomarkers (trigram + substring via service)
-    biomarkers = await search_biomarkers(db, tenant_id, q, limit=5)
-
-    for b in biomarkers:
-        results.append(
-            {
-                "id": str(b.id),
-                "type": "biomarker",
-                "title": b.name,
-                "subtitle": f"Biomarker Catalog • {b.code or b.slug}",
+                "id": hit["id"],
+                "type": hit["type"],
+                "title": hit["label"],
+                "subtitle": f"{hit['type'].title()} Catalog",
             }
         )
 

@@ -81,20 +81,6 @@ class BiomarkerResponse(BiomarkerBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class BiomarkerEventCorrelationBase(BaseModel):
-    biomarker_id: UUID
-    event_type_id: UUID
-    correlation_type: Optional[str] = "monitoring"
-    description: Optional[str] = None
-
-
-class BiomarkerEventCorrelationResponse(BiomarkerEventCorrelationBase):
-    id: UUID
-    biomarker: Optional[BiomarkerResponse] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CatalogMetadata(BaseModel):
     version: str
     source: str

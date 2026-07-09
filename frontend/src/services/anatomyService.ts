@@ -15,6 +15,9 @@ const BASE = '/anatomy';
 
 export interface AnatomyListParams {
   category?: AnatomyCategory;
+  /** Anatomy-class concept slug(s), e.g. ``organ`` or ``organ,organ-part``.
+   * Replaces the legacy uppercase ``category`` (which the backend ignores). */
+  class?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -43,9 +46,10 @@ export interface AnatomyStructurePatch {
 
 export const anatomyService = {
   async list(params: AnatomyListParams = {}): Promise<AnatomyListResponse> {
-    const { category, search, limit = 500, offset = 0 } = params;
+    const { category, class: cls, search, limit = 500, offset = 0 } = params;
     const query: Record<string, unknown> = { limit, offset };
-    if (category) query.category = category;
+    if (cls) query.class = cls;
+    else if (category) query.category = category; // legacy (backend ignores)
     if (search && search.trim()) query.search = search.trim();
     const res = await api.get(BASE, { params: query });
     return res.data;

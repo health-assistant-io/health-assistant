@@ -10,10 +10,17 @@ from app.core.config import settings
 from app.models.biomarker_model import (
     Unit,
     BiomarkerDefinition,
-    BiomarkerEventCorrelation,
 )
 from app.models.clinical_event import ClinicalEventType
-from app.models.enums import QuantityType, CodingSystem
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    QuantityType,
+    CodingSystem,
+    ConceptProvenance,
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+)
 from app.services.concept_service import resolve_biomarker_class_concept
 
 engine = create_async_engine(settings.DATABASE_URL)
@@ -252,20 +259,30 @@ async def seed_data():
 
             for b_slug in corr_data["biomarker_slugs"]:
                 if b_slug in bio_map:
-                    # check if correlation exists
-                    corr_result = await db.execute(
-                        select(BiomarkerEventCorrelation).where(
-                            BiomarkerEventCorrelation.event_type_id == event_type.id,
-                            BiomarkerEventCorrelation.biomarker_id == bio_map[b_slug],
+                    bio_id = bio_map[b_slug]
+                    # Check if a MONITORS edge already exists (idempotent).
+                    edge_result = await db.execute(
+                        select(ConceptEdge).where(
+                            ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                            ConceptEdge.src_id == bio_id,
+                            ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                            ConceptEdge.dst_id == event_type.id,
+                            ConceptEdge.relation == ConceptRelationType.MONITORS,
                         )
                     )
-                    if not corr_result.scalar_one_or_none():
-                        correlation = BiomarkerEventCorrelation(
-                            event_type_id=event_type.id,
-                            biomarker_id=bio_map[b_slug],
-                            correlation_type="monitoring",
+                    if not edge_result.scalar_one_or_none():
+                        edge = ConceptEdge(
+                            src_type=EdgeEndpointType.BIOMARKER,
+                            src_id=bio_id,
+                            dst_type=EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                            dst_id=event_type.id,
+                            relation=ConceptRelationType.MONITORS,
+                            tenant_id=None,
+                            source=ConceptProvenance.SEED,
+                            status=EdgeApprovalStatus.APPROVED,
+                            properties={"correlation_type": "monitoring"},
                         )
-                        db.add(correlation)
+                        db.add(edge)
 
         await db.commit()
         print("Successfully seeded Units, Biomarkers, and Correlations.")

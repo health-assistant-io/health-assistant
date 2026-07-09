@@ -10,11 +10,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, TimestampMixin
-from app.models.enums import AnatomyRelationType, CodingSystem
+from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
+from app.models.enums import AnatomyRelationType, CodingSystem, CatalogScope
 
 
-class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
+class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     __tablename__ = "anatomy_structures"
 
     name = Column(String(100), nullable=False)
@@ -39,6 +39,13 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
     # highlights data-driven instead of from a hardcoded lookup table.
     display = Column(JSONB, nullable=True)
 
+    scope = Column(
+        SQLEnum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=CatalogScope.SYSTEM,
+        index=True,
+    )
+
     # Relationships
     class_concept = relationship(
         "Concept",
@@ -60,6 +67,17 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
 
     __table_args__ = (Index("idx_anatomy_tenant_slug", "tenant_id", "slug"),)
 
+    @property
+    def class_concept_slug(self) -> str | None:
+        """Slug of the anatomy-class concept (e.g. ``organ``), for filtering +
+        display. Reads the eagerly-loaded ``class_concept`` relation."""
+        return self.class_concept.slug if self.class_concept else None
+
+    @property
+    def class_concept_name(self) -> str | None:
+        """Display name of the anatomy-class concept (e.g. ``Organ``)."""
+        return self.class_concept.name if self.class_concept else None
+
     def to_dict(self):
         return {
             "id": str(self.id),
@@ -68,6 +86,8 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "class_concept_id": str(self.class_concept_id)
             if self.class_concept_id
             else None,
+            "class_concept_slug": self.class_concept_slug,
+            "class_concept_name": self.class_concept_name,
             "standard_system": self.standard_system.value
             if self.standard_system
             else None,
@@ -75,7 +95,9 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "description": self.description,
             "is_custom": self.is_custom,
             "display": self.display,
+            "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "created_by": str(self.created_by) if self.created_by else None,
         }
 
 

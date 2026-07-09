@@ -136,6 +136,349 @@
       "dst_slug": "chest",
       "dst_type": "anatomy",
       "relation": "IMAGES"
+    },
+    {
+      "_comment": "Cross-domain biomarker -> anatomy AFFECTS edges (Phase 3). These power the 'which organ does this biomarker affect?' query. Biomarker slugs resolve against biomarker_definitions; anatomy slugs against anatomy_structures; body-system slugs against concepts.",
+      "src_slug": "creatinine",
+      "src_type": "biomarker",
+      "dst_slug": "left-kidney",
+      "dst_type": "anatomy",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "creatinine",
+      "src_type": "biomarker",
+      "dst_slug": "right-kidney",
+      "dst_type": "anatomy",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "tsh",
+      "src_type": "biomarker",
+      "dst_slug": "thyroid",
+      "dst_type": "anatomy",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "glucose-fasting",
+      "src_type": "biomarker",
+      "dst_slug": "pancreas",
+      "dst_type": "anatomy",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "cholesterol-total",
+      "src_type": "biomarker",
+      "dst_slug": "cardiovascular-system",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "cholesterol-ldl",
+      "src_type": "biomarker",
+      "dst_slug": "cardiovascular-system",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "cholesterol-hdl",
+      "src_type": "biomarker",
+      "dst_slug": "cardiovascular-system",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "triglycerides",
+      "src_type": "biomarker",
+      "dst_slug": "cardiovascular-system",
+      "relation": "AFFECTS"
+    },
+    {
+      "src_slug": "glucose-fasting",
+      "src_type": "biomarker",
+      "dst_slug": "endocrine-system",
+      "relation": "INDICATES"
+    },
+    {
+      "src_slug": "tsh",
+      "src_type": "biomarker",
+      "dst_slug": "endocrine-system",
+      "relation": "INDICATES"
+    },
+    {
+      "_comment": "Phase 6 — specialty EXAMINES disease (which diseases a specialty manages). Powers 'find a specialist for this disease'.",
+      "src_slug": "cardiology",
+      "dst_slug": "coronary-artery-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "heart-failure",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "atrial-fibrillation",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "hypertension",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "cardiology",
+      "dst_slug": "stroke",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "type-2-diabetes",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "type-1-diabetes",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "hypothyroidism",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "hyperthyroidism",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "endocrinology",
+      "dst_slug": "metabolic-syndrome",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "asthma",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "chronic-obstructive-pulmonary-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "pneumonia",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "influenza",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "pulmonology",
+      "dst_slug": "covid-19",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "epilepsy",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "migraine",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "alzheimer-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "parkinson-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "neurology",
+      "dst_slug": "stroke",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "gastroesophageal-reflux-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "peptic-ulcer",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "inflammatory-bowel-disease",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "cirrhosis",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "hepatitis-b",
+      "relation": "EXAMINES"
+    },
+    {
+      "src_slug": "gastroenterology",
+      "dst_slug": "hepatitis-c",
+      "relation": "EXAMINES"
+    },
+    {
+      "_comment": "Phase 6 — medication TREATS disease (which disease a drug treats). src_type=medication resolves MedicationCatalog by case-insensitive name. Powers 'what treats this disease?'.",
+      "src_slug": "Metformin",
+      "src_type": "medication",
+      "dst_slug": "type-2-diabetes",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Lisinopril",
+      "src_type": "medication",
+      "dst_slug": "hypertension",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Lisinopril",
+      "src_type": "medication",
+      "dst_slug": "heart-failure",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Atorvastatin",
+      "src_type": "medication",
+      "dst_slug": "hypercholesterolemia",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Atorvastatin",
+      "src_type": "medication",
+      "dst_slug": "coronary-artery-disease",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Aspirin",
+      "src_type": "medication",
+      "dst_slug": "coronary-artery-disease",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Amoxicillin",
+      "src_type": "medication",
+      "dst_slug": "pneumonia",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Levothyroxine",
+      "src_type": "medication",
+      "dst_slug": "hypothyroidism",
+      "relation": "TREATS"
+    },
+    {
+      "src_slug": "Amlodipine",
+      "src_type": "medication",
+      "dst_slug": "hypertension",
+      "relation": "TREATS"
+    },
+    {
+      "_comment": "Phase 6 — medication CONTRAINDICATES disease (when a drug is risky for a disease).",
+      "src_slug": "Aspirin",
+      "src_type": "medication",
+      "dst_slug": "peptic-ulcer",
+      "relation": "CONTRAINDICATES"
+    },
+    {
+      "src_slug": "Metformin",
+      "src_type": "medication",
+      "dst_slug": "chronic-kidney-disease",
+      "relation": "CONTRAINDICATES"
+    },
+    {
+      "src_slug": "Lisinopril",
+      "src_type": "medication",
+      "dst_slug": "chronic-kidney-disease",
+      "relation": "CONTRAINDICATES"
+    },
+    {
+      "_comment": "Phase 6 — vaccine PREVENTS disease (which disease a vaccine prevents). src_type=vaccine resolves VaccineCatalog by slug. Powers 'what does this vaccine prevent?'.",
+      "src_slug": "mmr",
+      "src_type": "vaccine",
+      "dst_slug": "measles",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "mmr",
+      "src_type": "vaccine",
+      "dst_slug": "mumps",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "mmr",
+      "src_type": "vaccine",
+      "dst_slug": "rubella",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "influenza-inactivated",
+      "src_type": "vaccine",
+      "dst_slug": "influenza",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "covid19-mrna",
+      "src_type": "vaccine",
+      "dst_slug": "covid-19",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "tdap",
+      "src_type": "vaccine",
+      "dst_slug": "tetanus",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "tdap",
+      "src_type": "vaccine",
+      "dst_slug": "diphtheria",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "tdap",
+      "src_type": "vaccine",
+      "dst_slug": "pertussis",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "hepatitis-b",
+      "src_type": "vaccine",
+      "dst_slug": "hepatitis-b",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "hpv",
+      "src_type": "vaccine",
+      "dst_slug": "hpv-infection",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "hpv",
+      "src_type": "vaccine",
+      "dst_slug": "cervical-cancer",
+      "relation": "PREVENTS"
+    },
+    {
+      "src_slug": "pneumococcal-conjugate",
+      "src_type": "vaccine",
+      "dst_slug": "pneumococcal-pneumonia",
+      "relation": "PREVENTS"
     }
   ]
 }

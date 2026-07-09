@@ -210,7 +210,60 @@ guesswork). The only sanctioned exceptions are the owned-child join row
 | `documents` | `category_concept_id` |
 | `biomarker_definitions` | `class_concept_id` |
 | `anatomy_structures` | `class_concept_id` |
+| `medication_catalog` | `class_concept_id` |
+| `allergy_catalog` | `class_concept_id` |
+| `vaccine_catalog` | `class_concept_id` |
 | `doctors` | `specialty_concept_id` |
 
 This is pinned by `tests/test_concept_fk_naming_convention.py` (regex check +
 explicit-`foreign_keys` resolution check + live-DB drift diff).
+
+## Cross-Domain Edges & Traversal
+
+`concept_edges` is the **single** cross-domain link system — not just
+concept↔concept, but any entity↔any entity. The `EdgeEndpointType` enum (11
+values: `concept`, `anatomy`, `biomarker`, `medication`, `allergy`,
+`clinical_event_type`, `immunization`, `examination`, `doctor`, `observation`,
+`document`) tags which table each UUID endpoint references. The
+`ConceptRelationType` enum (19 values) carries the semantic:
+
+| Relation | Example | Seeded in |
+|----------|---------|-----------|
+| `EXAMINES` | cardiology → heart (anatomy) | `concept_edges.json` |
+| `IMAGES` | imaging-radiology → chest | `concept_edges.json` |
+| `MEMBER_OF` | LDL → lipid-panel (concept) | `biomarker_panels.json` |
+| `AFFECTS` | creatinine → left-kidney (anatomy) | `concept_edges.json` |
+| `INDICATES` | glucose-fasting → endocrine-system | `concept_edges.json` |
+| `MONITORS` | biomarker ↔ clinical_event_type | runtime (CRUD endpoint) |
+| `TREATS` | medication → disease (Phase 6) | planned |
+| `PREVENTS` | vaccine → disease (Phase 6) | planned |
+
+### Endpoint resolver (`concept_endpoint_resolver.py`)
+
+A registry of per-type resolver functions turns a bag of `(type, id)` pairs
+into uniform display payloads `{type, id, label, icon, color, kind}` — so the
+graph UI and recommendation engine don't each need to know every entity table.
+**7 of 11** endpoint types have dedicated resolvers (concept, anatomy,
+biomarker, examination, medication, allergy, clinical_event_type,
+immunization); the rest fall back to a `"{type}:{id-prefix}"` label.
+
+### Graph traversal (`catalog_graph_service.traverse()`)
+
+`GET /catalogs/{type}/{id}/relations?depth=1-3&relation=&include_proposed=`
+runs a **recursive CTE** over `concept_edges` — depth-bounded (1–5),
+cycle-safe (edge-id `path` array), tenant-scoped, with optional
+relation-whitelist and proposed-edge filter. Returns `{start, nodes, edges}`
+with all endpoints resolved to display payloads. This powers the headline
+cross-catalog query: "which organ does this biomarker affect? → what diseases
+affect that organ? → what treats them?"
+
+### Retired legacy link tables
+
+The `biomarker_relationships` (biomarker↔biomarker) and
+`biomarker_event_correlations` (biomarker↔clinical_event_type) tables were
+dropped in Phase 3 (migration `c4d5e6f7a8b9`). Their semantics now live in
+`concept_edges`: biomarker↔biomarker → `CORRELATES_WITH`; biomarker↔event-type
+→ `MONITORS` (with `correlation_type`/`description` on the edge's `properties`
+JSONB). The CRUD endpoints (`POST/GET/DELETE /clinical-events/types/{id}/
+biomarkers`) and the `ClinicalEventEngine` recommended-biomarker insight were
+rewritten to query `concept_edges`.

@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 import logging
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
 from app.core.database import AsyncSessionLocal
 from app.services.fhir_helpers import assert_valid_fhir
@@ -55,7 +55,7 @@ async def list_allergy_catalog(
     if tenant_id is None:
         # No tenant context: fall back to a plain unranked listing of globals.
         async with AsyncSessionLocal() as db:
-            query = select(AllergyCatalog).where(AllergyCatalog.tenant_id == None)
+            query = select(AllergyCatalog).where(AllergyCatalog.tenant_id.is_(None))
             if search:
                 query = query.where(AllergyCatalog.name.ilike(f"%{search}%"))
             result = await db.execute(query.order_by(AllergyCatalog.name.asc()))
@@ -95,16 +95,107 @@ async def get_active_allergies_by_tenant(tenant_id: UUID) -> List[Dict[str, Any]
 
 
 async def add_to_catalog(
-    name: str, category: str, tenant_id: UUID, description: Optional[str] = None
+    name: str,
+    category: str,
+    actor,
+    description: Optional[str] = None,
 ) -> AllergyCatalog:
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
     async with AsyncSessionLocal() as db:
-        new_entry = AllergyCatalog(
-            name=name, category=category, description=description, tenant_id=tenant_id
+        new_entry = AllergyCatalog(name=name, category=category, description=description)
+        DEFAULT_CATALOG_POLICY.assign_create_scope(
+            actor.role, new_entry, actor.tenant_id, actor.user_id
         )
         db.add(new_entry)
         await db.commit()
         await db.refresh(new_entry)
         return new_entry
+
+
+async def get_catalog_allergy(
+    catalog_id: UUID, tenant_id: UUID
+) -> Optional[AllergyCatalog]:
+    """Fetch one allergy catalog entry, tenant-scoped (global + caller's tenant)."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AllergyCatalog).where(
+                AllergyCatalog.id == catalog_id,
+                or_(
+                    AllergyCatalog.tenant_id.is_(None),
+                    AllergyCatalog.tenant_id == tenant_id,
+                ),
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+async def update_catalog_allergy(
+    catalog_id: UUID, actor, data: Dict[str, Any]
+) -> Optional[AllergyCatalog]:
+    """Update an allergy catalog entry with scope+ownership RBAC.
+
+    USER-scope: creator OR ADMIN; tenant-scope: ADMIN/MANAGER; system-scope:
+    SYSTEM_ADMIN. Raises :class:`CatalogPermissionDenied` (→ HTTP 403).
+    """
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AllergyCatalog).where(
+                AllergyCatalog.id == catalog_id,
+                or_(
+                    AllergyCatalog.tenant_id.is_(None),
+                    AllergyCatalog.tenant_id == actor.tenant_id,
+                ),
+            )
+        )
+        entry = result.scalar_one_or_none()
+        if entry is None:
+            return None
+
+        DEFAULT_CATALOG_POLICY.check_modify(
+            actor.role,
+            entry.scope,
+            item_created_by=entry.created_by,
+            actor_user_id=actor.user_id,
+        )
+
+        for key, value in data.items():
+            if hasattr(entry, key) and key != "id":
+                setattr(entry, key, value)
+        await db.commit()
+        await db.refresh(entry)
+        return entry
+
+
+async def delete_catalog_allergy(catalog_id: UUID, actor) -> bool:
+    """Delete an allergy catalog entry with scope+ownership RBAC."""
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AllergyCatalog).where(
+                AllergyCatalog.id == catalog_id,
+                or_(
+                    AllergyCatalog.tenant_id.is_(None),
+                    AllergyCatalog.tenant_id == actor.tenant_id,
+                ),
+            )
+        )
+        entry = result.scalar_one_or_none()
+        if entry is None:
+            return False
+
+        DEFAULT_CATALOG_POLICY.check_modify(
+            actor.role,
+            entry.scope,
+            item_created_by=entry.created_by,
+            actor_user_id=actor.user_id,
+        )
+        await db.delete(entry)
+        await db.commit()
+        return True
 
 
 async def get_patient_allergies(

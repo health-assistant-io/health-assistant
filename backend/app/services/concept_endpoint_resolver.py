@@ -26,9 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
-from app.models.concept_model import Concept, ConceptKindTag
+from app.models.clinical_event import ClinicalEventType
+from app.models.concept_model import Concept
 from app.models.enums import EdgeEndpointType
 from app.models.examination_model import ExaminationModel
+from app.models.fhir.allergy import AllergyCatalog
+from app.models.fhir.medication import MedicationCatalog
+from app.models.fhir.vaccine import VaccineCatalog
 
 
 def _payload(
@@ -54,10 +58,14 @@ async def _resolve_concepts(
 ) -> Dict[UUID, Dict[str, Any]]:
     out: Dict[UUID, Dict[str, Any]] = {}
     rows = (
-        await db.execute(
-            select(Concept).where(Concept.id.in_(ids), Concept.deleted_at.is_(None))
+        (
+            await db.execute(
+                select(Concept).where(Concept.id.in_(ids), Concept.deleted_at.is_(None))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for c in rows:
         out[c.id] = _payload(
             EdgeEndpointType.CONCEPT,
@@ -77,15 +85,19 @@ async def _resolve_anatomy(
     ``class_concept`` (the anatomy_class concept, e.g. "organ")."""
     out: Dict[UUID, Dict[str, Any]] = {}
     rows = (
-        await db.execute(select(AnatomyStructure).where(AnatomyStructure.id.in_(ids)))
-    ).scalars().all()
+        (await db.execute(select(AnatomyStructure).where(AnatomyStructure.id.in_(ids))))
+        .scalars()
+        .all()
+    )
     # Bulk-load any class concepts in one round-trip.
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
     class_map: Dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))
-        ).scalars().all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
         cls = class_map.get(r.class_concept_id) if r.class_concept_id else None
@@ -105,14 +117,22 @@ async def _resolve_biomarkers(
 ) -> Dict[UUID, Dict[str, Any]]:
     out: Dict[UUID, Dict[str, Any]] = {}
     rows = (
-        await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(ids)))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
     class_map: Dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))
-        ).scalars().all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
         cls = class_map.get(r.class_concept_id) if r.class_concept_id else None
@@ -131,15 +151,19 @@ async def _resolve_examinations(
 ) -> Dict[UUID, Dict[str, Any]]:
     out: Dict[UUID, Dict[str, Any]] = {}
     rows = (
-        await db.execute(select(ExaminationModel).where(ExaminationModel.id.in_(ids)))
-    ).scalars().all()
+        (await db.execute(select(ExaminationModel).where(ExaminationModel.id.in_(ids))))
+        .scalars()
+        .all()
+    )
     # Resolve each examination's category concept for a richer label.
     cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
     cat_map: Dict[UUID, Concept] = {}
     if cat_ids:
         cat_rows = (
-            await db.execute(select(Concept).where(Concept.id.in_(cat_ids)))
-        ).scalars().all()
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
+            .scalars()
+            .all()
+        )
         cat_map = {c.id: c for c in cat_rows}
     for r in rows:
         cat = cat_map.get(r.category_concept_id) if r.category_concept_id else None
@@ -155,12 +179,153 @@ async def _resolve_examinations(
     return out
 
 
+async def _resolve_medications(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve medication_catalog rows; pull display color/kind from the row's
+    ``class_concept`` (the drug-class concept, e.g. an ATC class)."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (
+            await db.execute(
+                select(MedicationCatalog).where(MedicationCatalog.id.in_(ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
+    class_map: Dict[UUID, Concept] = {}
+    if concept_ids:
+        class_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
+        class_map = {c.id: c for c in class_rows}
+    for r in rows:
+        cls = class_map.get(r.class_concept_id) if r.class_concept_id else None
+        out[r.id] = _payload(
+            EdgeEndpointType.MEDICATION,
+            r.id,
+            r.name,
+            color=cls.color if cls else None,
+            kind=cls.name if cls else None,
+        )
+    return out
+
+
+async def _resolve_allergies(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve allergy_catalog rows; pull display color/kind from the row's
+    ``class_concept`` (the allergen-class concept)."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (await db.execute(select(AllergyCatalog).where(AllergyCatalog.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
+    class_map: Dict[UUID, Concept] = {}
+    if concept_ids:
+        class_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
+        class_map = {c.id: c for c in class_rows}
+    for r in rows:
+        cls = class_map.get(r.class_concept_id) if r.class_concept_id else None
+        out[r.id] = _payload(
+            EdgeEndpointType.ALLERGY,
+            r.id,
+            r.name,
+            color=cls.color if cls else None,
+            kind=cls.name if cls else None,
+        )
+    return out
+
+
+async def _resolve_clinical_event_types(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve clinical_event_types (journey blueprints); pull display
+    icon/color/kind from the row's ``category_concept``."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (
+            await db.execute(
+                select(ClinicalEventType).where(ClinicalEventType.id.in_(ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
+    cat_map: Dict[UUID, Concept] = {}
+    if cat_ids:
+        cat_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
+            .scalars()
+            .all()
+        )
+        cat_map = {c.id: c for c in cat_rows}
+    for r in rows:
+        cat = cat_map.get(r.category_concept_id) if r.category_concept_id else None
+        out[r.id] = _payload(
+            EdgeEndpointType.CLINICAL_EVENT_TYPE,
+            r.id,
+            r.name,
+            icon=cat.icon if cat else None,
+            color=cat.color if cat else None,
+            kind=cat.name if cat else None,
+        )
+    return out
+
+
+async def _resolve_vaccines(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve vaccine_catalog rows; pull display color/kind from the row's
+    ``class_concept`` (the vaccine-class concept). Phase 5."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (await db.execute(select(VaccineCatalog).where(VaccineCatalog.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
+    class_map: Dict[UUID, Concept] = {}
+    if concept_ids:
+        class_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
+        class_map = {c.id: c for c in class_rows}
+    for r in rows:
+        cls = class_map.get(r.class_concept_id) if r.class_concept_id else None
+        out[r.id] = _payload(
+            EdgeEndpointType.IMMUNIZATION,
+            r.id,
+            r.name,
+            color=cls.color if cls else None,
+            kind=cls.name if cls else None,
+        )
+    return out
+
+
 # Registry — add a new endpoint type by appending one entry.
 _RESOLVERS = {
     EdgeEndpointType.CONCEPT: _resolve_concepts,
     EdgeEndpointType.ANATOMY: _resolve_anatomy,
     EdgeEndpointType.BIOMARKER: _resolve_biomarkers,
     EdgeEndpointType.EXAMINATION: _resolve_examinations,
+    EdgeEndpointType.MEDICATION: _resolve_medications,
+    EdgeEndpointType.ALLERGY: _resolve_allergies,
+    EdgeEndpointType.CLINICAL_EVENT_TYPE: _resolve_clinical_event_types,
+    EdgeEndpointType.IMMUNIZATION: _resolve_vaccines,
 }
 
 

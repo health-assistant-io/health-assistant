@@ -11,11 +11,16 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.biomarker_model import (
     BiomarkerDefinition,
-    BiomarkerEventCorrelation,
     Unit,
 )
 from app.models.clinical_event import ClinicalEventType
-from app.models.enums import ClinicalEventStatus
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    ClinicalEventStatus,
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+)
 from app.schemas.biomarker import BiomarkerResponse
 from app.schemas.clinical_event import (
     BiomarkerCorrelationCreate,
@@ -66,34 +71,48 @@ async def get_correlated_biomarkers(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all biomarkers correlated with this clinical event type."""
-    stmt = (
-        select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
-        .join(
-            BiomarkerEventCorrelation,
-            BiomarkerEventCorrelation.biomarker_id == BiomarkerDefinition.id,
+    """Get all biomarkers correlated with this clinical event type.
+
+    Resolved from the concept_edges graph (biomarker MONITORS clinical_event_type)
+    — replaces the legacy BiomarkerEventCorrelation table (Phase 3).
+    """
+    edge_rows = (
+        await db.execute(
+            select(ConceptEdge.src_id).where(
+                ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                ConceptEdge.dst_id == type_id,
+                ConceptEdge.relation == ConceptRelationType.MONITORS,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
         )
-        .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
-        .where(BiomarkerEventCorrelation.event_type_id == type_id)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
+    ).scalars().all()
 
     response = []
-    for bio, symbol in rows:
-        bio_dict = {
-            "id": bio.id,
-            "slug": bio.slug,
-            "name": bio.name,
-            "category": bio.category,
-            "aliases": bio.aliases,
-            "preferred_unit_id": bio.preferred_unit_id,
-            "info": bio.info,
-            "reference_range_min": bio.reference_range_min,
-            "reference_range_max": bio.reference_range_max,
-            "preferred_unit_symbol": symbol,
-        }
-        response.append(bio_dict)
+    if edge_rows:
+        bio_rows = (
+            await db.execute(
+                select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
+                .outerjoin(
+                    Unit, BiomarkerDefinition.preferred_unit_id == Unit.id
+                )
+                .where(BiomarkerDefinition.id.in_(edge_rows))
+            )
+        ).all()
+        for bio, symbol in bio_rows:
+            bio_dict = {
+                "id": bio.id,
+                "slug": bio.slug,
+                "name": bio.name,
+                "category": bio.category,
+                "aliases": bio.aliases,
+                "preferred_unit_id": bio.preferred_unit_id,
+                "info": bio.info,
+                "reference_range_min": bio.reference_range_min,
+                "reference_range_max": bio.reference_range_max,
+                "preferred_unit_symbol": symbol,
+            }
+            response.append(bio_dict)
 
     return response
 

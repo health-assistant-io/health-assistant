@@ -415,7 +415,7 @@ function BiomarkerTrends() {
             <div className="w-px h-6 bg-gray-200 dark:bg-dark-border mx-2" />
             
             <button
-              onClick={() => navigate('/biomarkers/catalog')}
+              onClick={() => navigate('/catalogs?type=biomarker')}
               className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95"
             >
               <ListTree className="w-5 h-5" />

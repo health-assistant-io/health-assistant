@@ -34,7 +34,7 @@ async def get_catalog_medication(
     query = select(MedicationCatalog).where(
         MedicationCatalog.id == catalog_id,
         or_(
-            MedicationCatalog.tenant_id == None,
+            MedicationCatalog.tenant_id.is_(None),
             MedicationCatalog.tenant_id == tenant_id,
         ),
     )
@@ -43,9 +43,14 @@ async def get_catalog_medication(
 
 
 async def create_catalog_medication(
-    db: AsyncSession, tenant_id: UUID, data: MedicationCatalogCreate
+    db: AsyncSession, actor, data: MedicationCatalogCreate
 ) -> MedicationCatalog:
-    new_entry = MedicationCatalog(tenant_id=tenant_id, **data.model_dump())
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    new_entry = MedicationCatalog(**data.model_dump())
+    DEFAULT_CATALOG_POLICY.assign_create_scope(
+        actor.role, new_entry, actor.tenant_id, actor.user_id
+    )
     # FHIR validation gate (audit: write-time gate coverage). Catches invalid
     # Medication shapes before persisting; raises FhirSerializationError →
     # mapped to HTTP 400 by the global handler.
@@ -59,14 +64,16 @@ async def create_catalog_medication(
 async def update_catalog_medication(
     db: AsyncSession,
     catalog_id: UUID,
-    tenant_id: UUID,
+    actor,
     data: MedicationCatalogUpdate,
 ) -> Optional[MedicationCatalog]:
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
     query = select(MedicationCatalog).where(
         MedicationCatalog.id == catalog_id,
         or_(
-            MedicationCatalog.tenant_id == None,
-            MedicationCatalog.tenant_id == tenant_id,
+            MedicationCatalog.tenant_id.is_(None),
+            MedicationCatalog.tenant_id == actor.tenant_id,
         ),
     )
     result = await db.execute(query)
@@ -75,11 +82,14 @@ async def update_catalog_medication(
     if not med:
         return None
 
-    # If it's a system medication (tenant_id is None),
-    # we might want to prevent editing or only allow superusers.
-    # For now, let's allow it if it belongs to the tenant or is system-wide.
-    # Note: If tenant edits a system med, it should ideally create a custom version,
-    # but here we'll just update it directly for simplicity.
+    # RBAC: scope + ownership (creator OR ADMIN for user-scope; ADMIN/MANAGER
+    # for tenant; SYSTEM_ADMIN for system).
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        med.scope,
+        item_created_by=med.created_by,
+        actor_user_id=actor.user_id,
+    )
 
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -92,6 +102,44 @@ async def update_catalog_medication(
     await db.commit()
     await db.refresh(med)
     return med
+
+
+async def delete_catalog_medication(
+    db: AsyncSession,
+    catalog_id: UUID,
+    actor,
+) -> bool:
+    """Delete a medication catalog entry with scope+ownership RBAC.
+
+    Raises :class:`CatalogPermissionDenied` (mapped to HTTP 403) on
+    insufficient role. Returns ``False`` if the entry is missing or out of
+    scope.
+    """
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    query = select(MedicationCatalog).where(
+        MedicationCatalog.id == catalog_id,
+        or_(
+            MedicationCatalog.tenant_id.is_(None),
+            MedicationCatalog.tenant_id == actor.tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    med = result.scalar_one_or_none()
+
+    if not med:
+        return False
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        med.scope,
+        item_created_by=med.created_by,
+        actor_user_id=actor.user_id,
+    )
+
+    await db.delete(med)
+    await db.commit()
+    return True
 
 
 async def get_patient_medications(
@@ -278,7 +326,7 @@ async def reprocess_medication(
     query = select(MedicationCatalog).where(
         MedicationCatalog.id == catalog_id,
         or_(
-            MedicationCatalog.tenant_id == None,
+            MedicationCatalog.tenant_id.is_(None),
             MedicationCatalog.tenant_id == tenant_id,
         ),
     )

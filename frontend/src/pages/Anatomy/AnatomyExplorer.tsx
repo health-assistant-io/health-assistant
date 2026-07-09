@@ -8,7 +8,7 @@ import type {
   AnatomyRelatedResponse,
   AnatomyCategory,
 } from '../../types/anatomy';
-import { CATEGORY_COLORS } from '../../types/anatomy';
+import { CATEGORY_COLORS, CLASS_COLOR } from '../../types/anatomy';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { PageContainer } from '../../components/ui/PageContainer';
@@ -72,7 +72,7 @@ export const AnatomyExplorer: React.FC = () => {
     let mounted = true;
     setIsLoadingOverview(true);
     Promise.all([
-      anatomyService.list({ category: 'SYSTEM', limit: 100 }),
+      anatomyService.list({ class: 'system', limit: 100 }),
       anatomyService.list({ limit: 1 }),
     ])
       .then(([sysRes, anyRes]) => {
@@ -422,14 +422,14 @@ const LandingOverview: React.FC<LandingOverviewProps> = ({
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ background: CATEGORY_COLORS.SYSTEM }}
+                  style={{ background: CLASS_COLOR(sys.class_concept_slug) }}
                 />
                 <span className="font-medium text-gray-700 dark:text-dark-text truncate">
                   {sys.name}
                 </span>
               </div>
               <span className="text-[9px] text-gray-400 uppercase tracking-tight flex-shrink-0">
-                {t(`anatomy.categories.${sys.category}`)}
+                {sys.class_concept_name ?? sys.category}
               </span>
             </button>
           ))}

@@ -121,6 +121,9 @@ RESOURCE_PARAMS: Dict[str, frozenset] = {
         }
     ),
     "Organization": frozenset({"identifier", "name", "active", "type", "partof"}),
+    "Immunization": frozenset(
+        {"patient", "subject", "status", "date", "vaccine-code", "lot-number"}
+    ),
     "Practitioner": frozenset({"identifier", "name", "family", "given", "active"}),
     "Provenance": frozenset({"target", "agent", "recorded", "activity"}),
 }
@@ -228,6 +231,11 @@ SORT_COLUMNS: Dict[str, Dict[str, Any]] = {
     },
     "Communication": {"_id": "id", "_lastUpdated": "updated_at", "sent": "sent"},
     "Organization": {"_id": "id", "_lastUpdated": "updated_at", "name": "name"},
+    "Immunization": {
+        "_id": "id",
+        "_lastUpdated": "updated_at",
+        "date": "administered_at",
+    },
     "Practitioner": {"_id": "id", "_lastUpdated": "updated_at", "name": "name"},
     "Provenance": {"_id": "id", "_lastUpdated": "updated_at", "recorded": "recorded"},
 }

@@ -14,10 +14,15 @@ from app.core.config import settings
 # Tables that carry tenant_id but legitimately lack an FK.
 # - telemetry_data: TimescaleDB hypertable; FKs not supported.
 # - telemetry_daily, telemetry_hourly: materialized views over telemetry_data.
+# - catalog_audit_log: append-only audit trail. ``tenant_id`` is a denormalized
+#   actor-context field (alongside ``user_id`` / ``user_email``) and is
+#   deliberately FK-less so the trail SURVIVES tenant/user deletion — which is
+#   the entire reason those fields are denormalized.
 TABLES_WITHOUT_FK = {
     "telemetry_data",
     "telemetry_daily",
     "telemetry_hourly",
+    "catalog_audit_log",
 }
 
 

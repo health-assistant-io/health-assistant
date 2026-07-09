@@ -2,14 +2,14 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FileText,
-  Pill,
   X,
   Sparkles,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   User,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -72,6 +72,14 @@ function Sidebar() {
       // The patient list — exact match only (so it doesn't shadow the detail page)
       return path === '/patients';
     }
+    // Query-string sub-items (e.g. /catalogs?type=biomarker): match on pathname
+    // + the `type` search param so the right catalog type highlights.
+    if (subItem.path.includes('?')) {
+      const [base, query] = subItem.path.split('?');
+      const expected = new URLSearchParams(query).get('type');
+      const actual = new URLSearchParams(location.search).get('type');
+      return path === base && (!expected || actual === expected);
+    }
     return path === subItem.path || path.startsWith(subItem.path + '/');
   };
 
@@ -122,8 +130,10 @@ function Sidebar() {
       icon: User,
       subItems: [
         { path: '/patient-info', labelKey: 'common.patient_overview', dynamicPath: 'patient-detail' },
-        { path: '/analytics/trends', labelKey: 'common.biomarker_trends' },
+        { path: '/analytics/trends', labelKey: 'common.biomarkers' },
         { path: '/analytics/correlative', labelKey: 'common.correlative_analytics' },
+        { path: '/medications', labelKey: 'common.medications' },
+        { path: '/vaccinations', labelKey: 'common.vaccinations' },
         { path: '/alerts', labelKey: 'common.allergy_alerts' },
         { path: '/notifications', labelKey: 'common.notifications' },
         { path: '/events', labelKey: 'events.title' },
@@ -139,12 +149,24 @@ function Sidebar() {
       subItems: [
         { path: '/examinations', labelKey: 'common.examinations' },
         { path: '/documents', labelKey: 'common.documents_explorer' },
-        { path: '/anatomy', labelKey: 'common.anatomy_explorer' },
       ],
     },
 
-    // 4. Medications
-    { path: '/medications', labelKey: 'common.medications', icon: Pill },
+    // 4. Catalogs (reference catalogs — all users). Unified workspace at
+    //    /catalogs?type=... (Phase C). The parent /catalogs is a real route now.
+    {
+      path: '/catalogs',
+      labelKey: 'common.catalogs',
+      icon: BookOpen,
+      subItems: [
+        { path: '/catalogs?type=biomarker', labelKey: 'common.biomarkers' },
+        { path: '/catalogs?type=medication', labelKey: 'common.medications' },
+        { path: '/catalogs?type=vaccine', labelKey: 'common.vaccines' },
+        { path: '/catalogs?type=allergy', labelKey: 'common.allergies' },
+        { path: '/catalogs?type=anatomy', labelKey: 'common.anatomy' },
+        { path: '/catalogs?type=concept', labelKey: 'common.concepts' },
+      ],
+    },
 
     // 5. AI Assistant
     { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
@@ -213,7 +235,7 @@ function Sidebar() {
     <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative`}
+      className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative isolate`}
     >
       <div className={`p-6 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} mt-2 mb-4`}>
         <Link to="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
@@ -239,7 +261,7 @@ function Sidebar() {
         onClick={toggleSidebarCollapse}
         title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-[960] w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-50 w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       >
         {sidebarCollapsed ? (
           <ChevronRight className="w-4 h-4" />

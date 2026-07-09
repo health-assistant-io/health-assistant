@@ -30,6 +30,7 @@ from app.models.enums import (
     EdgeApprovalStatus,
     EdgeEndpointType,
     ConceptRelationType,
+    CatalogScope,
 )
 
 
@@ -102,6 +103,12 @@ class Concept(
     )
     display_order = Column(Integer, nullable=False, default=0)
     meta_data = Column(JSONB, nullable=True)
+    scope = Column(
+        SQLEnum(CatalogScope, values_callable=_enum_values),
+        nullable=False,
+        default=CatalogScope.SYSTEM,
+        index=True,
+    )
 
     parent = relationship(
         "Concept",
@@ -158,6 +165,7 @@ class Concept(
             "status": self.status.value,
             "display_order": self.display_order,
             "meta_data": self.meta_data,
+            "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "version": self.version,
             "created_at": self.created_at.isoformat() if self.created_at else None,

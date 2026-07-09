@@ -8,7 +8,9 @@ class MockUser:
     def __init__(self):
         self.id = "65daba01-2bcb-4b46-9f2f-de9352c209d6"
         self.user_id = self.id
-        self.role = "user"
+        # Catalog writes require ADMIN/MANAGER+ (Phase 1 RBAC normalization);
+        # the mock exercises the create path, so it carries an ADMIN role.
+        self.role = "ADMIN"
         self.tenant_id = str(uuid.uuid4())
 
     def get(self, key, default=None):

@@ -140,13 +140,17 @@ async def test_medication_catalog_create_invokes_validation_gate():
 
     db = AsyncMock(spec=AsyncSession)
     payload = MedicationCatalogCreate(name="Ibuprofen")
+    actor = MagicMock()
+    actor.role = "ADMIN"
+    actor.tenant_id = "00000000-0000-0000-0000-000000000000"
+    actor.user_id = "00000000-0000-0000-0000-000000000001"
 
     with patch("app.services.medication_service.assert_valid_fhir") as mock_gate:
         mock_gate.side_effect = FhirSerializationError("invalid Medication")
         with pytest.raises(FhirSerializationError):
             await medication_service.create_catalog_medication(
                 db=db,
-                tenant_id="00000000-0000-0000-0000-000000000000",
+                actor=actor,
                 data=payload,
             )
         mock_gate.assert_called_once()
@@ -160,7 +164,13 @@ async def test_medication_catalog_update_invokes_validation_gate():
 
     db = AsyncMock(spec=AsyncSession)
     existing = MagicMock()
+    existing.scope = "tenant"
+    existing.created_by = None
     payload = MedicationCatalogUpdate(name="Renamed")
+    actor = MagicMock()
+    actor.role = "ADMIN"
+    actor.tenant_id = "00000000-0000-0000-0000-000000000000"
+    actor.user_id = "00000000-0000-0000-0000-000000000001"
 
     # Patch the SELECT inside update_catalog_medication by making execute
     # return a result whose scalar_one_or_none yields the existing row.
@@ -174,7 +184,7 @@ async def test_medication_catalog_update_invokes_validation_gate():
             await medication_service.update_catalog_medication(
                 db=db,
                 catalog_id="00000000-0000-0000-0000-000000000002",
-                tenant_id="00000000-0000-0000-0000-000000000000",
+                actor=actor,
                 data=payload,
             )
         mock_gate.assert_called_once()

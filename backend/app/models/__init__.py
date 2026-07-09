@@ -34,9 +34,7 @@ from .patient_layout import PatientLayoutModel
 from .biomarker_model import (
     Unit,
     BiomarkerDefinition,
-    BiomarkerRelationship,
     Laboratory,
-    BiomarkerEventCorrelation,
 )
 from .fhir import (
     Patient,
@@ -48,7 +46,10 @@ from .fhir import (
     AllergyCategory,
     AllergyCriticality,
     AllergyClinicalStatus,
+    VaccineCatalog,
+    PatientImmunization,
 )
+from app.models.enums import ImmunizationStatus
 from .fhir.provenance import ProvenanceModel
 from .fhir.device import DeviceModel
 from .fhir.communication import CommunicationModel
@@ -69,6 +70,7 @@ from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
 from .export_import_job import ExportJobModel, ImportJobModel
+from .catalog_audit_model import CatalogAuditLog
 
 __all__ = [
     "Base",
@@ -83,6 +85,7 @@ __all__ = [
     "ExaminationModel",
     "DoctorModel",
     "OrganizationModel",
+    "examination_doctors",
     "organization_doctors",
     "TelemetryDataModel",
     "AuditLog",
@@ -97,12 +100,14 @@ __all__ = [
     "AllergyCategory",
     "AllergyCriticality",
     "AllergyClinicalStatus",
+    "VaccineCatalog",
+    "PatientImmunization",
+    "ImmunizationStatus",
     "ProvenanceModel",
     "DeviceModel",
     "CommunicationModel",
     "Unit",
     "BiomarkerDefinition",
-    "BiomarkerRelationship",
     "Laboratory",
     "AIProviderModel",
     "AIModel",
@@ -122,7 +127,6 @@ __all__ = [
     "Concept",
     "ConceptEdge",
     "ConceptKindTag",
-    "BiomarkerEventCorrelation",
     "NotificationTrigger",
     "Notification",
     "NotificationRecipient",
@@ -145,4 +149,5 @@ __all__ = [
     "SystemSetting",
     "ExportJobModel",
     "ImportJobModel",
+    "CatalogAuditLog",
 ]

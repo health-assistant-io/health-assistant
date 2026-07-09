@@ -41,12 +41,23 @@ Required fields are marked **(req)**. `?` = optional.
 
 ### `concept_edges.json` — polymorphic knowledge-graph edges
 - `src_slug` **(req)**, `src_type`? (default `concept`;
-  `concept` | `anatomy` | `biomarker`)
+  `concept` | `anatomy` | `biomarker` | `medication` | `vaccine`)
 - `dst_slug` **(req)**, `dst_type`? (default `concept`)
+  - `medication` resolves `MedicationCatalog` by case-insensitive **name** (no slug column)
+  - `vaccine` resolves `VaccineCatalog` by **slug**
 - `relation` **(req)** — a `ConceptRelationType`: `MEMBER_OF`, `HAS_SPECIALTY`,
   `CLASSIFIED_AS`, `EXAMINES`, `IMAGES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`,
-  `PART_OF`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`,
+  `PART_OF`, `AFFECTS`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`,
   `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`
+
+### `diseases.json` — disease reference concepts (`kind=disease`)
+Same item shape as `concepts.json` (it's loaded by the same `_process_concepts`
+upsert logic). Diseases ship in a separate file so the curated ICD-10 reference
+is independently maintainable. Must run AFTER `seed_concepts` and BEFORE
+`seed_concept_edges` (so specialty/medication/vaccine → disease edges resolve).
+- `slug` **(req)**, `name` **(req)**, `kinds` **(req)** (`["disease"]`)
+- `coding_system`? (`icd10`), `code`? (ICD-10 code, e.g. `E11.9`),
+  `aliases`? (list), `description`?, `icon`?, `color`?
 
 ### `anatomy_structures.json` — body-part nodes
 - `slug` **(req)**, `name` **(req)**

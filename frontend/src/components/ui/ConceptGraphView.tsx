@@ -92,7 +92,10 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
   hiddenKinds = [],
   onSelectNode,
   onFocusNode,
-  className = '',
+  // Default 'h-full' so the graph fills a height-defined parent (callers MUST
+  // give the parent a height — React Flow needs explicit dimensions). A caller
+  // can pass its own height class (e.g. 'h-[500px]') without conflicting.
+  className = 'h-full',
 }) => {
   const hiddenSet = useMemo(() => new Set(hiddenKinds), [hiddenKinds]);
 
@@ -296,14 +299,14 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
 
   if (nodes.length === 0) {
     return (
-      <div className={`w-full h-full flex items-center justify-center ${className}`}>
+      <div className={`w-full flex items-center justify-center ${className}`}>
         <p className="text-sm text-gray-400">No concepts to visualize.</p>
       </div>
     );
   }
 
   return (
-    <div className={`w-full h-full ${className}`} ref={wrapperRef}>
+    <div className={`w-full ${className}`} ref={wrapperRef}>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}

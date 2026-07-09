@@ -12,11 +12,13 @@ from app.api.v1.endpoints.utils import check_patient_access, check_allergy_acces
 from app.schemas.allergy import (
     AllergyCatalogCreate,
     AllergyCatalogResponse,
+    AllergyCatalogUpdate,
     AllergyIntoleranceCreate,
     AllergyIntoleranceUpdate,
     AllergyIntoleranceResponse,
 )
 from app.services import allergy_service
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
 router = APIRouter(prefix="/allergies", tags=["allergies"])
 
@@ -28,6 +30,20 @@ async def list_catalog(
 ):
     """Search the global and local allergy catalog"""
     return await allergy_service.list_allergy_catalog(search, current_user.tenant_id)
+
+
+@router.get("/catalog/{catalog_id}", response_model=AllergyCatalogResponse)
+async def get_catalog_entry(
+    catalog_id: UUID,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Fetch one allergy catalog entry by id (tenant-scoped)."""
+    entry = await allergy_service.get_catalog_allergy(
+        catalog_id, current_user.tenant_id
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
+    return entry
 
 
 @router.get("/active", response_model=List[AllergyIntoleranceResponse])
@@ -58,13 +74,43 @@ async def get_all_active_allergies(
 async def create_catalog_entry(
     data: AllergyCatalogCreate, current_user: TokenData = Depends(get_current_user)
 ):
-    """Add a new custom allergen to the tenant catalog"""
+    """Add a new allergen to the catalog (scope derived from role)."""
+    DEFAULT_CATALOG_POLICY.create_scope(current_user.role)
     return await allergy_service.add_to_catalog(
         name=data.name,
         category=data.category.value,
-        tenant_id=current_user.tenant_id,
+        actor=current_user,
         description=data.description,
     )
+
+
+@router.put("/catalog/{catalog_id}", response_model=AllergyCatalogResponse)
+async def update_catalog_entry(
+    catalog_id: UUID,
+    data: AllergyCatalogUpdate,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Update an allergy catalog entry (scope + ownership enforced in service)."""
+    entry = await allergy_service.update_catalog_allergy(
+        catalog_id,
+        current_user,
+        data.model_dump(exclude_unset=True),
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
+    return entry
+
+
+@router.delete("/catalog/{catalog_id}")
+async def delete_catalog_entry(
+    catalog_id: UUID,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Delete an allergy catalog entry (scope + ownership enforced)."""
+    success = await allergy_service.delete_catalog_allergy(catalog_id, current_user)
+    if not success:
+        raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
+    return {"message": "Allergy catalog entry deleted"}
 
 
 @router.get("/patient/{patient_id}", response_model=List[AllergyIntoleranceResponse])

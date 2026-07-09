@@ -7,8 +7,10 @@ The frontend uses domain endpoints (`/patients/*`, `/observations/*`,
 app-specific fields the UI needs. This document explains how to use the facade
 and how to add new resources.
 
-> **Coverage**: 15 FHIR resources registered; standard search params + Bundle
+> **Coverage**: 18 FHIR resources registered; standard search params + Bundle
 > responses + canonical CRUD + soft-delete tombstones + Provenance-on-write.
+> Includes two **computed** terminology resources (`CodeSystem`/`ValueSet`) that
+> project from the `concepts` table without a dedicated backing table.
 > Advanced conformance (`POST /_search`, `_format=xml`, transaction/batch
 > Bundle) is deferred.
 
@@ -80,7 +82,7 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 
 ---
 
-## Registered resources (15)
+## Registered resources (18)
 
 | Resource | Backed by | Notes |
 |----------|-----------|-------|
@@ -92,6 +94,7 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 | `MedicationStatement` | `fhir_medications` | Filter: `intent = statement` (default) |
 | `MedicationRequest` | `fhir_medications` | Filter: `intent != statement` (order/plan/proposal) |
 | `Medication` | `medication_catalog` | Drug definitions. Read-only via facade. |
+| `Immunization` | `patient_immunizations` | Patient dose records. Read + search-type only (REST CRUD at `/vaccines/*`). `date`→`administered_at`, `vaccine-code`→JSONB text. |
 | `DiagnosticReport` | `fhir_diagnostic_reports` | |
 | `DocumentReference` | `documents` | Attachment is metadata-only (`urn:ha-document:<id>`); binary resolves via the existing download endpoint, not the facade. |
 | `Device` | `fhir_devices` (new) | Backfilled from `user_integrations`. |
@@ -99,6 +102,8 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 | `Organization` | `fhir_organizations` | Now mixes in `TimestampMixin` (audit D15 — gained `created_at`/`updated_at` + indexes) and `SoftDeleteMixin` (audit D6). |
 | `Practitioner` | `doctors` (DoctorModel) | |
 | `Provenance` | `fhir_provenance` (new) | Immutable; create + read + search only (no update/delete). |
+| `CodeSystem` | `concepts` (computed) | **Computed resource** — no dedicated table. Projects disease-kind concepts (`kind=disease`, ICD-10) as a FHIR `CodeSystem` (`id=ha-diseases`). Read + search-type only; uses `read_fn`/`search_fn` hooks (`app/facade/terminology.py`) that bypass the generic table-query dispatcher. |
+| `ValueSet` | `concepts` (computed) | **Computed resource** — publishes the disease concepts as a `ValueSet` (`id=ha-diseases`, compose includes the ICD-10 system). Read + search-type only. |
 
 ---
 
@@ -156,6 +161,35 @@ and the Provenance-on-write hook all pick up the new resource automatically.
 3. **Register** the model in `backend/app/models/__init__.py` (so Alembic sees it).
 4. **Reverse converter** + **registry entry** (same as Case A).
 5. **Tests**.
+
+### Case C — computed resource (no backing table — e.g. CodeSystem/ValueSet)
+
+Terminology resources like `CodeSystem` and `ValueSet` don't map 1:1 to a single
+table — they aggregate rows from the `concepts` table into one FHIR resource.
+The facade supports this via optional `read_fn`/`search_fn` hooks on
+`ResourceEntry` that bypass the generic table-query dispatcher:
+
+1. **Build the projection** in `backend/app/facade/terminology.py` — an async
+   function that queries the source table, constructs the FHIR-shaped dict, and
+   validates it via `build_fhir_resource`.
+2. **Register** with `read_fn`/`search_fn` set (no `fhir_to_orm_fn` — writes are
+   not supported):
+   ```python
+   RESOURCE_REGISTRY.register(ResourceEntry(
+       resource_type="CodeSystem",
+       model=Concept,  # projection source (not queried generically)
+       interactions=frozenset({"read", "search-type"}),
+       read_fn=make_read_fn("CodeSystem"),
+       search_fn=make_search_fn("CodeSystem"),
+       tenant_scope="none",
+       versioned=False,
+       soft_delete=False,
+   ))
+   ```
+3. The generic `crud.read`/`crud.search` check for these hooks first and
+   delegate when present; otherwise the normal table-query path runs.
+4. **Tests**: `tests/test_codesystem_facade.py` covers read/search/404 +
+   CapabilityStatement advertising + write-not-supported (405).
 
 ---
 
@@ -226,7 +260,8 @@ which return ORM-shape dicts (snake_case + app fields):
 backend/app/
 ├── facade/                                 # the facade package (outside api/v1 — no circular imports)
 │   ├── __init__.py                         # docstring
-│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (15 resources)
+│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (18 resources)
+│   ├── terminology.py                      # computed CodeSystem/ValueSet projections (Phase 6)
 │   ├── search_params.py                    # FhirSearchParams + parse_search_params + RESOURCE_PARAMS + SORT_COLUMNS
 │   ├── responses.py                        # OperationOutcome + 201/200/204/410/404 helpers
 │   ├── bundle.py                           # build_search_bundle (searchset Bundle + pagination links)

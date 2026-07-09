@@ -877,6 +877,105 @@ Prefs are keyed by `(domain, type_id)`, NOT by integration instance —
 multiple instances of the same domain share prefs. See
 [INTEGRATIONS_SDK.md §3.9 → Per-type user preferences](INTEGRATIONS_SDK.md#per-type-user-preferences-opt-out).
 
+### Catalogs & Search
+
+Health Assistant groups its reference vocabularies (anatomy, taxonomy/concepts,
+biomarkers, medications, allergies, vaccines) under a uniform **Catalog
+Registry** (`app/catalogs/`). Every catalog conforms to one
+CRUD/access/search/FHIR/edge contract, exposed through a thin registry-driven
+meta-layer that **complements** (does not replace) the domain endpoints
+(`/biomarkers`, `/medications`, `/anatomy`, `/concepts`, `/allergies`).
+
+Access is **ownership-based via scope tiers** (Phase A), not pure RBAC: every
+item carries a `scope` of `system` | `tenant` | `user`. Any authenticated user
+may **create** — the scope is derived from the role (SYSTEM_ADMIN→system,
+ADMIN/MANAGER→tenant, USER→user). Update/delete: `system`→SYSTEM_ADMIN,
+`tenant`→ADMIN/MANAGER, `user`→creator OR ADMIN. `CatalogPermissionDenied` →
+403. Every write appends a `CatalogAuditLog` row (Phase B).
+
+#### List registered catalog types
+`GET /api/v1/catalogs` → `{types: [{type, ui, has_concept_link, edge_endpoint_type, search_columns}, …]}`
+(drives the `/catalogs?type=` workspace left rail).
+
+#### List / get / create / update / delete one catalog type
+```
+GET    /api/v1/catalogs/{type}?search=&scope=&class=&kind=&include=relations&limit=&offset=  → {"items":[…], "total":n}
+GET    /api/v1/catalogs/{type}/{id}
+POST   /api/v1/catalogs/{type}                          (any role; scope derived from role)
+PUT    /api/v1/catalogs/{type}/{id}                     (scope + ownership gated)
+DELETE /api/v1/catalogs/{type}/{id}                     (scope + ownership gated)
+```
+`{type}` ∈ `biomarker | medication | allergy | anatomy | vaccine | concept`.
+Reads are tenant-scoped (`or_(tenant_id == caller, tenant_id IS NULL)`).
+- `?scope=system|tenant|user` narrows to a tier.
+- `?class=<slug>` (comma-list OK) filters any catalog whose items carry a
+  `class_concept_id` FK (anatomy, biomarker, medication, allergy, vaccine) by
+  its taxonomy class — the adapter resolves the slug → concept id. Each item is
+  annotated with `class_concept_slug` + `class_concept_name` (e.g. Thyroid →
+  `organ` / `Organ`).
+- `?kind=<ConceptKind>` filters the `concept` catalog by `primary_kind`
+  (e.g. `anatomy_class`, `disease`).
+- `?include=relations` annotates each item with `relation_count` +
+  `relation_breakdown` (per relation type) via a single batched count query.
+
+#### Scope promotion / demotion
+`POST /api/v1/catalogs/{type}/{id}/promote` body `{"scope":"tenant"|"system"|"user"}`
+— transitions an item's scope. user↔tenant requires ADMIN/MANAGER; any
+transition involving `system` requires SYSTEM_ADMIN. Promote-to-system clears
+`tenant_id`; demote-to-tenant sets it to the actor's tenant.
+
+#### Audit history
+`GET /api/v1/catalogs/{type}/{id}/history` → `{items: [audit_entry, …]}` —
+newest-first append-only trail (create/update/delete/promote/demote). Each
+entry records the operation, who (`user_email`), when, and any scope transition.
+Tenant-scoped (the item must be visible to the caller).
+
+#### Cross-catalog graph traversal
+`GET /api/v1/catalogs/{type}/{id}/relations?depth=1-3&relation=&include_proposed=`
+→ `{start, nodes, edges}` — the polymorphic `concept_edges` subgraph reachable
+within `depth` hops. Powers "which organ does this biomarker affect? what treats
+that disease?" via a depth-bounded, cycle-safe recursive CTE
+(`app/services/catalog_graph_service.py`).
+
+#### Unified catalog search
+`GET /api/v1/catalogs/search?q=&types=&limit=` → `{results: [{type, id, label}, …]}`
+— typo-tolerant (`pg_trgm`) search across **all** registered catalogs at once,
+tenant-scoped. `types` is an optional comma-separated subset.
+
+#### Global search
+`GET /api/v1/search?q=` → `{results: [{id, type, title, subtitle}, …]}` —
+patient/examination/document/clinical-event blocks (inline ILIKE) **plus** the
+catalog portion delegated to the registry-driven dispatcher, so anatomy,
+concepts, and allergies appear automatically (not just medications + biomarkers).
+
+### Vaccines & Immunizations (Phase 5)
+
+Vaccinations are implemented end-to-end, mirroring the medications pattern:
+`VaccineCatalog` is the CVX-coded reference definition (the product);
+`PatientImmunization` is the dose-administered patient-instance record.
+
+```
+# Catalog CRUD (RBAC: USER read-only; ADMIN/MANAGER tenant; SYSTEM_ADMIN global)
+GET    /api/v1/vaccines/catalog?search=            → List[VaccineCatalogResponse]
+GET    /api/v1/vaccines/catalog/{catalog_id}        → VaccineCatalogResponse
+POST   /api/v1/vaccines/catalog                     → VaccineCatalogResponse  (ADMIN+)
+PUT    /api/v1/vaccines/catalog/{catalog_id}        → VaccineCatalogResponse  (global→SYSTEM_ADMIN)
+DELETE /api/v1/vaccines/catalog/{catalog_id}                                    (global→SYSTEM_ADMIN)
+
+# Patient immunization instances (patient-access scoped)
+GET    /api/v1/vaccines/patient/{patient_id}        → List[PatientImmunizationResponse]
+POST   /api/v1/vaccines/patient/{patient_id}        → PatientImmunizationResponse
+GET    /api/v1/vaccines/{immunization_id}           → PatientImmunizationResponse
+PUT    /api/v1/vaccines/{immunization_id}           → PatientImmunizationResponse
+DELETE /api/v1/vaccines/{immunization_id}
+```
+
+FHIR: `GET /api/v1/fhir/R4/Immunization?patient={id}&date=&status=` returns a
+searchset Bundle (the `PatientImmunization` row projects to a canonical R4
+`Immunization` via `to_fhir_dict()`). `VaccineCatalog` projects to `Medication`.
+Vaccines also appear in the unified catalog endpoints (`/catalogs/vaccine`,
+`/catalogs/search?q=&types=vaccine`) and the cross-catalog graph.
+
 ## Error Handling
 
 ### Standard Error Response

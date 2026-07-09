@@ -19,11 +19,9 @@ import Patients from './pages/Patients/PatientList';
 import PatientDetail from './pages/Patients/PatientDetail';
 import Doctors from './pages/Doctors/DoctorList';
 import MedicationList from './pages/Medications/MedicationList';
-import MedicationCatalog from './pages/Medications/MedicationCatalog';
 import MedicationDetail from './pages/Medications/MedicationDetail';
 import CalendarPage from './pages/Calendar/CalendarPage';
 import NotificationManagement from './pages/Notifications/NotificationManagement';
-import BiomarkerCatalog from './pages/Biomarkers/BiomarkerCatalog';
 import BiomarkerDetail from './pages/Biomarkers/BiomarkerDetail';
 import AIChatPage from './pages/AI/AIChat';
 import DoctorDetail from './pages/Doctors/DoctorDetail';
@@ -57,6 +55,8 @@ import UserDetail from './pages/Admin/UserDetail';
 import TenantManagement from './pages/Admin/TenantManagement';
 import TenantDetail from './pages/Admin/TenantDetail';
 import CatalogManagement from './pages/Admin/CatalogManagement';
+import { CatalogWorkspace } from './pages/Catalogs/CatalogWorkspace';
+import { VaccinationList } from './pages/Vaccinations/VaccinationList';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
 import AtlasManager from './pages/Admin/AtlasManager';
 import TaxonomyManager from './pages/Knowledge/TaxonomyManager';
@@ -242,7 +242,12 @@ function App() {
           <Route path="/analytics/trends" element={<BiomarkerTrends />} />
           <Route path="/analytics/correlative" element={<CorrelativeAnalytics />} />
           <Route path="/biomarkers" element={<BiomarkerTrends />} />
-          <Route path="/biomarkers/catalog" element={<BiomarkerCatalog />} />
+          {/* Unified catalog workspace (Phase C) — replaces the per-type
+              catalog pages. `/{type}/catalog` redirects to `/catalogs?type=`. */}
+          <Route path="/catalogs" element={<CatalogWorkspace />} />
+          <Route path="/biomarkers/catalog" element={<Navigate to="/catalogs?type=biomarker" replace />} />
+          <Route path="/vaccines/catalog" element={<Navigate to="/catalogs?type=vaccine" replace />} />
+          <Route path="/allergies/catalog" element={<Navigate to="/catalogs?type=allergy" replace />} />
           <Route path="/biomarkers/details/:biomarkerId" element={<BiomarkerDetail />} />
           <Route path="/biomarkers/:categoryParam" element={<BiomarkerTrends />} />
           <Route path="/documents" element={<Documents />} />
@@ -261,7 +266,8 @@ function App() {
           <Route path="/anatomy" element={<AnatomyExplorer />} />
           <Route path="/anatomy/:slug" element={<AnatomyExplorer />} />
           <Route path="/medications" element={<MedicationList />} />
-          <Route path="/medications/catalog" element={<MedicationCatalog />} />
+          <Route path="/vaccinations" element={<VaccinationList />} />
+          <Route path="/medications/catalog" element={<Navigate to="/catalogs?type=medication" replace />} />
           <Route path="/medications/details/:medicationId" element={<MedicationDetail />} />
           <Route path="/doctors" element={<Doctors />} />
           <Route path="/doctors/:doctorId" element={<DoctorDetail />} />
@@ -276,6 +282,9 @@ function App() {
               <Route path="/admin/system/tenants/:tenantId" element={<TenantDetail />} />
               <Route path="/admin/system/users" element={<UserManagement />} />
               <Route path="/admin/system/users/:userId" element={<UserDetail />} />
+              {/* Catalog workspace moved to /catalogs (all users, Phase C).
+                  Stale admin bookmarks redirect there. */}
+              <Route path="/admin/catalogs" element={<Navigate to="/catalogs" replace />} />
 
               {/* Configuration surfaces — share the settings shell */}
               <Route element={<SettingsShell nav={systemSettingsNav} header={systemSettingsHeader} />}>

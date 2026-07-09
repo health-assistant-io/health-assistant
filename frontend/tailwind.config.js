@@ -21,6 +21,15 @@ module.exports = {
           hover: '#1e293b',     // slate-800
         }
       },
+      zIndex: {
+        // Body-level overlay scale. Sidebar internals are scoped with `isolate`
+        // so they can never compete with these portals.
+        dropdown: 100,   // popovers in normal page context (above isolated sidebar)
+        modal: 1000,
+        popover: 1050,   // portalled popovers that must float ABOVE a modal
+        drawer: 1100,
+        toast: 1200,
+      },
       animation: {
         'spin-slow': 'spin 3s linear infinite',
         'gradient-x': 'gradient-x 3s ease infinite',

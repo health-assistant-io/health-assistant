@@ -133,7 +133,7 @@ function MedicationList() {
         actions={
           <>
             <button
-              onClick={() => navigate('/medications/catalog')}
+              onClick={() => navigate('/catalogs?type=medication')}
               className="flex items-center space-x-2 px-6 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-[#1a2b4b] dark:text-dark-text rounded-xl font-bold text-sm hover:bg-gray-50 transition-all shadow-sm active:scale-95"
             >
               <ListTree className="w-5 h-5 text-blue-500" />

@@ -30,7 +30,6 @@ from app.api.v1.endpoints.utils import (
 )
 from app.models.biomarker_model import (
     BiomarkerDefinition,
-    BiomarkerEventCorrelation,
     Unit,
 )
 from app.models.clinical_event import (
@@ -41,7 +40,15 @@ from app.models.clinical_event import (
     EventExaminationLink,
     EventObservationLink,
 )
-from app.models.enums import ClinicalEventStatus, Role
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    ClinicalEventStatus,
+    ConceptProvenance,
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+    Role,
+)
 from app.models.fhir.patient import Observation, Patient
 from app.schemas.clinical_event import (
     ClinicalEventCreate,
@@ -125,9 +132,7 @@ async def emit_event_notification(
             link_communication=True,
         )
     except Exception:
-        logger.exception(
-            "Clinical-event notification emit failed (action=%s)", action
-        )
+        logger.exception("Clinical-event notification emit failed (action=%s)", action)
 
 
 def _event_eager_loads():
@@ -153,9 +158,7 @@ def _event_eager_loads():
     )
 
 
-async def _refetch_with_relations(
-    db: AsyncSession, event_id: UUID
-) -> Dict[str, Any]:
+async def _refetch_with_relations(db: AsyncSession, event_id: UUID) -> Dict[str, Any]:
     """Re-fetch an event with the full eager-load chain and serialize it."""
     result = await db.execute(
         select(ClinicalEvent)
@@ -212,9 +215,14 @@ async def list_events(
     if status:
         query = query.where(ClinicalEvent.status == status)
 
-    query = query.order_by(
-        ClinicalEvent.onset_date.desc().nulls_last(), ClinicalEvent.created_at.desc()
-    ).limit(limit).offset(offset)
+    query = (
+        query.order_by(
+            ClinicalEvent.onset_date.desc().nulls_last(),
+            ClinicalEvent.created_at.desc(),
+        )
+        .limit(limit)
+        .offset(offset)
+    )
 
     result = await db.execute(query)
     events = result.scalars().unique().all()
@@ -248,8 +256,12 @@ async def create_event(
     db.add(new_event)
     await db.flush()  # assign id
 
-    await _attach_examination_links(db, new_event.id, payload.examinations, current_user)
-    await _attach_observation_links(db, new_event.id, payload.observations, current_user)
+    await _attach_examination_links(
+        db, new_event.id, payload.examinations, current_user
+    )
+    await _attach_observation_links(
+        db, new_event.id, payload.observations, current_user
+    )
 
     await db.commit()
     await emit_event_notification(new_event, "created", current_user)
@@ -540,18 +552,38 @@ async def get_insights(
             )
         ).scalar_one_or_none()
 
-        rows = (
-            await db.execute(
-                select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
-                .join(
-                    BiomarkerEventCorrelation,
-                    BiomarkerEventCorrelation.biomarker_id
-                    == BiomarkerDefinition.id,
+        # Resolve recommended biomarkers from the concept_edges graph
+        # (biomarker MONITORS clinical_event_type). Replaces the legacy
+        # BiomarkerEventCorrelation table — Phase 3 consolidation.
+        mon_edges = (
+            (
+                await db.execute(
+                    select(ConceptEdge).where(
+                        ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                        ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                        ConceptEdge.dst_id == event.type_id,
+                        ConceptEdge.relation == ConceptRelationType.MONITORS,
+                        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                    )
                 )
-                .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
-                .where(BiomarkerEventCorrelation.event_type_id == event.type_id)
             )
-        ).all()
+            .scalars()
+            .all()
+        )
+        corr_type_by_bio = {
+            e.src_id: (e.properties or {}).get("correlation_type") for e in mon_edges
+        }
+        bio_ids = list(corr_type_by_bio.keys())
+
+        rows: list = []
+        if bio_ids:
+            rows = (
+                await db.execute(
+                    select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
+                    .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
+                    .where(BiomarkerDefinition.id.in_(bio_ids))
+                )
+            ).all()
         for bio, symbol in rows:
             recommended.append(
                 {
@@ -559,7 +591,7 @@ async def get_insights(
                     "slug": bio.slug,
                     "name": bio.name,
                     "preferred_unit_symbol": symbol,
-                    "correlation_type": None,
+                    "correlation_type": corr_type_by_bio.get(bio.id),
                 }
             )
 
@@ -581,10 +613,12 @@ async def add_correlated_biomarker(
     correlation_type: str = "monitoring",
     description: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create a BiomarkerEventCorrelation (idempotent on the (type, biomarker) pair).
+    """Link a biomarker to this event type via a concept_edge (MONITORS).
 
-    Validates that both the event type and biomarker exist. Returns the
-    correlation as a dict. Previously correlations were seed-script-only.
+    Idempotent on the (type, biomarker) pair — re-adding updates the
+    ``correlation_type``/``description`` (stored on the edge's ``properties``
+    JSONB) in place rather than 409-ing. Validates that both the event type and
+    biomarker exist. Replaces the legacy BiomarkerEventCorrelation table.
     """
     from fastapi import HTTPException
 
@@ -604,33 +638,42 @@ async def add_correlated_biomarker(
     if not bio:
         raise HTTPException(status_code=404, detail="Biomarker not found")
 
-    existing = (
+    edge = (
         await db.execute(
-            select(BiomarkerEventCorrelation).where(
-                BiomarkerEventCorrelation.event_type_id == event_type_id,
-                BiomarkerEventCorrelation.biomarker_id == biomarker_id,
+            select(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                ConceptEdge.src_id == biomarker_id,
+                ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                ConceptEdge.dst_id == event_type_id,
+                ConceptEdge.relation == ConceptRelationType.MONITORS,
             )
         )
     ).scalar_one_or_none()
-    if existing:
-        # Idempotent: update the correlation_type/description in place.
-        existing.correlation_type = correlation_type
-        if description is not None:
-            existing.description = description
-        await db.commit()
-        await db.refresh(existing)
-        return _correlation_to_dict(existing, bio)
+    props = {"correlation_type": correlation_type, "description": description}
+    if edge:
+        edge.properties = props
+        from sqlalchemy.orm.attributes import flag_modified
 
-    corr = BiomarkerEventCorrelation(
-        event_type_id=event_type_id,
-        biomarker_id=biomarker_id,
-        correlation_type=correlation_type,
-        description=description,
+        flag_modified(edge, "properties")
+        await db.commit()
+        await db.refresh(edge)
+        return _correlation_to_dict(edge, bio)
+
+    edge = ConceptEdge(
+        src_type=EdgeEndpointType.BIOMARKER,
+        src_id=biomarker_id,
+        dst_type=EdgeEndpointType.CLINICAL_EVENT_TYPE,
+        dst_id=event_type_id,
+        relation=ConceptRelationType.MONITORS,
+        tenant_id=None,
+        source=ConceptProvenance.MANUAL,
+        status=EdgeApprovalStatus.APPROVED,
+        properties=props,
     )
-    db.add(corr)
+    db.add(edge)
     await db.commit()
-    await db.refresh(corr)
-    return _correlation_to_dict(corr, bio)
+    await db.refresh(edge)
+    return _correlation_to_dict(edge, bio)
 
 
 async def remove_correlated_biomarker(
@@ -638,30 +681,34 @@ async def remove_correlated_biomarker(
     event_type_id: UUID,
     biomarker_id: UUID,
 ) -> None:
-    """Delete a BiomarkerEventCorrelation (404 if not found)."""
+    """Delete the biomarker↔event-type MONITORS edge (404 if not found)."""
     from fastapi import HTTPException
 
-    corr = (
+    edge = (
         await db.execute(
-            select(BiomarkerEventCorrelation).where(
-                BiomarkerEventCorrelation.event_type_id == event_type_id,
-                BiomarkerEventCorrelation.biomarker_id == biomarker_id,
+            select(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                ConceptEdge.src_id == biomarker_id,
+                ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                ConceptEdge.dst_id == event_type_id,
+                ConceptEdge.relation == ConceptRelationType.MONITORS,
             )
         )
     ).scalar_one_or_none()
-    if not corr:
+    if not edge:
         raise HTTPException(status_code=404, detail="Correlation not found")
-    await db.delete(corr)
+    await db.delete(edge)
     await db.commit()
 
 
-def _correlation_to_dict(corr: BiomarkerEventCorrelation, bio: BiomarkerDefinition) -> Dict[str, Any]:
+def _correlation_to_dict(edge: ConceptEdge, bio: BiomarkerDefinition) -> Dict[str, Any]:
+    props = edge.properties or {}
     return {
-        "id": str(corr.id),
-        "event_type_id": str(corr.event_type_id),
-        "biomarker_id": str(corr.biomarker_id),
-        "correlation_type": corr.correlation_type,
-        "description": corr.description,
+        "id": str(edge.id),
+        "event_type_id": str(edge.dst_id),
+        "biomarker_id": str(edge.src_id),
+        "correlation_type": props.get("correlation_type"),
+        "description": props.get("description"),
         "biomarker": {
             "id": str(bio.id),
             "slug": bio.slug,

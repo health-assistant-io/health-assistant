@@ -3,13 +3,13 @@
     "version": "1.0.0",
     "source": "Health Assistant",
     "last_updated": "2026-07-07",
-    "description": "Anatomy graph nodes (AnatomyStructure rows): body systems, organs, regions, joints. Each node's legacy uppercase 'category' is mapped to a class_concept_slug at import time."
+    "description": "Anatomy graph nodes (AnatomyStructure rows): body systems, organs, regions, joints. Each node carries a lowercase 'class_concept_slug' (an anatomy_class concept: organ/region/system/joint/...) resolved to class_concept_id at import time."
   },
   "items": [
     {
       "slug": "whole-body",
       "name": "Whole Body",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "38266002",
       "description": "The entire human body"
@@ -17,7 +17,7 @@
     {
       "slug": "head",
       "name": "Head",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "302553009",
       "description": "The upper part of the human body containing the brain, eyes, ears, nose, and mouth"
@@ -25,7 +25,7 @@
     {
       "slug": "face",
       "name": "Face",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "89545001",
       "description": "The front part of the head"
@@ -33,7 +33,7 @@
     {
       "slug": "eyes",
       "name": "Eyes",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "81745001",
       "description": "The organ of sight",
@@ -52,7 +52,7 @@
     {
       "slug": "ears",
       "name": "Ears",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "117590005",
       "description": "The organ of hearing",
@@ -71,7 +71,7 @@
     {
       "slug": "nose",
       "name": "Nose",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "45206002",
       "description": "The organ of smell",
@@ -90,7 +90,7 @@
     {
       "slug": "mouth",
       "name": "Mouth",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "123851003",
       "description": "The opening through which food is taken in",
@@ -109,7 +109,7 @@
     {
       "slug": "brain",
       "name": "Brain",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "12738006",
       "description": "The central organ of the nervous system",
@@ -128,7 +128,7 @@
     {
       "slug": "neck",
       "name": "Neck",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "45048000",
       "description": "The part of the body connecting the head to the torso"
@@ -136,7 +136,7 @@
     {
       "slug": "throat",
       "name": "Throat",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "54016002",
       "description": "The passage from the mouth to the stomach or lungs",
@@ -155,7 +155,7 @@
     {
       "slug": "thyroid",
       "name": "Thyroid",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "69105007",
       "description": "A butterfly-shaped endocrine gland in the neck",
@@ -174,7 +174,7 @@
     {
       "slug": "chest",
       "name": "Chest",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "51185008",
       "description": "The upper part of the torso between the neck and abdomen"
@@ -182,7 +182,7 @@
     {
       "slug": "heart",
       "name": "Heart",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "80248007",
       "description": "The muscular organ that pumps blood through the circulatory system",
@@ -201,7 +201,7 @@
     {
       "slug": "left-lung",
       "name": "Left Lung",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "113276009",
       "description": "The left organ of respiration",
@@ -220,7 +220,7 @@
     {
       "slug": "right-lung",
       "name": "Right Lung",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "113275008",
       "description": "The right organ of respiration",
@@ -239,7 +239,7 @@
     {
       "slug": "abdomen",
       "name": "Abdomen",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "113345001",
       "description": "The part of the body between the chest and pelvis"
@@ -247,7 +247,7 @@
     {
       "slug": "liver",
       "name": "Liver",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "10200004",
       "description": "The large gland that detoxifies blood and produces bile",
@@ -266,7 +266,7 @@
     {
       "slug": "stomach",
       "name": "Stomach",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "69695003",
       "description": "The digestive organ that breaks down food",
@@ -285,7 +285,7 @@
     {
       "slug": "pancreas",
       "name": "Pancreas",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "15776009",
       "description": "The gland producing insulin and digestive enzymes",
@@ -304,7 +304,7 @@
     {
       "slug": "spleen",
       "name": "Spleen",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "78961009",
       "description": "The organ that filters blood and supports immune function",
@@ -323,7 +323,7 @@
     {
       "slug": "left-kidney",
       "name": "Left Kidney",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "18633005",
       "description": "The left organ that filters blood and produces urine",
@@ -342,7 +342,7 @@
     {
       "slug": "right-kidney",
       "name": "Right Kidney",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "125603004",
       "description": "The right organ that filters blood and produces urine",
@@ -361,7 +361,7 @@
     {
       "slug": "small-intestine",
       "name": "Small Intestine",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "30315005",
       "description": "The tube where most nutrient absorption occurs",
@@ -380,7 +380,7 @@
     {
       "slug": "large-intestine",
       "name": "Large Intestine",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "71854001",
       "description": "The tube where water is absorbed and waste is formed",
@@ -399,7 +399,7 @@
     {
       "slug": "bladder",
       "name": "Bladder",
-      "category": "ORGAN",
+      "class_concept_slug": "organ",
       "standard_system": "snomed",
       "standard_code": "89837001",
       "description": "The organ that stores urine",
@@ -418,7 +418,7 @@
     {
       "slug": "upper-back",
       "name": "Upper Back",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "421060004",
       "description": "The upper posterior region of the torso"
@@ -426,7 +426,7 @@
     {
       "slug": "lower-back",
       "name": "Lower Back",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "442087000",
       "description": "The lower posterior region of the torso"
@@ -434,7 +434,7 @@
     {
       "slug": "shoulder-left",
       "name": "Shoulder (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "91083009",
       "description": "The left shoulder joint",
@@ -453,7 +453,7 @@
     {
       "slug": "shoulder-right",
       "name": "Shoulder (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "91083009",
       "description": "The right shoulder joint",
@@ -472,7 +472,7 @@
     {
       "slug": "arm-left",
       "name": "Arm (Left)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "40983000",
       "description": "The left upper limb"
@@ -480,7 +480,7 @@
     {
       "slug": "arm-right",
       "name": "Arm (Right)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "40983000",
       "description": "The right upper limb"
@@ -488,7 +488,7 @@
     {
       "slug": "elbow-left",
       "name": "Elbow (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "127949000",
       "description": "The left elbow joint",
@@ -507,7 +507,7 @@
     {
       "slug": "elbow-right",
       "name": "Elbow (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "127949000",
       "description": "The right elbow joint",
@@ -526,7 +526,7 @@
     {
       "slug": "wrist-left",
       "name": "Wrist (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "8205005",
       "description": "The left wrist joint",
@@ -545,7 +545,7 @@
     {
       "slug": "wrist-right",
       "name": "Wrist (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "8205005",
       "description": "The right wrist joint",
@@ -564,7 +564,7 @@
     {
       "slug": "hand-left",
       "name": "Hand (Left)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "85537004",
       "description": "The left hand"
@@ -572,7 +572,7 @@
     {
       "slug": "hand-right",
       "name": "Hand (Right)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "85537004",
       "description": "The right hand"
@@ -580,7 +580,7 @@
     {
       "slug": "hip-left",
       "name": "Hip (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "29836001",
       "description": "The left hip joint",
@@ -599,7 +599,7 @@
     {
       "slug": "hip-right",
       "name": "Hip (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "29836001",
       "description": "The right hip joint",
@@ -618,7 +618,7 @@
     {
       "slug": "leg-left",
       "name": "Leg (Left)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "30021000",
       "description": "The left lower limb"
@@ -626,7 +626,7 @@
     {
       "slug": "leg-right",
       "name": "Leg (Right)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "30021000",
       "description": "The right lower limb"
@@ -634,7 +634,7 @@
     {
       "slug": "knee-left",
       "name": "Knee (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "72696002",
       "description": "The left knee joint",
@@ -653,7 +653,7 @@
     {
       "slug": "knee-right",
       "name": "Knee (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "72696002",
       "description": "The right knee joint",
@@ -672,7 +672,7 @@
     {
       "slug": "ankle-left",
       "name": "Ankle (Left)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "34202007",
       "description": "The left ankle joint",
@@ -691,7 +691,7 @@
     {
       "slug": "ankle-right",
       "name": "Ankle (Right)",
-      "category": "JOINT",
+      "class_concept_slug": "joint",
       "standard_system": "snomed",
       "standard_code": "34202007",
       "description": "The right ankle joint",
@@ -710,7 +710,7 @@
     {
       "slug": "foot-left",
       "name": "Foot (Left)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "56459004",
       "description": "The left foot"
@@ -718,7 +718,7 @@
     {
       "slug": "foot-right",
       "name": "Foot (Right)",
-      "category": "REGION",
+      "class_concept_slug": "region",
       "standard_system": "snomed",
       "standard_code": "56459004",
       "description": "The right foot"
@@ -726,7 +726,7 @@
     {
       "slug": "cardiovascular-system",
       "name": "Cardiovascular System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "49801001",
       "description": "The system that circulates blood through the body"
@@ -734,7 +734,7 @@
     {
       "slug": "respiratory-system",
       "name": "Respiratory System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "422935000",
       "description": "The system responsible for gas exchange"
@@ -742,7 +742,7 @@
     {
       "slug": "digestive-system",
       "name": "Digestive System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "86317004",
       "description": "The system that processes food"
@@ -750,7 +750,7 @@
     {
       "slug": "nervous-system",
       "name": "Nervous System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "278819000",
       "description": "The system that controls bodily functions via electrical signals"
@@ -758,7 +758,7 @@
     {
       "slug": "endocrine-system",
       "name": "Endocrine System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "278820005",
       "description": "The system of glands that produce hormones"
@@ -766,7 +766,7 @@
     {
       "slug": "urinary-system",
       "name": "Urinary System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "278851008",
       "description": "The system that produces and excretes urine"
@@ -774,7 +774,7 @@
     {
       "slug": "musculoskeletal-system",
       "name": "Musculoskeletal System",
-      "category": "SYSTEM",
+      "class_concept_slug": "system",
       "standard_system": "snomed",
       "standard_code": "32849002",
       "description": "The system of muscles and bones that provides structure and movement"

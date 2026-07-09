@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Enum, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
 from app.models.base import (
     Base,
     UUIDMixin,
@@ -9,7 +10,12 @@ from app.models.base import (
     TimestampMixin,
     SoftDeleteMixin,
 )
-from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus
+from app.models.enums import (
+    AllergyCategory,
+    AllergyCriticality,
+    AllergyClinicalStatus,
+    CatalogScope,
+)
 from app.services.fhir_helpers import (
     _enum_value,
     build_fhir_resource,
@@ -25,11 +31,34 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     category = Column(Enum(AllergyCategory), nullable=False)
     description = Column(Text, nullable=True)
     typical_reactions = Column(JSONB, nullable=True)  # List of common symptoms
+    # Taxonomy classification (Phase 2): the allergen-class concept. Follows the
+    # established ``class_concept_id`` convention. The legacy ``category`` enum
+    # is RETAINED — it backs the FHIR AllergyIntolerance.category closed value
+    # set on the instance projection (AllergyIntolerance.to_fhir_dict).
+    class_concept_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     tenant_id = Column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=True,  # NULL means system-wide default
         index=True,
+    )
+
+    scope = Column(
+        Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=CatalogScope.SYSTEM,
+        index=True,
+    )
+
+    class_concept = relationship(
+        "Concept",
+        foreign_keys="[AllergyCatalog.class_concept_id]",
+        lazy="selectin",
     )
 
     @property
@@ -43,6 +72,12 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "category": self.category.value if self.category else "other",
             "description": self.description,
             "typical_reactions": self.typical_reactions,
+            "class_concept_id": str(self.class_concept_id)
+            if self.class_concept_id
+            else None,
+            "scope": self.scope.value if self.scope else "system",
+            "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "created_by": str(self.created_by) if self.created_by else None,
             "is_custom": self.is_custom,
         }
 

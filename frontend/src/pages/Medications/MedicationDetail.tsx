@@ -23,7 +23,8 @@ import {
   ArrowRight,
   ExternalLink,
   ChevronRight,
-  Bell
+  Bell,
+  Database
 } from 'lucide-react';
 import { 
   getCatalogMedication, 
@@ -236,7 +237,7 @@ function MedicationDetail() {
         }
         icon={<Pill className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('medications.catalog_title'), path: '/medications/catalog' }
+          { label: t('medications.catalog_title'), path: '/catalogs?type=medication' }
         ]}
         showBackButton={true}
       />
@@ -267,6 +268,13 @@ function MedicationDetail() {
                 )}
               </>
             )}
+            <a
+              href={`/catalogs?type=medication&item=${medicationId}`}
+              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-sm"
+              title="Manage in Catalogs"
+            >
+              <Database className="w-5 h-5" />
+            </a>
           </div>
         }
       />

@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update as sa_update
+from sqlalchemy import select, delete, update as sa_update, or_
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -19,9 +19,19 @@ from app.schemas.biomarker import (
     UnitCreate,
 )
 from app.services.concept_service import resolve_biomarker_class_concept
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from uuid import UUID
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
+
+
+def _tenant_scope(tenant_id):
+    """Standard global+tenant read filter for biomarker definitions."""
+    return or_(
+        BiomarkerDefinition.tenant_id.is_(None),
+        BiomarkerDefinition.tenant_id == tenant_id,
+    )
+
 
 # TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (from DEVELOPMENT_PLAN.md)
 # TODO: Add endpoints to retrieve correlated biomarkers for a given clinical event (from DEVELOPMENT_PLAN.md)
@@ -32,10 +42,11 @@ async def get_biomarkers(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get all biomarker definitions"""
+    """Get all biomarker definitions visible to the caller (global + tenant)."""
     result = await db.execute(
         select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
         .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
+        .where(_tenant_scope(current_user.tenant_id))
         .order_by(BiomarkerDefinition.name)
     )
     rows = result.all()
@@ -106,7 +117,7 @@ async def create_biomarker(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a new custom biomarker definition"""
+    """Create a new biomarker definition (scope derived from role)."""
     # Find unit
     unit_id = biomarker.preferred_unit_id
     if not unit_id and biomarker.preferred_unit_symbol:
@@ -136,7 +147,9 @@ async def create_biomarker(
         reference_range_max=biomarker.reference_range_max,
         is_telemetry=biomarker.is_telemetry,
         preferred_unit_id=unit_id,
-        tenant_id=current_user.tenant_id,
+    )
+    DEFAULT_CATALOG_POLICY.assign_create_scope(
+        current_user.role, new_bio, current_user.tenant_id, current_user.user_id
     )
     db.add(new_bio)
     try:
@@ -178,14 +191,24 @@ async def delete_biomarker(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Delete a biomarker definition"""
+    """Delete a biomarker definition. Global rows require SYSTEM_ADMIN."""
     result = await db.execute(
-        select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+        select(BiomarkerDefinition).where(
+            BiomarkerDefinition.id == biomarker_id,
+            _tenant_scope(current_user.tenant_id),
+        )
     )
     db_biomarker = result.scalar_one_or_none()
 
     if not db_biomarker:
         raise HTTPException(status_code=404, detail="Biomarker not found")
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        db_biomarker.scope,
+        item_created_by=db_biomarker.created_by,
+        actor_user_id=current_user.user_id,
+    )
 
     await db.delete(db_biomarker)
     try:
@@ -202,11 +225,34 @@ async def bulk_delete_biomarkers(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Bulk delete biomarker definitions"""
+    """Bulk delete biomarker definitions (tenant-scoped; ADMIN/MANAGER+).
+
+    Only the caller's own tenant rows are ever touched — system rows are never
+    bulk-deleted (use the single-item endpoint as SYSTEM_ADMIN for that). A USER
+    may only bulk-delete their own user-scope rows."""
+    from app.models.enums import CatalogScope
+
     try:
-        await db.execute(
-            delete(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(biomarker_ids))
-        )
+        # SYSTEM_ADMIN/ADMIN/MANAGER: any tenant row. USER: only own user-scope.
+        if DEFAULT_CATALOG_POLICY.create_scope(current_user.role) in (
+            CatalogScope.SYSTEM,
+            CatalogScope.TENANT,
+        ):
+            await db.execute(
+                delete(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id.in_(biomarker_ids),
+                    BiomarkerDefinition.tenant_id == current_user.tenant_id,
+                )
+            )
+        else:
+            await db.execute(
+                delete(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id.in_(biomarker_ids),
+                    BiomarkerDefinition.tenant_id == current_user.tenant_id,
+                    BiomarkerDefinition.scope == CatalogScope.USER,
+                    BiomarkerDefinition.created_by == current_user.user_id,
+                )
+            )
         await db.commit()
         return {
             "status": "success",
@@ -227,7 +273,7 @@ async def get_biomarker_by_slug(
     result = await db.execute(
         select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
         .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
-        .where(BiomarkerDefinition.slug == slug)
+        .where(BiomarkerDefinition.slug == slug, _tenant_scope(current_user.tenant_id))
     )
     row = result.first()
 
@@ -263,7 +309,10 @@ async def get_biomarker_by_id(
     result = await db.execute(
         select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
         .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
-        .where(BiomarkerDefinition.id == biomarker_id)
+        .where(
+            BiomarkerDefinition.id == biomarker_id,
+            _tenant_scope(current_user.tenant_id),
+        )
     )
     row = result.first()
 
@@ -423,14 +472,24 @@ async def update_biomarker(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update a biomarker definition"""
+    """Update a biomarker definition. Global rows require SYSTEM_ADMIN."""
     result = await db.execute(
-        select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
+        select(BiomarkerDefinition).where(
+            BiomarkerDefinition.id == biomarker_id,
+            _tenant_scope(current_user.tenant_id),
+        )
     )
     db_biomarker = result.scalar_one_or_none()
 
     if not db_biomarker:
         raise HTTPException(status_code=404, detail="Biomarker not found")
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        db_biomarker.scope,
+        item_created_by=db_biomarker.created_by,
+        actor_user_id=current_user.user_id,
+    )
 
     old_is_telemetry = db_biomarker.is_telemetry
 
