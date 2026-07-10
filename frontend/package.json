@@ -22,7 +22,7 @@
     "clsx": "^2.0.0",
     "d3-force": "^3.0.0",
     "dagre": "^0.8.5",
-    "date-fns": "^3.0.0",
+    "date-fns": "^4.4.0",
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^4.2.0",
     "html-to-image": "^1.11.13",
