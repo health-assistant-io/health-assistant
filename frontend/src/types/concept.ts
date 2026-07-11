@@ -215,3 +215,16 @@ export const CATALOG_TYPE_LABELS: Record<string, string> = {
   anatomy: 'Anatomy',
   vaccine: 'Vaccines',
 };
+
+/** Lucide icon name per catalog type (mirrors the backend
+ *  ``registrations.py`` UI metadata — Activity / Pill / ShieldAlert /
+ *  PersonStanding / Syringe / Network). Used by graph filter chips + the
+ *  node detail header for quick visual identification. */
+export const CATALOG_TYPE_ICONS: Record<string, string> = {
+  concept: 'Network',
+  biomarker: 'Activity',
+  medication: 'Pill',
+  allergy: 'ShieldAlert',
+  anatomy: 'PersonStanding',
+  vaccine: 'Syringe',
+};

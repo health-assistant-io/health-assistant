@@ -21,29 +21,34 @@ import {
   type ConceptGraphNode,
   type ConceptGraphEdgeData,
 } from '../ui/ConceptGraphView';
+import { GraphNodeDetail } from './GraphNodeDetail';
+import { GraphNodeContextMenu } from './GraphNodeContextMenu';
+import { GraphRelationFilter } from './GraphRelationFilter';
+import { DynamicIcon } from '../ui/DynamicIcon';
 import { getCatalogGraph } from '../../services/catalogService';
 import {
   CONCEPT_KIND_LABELS,
   KIND_COLORS,
   CATALOG_TYPE_COLORS,
   CATALOG_TYPE_LABELS,
+  CATALOG_TYPE_ICONS,
   type ConceptKind,
 } from '../../types/concept';
 
 const ALL_CATALOG_TYPES = Object.keys(CATALOG_TYPE_LABELS);
 
 interface CatalogOntologyGraphProps {
-  /** Called when a node is double-clicked (focus). */
-  onFocusNode?: (conceptId: string) => void;
-  /** Called when a node is single-clicked (select). */
-  onSelectNode?: (conceptId: string) => void;
+  /** Called when a node is double-clicked (focus). Carries the node's catalog
+   *  type so the workspace can navigate with the correct ``?type=`` (the
+   *  ontology graph is cross-catalog — a clicked node may belong to a
+   *  different type than the one currently browsed). */
+  onFocusNode?: (node: { id: string; type?: string | null }) => void;
   /** Bump to force a refetch without remounting. */
   refreshKey?: number;
 }
 
 export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   onFocusNode,
-  onSelectNode,
   refreshKey = 0,
 }) => {
   const { t } = useTranslation();
@@ -61,6 +66,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   const [selectedNode, setSelectedNode] = useState<string | undefined>();
   const [depth, setDepth] = useState(0);
   const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
+  const [hiddenRelations, setHiddenRelations] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +95,8 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
               || KIND_COLORS[kindOrType as ConceptKind]
               || CATALOG_TYPE_COLORS[kindOrType]
               || '#6b7280',
+            type: n.type,
+            icon: n.icon,
           };
         }),
       );
@@ -113,13 +121,18 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
     load();
   }, [load, refreshKey]);
 
-  // Client-side BFS depth filter from the selected node.
+  // Client-side BFS depth filter from the selected node, then relation filter.
   const displayedGraph = useMemo(() => {
+    // First, apply relation-type filter to the raw edges.
+    const relEdges = hiddenRelations.size > 0
+      ? rawEdges.filter((e) => !hiddenRelations.has(e.relation))
+      : rawEdges;
+
     if (depth === 0 || !selectedNode) {
-      return { nodes: rawNodes, edges: rawEdges };
+      return { nodes: rawNodes, edges: relEdges };
     }
     const adj = new Map<string, string[]>();
-    for (const e of rawEdges) {
+    for (const e of relEdges) {
       if (!adj.has(e.source)) adj.set(e.source, []);
       if (!adj.has(e.target)) adj.set(e.target, []);
       adj.get(e.source)!.push(e.target);
@@ -141,11 +154,20 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
     }
     return {
       nodes: rawNodes.filter((n) => visited.has(n.id)),
-      edges: rawEdges.filter(
+      edges: relEdges.filter(
         (e) => visited.has(e.source) && visited.has(e.target),
       ),
     };
-  }, [rawNodes, rawEdges, depth, selectedNode]);
+  }, [rawNodes, rawEdges, depth, selectedNode, hiddenRelations]);
+
+  const toggleRelation = (relation: string) => {
+    setHiddenRelations((prev) => {
+      const next = new Set(prev);
+      if (next.has(relation)) next.delete(relation);
+      else next.add(relation);
+      return next;
+    });
+  };
 
   const toggleType = (type: string) => {
     setActiveTypes((prev) => {
@@ -186,18 +208,31 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
           <div className="flex flex-wrap gap-1">
             {ALL_CATALOG_TYPES.map((type) => {
               const active = activeTypes.size === 0 || activeTypes.has(type);
+              const typeCount = displayedGraph.nodes.filter(
+                (n) => n.type === type,
+              ).length;
               return (
                 <button
                   key={type}
                   onClick={() => toggleType(type)}
-                  className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
+                  title={`${CATALOG_TYPE_LABELS[type]} (${typeCount})`}
+                  className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
                     active
                       ? 'text-white border-transparent'
                       : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
                   }`}
                   style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
                 >
+                  <DynamicIcon
+                    icon={CATALOG_TYPE_ICONS[type] ?? 'Circle'}
+                    className="w-2.5 h-2.5"
+                  />
                   {CATALOG_TYPE_LABELS[type]}
+                  {typeCount > 0 && (
+                    <span className="ml-0.5 px-1 rounded-full text-[9px] bg-black/20">
+                      {typeCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -278,6 +313,16 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
             </div>
           </div>
         )}
+
+        {/* Row 3: relation-type (edge) filter chips.
+            Uses rawEdges (NOT displayedGraph.edges) so the chips persist after
+            a relation is hidden — the filter must show what *can* be toggled,
+            not just what's currently visible. */}
+        <GraphRelationFilter
+          edges={rawEdges}
+          hidden={hiddenRelations}
+          onToggle={toggleRelation}
+        />
       </div>
 
       {/* Graph canvas */}
@@ -297,13 +342,34 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
             selectedNodeId={selectedNode}
             hiddenKinds={hiddenKinds}
             onSelectNode={(id) => {
+              // Single-click is purely local (show detail card). Navigation
+              // (URL change + catalog reload) happens on double-click below —
+              // doing both on single-click caused a 3s reload delay.
               setSelectedNode(id);
-              onSelectNode?.(id);
             }}
             onFocusNode={(id) => {
               setSelectedNode(id);
-              onFocusNode?.(id);
+              onFocusNode?.({ id, type: rawNodes.find((n) => n.id === id)?.type });
             }}
+            onClearSelection={() => setSelectedNode(undefined)}
+            renderNodeDetail={({ node, degree, onClose, onFocus }) => (
+              <GraphNodeDetail
+                node={node}
+                degree={degree}
+                onClose={onClose}
+                onFocus={onFocus}
+              />
+            )}
+            renderContextMenu={({ x, y, node, onClose, onFocus }) => (
+              <GraphNodeContextMenu
+                x={x}
+                y={y}
+                type={node.type ?? ''}
+                id={node.id}
+                onClose={onClose}
+                onFocus={onFocus}
+              />
+            )}
           />
         )}
       </div>

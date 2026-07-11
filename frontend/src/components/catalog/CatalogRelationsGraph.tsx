@@ -17,6 +17,9 @@ import {
 } from '../ui/ConceptGraphView';
 import { LoadingState } from '../ui/LoadingState';
 import { CatalogRelationsCards } from './CatalogRelationsCards';
+import { GraphNodeDetail } from './GraphNodeDetail';
+import { GraphNodeContextMenu } from './GraphNodeContextMenu';
+import { GraphRelationFilter } from './GraphRelationFilter';
 import { getCatalogRelations } from '../../services/catalogService';
 import type { CatalogRelationResponse } from '../../types/catalog';
 
@@ -42,6 +45,7 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
+  const [hiddenRelations, setHiddenRelations] = useState<Set<string>>(new Set());
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -69,6 +73,8 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
       primary_kind: n.kind || n.type,
       kinds: [n.kind || n.type],
       color: n.color || RELATION_COLORS[n.type] || '#6b7280',
+      type: n.type,
+      icon: n.icon,
     }));
     const edges: ConceptGraphEdgeData[] = (data.edges || []).map((e) => ({
       id: e.id,
@@ -78,6 +84,24 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
     }));
     return { nodes, edges };
   }, [data]);
+
+  // Client-side relation-type filter.
+  const displayedEdges = useMemo(
+    () =>
+      hiddenRelations.size > 0
+        ? edges.filter((e) => !hiddenRelations.has(e.relation))
+        : edges,
+    [edges, hiddenRelations],
+  );
+
+  const toggleRelation = (relation: string) => {
+    setHiddenRelations((prev) => {
+      const next = new Set(prev);
+      if (next.has(relation)) next.delete(relation);
+      else next.add(relation);
+      return next;
+    });
+  };
 
   if (loading) return <LoadingState variant="section" message="Loading relations…" />;
   if (error) return <p className="text-sm text-red-500">{error}</p>;
@@ -104,7 +128,7 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
           <option value={3}>3 hops</option>
         </select>
         <span className="text-xs text-gray-400">
-          {nodes.length} nodes · {edges.length} edges
+          {nodes.length} nodes · {displayedEdges.length} edges
         </span>
         {/* Graph / Cards sub-tab toggle */}
         <div className="ml-auto flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
@@ -141,14 +165,45 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
           />
         </div>
       ) : (
+        <>
+        {/* Relation-type filter chips.
+            Uses edges (NOT displayedEdges) so chips persist after hiding. */}
+        <div className="shrink-0">
+          <GraphRelationFilter
+            edges={edges}
+            hidden={hiddenRelations}
+            onToggle={toggleRelation}
+          />
+        </div>
         <div className="flex-1 relative min-h-[400px] rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <ConceptGraphView
             nodes={nodes}
-            edges={edges}
+            edges={displayedEdges}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            onFocusNode={setSelectedNodeId}
+            onClearSelection={() => setSelectedNodeId(undefined)}
+            renderNodeDetail={({ node, degree, onClose, onFocus }) => (
+              <GraphNodeDetail
+                node={node}
+                degree={degree}
+                onClose={onClose}
+                onFocus={onFocus}
+              />
+            )}
+            renderContextMenu={({ x, y, node, onClose, onFocus }) => (
+              <GraphNodeContextMenu
+                x={x}
+                y={y}
+                type={node.type ?? ''}
+                id={node.id}
+                onClose={onClose}
+                onFocus={onFocus}
+              />
+            )}
           />
         </div>
+        </>
       )}
     </div>
   );

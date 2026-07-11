@@ -49,6 +49,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
+import { domainRouteForType } from '../../utils/domainRoute';
 
 const INFO = 'info';
 const RELATIONS = 'relations';
@@ -63,8 +64,19 @@ export const CatalogWorkspace: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>(INFO);
   const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
-  // Concept-only: workspace-level graph exploration mode (Phase 5).
-  const [graphMode, setGraphMode] = useState<'list' | 'graph'>('list');
+  // Graph mode is URL-driven (?view=graph) so it's routable, deep-linkable,
+  // and survives refresh/back navigation.
+  const graphMode: 'list' | 'graph' = searchParams.get('view') === 'graph' ? 'graph' : 'list';
+  const setGraphMode = (mode: 'list' | 'graph') => {
+    setSearchParams(
+      (prev) => {
+        if (mode === 'graph') prev.set('view', 'graph');
+        else prev.delete('view');
+        return prev;
+      },
+      { replace: true },
+    );
+  };
 
   // Items (owned here so the browser, preview Info + Relations tabs share).
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -267,9 +279,13 @@ export const CatalogWorkspace: React.FC = () => {
     setSearchParams({ type }, { replace: true });
   };
 
-  const selectItem = (id: string) => {
+  const selectItem = (id: string, type?: string | null) => {
     setSearchParams(
       (prev) => {
+        // When a cross-catalog node carries its own type (e.g. clicking a
+        // biomarker node from the concept graph), switch the catalog type so
+        // the item resolves under the correct browser.
+        if (type && type !== activeType) prev.set('type', type);
         if (id) prev.set('item', id);
         else prev.delete('item');
         return prev;
@@ -278,19 +294,12 @@ export const CatalogWorkspace: React.FC = () => {
     );
   };
 
-  const domainRoute = (item: CatalogItem): string | null => {
-    const id = String(item.id);
-    switch (activeType) {
-      case 'biomarker':
-        return `/biomarkers/details/${id}`;
-      case 'medication':
-        return `/medications/details/${id}`;
-      case 'anatomy':
-        return `/anatomy/${id}`;
-      default:
-        return null;
-    }
-  };
+  const domainRoute = (item: CatalogItem): string | null =>
+    domainRouteForType(
+      activeType,
+      String(item.id),
+      item.slug ? String(item.slug) : undefined,
+    );
 
   const handleSave = async () => {
     if (!editing || saving) return;
@@ -652,10 +661,9 @@ export const CatalogWorkspace: React.FC = () => {
               <div className="flex-1 min-h-0">
                 <CatalogOntologyGraph
                   refreshKey={relationsRevision}
-                  onFocusNode={(id) => {
-                    selectItem(id);
+                  onFocusNode={(node) => {
+                    selectItem(node.id, node.type ?? undefined);
                   }}
-                  onSelectNode={(id) => selectItem(id)}
                 />
               </div>
             ) : (
