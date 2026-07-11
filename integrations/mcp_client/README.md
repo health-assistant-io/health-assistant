@@ -1,6 +1,6 @@
 # MCP Client
 
-Connect to [Model Context Protocol](https://modelcontextprotocol.io) servers and expose their tools to the Health Assistant chat.
+Connect to [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) servers and expose their tools to the Health Assistant chat.
 
 See `docs/` for the full guide. Multi-instance: one `MCP Client` integration per MCP server; a user can connect to many.
 

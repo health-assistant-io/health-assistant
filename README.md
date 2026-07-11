@@ -8,9 +8,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20Self--Hosted-lightgrey.svg)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)<br>
-[![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-lightgrey?logo=github)](https://github.com/sponsors/health-assistant-io)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
 
 <br>
@@ -39,7 +38,7 @@ If Health Assistant has helped you take control of your health data, or if you b
 
 Your sponsorship directly supports the continued development, maintenance, and improvement of the platform.
 
-[Sponsor on GitHub](https://github.com/sponsors/health-assistant-io) | [Buy Me A Coffee](https://buymeacoffee.com/healthassistant)
+[Buy Me A Coffee](https://buymeacoffee.com/healthassistant)
 
 ## 📖 Documentation
 

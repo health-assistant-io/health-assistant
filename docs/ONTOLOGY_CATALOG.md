@@ -95,7 +95,7 @@ When an import is triggered:
 
 If you create a public GitHub repository to share a catalog containing LOINC codes, you **must** include the LOINC attribution per their licensing requirements:
 
-> This material contains content from LOINC (http://loinc.org). LOINC is copyright © Regenstrief Institute, Inc. and the Logical Observation Identifiers Names and Codes (LOINC) Committee and is available at no cost under the license at http://loinc.org/license. LOINC® is a registered United States trademark of Regenstrief Institute, Inc.
+> This material contains content from LOINC (https://loinc.org). LOINC is copyright © Regenstrief Institute, Inc. and the Logical Observation Identifiers Names and Codes (LOINC) Committee and is available at no cost under the license at https://loinc.org/license. LOINC® is a registered United States trademark of Regenstrief Institute, Inc.
 ## Data Mapping & Normalization Logic
 
 When external data enters the system (via OCR Document Extraction, API integrations, or Webhooks), it must be assigned to a unified `BiomarkerDefinition`. The system uses a strict waterfall logic to establish this `biomarker_id` link:
