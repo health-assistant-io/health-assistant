@@ -954,9 +954,20 @@ endpoints resolved to display payloads. Filters: `types` (comma-separated
 > (`ConceptService` enforces audit + retire/restore + RBAC).
 
 #### Unified catalog search
-`GET /api/v1/catalogs/search?q=&types=&limit=` → `{results: [{type, id, label}, …]}`
-— typo-tolerant (`pg_trgm`) search across **all** registered catalogs at once,
-tenant-scoped. `types` is an optional comma-separated subset.
+`GET /api/v1/catalogs/search?q=&types=&limit=` →
+`{results: [{type, id, label, description?, matched_on, snippet?, score, …}, …]}`
+— **hybrid search** (trigram similarity over name/slug/code + `websearch_to_tsquery` FTS
+over description/indications/info/aliases + `ILIKE` substring fallback, fused via
+**Reciprocal Rank Fusion** with k=60) across **all** registered catalogs at once,
+tenant-scoped. `types` is an optional comma-separated subset. Cross-catalog hits
+are globally RRF-ranked with a per-type floor so a strong biomarker match can't
+hide a smaller catalog's hit. Each result carries `matched_on` (e.g.
+`["name", "alias", "text"]`) and a `ts_headline` snippet showing the match context.
+The LLM-facing `search_catalogs` / `search_available_biomarkers` /
+`search_medications` / `search_concepts` chatbot tools are thin wrappers over
+this dispatcher with `types=[...]` filters and domain-specific payload
+projection. See `app/services/catalog_search_service.py` and migration
+`j1a2b3c4d5e6` for the per-catalog trigram + FTS GIN indexes.
 
 #### Global search
 `GET /api/v1/search?q=` → `{results: [{id, type, title, subtitle}, …]}` —

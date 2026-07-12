@@ -30,16 +30,25 @@ def build(ctx: ToolContext):
     ) -> str:
         """Search the unified medical taxonomy (concepts) by name, slug, or alias.
 
-        Typo-tolerant (trigram similarity). Optionally filter by kind:
+        Hybrid search (trigram + full-text + RRF) — matches the name, slug,
+        aliases (exact and substring), AND description text. Optionally
+        filter by kind:
         'specialty', 'examination_category', 'event_category', 'biomarker_class',
         'biomarker_panel', 'anatomy_class', 'medication_class', 'disease',
         'body_system', 'symptom', 'procedure', 'lifestyle', 'factor', 'organ',
         'vaccine_class', 'document_category'.
 
-        Returns JSON: [{id, name, slug, kind, description, coding_system, code}].
+        Returns JSON: [{id, name, slug, kind, description, coding_system, code,
+        matched_on, snippet}].
         """
-        from app.services.catalog_search_service import search_concepts as _search
         from app.models.enums import ConceptKind
+        from app.models.concept_model import Concept
+        from app.services.catalog_search_service import (
+            _hybrid_search_one,
+            _specs_by_type,
+        )
+        from app.services.concept_service import concepts_with_kind
+        from sqlalchemy import select
 
         resolved_kind = None
         if kind:
@@ -48,15 +57,47 @@ def build(ctx: ToolContext):
             except ValueError:
                 pass
 
-        results = await _search(
+        specs = _specs_by_type()
+        spec = specs["concept"]
+
+        # Kind filter: inject as extra static predicate (ids resolved up-front
+        # from concept_kind_tags, never from user input).
+        extra_sql = ""
+        extra_params = {}
+        if resolved_kind is not None:
+            kind_rows = await ctx.db.execute(
+                select(Concept.id).where(concepts_with_kind(resolved_kind))
+            )
+            kind_ids = [r[0] for r in kind_rows.all()]
+            if not kind_ids:
+                return json.dumps([])
+            extra_sql = "AND t.id = ANY(:kind_ids)"
+            extra_params["kind_ids"] = kind_ids
+
+        hits = await _hybrid_search_one(
             ctx.db,
-            ctx.tenant_id,
+            spec,
             search_term,
-            kind=resolved_kind,
+            ctx.tenant_id,
             limit=20,
+            extra_where_sql=extra_sql,
+            extra_params=extra_params,
         )
-        return json.dumps(
-            [
+        if not hits:
+            return json.dumps([])
+        # Bulk-fetch concept rows in rank order for the rich payload.
+        rows = (
+            await ctx.db.execute(
+                select(Concept).where(Concept.id.in_([h.row_id for h in hits]))
+            )
+        ).scalars().all()
+        by_id = {r.id: r for r in rows}
+        out = []
+        for h in hits:
+            c = by_id.get(h.row_id)
+            if c is None:
+                continue
+            out.append(
                 {
                     "id": str(c.id),
                     "name": c.name,
@@ -65,10 +106,12 @@ def build(ctx: ToolContext):
                     "description": c.description,
                     "coding_system": c.coding_system,
                     "code": c.code,
+                    "matched_on": h.matched_on,
+                    "snippet": h.snippet,
+                    "score": h.score,
                 }
-                for c in results
-            ]
-        )
+            )
+        return json.dumps(out)
 
     @tool
     async def get_concept_neighborhood(

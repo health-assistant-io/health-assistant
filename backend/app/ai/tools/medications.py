@@ -105,20 +105,50 @@ def build(ctx: ToolContext) -> List[Any]:
         search_term: str,
         limit: int = 10,
     ) -> str:
-        """Search the medication catalog (tenant-scoped + globals) by name or indication.
-        Typo-tolerant (trigram similarity + substring fallback): returns the closest
-        matches ranked by similarity so you can resolve "ibuprofin" / "paracetamol" /
-        "Glucophage" to the canonical catalog entry. Use this BEFORE proposing to add
-        a medication so you reuse an existing catalog_id instead of creating a duplicate.
+        """Search the medication catalog (tenant-scoped + globals).
+
+        Hybrid search (trigram + full-text + RRF): matches the drug name
+        (typo-tolerant — "ibuprofin"/"paracetamol"/"Glucophage") AND the
+        description/indications/contraindications (so "headache" or
+        "diabetes" finds the relevant drugs). Use this BEFORE proposing to
+        add a medication so you reuse an existing catalog_id instead of
+        creating a duplicate.
 
         Args:
-            search_term: Drug name, generic name, or symptom/indication fragment.
+            search_term: Drug name, generic name, symptom, or indication.
             limit: Max results (default 10).
-        """
-        from app.services.catalog_search_service import search_medications as _search
 
-        meds = await _search(ctx.db, ctx.tenant_id, search_term, limit=limit)
-        return json.dumps([m.to_dict() for m in meds])
+        Returns JSON: [{id, name, description, indications, side_effects,
+        contraindications, dosage_info, matched_on, snippet}].
+        """
+        from app.services.catalog_search_service import search_catalogs as _search
+
+        results = await _search(
+            ctx.db,
+            ctx.tenant_id,
+            search_term,
+            types=["medication"],
+            limit_total=limit,
+        )
+        # Project to a stable shape — the dispatcher payload already
+        # contains everything from MedicationCatalog.to_dict(); we just
+        # normalise the type/id/label keys.
+        out = []
+        for r in results:
+            out.append(
+                {
+                    "id": r["id"],
+                    "name": r.get("name") or r.get("label"),
+                    "description": r.get("description"),
+                    "indications": r.get("indications"),
+                    "side_effects": r.get("side_effects", []),
+                    "contraindications": r.get("contraindications"),
+                    "dosage_info": r.get("dosage_info"),
+                    "matched_on": r.get("matched_on", []),
+                    "snippet": r.get("snippet"),
+                }
+            )
+        return json.dumps(out)
 
     return [
         get_current_medications,

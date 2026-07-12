@@ -213,15 +213,28 @@ class BaseCatalogAdapter:
         q: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Typo-tolerant trigram search over ``search_columns``.
+        """Hybrid (trigram + FTS + RRF) search via the unified backend.
 
-        Returns uniform ``[{"id", "label"}, ...]`` hits (the dispatcher tags
-        them with the catalog ``type``). Uses ``pg_trgm`` similarity (GIN-
-        indexed) with an ``ilike`` substring fallback, ranked by
-        ``similarity(label_column, q)``. Empty/too-short queries return ``[]``.
+        Delegates to :func:`catalog_search_service._hybrid_search_one` using
+        the per-catalog spec keyed by ``self.catalog_type``. Returns uniform
+        ``[{"id", "label"}, ...]`` hits (the dispatcher tags them with the
+        catalog ``type`` and the LLM tools enrich them further). Empty /
+        too-short queries return ``[]``.
+
+        Catalogs without a registered spec (none today) fall back to the
+        legacy trigram-only path.
         """
-        # Lazy import avoids a module-level cycle (catalog_search_service ->
-        # registry -> registrations -> adapters).
+        from app.services.catalog_search_service import (
+            _hybrid_search_one,
+            _specs_by_type,
+        )
+
+        spec = _specs_by_type().get(self.catalog_type)
+        if spec is not None:
+            hits = await _hybrid_search_one(db, spec, q, tenant_id, limit=limit)
+            return [{"id": str(h.row_id), "label": h.label} for h in hits]
+
+        # Legacy fallback (trigram + ilike over search_columns).
         from app.services.catalog_search_service import (
             DEFAULT_THRESHOLD,
             _normalize,
@@ -231,7 +244,6 @@ class BaseCatalogAdapter:
         norm = _normalize(q)
         if norm is None:
             return []
-
         await _set_similarity_threshold(db, DEFAULT_THRESHOLD)
         stmt = self._base_stmt()
         stmt = self._apply_tenant(stmt, tenant_id)
@@ -642,35 +654,21 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         q: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Trigram search over name/slug/code (ranked name hit)."""
+        """Hybrid (trigram + FTS + alias + RRF) search via the unified backend.
+
+        Delegates to :func:`catalog_search_service._hybrid_search_one` using
+        the biomarker spec — searches name/slug/code via trigram + description
+        /info/aliases via FTS, so "TSH" matches the alias of "Thyroid
+        Stimulating Hormone".
+        """
         from app.services.catalog_search_service import (
-            DEFAULT_THRESHOLD,
-            _normalize,
-            _set_similarity_threshold,
+            _hybrid_search_one,
+            _specs_by_type,
         )
 
-        norm = _normalize(q)
-        if norm is None:
-            return []
-        await _set_similarity_threshold(db, DEFAULT_THRESHOLD)
-        stmt = (
-            select(BiomarkerDefinition)
-            .where(
-                *self._filters(tenant_id, None),
-                or_(
-                    BiomarkerDefinition.name.op("%")(norm),
-                    BiomarkerDefinition.slug.op("%")(norm),
-                    BiomarkerDefinition.code.op("%")(norm),
-                    BiomarkerDefinition.name.ilike(f"%{norm}%"),
-                    BiomarkerDefinition.slug.ilike(f"%{norm}%"),
-                    BiomarkerDefinition.code.ilike(f"%{norm}%"),
-                ),
-            )
-            .order_by(func.similarity(BiomarkerDefinition.name, norm).desc())
-            .limit(limit)
-        )
-        rows = (await db.execute(stmt)).scalars().all()
-        return [{"id": str(r.id), "label": r.name} for r in rows]
+        spec = _specs_by_type()["biomarker"]
+        hits = await _hybrid_search_one(db, spec, q, tenant_id, limit=limit)
+        return [{"id": str(h.row_id), "label": h.label} for h in hits]
 
     # --- writes ------------------------------------------------------------
 

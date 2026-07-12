@@ -38,17 +38,31 @@ def build(ctx: ToolContext):
         """Search across all clinical catalogs (biomarkers, medications,
         vaccines, allergies, anatomy, diseases, clinical event types).
 
-        Typo-tolerant (trigram similarity). Returns ranked hits with their
-        catalog type + id + label. Use this before any specific catalog lookup
-        to discover the right entity.
+        Hybrid search: typo-tolerant trigram matching over names/slugs/codes
+        PLUS full-text search over descriptions/indications/info/aliases,
+        fused via Reciprocal Rank Fusion. Returns ranked hits with rich
+        metadata so you can decide relevance without a follow-up lookup.
+
+        Use this before any specific catalog lookup to discover the right
+        entity. Especially powerful for:
+        - "find by symptom": query="headache" matches medications whose
+          indications mention headache.
+        - "find by alias": query="FBS" matches "Fasting Blood Sugar" via
+          its alias.
+        - "find by concept": query="diabetes" matches diseases AND
+          medications AND biomarkers across catalogs in one call.
 
         Args:
-            query: the search term (min 2 characters).
+            query: the search term (min 2 characters). Multi-word queries
+                are supported ("high blood pressure").
             types: optional list of catalog types to restrict the search to
                 (e.g. ["biomarker", "medication", "disease"]). None = all.
             limit: max total results (default 10).
 
-        Returns JSON: [{type, id, label}].
+        Returns JSON: [{type, id, label, description, matched_on, snippet,
+        score, ...}]. The ``matched_on`` field lists which fields matched
+        (e.g. ["name", "alias", "text"]); ``snippet`` is a short excerpt
+        showing the match context when the description/info matched.
         """
         from app.services.catalog_search_service import search_catalogs as _search
 
@@ -59,12 +73,7 @@ def build(ctx: ToolContext):
             types=types,
             limit_total=limit,
         )
-        return json.dumps(
-            [
-                {"type": h["type"], "id": str(h["id"]), "label": h["label"]}
-                for h in results
-            ]
-        )
+        return json.dumps(results, default=str)
 
     @tool
     async def explore_catalog_relations(

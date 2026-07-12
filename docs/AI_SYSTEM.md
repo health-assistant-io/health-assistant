@@ -77,8 +77,10 @@ Health Assistant features a deeply integrated Agentic AI Copilot designed to pro
 
 ### Tool-Calling Capabilities
 The `app/ai/tools/` package dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id` (via `get_tools(db, tenant_id, patient_id, examination_id=None)`). Individual tools are registered with the `@register_chat_tool` decorator and receive a `ToolContext`. These tools allow the LLM to:
-- **Search Available Biomarkers:** Discover metrics, IDs, and data types (Telemetry vs Clinical) using trigram similarity search.
-- **Search Medications:** Discover drugs in the medication catalog using trigram similarity search.
+- **Search Available Biomarkers:** Discover metrics, IDs, and data types (Telemetry vs Clinical) using hybrid search (trigram + full-text + alias matching, fused via Reciprocal Rank Fusion). Matches name/slug/code AND aliases (so "TSH" finds "Thyroid Stimulating Hormone") AND description/info text (so "blood sugar" finds biomarkers whose description mentions it).
+- **Search Medications:** Discover drugs in the medication catalog using hybrid search (trigram + FTS over name/description/indications). Symptom-style queries work: "headache" finds drugs whose indications mention headache.
+- **Search Catalogs:** Cross-catalog discovery in one call — returns globally RRF-ranked hits across biomarkers, medications, vaccines, allergies, anatomy, diseases, and clinical event types, each with a `matched_on` provenance list + a `ts_headline` snippet showing the match context.
+- **Explore Catalog Relations:** Multi-hop knowledge-graph traversal ("which organ does this biomarker affect?", "what diseases does this vaccine prevent?").
 - **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling using UUIDs.
 - Read raw OCR document extractions.
 - Fetch recent biomarker values and historical trends (for discrete clinical labs using UUIDs).

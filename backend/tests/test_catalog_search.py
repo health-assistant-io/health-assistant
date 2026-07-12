@@ -85,7 +85,11 @@ async def test_search_catalogs_hits_all_types():
     assert "biomarker" in types_hit
     assert "anatomy" in types_hit
     for h in hits:
-        assert set(h.keys()) == {"type", "id", "label"}
+        # Enriched payload (Phase 5 hybrid search): always carries the
+        # identity triple plus matched_on/snippet/score for LLM discovery.
+        assert {"type", "id", "label"} <= set(h.keys())
+        assert "matched_on" in h
+        assert "score" in h
         assert "zebra" in h["label"].lower()
 
 

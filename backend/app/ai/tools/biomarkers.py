@@ -112,26 +112,65 @@ def build(ctx: ToolContext) -> List[Any]:
     async def search_available_biomarkers(search_term: Optional[str] = None) -> str:
         """Search the clinical catalog to find the exact ID and type (telemetry vs clinical) of a biomarker.
         Use this tool BEFORE querying data if you are unsure of the exact ID or whether it is high-frequency telemetry.
-        Typo-tolerant (trigram similarity) over name/slug/code; tenant-scoped + globals.
-        If search_term is omitted, returns a list of common biomarkers."""
-        from app.services.catalog_search_service import search_biomarkers
 
-        biomarkers = await search_biomarkers(
-            ctx.db, ctx.tenant_id, search_term, limit=20
+        Hybrid search (trigram + full-text + alias matching + RRF ranking):
+        - Matches name, slug, code, AND aliases — so "TSH" finds
+          "Thyroid Stimulating Hormone", "FBS" finds "Fasting Glucose".
+        - Matches description and info text — so "blood sugar" finds
+          biomarkers whose description mentions blood sugar.
+        Tenant-scoped + globals. If search_term is omitted, lists common
+        biomarkers.
+
+        Returns JSON: [{id, name, slug, category, is_telemetry, preferred_unit,
+                        coding_system, code, matched_on, snippet}].
+        """
+        from app.services.catalog_search_service import search_catalogs as _search
+
+        if not search_term or len(search_term.strip()) < 2:
+            # Short/empty query: list biomarkers alphabetically.
+            from app.services.catalog_search_service import search_biomarkers
+
+            biomarkers = await search_biomarkers(ctx.db, ctx.tenant_id, None, limit=20)
+            summary = []
+            for b in biomarkers:
+                summary.append(
+                    {
+                        "id": str(b.id),
+                        "name": b.name,
+                        "slug": b.slug,
+                        "category": b.category,
+                        "is_telemetry": b.is_telemetry,
+                        "preferred_unit": b.preferred_unit.symbol
+                        if b.preferred_unit
+                        else None,
+                    }
+                )
+            return json.dumps(summary)
+
+        results = await _search(
+            ctx.db,
+            ctx.tenant_id,
+            search_term,
+            types=["biomarker"],
+            limit_total=20,
         )
-
+        # Project to the biomarker-tool-specific shape — preserves the
+        # ``is_telemetry`` + ``preferred_unit_symbol`` fields the system
+        # prompt relies on for FHIR-vs-TimescaleDB routing.
         summary = []
-        for b in biomarkers:
+        for r in results:
             summary.append(
                 {
-                    "id": str(b.id),
-                    "name": b.name,
-                    "slug": b.slug,
-                    "category": b.category,
-                    "is_telemetry": b.is_telemetry,
-                    "preferred_unit": b.preferred_unit.symbol
-                    if b.preferred_unit
-                    else None,
+                    "id": r["id"],
+                    "name": r.get("name") or r.get("label"),
+                    "slug": r.get("slug"),
+                    "category": r.get("category"),
+                    "is_telemetry": r.get("is_telemetry"),
+                    "preferred_unit": r.get("preferred_unit_symbol"),
+                    "coding_system": r.get("coding_system"),
+                    "code": r.get("code"),
+                    "matched_on": r.get("matched_on", []),
+                    "snippet": r.get("snippet"),
                 }
             )
         return json.dumps(summary)

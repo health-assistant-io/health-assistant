@@ -130,7 +130,7 @@ All under `/api/v1`, standard JWT auth, tenancy-scoped.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/concepts?kind=&parent_id=&include_retired=&limit=&offset=` | List (filter by kind tag, parent, status) |
-| `GET` | `/concepts/search?q=&kind=&limit=` | Ranked trigram + alias search |
+| `GET` | `/concepts/search?q=&kind=&limit=` | Hybrid search (trigram + FTS + RRF) over name/slug/description/aliases |
 | `POST` | `/concepts` | Create — body accepts `kinds: [...]` (or legacy single `kind`) |
 | `GET` | `/concepts/{id}` | Fetch one |
 | `PUT` | `/concepts/{id}` | Update — `kinds` replaces the full tag set (≥1 required) |
