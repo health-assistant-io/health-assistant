@@ -19,9 +19,11 @@ import ReactFlow, {
   useEdgesState,
 } from 'reactflow';
 import { forceSimulation, forceManyBody, forceLink, forceCollide, forceX, forceY } from 'd3-force';
+import dagre from 'dagre';
 import { toPng } from 'html-to-image';
-import { Download, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, Search, ChevronDown, ChevronRight, Share2, ListTree } from 'lucide-react';
 import { DynamicIcon } from './DynamicIcon';
+import { getHierarchyEdgeDirection } from './hierarchyLayout';
 
 export interface ConceptGraphNode {
   id: string;
@@ -379,7 +381,12 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
   const lowerSearch = searchTerm.trim().toLowerCase();
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
-  // ── 1. Compute layout ONLY when raw graph data changes (not on selection) ──
+  // Layout mode: 'force' (d3-force organic) or 'hierarchy' (dagre layered,
+  // relation-aware — e.g. AFFECTS puts target below source, MEMBER_OF puts
+  // the group above the member).
+  const [layoutMode, setLayoutMode] = useState<'force' | 'hierarchy'>('force');
+
+  // ── 1. Compute layout ONLY when raw graph data or layout mode changes ──
   const { layoutNodes, layoutEdges } = useMemo(() => {
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
     const connectedIds = new Set<string>();
@@ -394,27 +401,50 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
 
     const visibleNodes = nodes;
 
-    // d3-force layout
-    interface SimNode { id: string; x: number; y: number; vx: number; vy: number }
-    interface SimLink { source: string; target: string }
-
-    const simNodes: SimNode[] = visibleNodes.map((n) => ({ id: n.id, x: 0, y: 0, vx: 0, vy: 0 }));
-    const simLinks: SimLink[] = edges
-      .filter((e) => connectedIds.has(e.source) && connectedIds.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target }));
-
-    const simulation = forceSimulation<SimNode>(simNodes)
-      .force('charge', forceManyBody().strength(-180))
-      .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(100).strength(0.6))
-      .force('collide', forceCollide(85))
-      .force('x', forceX(0).strength(0.04))
-      .force('y', forceY(0).strength(0.04))
-      .stop();
-
-    for (let i = 0; i < 500; i++) simulation.tick();
-
+    // ── Compute positions ──
     const positions = new Map<string, { x: number; y: number }>();
-    for (const n of simNodes) positions.set(n.id, { x: n.x, y: n.y });
+
+    if (layoutMode === 'hierarchy') {
+      // Dagre hierarchical layout — relation-aware: edges flow top-to-bottom
+      // with direction determined by relation semantics (e.g. AFFECTS keeps
+      // source above target; MEMBER_OF reverses so the group is on top).
+      const NODE_W = 150;
+      const NODE_H = 44;
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({ rankdir: 'TB', ranksep: 70, nodesep: 30, marginx: 40, marginy: 40 });
+      g.setDefaultEdgeLabel(() => ({}));
+      for (const n of nodes) g.setNode(n.id, { width: NODE_W, height: NODE_H });
+      for (const e of edges) {
+        if (!connectedIds.has(e.source) || !connectedIds.has(e.target)) continue;
+        const { from, to } = getHierarchyEdgeDirection(e.source, e.target, e.relation);
+        g.setEdge(from, to);
+      }
+      dagre.layout(g);
+      for (const id of g.nodes()) {
+        const nd = g.node(id);
+        if (nd) positions.set(id, { x: nd.x - NODE_W / 2, y: nd.y - NODE_H / 2 });
+      }
+    } else {
+      // d3-force layout (organic, spread-out)
+      interface SimNode { id: string; x: number; y: number; vx: number; vy: number }
+      interface SimLink { source: string; target: string }
+
+      const simNodes: SimNode[] = visibleNodes.map((n) => ({ id: n.id, x: 0, y: 0, vx: 0, vy: 0 }));
+      const simLinks: SimLink[] = edges
+        .filter((e) => connectedIds.has(e.source) && connectedIds.has(e.target))
+        .map((e) => ({ source: e.source, target: e.target }));
+
+      const simulation = forceSimulation<SimNode>(simNodes)
+        .force('charge', forceManyBody().strength(-180))
+        .force('link', forceLink<SimNode, SimLink>(simLinks).id((d) => d.id).distance(100).strength(0.6))
+        .force('collide', forceCollide(85))
+        .force('x', forceX(0).strength(0.04))
+        .force('y', forceY(0).strength(0.04))
+        .stop();
+
+      for (let i = 0; i < 500; i++) simulation.tick();
+      for (const n of simNodes) positions.set(n.id, { x: n.x, y: n.y });
+    }
 
     const fnodes: Node[] = nodes
       .filter((n) => positions.has(n.id))
@@ -484,7 +514,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
       }));
 
     return { layoutNodes: fnodes, layoutEdges: fedges };
-  }, [nodes, edges]);
+  }, [nodes, edges, layoutMode]);
 
   // ── 2. ReactFlow internal state — gives it control over drag positions ──
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState(layoutNodes);
@@ -763,13 +793,41 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
           zoomable
         />
         <Panel position="top-right">
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-medium text-slate-600 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" />
-            PNG
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Layout mode toggle: force vs hierarchy */}
+            <div className="flex items-center rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setLayoutMode('force')}
+                title="Force-directed layout"
+                className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium transition-colors ${
+                  layoutMode === 'force'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'
+                }`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setLayoutMode('hierarchy')}
+                title="Hierarchy layout (by relation direction)"
+                className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium transition-colors ${
+                  layoutMode === 'hierarchy'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'
+                }`}
+              >
+                <ListTree className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {/* PNG export */}
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-medium text-slate-600 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              PNG
+            </button>
+          </div>
         </Panel>
         {/* Search-to-find (top-left) */}
         <Panel position="top-left">
