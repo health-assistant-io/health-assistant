@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Search, ChevronDown, Check, Plus, Activity } from 'lucide-react';
 import { Unit } from '../../types/biomarker';
 import biomarkerService from '../../services/biomarkerService';
 import { formatUnit } from '../../utils/biomarkerUtils';
+import { Popover } from './Popover';
 
 interface Props {
   units: Unit[];
@@ -26,20 +27,10 @@ export const UnitSelector: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredUnits = units.filter(u => 
-    u.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredUnits = units.filter(u =>
+    u.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -70,8 +61,9 @@ export const UnitSelector: React.FC<Props> = ({
   };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
-      <div 
+    <div className={`relative ${className}`}>
+      <div
+        ref={triggerRef}
         className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 cursor-pointer flex items-center justify-between"
         onClick={() => setIsOpen(!isOpen)}
       >
@@ -81,8 +73,15 @@ export const UnitSelector: React.FC<Props> = ({
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
-        <div className="absolute z-[210] w-full mt-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      <Popover
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+      >
+        <div className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200" style={{ minWidth: 220 }}>
           <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -96,7 +95,7 @@ export const UnitSelector: React.FC<Props> = ({
               />
             </div>
           </div>
-          
+
           <div className="max-h-48 overflow-y-auto custom-scrollbar">
             {filteredUnits.length > 0 ? (
               filteredUnits.map((u) => (
@@ -128,7 +127,7 @@ export const UnitSelector: React.FC<Props> = ({
             )}
           </div>
         </div>
-      )}
+      </Popover>
     </div>
   );
 };

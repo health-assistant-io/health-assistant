@@ -1,7 +1,8 @@
-import React, { useState, useEffect, ReactNode } from 'react';
+import React, { useState, useRef, ReactNode } from 'react';
 import { Grid, ChevronDown, CheckCircle2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DynamicIcon } from './DynamicIcon';
+import { Popover } from './Popover';
 
 interface CategoryTab {
   name: string;
@@ -30,29 +31,15 @@ export const CategoryDropdown: React.FC<Props> = ({
 }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setIsOpen(false);
-    };
-
-    if (isOpen) {
-      setTimeout(() => {
-        document.addEventListener('click', handleClickOutside);
-      }, 0);
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, [isOpen]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const displayLabel = label || t('documents_explorer.categories');
 
   return (
     <div className="flex flex-1 items-center gap-2 pb-2 sm:pb-0 min-w-0">
       <div className="relative w-full sm:w-auto">
-        <button 
+        <button
+          ref={triggerRef}
           onClick={(e) => {
             e.stopPropagation();
             setIsOpen(!isOpen);
@@ -68,9 +55,16 @@ export const CategoryDropdown: React.FC<Props> = ({
           <ChevronDown className={`w-4 h-4 ml-2 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {isOpen && (
-          <div 
-            className="absolute top-full left-0 mt-2 w-full sm:w-64 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xl z-30 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-[300px] overflow-y-auto custom-scrollbar"
+        <Popover
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          triggerRef={triggerRef}
+          side="bottom"
+          align="start"
+          sideOffset={8}
+        >
+          <div
+            className="w-64 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-[300px] overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
             {tabs.map((tab) => (
@@ -100,7 +94,7 @@ export const CategoryDropdown: React.FC<Props> = ({
               </button>
             ))}
           </div>
-        )}
+        </Popover>
       </div>
       
       {/* Active Category Pills (Desktop Only) */}

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Sparkles, Send, X, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getAIAssistance } from '../../services/aiAssistanceService';
 import { AIBadge } from './AIBadge';
+import { Popover } from './Popover';
 
 interface Props {
   taskType: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination';
@@ -26,6 +27,7 @@ export const AIAssistButton: React.FC<Props> = ({
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const getDefaultPlaceholder = () => {
     if (placeholder) return placeholder;
@@ -76,6 +78,7 @@ export const AIAssistButton: React.FC<Props> = ({
   if (!isOpen) {
     return (
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(true)}
         className={`flex items-center space-x-2 p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all group ${className}`}
@@ -88,63 +91,84 @@ export const AIAssistButton: React.FC<Props> = ({
   }
 
   return (
-    <div className={`relative ${className} animate-in zoom-in-95 duration-200`}>
-      <div className="absolute top-0 right-0 z-50 w-64 bg-white dark:bg-dark-surface border border-indigo-100 dark:border-indigo-900/30 rounded-2xl shadow-2xl p-4 overflow-hidden">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-black uppercase tracking-widest">
-              {taskType === 'define_biomarker' || taskType === 'define_medication' ? t('ai_labels.definition_builder', 'Definition Builder') : t('ai_labels.assistant', 'AI Assistant')}
-            </span>
-            <AIBadge taskType={taskType} showText={false} className="ml-1" />
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(false)}
+        className={`flex items-center space-x-2 p-1.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-900/50 transition-all ${className}`}
+        title={t('ai_labels.get_assistance', 'Get AI Assistance')}
+      >
+        <Sparkles className="w-4 h-4" />
+        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">{t('ai_labels.magic_fill_ai', 'Magic Fill AI')}</span>}
+      </button>
+
+      <Popover
+        isOpen={isOpen}
+        onClose={() => { setIsOpen(false); setError(null); }}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="end"
+        sideOffset={4}
+        className="w-64"
+      >
+        <div className="bg-white dark:bg-dark-surface border border-indigo-100 dark:border-indigo-900/30 rounded-2xl shadow-2xl p-4 animate-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-black uppercase tracking-widest">
+                {taskType === 'define_biomarker' || taskType === 'define_medication' ? t('ai_labels.definition_builder', 'Definition Builder') : t('ai_labels.assistant', 'AI Assistant')}
+              </span>
+              <AIBadge taskType={taskType} showText={false} className="ml-1" />
+            </div>
+            <button
+              type="button"
+              onClick={() => { setIsOpen(false); setError(null); }}
+              className="p-1 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full text-gray-400"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button 
-            type="button"
-            onClick={() => { setIsOpen(false); setError(null); }}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full text-gray-400"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <textarea
-            autoFocus
-            rows={2}
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-xs text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-1 focus:ring-indigo-500/50 resize-none"
-            placeholder={getDefaultPlaceholder()}
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-          />
-          
-          {error && (
-            <p className="text-[9px] font-bold text-red-500 uppercase tracking-tighter bg-red-50 dark:bg-red-900/10 p-2 rounded-lg">
-              {error}
-            </p>
-          )}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <textarea
+              autoFocus
+              rows={2}
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-xs text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-1 focus:ring-indigo-500/50 resize-none"
+              placeholder={getDefaultPlaceholder()}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+            />
 
-          <button
-            type="submit"
-            disabled={loading || !userInput.trim()}
-            className="w-full flex items-center justify-center space-x-2 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
-          >
-            {loading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5" />
-                <span>Process</span>
-              </>
+            {error && (
+              <p className="text-[9px] font-bold text-red-500 uppercase tracking-tighter bg-red-50 dark:bg-red-900/10 p-2 rounded-lg">
+                {error}
+              </p>
             )}
-          </button>
-        </form>
-      </div>
-    </div>
+
+            <button
+              type="submit"
+              disabled={loading || !userInput.trim()}
+              className="w-full flex items-center justify-center space-x-2 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
+            >
+              {loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Process</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      </Popover>
+    </>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Search, ChevronDown, Check, Plus, Activity, Stethoscope, X } from 'lucide-react';
 import { Doctor } from '../../services/doctorService';
 import { formatUnit } from '../../utils/biomarkerUtils';
+import { Popover } from './Popover';
 
 interface Props {
   doctors: Doctor[];
@@ -25,19 +26,9 @@ export const DoctorSelector: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredDoctors = doctors.filter(d => 
+  const filteredDoctors = doctors.filter(d =>
     d.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     d.specialty?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -65,15 +56,16 @@ export const DoctorSelector: React.FC<Props> = ({
     : "w-full min-h-[46px] px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-900 dark:text-dark-text focus-within:ring-2 focus-within:ring-blue-500/20 cursor-pointer flex flex-wrap gap-2 items-center";
 
   return (
-    <div className={`relative ${className.replace('border-none', '')}`} ref={dropdownRef}>
-      <div 
+    <div className={`relative ${className.replace('border-none', '')}`}>
+      <div
+        ref={triggerRef}
         className={containerClasses}
         onClick={() => setIsOpen(!isOpen)}
       >
         {selectedDoctors.length > 0 ? (
           selectedDoctors.map(doc => (
-            <span 
-              key={doc.id} 
+            <span
+              key={doc.id}
               className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold border border-blue-200 dark:border-blue-800"
               onClick={(e) => {
                 e.stopPropagation();
@@ -91,8 +83,15 @@ export const DoctorSelector: React.FC<Props> = ({
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
-        <div className="absolute z-[210] w-full mt-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      <Popover
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+      >
+        <div className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200" style={{ minWidth: 260 }}>
           <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -106,7 +105,7 @@ export const DoctorSelector: React.FC<Props> = ({
               />
             </div>
           </div>
-          
+
           <div className="max-h-60 overflow-y-auto custom-scrollbar">
             {filteredDoctors.length > 0 ? (
               filteredDoctors.map((doc) => {
@@ -155,7 +154,7 @@ export const DoctorSelector: React.FC<Props> = ({
             )}
           </div>
         </div>
-      )}
+      </Popover>
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Search, ChevronDown, Check, Plus, Activity, Building2, X } from 'lucide-react';
 import { Organization } from '../../services/organizationService';
 import { useTranslation } from 'react-i18next';
+import { Popover } from './Popover';
 
 interface Props {
   organizations: Organization[];
@@ -24,19 +25,9 @@ export const OrganizationSelector: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredOrgs = organizations.filter(o => 
+  const filteredOrgs = organizations.filter(o =>
     o.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (o.type?.[0]?.coding?.[0]?.display || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -62,8 +53,9 @@ export const OrganizationSelector: React.FC<Props> = ({
     : "w-full min-h-[46px] px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-900 dark:text-dark-text focus-within:ring-2 focus-within:ring-blue-500/20 cursor-pointer flex gap-2 items-center";
 
   return (
-    <div className={`relative ${className.replace('border-none', '')}`} ref={dropdownRef}>
-      <div 
+    <div className={`relative ${className.replace('border-none', '')}`}>
+      <div
+        ref={triggerRef}
         className={containerClasses}
         onClick={() => setIsOpen(!isOpen)}
       >
@@ -72,7 +64,7 @@ export const OrganizationSelector: React.FC<Props> = ({
             <span className="text-sm font-bold text-blue-700 dark:text-blue-300">
               {selectedOrg.name}
             </span>
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(null);
@@ -88,8 +80,15 @@ export const OrganizationSelector: React.FC<Props> = ({
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
-        <div className="absolute z-[210] w-full mt-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      <Popover
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+      >
+        <div className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200" style={{ minWidth: 260 }}>
           <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -154,7 +153,7 @@ export const OrganizationSelector: React.FC<Props> = ({
             )}
           </div>
         </div>
-      )}
+      </Popover>
     </div>
   );
 };

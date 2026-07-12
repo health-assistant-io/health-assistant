@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Loader2, X, Check } from 'lucide-react';
 import { anatomyService } from '../../services/anatomyService';
 import type { AnatomyStructure } from '../../types/anatomy';
+import { Popover } from './Popover';
 
 export interface AnatomyTypeaheadSelection {
   id: string;
@@ -39,16 +40,8 @@ export default function AnatomyTypeahead({
   const [results, setResults] = useState<AnatomyStructure[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<AnatomyStructure | null>(initial ?? null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const doSearch = useCallback(async (t: string) => {
     if (!t.trim()) { setResults([]); return; }
@@ -84,7 +77,7 @@ export default function AnatomyTypeahead({
 
   if (selected) {
     return (
-      <div className={`flex items-center gap-2 ${className}`} ref={rootRef}>
+      <div className={`flex items-center gap-2 ${className}`} ref={triggerRef}>
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 flex-1">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           <span className="text-sm font-medium truncate">{selected.name}</span>
@@ -100,7 +93,7 @@ export default function AnatomyTypeahead({
   }
 
   return (
-    <div className={`relative ${className}`} ref={rootRef}>
+    <div className={`relative ${className}`} ref={triggerRef}>
       <div
         className="flex items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 cursor-text hover:border-emerald-400 dark:hover:border-emerald-500 transition-colors"
         onClick={() => setIsOpen(true)}
@@ -121,8 +114,15 @@ export default function AnatomyTypeahead({
         {loading && <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />}
       </div>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
+      <Popover
+        isOpen={isOpen}
+        onClose={() => { setIsOpen(false); setTerm(''); }}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+      >
+        <div className="w-full max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg" style={{ minWidth: 260 }}>
           {results.length === 0 && !loading && (
             <div className="px-3 py-4 text-center text-sm text-slate-400">
               {term ? 'No anatomy matches' : 'Start typing to search anatomy…'}
@@ -144,7 +144,7 @@ export default function AnatomyTypeahead({
             </button>
           ))}
         </div>
-      )}
+      </Popover>
     </div>
   );
 }

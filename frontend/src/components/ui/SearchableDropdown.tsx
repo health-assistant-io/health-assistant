@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Search, ChevronDown, Check, X } from 'lucide-react';
+import { Popover } from './Popover';
 
 export interface DropdownOption {
   value: string;
@@ -33,30 +34,20 @@ export const SearchableDropdown: React.FC<Props> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   const filteredOptions = useMemo(() => {
     if (!searchTerm.trim()) return options;
     const term = searchTerm.toLowerCase();
-    return options.filter(opt => 
-      opt.label.toLowerCase().includes(term) || 
+    return options.filter(opt =>
+      opt.label.toLowerCase().includes(term) ||
       opt.value.toLowerCase().includes(term) ||
       opt.description?.toLowerCase().includes(term)
     );
   }, [options, searchTerm]);
 
-  const selectedOption = useMemo(() => 
-    options.find(opt => opt.value === value), 
+  const selectedOption = useMemo(() =>
+    options.find(opt => opt.value === value),
   [options, value]);
 
   const handleSelect = (val: string) => {
@@ -66,14 +57,15 @@ export const SearchableDropdown: React.FC<Props> = ({
   };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative ${className}`}>
       {label && (
         <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1 mb-1 block">
           {label}
         </label>
       )}
-      
+
       <div
+        ref={triggerRef}
         className={`w-full min-h-[42px] px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm shadow-sm flex items-center justify-between cursor-pointer transition-all focus-within:ring-2 focus-within:ring-blue-500/20 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400/50'}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
@@ -90,8 +82,15 @@ export const SearchableDropdown: React.FC<Props> = ({
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
-        <div className="absolute z-[300] w-full mt-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+      <Popover
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+      >
+        <div className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200" style={{ minWidth: 220 }}>
           <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -106,7 +105,7 @@ export const SearchableDropdown: React.FC<Props> = ({
               />
             </div>
           </div>
-          
+
           <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
@@ -141,8 +140,8 @@ export const SearchableDropdown: React.FC<Props> = ({
             )}
           </div>
         </div>
-      )}
-      
+      </Popover>
+
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   );

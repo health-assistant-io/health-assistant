@@ -20,6 +20,7 @@ import {
 } from 'date-fns';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Popover } from './Popover';
 
 type ViewMode = 'days' | 'months' | 'years';
 
@@ -54,8 +55,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [yearPage, setYearPage] = useState<number>(new Date().getFullYear());
   
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   // Parse value to Date
   const selectedDate = useMemo(() => {
@@ -78,25 +78,6 @@ export const DatePicker: React.FC<DatePickerProps> = ({
       setViewMode('days');
     }
   }, [isOpen, selectedDate]);
-
-  // Handle click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current && 
-        !containerRef.current.contains(event.target as Node) &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
 
   const handleSelectDate = (date: Date) => {
     if ((minDate && date < startOfDay(minDate)) || (maxDate && date > startOfDay(maxDate))) {
@@ -273,7 +254,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   };
 
   return (
-    <div className={`relative ${className.includes('w-') ? '' : 'w-full'}`} ref={containerRef}>
+    <div className={`relative ${className.includes('w-') ? '' : 'w-full'}`} ref={triggerRef}>
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
@@ -298,11 +279,16 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         required={required}
       />
 
-      {isOpen && !disabled && (
-        <div 
-          ref={dropdownRef}
-          className="absolute z-50 mt-1 left-0 p-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-xl w-[280px]"
-        >
+      <Popover
+        isOpen={isOpen && !disabled}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        side="bottom"
+        align="start"
+        sideOffset={4}
+        className="w-[280px]"
+      >
+        <div className="p-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-3 px-1 pt-1">
             <button 
@@ -336,7 +322,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
           {viewMode === 'months' && renderMonths()}
           {viewMode === 'years' && renderYears()}
         </div>
-      )}
+      </Popover>
     </div>
   );
 };
