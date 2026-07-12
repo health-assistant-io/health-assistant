@@ -12,7 +12,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { RichTextField } from './RichTextField';
 import { KindChips } from './KindChips';
 import { IconPicker } from '../../ui/IconPicker';
 import { CatalogItemPicker } from '../CatalogItemPicker';
@@ -107,13 +108,11 @@ export const ConceptForm: React.FC<CatalogItemFormProps> = ({
         />
       </Field>
 
-      <Field label={t('catalogs.field_description', 'Description')}>
-        <TextArea
-          value={String(values.description ?? '')}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={2}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_description', 'Description')}
+        value={String(values.description ?? '')}
+        onChange={(html) => onChange({ description: html })}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('catalogs.field_coding_system', 'Coding system')}>

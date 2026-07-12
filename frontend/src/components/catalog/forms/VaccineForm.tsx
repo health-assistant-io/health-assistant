@@ -5,7 +5,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { RichTextField } from './RichTextField';
 
 export const VaccineForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -51,13 +52,11 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
           />
         </Field>
       </div>
-      <Field label={t('catalogs.field_description', 'Description')}>
-        <TextArea
-          value={String(values.description ?? '')}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={2}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_description', 'Description')}
+        value={String(values.description ?? '')}
+        onChange={(html) => onChange({ description: html })}
+      />
       <Field
         label={t('catalogs.field_target_diseases', 'Target diseases')}
         hint={t('catalogs.field_aliases_hint', 'Comma-separated')}
@@ -75,13 +74,11 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
           placeholder="Measles, Mumps, Rubella"
         />
       </Field>
-      <Field label={t('catalogs.field_contraindications', 'Contraindications')}>
-        <TextArea
-          value={String(values.contraindications ?? '')}
-          onChange={(e) => onChange({ contraindications: e.target.value })}
-          rows={2}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_contraindications', 'Contraindications')}
+        value={String(values.contraindications ?? '')}
+        onChange={(html) => onChange({ contraindications: html })}
+      />
       <Field
         label={t('catalogs.field_side_effects', 'Side effects')}
         hint={t('catalogs.field_aliases_hint', 'Comma-separated')}

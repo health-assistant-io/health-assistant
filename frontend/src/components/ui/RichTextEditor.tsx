@@ -9,9 +9,12 @@ interface RichTextEditorProps {
   placeholder?: string;
   minHeight?: string;
   className?: string;
+  /** Compact toolbar (header, bold/italic, lists, link) — for modal forms
+   *  where the full toolbar (fonts, colors, scripts, video…) is overkill. */
+  compact?: boolean;
 }
 
-const quillModules = {
+const fullModules = {
   toolbar: [
     [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
     [{ 'font': [] }],
@@ -27,7 +30,16 @@ const quillModules = {
   ],
 };
 
-const quillFormats = [
+const compactModules = {
+  toolbar: [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+    ['link', 'clean'],
+  ],
+};
+
+const fullFormats = [
   'header', 'font', 'size',
   'bold', 'italic', 'underline', 'strike',
   'color', 'background',
@@ -37,12 +49,20 @@ const quillFormats = [
   'link', 'image', 'video'
 ];
 
+const compactFormats = [
+  'header',
+  'bold', 'italic', 'underline',
+  'list', 'bullet',
+  'link',
+];
+
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
   placeholder = 'Write something...',
   minHeight = '250px',
   className = '',
+  compact = false,
 }) => {
   // Convert Markdown to HTML if it doesn't look like HTML
   const content = useMemo(() => {
@@ -136,12 +156,12 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           fill: #3b82f6;
         }
       `}</style>
-      <ReactQuill 
-        theme="snow" 
-        value={content} 
-        onChange={onChange} 
-        modules={quillModules} 
-        formats={quillFormats}
+      <ReactQuill
+        theme="snow"
+        value={content}
+        onChange={onChange}
+        modules={compact ? compactModules : fullModules}
+        formats={compact ? compactFormats : fullFormats}
         placeholder={placeholder}
       />
     </div>

@@ -5,7 +5,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { RichTextField } from './RichTextField';
 
 const ALLERGY_CATEGORIES = ['FOOD', 'MEDICATION', 'ENVIRONMENT', 'BIOLOGIC', 'OTHER'];
 
@@ -40,13 +41,11 @@ export const AllergyForm: React.FC<CatalogItemFormProps> = ({
           ))}
         </select>
       </Field>
-      <Field label={t('catalogs.field_description', 'Description')}>
-        <TextArea
-          value={String(values.description ?? '')}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={2}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_description', 'Description')}
+        value={String(values.description ?? '')}
+        onChange={(html) => onChange({ description: html })}
+      />
       <Field
         label={t('catalogs.field_typical_reactions', 'Typical reactions')}
         hint={t('catalogs.field_aliases_hint', 'Comma-separated')}

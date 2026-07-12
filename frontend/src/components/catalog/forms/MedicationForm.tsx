@@ -5,7 +5,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { RichTextField } from './RichTextField';
 
 export const MedicationForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -24,20 +25,16 @@ export const MedicationForm: React.FC<CatalogItemFormProps> = ({
           onChange={(e) => onChange({ name: e.target.value })}
         />
       </Field>
-      <Field label={t('catalogs.field_description', 'Description')}>
-        <TextArea
-          value={String(values.description ?? '')}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={2}
-        />
-      </Field>
-      <Field label={t('catalogs.field_indications', 'Indications')}>
-        <TextArea
-          value={String(values.indications ?? '')}
-          onChange={(e) => onChange({ indications: e.target.value })}
-          rows={2}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_description', 'Description')}
+        value={String(values.description ?? '')}
+        onChange={(html) => onChange({ description: html })}
+      />
+      <RichTextField
+        label={t('catalogs.field_indications', 'Indications')}
+        value={String(values.indications ?? '')}
+        onChange={(html) => onChange({ indications: html })}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('catalogs.field_dosage', 'Dosage info')}>
           <TextInput
@@ -45,12 +42,12 @@ export const MedicationForm: React.FC<CatalogItemFormProps> = ({
             onChange={(e) => onChange({ dosage_info: e.target.value })}
           />
         </Field>
-        <Field label={t('catalogs.field_contraindications', 'Contraindications')}>
-          <TextInput
-            value={String(values.contraindications ?? '')}
-            onChange={(e) => onChange({ contraindications: e.target.value })}
-          />
-        </Field>
+        <RichTextField
+          label={t('catalogs.field_contraindications', 'Contraindications')}
+          value={String(values.contraindications ?? '')}
+          onChange={(html) => onChange({ contraindications: html })}
+          minHeight="120px"
+        />
       </div>
       <Field
         label={t('catalogs.field_side_effects', 'Side effects')}

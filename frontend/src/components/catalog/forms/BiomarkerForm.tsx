@@ -1,11 +1,17 @@
 /**
  * Biomarker create/edit form — slug, code, aliases, reference range, preferred
- * unit, info. Fields mirror the backend `BiomarkerCreate` schema.
+ * unit, IoT telemetry toggle, and rich-text clinical info. Fields mirror the
+ * backend `BiomarkerCreate` schema. Editing now lives here (the detail page is
+ * read-only), so this form owns the `is_telemetry` flag whose flip triggers the
+ * FHIR↔TimescaleDB data migration on save.
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Activity } from 'lucide-react';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { ChipInput } from '../../ui/ChipInput';
+import { RichTextEditor } from '../../ui/RichTextEditor';
 import biomarkerService from '../../../services/biomarkerService';
 import type { Unit } from '../../../types/biomarker';
 
@@ -22,6 +28,7 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
 
   const aliases = Array.isArray(values.aliases) ? (values.aliases as string[]) : [];
   const codingSystem = String(values.coding_system ?? 'custom');
+  const isTelemetry = Boolean(values.is_telemetry);
 
   return (
     <div className="space-y-3">
@@ -60,18 +67,11 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
           />
         </Field>
       </div>
-      <Field label="Aliases" hint={t('catalogs.field_aliases_hint', 'Comma-separated')}>
-        <TextInput
-          value={aliases.join(', ')}
-          onChange={(e) =>
-            onChange({
-              aliases: e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            })
-          }
-          placeholder="FBS, Glucose"
+      <Field label="Aliases" hint={t('catalogs.field_aliases_hint', 'Press Enter or comma to add')}>
+        <ChipInput
+          value={aliases}
+          onChange={(next) => onChange({ aliases: next })}
+          placeholder={t('catalogs.field_aliases_placeholder', 'e.g. FBS')}
         />
       </Field>
       <div className="grid grid-cols-3 gap-3">
@@ -114,11 +114,41 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
           </select>
         </Field>
       </div>
-      <Field label="Info / notes">
-        <TextArea
+
+      {/* IoT telemetry toggle — flipping this on save triggers the
+          FHIR↔TimescaleDB data migration (see migrate_biomarker_data task).
+          The catalog workspace gates the save with a confirmation modal. */}
+      <Field label={t('biomarkers.iot_telemetry', 'IoT Telemetry Metric')}>
+        <label className="flex items-start space-x-3 p-4 rounded-xl border transition-colors hover:border-gray-300 dark:hover:border-gray-700 cursor-pointer bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-600">
+          <input
+            type="checkbox"
+            checked={isTelemetry}
+            onChange={(e) => onChange({ is_telemetry: e.target.checked })}
+            className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+          />
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-indigo-500" />
+              {t('biomarkers.iot_telemetry', 'IoT Telemetry Metric')}
+            </span>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight mt-0.5">
+              {t(
+                'biomarkers.iot_telemetry_hint',
+                'Routes continuous high-frequency data (heart rate, steps, SpO2, CGM) to TimescaleDB. Changing this migrates all existing historical data between databases — may take a while for large datasets.',
+              )}
+            </span>
+          </div>
+        </label>
+      </Field>
+
+      <Field label={t('biomarker_catalog.detailed_info', 'Info / Clinical Significance')}>
+        <RichTextEditor
           value={String(values.info ?? '')}
-          onChange={(e) => onChange({ info: e.target.value })}
-          rows={2}
+          onChange={(html: string) => onChange({ info: html })}
+          placeholder={t(
+            'biomarker_catalog.info_placeholder',
+            'Describe what this biomarker represents, normal ranges, and clinical significance…',
+          )}
         />
       </Field>
     </div>

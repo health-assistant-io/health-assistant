@@ -93,6 +93,10 @@ interface ConceptGraphViewProps {
     onClose: () => void;
     onFocus: () => void;
   }) => React.ReactNode;
+  /** Show the bottom-right MiniMap overview. Defaults to true; small graph
+   *  containers (e.g. the biomarker detail Relations tab) should disable it —
+   *  it crowds a short viewport and the main canvas is already fully visible. */
+  showMiniMap?: boolean;
   className?: string;
 }
 
@@ -369,6 +373,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
   onClearSelection,
   renderNodeDetail,
   renderContextMenu,
+  showMiniMap = true,
   // Default 'h-full' so the graph fills a height-defined parent (callers MUST
   // give the parent a height — React Flow needs explicit dimensions). A caller
   // can pass its own height class (e.g. 'h-[500px]') without conflicting.
@@ -783,15 +788,17 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
           showInteractive={false}
           className="!bg-white dark:!bg-dark-surface !border-gray-200 dark:!border-dark-border"
         />
-        <MiniMap
-          nodeColor={(node) => {
-            const bg = node.style?.background as string;
-            return typeof bg === 'string' ? bg : '#94a3b8';
-          }}
-          className="!bg-gray-50 dark:!bg-dark-bg !border-gray-200 dark:!border-dark-border"
-          pannable
-          zoomable
-        />
+        {showMiniMap && (
+          <MiniMap
+            nodeColor={(node) => {
+              const bg = node.style?.background as string;
+              return typeof bg === 'string' ? bg : '#94a3b8';
+            }}
+            className="!bg-gray-50 dark:!bg-dark-bg !border-gray-200 dark:!border-dark-border"
+            pannable
+            zoomable
+          />
+        )}
         <Panel position="top-right">
           <div className="flex items-center gap-1.5">
             {/* Layout mode toggle: force vs hierarchy */}

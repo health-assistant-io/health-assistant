@@ -13,6 +13,7 @@ import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import { Edit3, GitBranch, History as HistoryIcon, ExternalLink } from 'lucide-react';
 import { ScopeBadge } from './ScopeBadge';
+import { FormattedText } from '../ui/FormattedText';
 import type { CatalogItem } from '../../types/catalog';
 import { useAuthStore } from '../../store/slices/authSlice';
 
@@ -30,6 +31,39 @@ function renderValue(value: unknown): string {
 
 const labelFor = (key: string): string =>
   key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Fields stored as HTML/Markdown rich text — rendered formatted (full-width)
+ *  instead of as a raw one-line string. */
+const RICH_TEXT_KEYS = new Set([
+  'description', 'info', 'indications', 'contraindications', 'dosage_info',
+]);
+
+/** Render one field row. Rich-text fields get a full-width formatted layout;
+ *  everything else uses the compact 3-column label/value grid. */
+function renderEntry(key: string, value: unknown): React.ReactElement {
+  if (RICH_TEXT_KEYS.has(key) && typeof value === 'string' && value.trim()) {
+    return (
+      <div key={key} className="py-2 text-sm">
+        <dt className="text-gray-500 dark:text-gray-400 mb-1">
+          {labelFor(key)}
+        </dt>
+        <dd className="text-gray-800 dark:text-gray-100">
+          <FormattedText value={value} />
+        </dd>
+      </div>
+    );
+  }
+  return (
+    <div key={key} className="py-2 grid grid-cols-3 gap-3 text-sm">
+      <dt className="text-gray-500 dark:text-gray-400 col-span-1">
+        {labelFor(key)}
+      </dt>
+      <dd className="text-gray-800 dark:text-gray-100 col-span-2 break-words">
+        {renderValue(value)}
+      </dd>
+    </div>
+  );
+}
 
 interface CatalogItemInfoProps {
   item: CatalogItem | null;
@@ -91,16 +125,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
           </p>
         ) : (
           <dl className="divide-y divide-gray-100 dark:divide-gray-700">
-            {entries.map(([key, value]) => (
-              <div key={key} className="py-2 grid grid-cols-3 gap-3 text-sm">
-                <dt className="text-gray-500 dark:text-gray-400 col-span-1">
-                  {labelFor(key)}
-                </dt>
-                <dd className="text-gray-800 dark:text-gray-100 col-span-2 break-words">
-                  {renderValue(value)}
-                </dd>
-              </div>
-            ))}
+            {entries.map(([key, value]) => renderEntry(key, value))}
           </dl>
         )}
         {updated && (
@@ -168,16 +193,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
 
       <div className="p-5 space-y-1">
         <dl className="divide-y divide-gray-100 dark:divide-gray-700">
-          {entries.map(([key, value]) => (
-            <div key={key} className="py-2 grid grid-cols-3 gap-3 text-sm">
-              <dt className="text-gray-500 dark:text-gray-400 col-span-1">
-                {labelFor(key)}
-              </dt>
-              <dd className="text-gray-800 dark:text-gray-100 col-span-2 break-words">
-                {renderValue(value)}
-              </dd>
-            </div>
-          ))}
+          {entries.map(([key, value]) => renderEntry(key, value))}
         </dl>
         {updated && (
           <p className="text-[11px] text-gray-400 pt-2">

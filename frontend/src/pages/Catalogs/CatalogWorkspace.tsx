@@ -34,6 +34,7 @@ import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
 import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
 import { CatalogOntologyGraph } from '../../components/catalog/CatalogOntologyGraph';
 import { getCustomTabs } from '../../components/catalog/tabs/catalogTabs';
+import { BiomarkerMigrationWatcher } from '../../components/biomarkers/BiomarkerMigrationWatcher';
 import { ScopeBadge } from '../../components/catalog/ScopeBadge';
 import {
   listCatalogTypes,
@@ -301,7 +302,7 @@ export const CatalogWorkspace: React.FC = () => {
       item.slug ? String(item.slug) : undefined,
     );
 
-  const handleSave = async () => {
+  const performSave = async () => {
     if (!editing || saving) return;
     setSaving(true);
     try {
@@ -350,6 +351,36 @@ export const CatalogWorkspace: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!editing || saving) return;
+
+    // Flip of is_telemetry on an existing biomarker triggers a FHIR↔
+    // TimescaleDB data migration on the backend — warn before committing.
+    if (!isNew && activeType === 'biomarker' && editing.id) {
+      const original = items.find(
+        (it) => String(it.id) === String(editing.id),
+      );
+      const originalTelemetry = Boolean(original?.is_telemetry);
+      const draftTelemetry = Boolean(editing.is_telemetry);
+      if (originalTelemetry !== draftTelemetry) {
+        showConfirmation({
+          title: t('biomarkers.migration_confirm_title', 'Migrate Telemetry Data?'),
+          message: t(
+            'biomarkers.migration_confirm_message',
+            "Warning: Changing this biomarker's telemetry type will migrate all existing historical data between databases. This could take a while for large datasets. Are you sure you want to continue?",
+          ),
+          confirmLabel: t('biomarkers.migration_confirm_button', 'Yes, Migrate Data'),
+          cancelLabel: t('common.cancel', 'Cancel'),
+          confirmVariant: 'danger',
+          onConfirm: performSave,
+        });
+        return;
+      }
+    }
+
+    performSave();
   };
 
   const handleDelete = (item: CatalogItem) => {
@@ -536,6 +567,30 @@ export const CatalogWorkspace: React.FC = () => {
         {renderTabs()}
       </div>
       <div className="flex-1 overflow-y-auto min-h-0 p-4 custom-scrollbar">
+        {activeType === 'biomarker' && selectedItem && (
+          <BiomarkerMigrationWatcher
+            biomarkerId={String(selectedItem.id)}
+            refreshKey={relationsRevision}
+            seed={
+              (selectedItem as Record<string, any>).meta_data as
+                | {
+                    migration_status?: string;
+                    migration_progress?: number;
+                    migration_error?: string;
+                  }
+                | undefined
+            }
+            onBiomarkerUpdated={(updated) =>
+              setItems((prev) =>
+                prev.map((it) =>
+                  String(it.id) === String(updated.id)
+                    ? { ...it, ...updated }
+                    : it,
+                ),
+              )
+            }
+          />
+        )}
         {renderPreviewBody()}
       </div>
     </div>
@@ -588,7 +643,33 @@ export const CatalogWorkspace: React.FC = () => {
           )}
         </div>
         <div className="shrink-0 px-3 pt-2">{renderTabs()}</div>
-        <div className="flex-1 overflow-y-auto min-h-0 p-3">{renderPreviewBody()}</div>
+        <div className="flex-1 overflow-y-auto min-h-0 p-3">
+          {activeType === 'biomarker' && selectedItem && (
+            <BiomarkerMigrationWatcher
+              biomarkerId={String(selectedItem.id)}
+              refreshKey={relationsRevision}
+              seed={
+                (selectedItem as Record<string, any>).meta_data as
+                  | {
+                      migration_status?: string;
+                      migration_progress?: number;
+                      migration_error?: string;
+                    }
+                  | undefined
+              }
+              onBiomarkerUpdated={(updated) =>
+                setItems((prev) =>
+                  prev.map((it) =>
+                    String(it.id) === String(updated.id)
+                      ? { ...it, ...updated }
+                      : it,
+                  ),
+                )
+              }
+            />
+          )}
+          {renderPreviewBody()}
+        </div>
       </div>
     </Portal>
   );

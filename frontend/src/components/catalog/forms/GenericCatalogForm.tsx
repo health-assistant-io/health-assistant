@@ -5,7 +5,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
-import { Field, TextInput, TextArea } from './FormFields';
+import { Field, TextInput } from './FormFields';
+import { RichTextField } from './RichTextField';
 
 export const GenericCatalogForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -21,13 +22,11 @@ export const GenericCatalogForm: React.FC<CatalogItemFormProps> = ({
           placeholder={t('catalogs.field_name_placeholder', 'Item name')}
         />
       </Field>
-      <Field label={t('catalogs.field_description', 'Description')}>
-        <TextArea
-          value={String(values.description ?? '')}
-          onChange={(e) => onChange({ description: e.target.value })}
-          rows={3}
-        />
-      </Field>
+      <RichTextField
+        label={t('catalogs.field_description', 'Description')}
+        value={String(values.description ?? '')}
+        onChange={(html) => onChange({ description: html })}
+      />
     </div>
   );
 };

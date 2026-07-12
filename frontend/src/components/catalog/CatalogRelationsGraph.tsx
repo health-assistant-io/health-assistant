@@ -30,6 +30,8 @@ interface CatalogRelationsGraphProps {
   /** Bump this to force a refetch (e.g. after relations are edited in the
    *  modal) without remounting and losing the depth/view selection. */
   refreshKey?: number;
+  /** Forwarded to ConceptGraphView. Disable for small graph containers. */
+  showMiniMap?: boolean;
 }
 
 export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
@@ -37,6 +39,7 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
   itemId,
   itemLabel,
   refreshKey,
+  showMiniMap = true,
 }) => {
   const navigate = useNavigate();
   const [depth, setDepth] = useState(2);
@@ -183,6 +186,7 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
             onSelectNode={setSelectedNodeId}
             onFocusNode={setSelectedNodeId}
             onClearSelection={() => setSelectedNodeId(undefined)}
+            showMiniMap={showMiniMap}
             renderNodeDetail={({ node, degree, onClose, onFocus }) => (
               <GraphNodeDetail
                 node={node}

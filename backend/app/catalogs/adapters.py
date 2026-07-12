@@ -804,10 +804,18 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
 
     @staticmethod
     def _writable(payload: dict[str, Any]) -> dict[str, Any]:
+        # Restrict to real mapped columns (matches BaseCatalogAdapter).
+        # ``hasattr`` alone is too permissive: it admits computed ``@property``
+        # fields like ``category`` (derived from ``class_concept``) and
+        # relationships, which have no setter and crash ``setattr`` on update
+        # ("property 'category' of 'BiomarkerDefinition' has no setter").
+        from sqlalchemy import inspect as _sa_inspect
+
+        column_keys = set(_sa_inspect(BiomarkerDefinition).columns.keys())
         return {
             k: v
             for k, v in payload.items()
-            if k not in _READONLY_FIELDS and hasattr(BiomarkerDefinition, k)
+            if k in column_keys and k not in _READONLY_FIELDS
         }
 
     @staticmethod

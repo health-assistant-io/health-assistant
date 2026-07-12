@@ -248,6 +248,7 @@ function App() {
           <Route path="/vaccines/catalog" element={<Navigate to="/catalogs?type=vaccine" replace />} />
           <Route path="/allergies/catalog" element={<Navigate to="/catalogs?type=allergy" replace />} />
           <Route path="/biomarkers/details/:biomarkerId" element={<BiomarkerDetail />} />
+          <Route path="/biomarkers/details/:biomarkerId/:activeTab" element={<BiomarkerDetail />} />
           <Route path="/biomarkers/:categoryParam" element={<BiomarkerTrends />} />
           <Route path="/documents" element={<Documents />} />
           <Route path="/documents/:documentId" element={<DocumentDetail />} />
