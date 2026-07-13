@@ -2,17 +2,47 @@
   {
     "category": "Getting Started",
     "items": [
-      { "id": "overview", "file": "overview.md", "title": "Overview" },
-      { "id": "setup-stdio", "file": "setup-stdio.md", "title": "STDIO Server Setup" },
-      { "id": "setup-http", "file": "setup-http.md", "title": "HTTP / SSE Server Setup" },
-      { "id": "environment", "file": "environment.md", "title": "Environment Variables" }
+      {
+        "id": "overview",
+        "file": "overview.md",
+        "title": "Overview",
+        "description": "MCP Client integration for Health Assistant, the self-hosted, open-source health records platform. Connect any Model Context Protocol (MCP) server and expose its tools to the AI clinical assistant over STDIO, HTTP, or SSE transports."
+      },
+      {
+        "id": "setup-stdio",
+        "file": "setup-stdio.md",
+        "title": "STDIO Server Setup",
+        "description": "Set up a STDIO MCP server in Health Assistant. Run a Model Context Protocol server as a local subprocess with an admin command allowlist, encrypted environment variables, and per-process concurrency limits."
+      },
+      {
+        "id": "setup-http",
+        "file": "setup-http.md",
+        "title": "HTTP / SSE Server Setup",
+        "description": "Set up an HTTP or SSE MCP server connection in Health Assistant. Connect to a remote Model Context Protocol server with bearer auth, custom headers, and TLS certificate verification."
+      },
+      {
+        "id": "environment",
+        "file": "environment.md",
+        "title": "Environment Variables",
+        "description": "Environment variables for the MCP Client integration in Health Assistant. Configure INTEGRATION_SECRET_KEY for field encryption, the STDIO command allowlist, the insecure-HTTP toggle, and resource limits."
+      }
     ]
   },
   {
     "category": "Security",
     "items": [
-      { "id": "security", "file": "security.md", "title": "Security Model" },
-      { "id": "troubleshooting", "file": "troubleshooting.md", "title": "Troubleshooting" }
+      {
+        "id": "security",
+        "file": "security.md",
+        "title": "Security Model",
+        "description": "Security model for the MCP Client integration in Health Assistant. Mitigations for arbitrary code execution, secret encryption at rest, prompt injection, DoS, and transport MITM across STDIO and HTTP/SSE transports."
+      },
+      {
+        "id": "troubleshooting",
+        "file": "troubleshooting.md",
+        "title": "Troubleshooting",
+        "description": "Troubleshooting the MCP Client integration in Health Assistant. Resolve STDIO allowlist errors, a missing INTEGRATION_SECRET_KEY, connection failures, and tools not appearing in the AI chat assistant."
+      }
     ]
   }
 ]

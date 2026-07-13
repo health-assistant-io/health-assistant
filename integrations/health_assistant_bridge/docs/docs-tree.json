@@ -2,7 +2,12 @@
   {
     "category": "Overview",
     "items": [
-      { "id": "overview", "file": "overview.md", "title": "Bridge Overview" }
+      {
+        "id": "overview",
+        "file": "overview.md",
+        "title": "Bridge Overview",
+        "description": "Health Assistant Bridge — a universal adapter integration for the self-hosted, open-source health records platform. Connect browser extensions and mobile apps to ingest scraped medical data from portals without open APIs, with AI-powered ontology mapping and TypeScript/Python SDKs."
+      }
     ]
   }
 ]
