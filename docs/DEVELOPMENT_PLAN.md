@@ -1,8 +1,3 @@
----
-title: "Development Roadmap — Health Assistant"
-description: "Roadmap for Health Assistant, the self-hosted, open-source health records platform: biomarker clinical insights, mobile companion app, advanced FHIR R4 conformance, and end-to-end testing."
----
-
 # Health Assistant — Development Roadmap
 
 The roadmap for Health Assistant — upcoming features for the self-hosted, open-source health records platform. See [STATUS.md](STATUS.md) for what's already shipped.

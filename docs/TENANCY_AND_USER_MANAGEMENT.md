@@ -1,8 +1,3 @@
----
-title: "Users, Tenants & Roles — Health Assistant"
-description: "Multi-tenant user management in Health Assistant, a self-hosted, open-source health records platform. Tenant isolation, organizational hierarchies, role-based access control, and identity-to-clinical-record linking."
----
-
 # Tenancy & User Management
 
 Health Assistant is a self-hosted, open-source health records platform with a multi-tenant architecture. This document explains how the system handles tenant isolation, organizational hierarchies, roles, and identity linking — from a single-user installation to a multi-department clinic.

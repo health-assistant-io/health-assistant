@@ -6,22 +6,26 @@
       {
         "id": "getting-started",
         "file": "../README.md",
-        "title": "Introduction"
+        "title": "Introduction",
+        "description": "Health Assistant — a self-hosted, open-source, privacy-first health records platform. Centralize labs, visits, medications, and wearable data with an AI assistant that proposes but never writes."
       },
       {
         "id": "visual-tour",
         "file": "SCREENSHOTS.md",
-        "title": "Visual Tour"
+        "title": "Visual Tour",
+        "description": "Screenshots of Health Assistant, the self-hosted health records platform — dashboard, biomarker trends, AI chat, examinations, and patient views."
       },
       {
         "id": "install",
         "file": "INSTALL.md",
-        "title": "Self-Hosted Installation"
+        "title": "Self-Hosted Installation",
+        "description": "Install Health Assistant, a self-hosted, open-source health records platform. Docker quick start, production deployment, environment setup with auto-generated keys, and a security checklist."
       },
       {
         "id": "architecture",
         "file": "ARCHITECTURE.md",
-        "title": "Architecture Overview"
+        "title": "Architecture Overview",
+        "description": "Architecture of Health Assistant, a self-hosted, open-source health records platform: FastAPI backend, PostgreSQL + TimescaleDB data model, HL7 FHIR R4 storage, biomarker engine, AI/OCR pipeline, and React frontend."
       }
     ]
   },
@@ -32,37 +36,44 @@
       {
         "id": "project-structure",
         "file": "PROJECT_STRUCTURE.md",
-        "title": "Repository Structure"
+        "title": "Repository Structure",
+        "description": "Codebase layout of Health Assistant, the self-hosted, open-source health records platform: FastAPI backend, React/Vite frontend, Integrations SDK, and documentation."
       },
       {
         "id": "tenancy-and-user-management",
         "file": "TENANCY_AND_USER_MANAGEMENT.md",
-        "title": "Users, Tenants & Roles"
+        "title": "Users, Tenants & Roles",
+        "description": "Multi-tenant user management in Health Assistant, a self-hosted, open-source health records platform. Tenant isolation, organizational hierarchies, role-based access control, and identity-to-clinical-record linking."
       },
       {
         "id": "ontology-catalog",
         "file": "ONTOLOGY_CATALOG.md",
-        "title": "Ontology & Catalog"
+        "title": "Ontology & Catalog",
+        "description": "The JSON-based clinical ontology catalog format used by Health Assistant, a self-hosted health records platform. Bulk-import LOINC biomarkers, medical definitions, and unit conversions."
       },
       {
         "id": "taxonomy",
         "file": "TAXONOMY.md",
-        "title": "Taxonomy & Knowledge Graph"
+        "title": "Taxonomy & Knowledge Graph",
+        "description": "The unified medical taxonomy and knowledge graph in Health Assistant, a self-hosted health records platform. Multi-kind concepts, polymorphic edges, and cross-domain graph traversal."
       },
       {
         "id": "notification-system",
         "file": "NOTIFICATION_SYSTEM.md",
-        "title": "Notification System"
+        "title": "Notification System",
+        "description": "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, and real-time WebSocket delivery."
       },
       {
         "id": "telemetry-and-aggregation",
         "file": "TELEMETRY_AND_AGGREGATION.md",
-        "title": "Telemetry & TimescaleDB"
+        "title": "Telemetry & TimescaleDB",
+        "description": "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
       },
       {
         "id": "export-import",
         "file": "EXPORT_IMPORT.md",
-        "title": "Export & Import (Backup)"
+        "title": "Export & Import (Backup)",
+        "description": "Backup and restore for Health Assistant, a self-hosted health records platform. FHIR R4B Bundle + BagIt-style ZIP exports, SHA256 integrity checks, and cross-tenant id remapping."
       }
     ]
   },
@@ -73,7 +84,8 @@
       {
         "id": "ai-system",
         "file": "AI_SYSTEM.md",
-        "title": "AI System & Configuration"
+        "title": "AI System & Configuration",
+        "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, and per-tenant model configuration."
       }
     ]
   },
@@ -84,27 +96,32 @@
       {
         "id": "api",
         "file": "API.md",
-        "title": "REST API Reference"
+        "title": "REST API Reference",
+        "description": "REST API reference for Health Assistant, the self-hosted, open-source health records platform. Authentication, patients, observations, biomarkers, medications, clinical events, and FHIR endpoints."
       },
       {
         "id": "fhir-r4-facade",
         "file": "FHIR_R4_FACADE.md",
-        "title": "FHIR R4 Facade"
+        "title": "FHIR R4 Facade",
+        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 18 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
       },
       {
         "id": "integrations-framework",
         "file": "INTEGRATIONS_FRAMEWORK.md",
-        "title": "Integrations Framework"
+        "title": "Integrations Framework",
+        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers with schema-driven config flows and background sync."
       },
       {
         "id": "integrations-sdk",
         "file": "INTEGRATIONS_SDK.md",
-        "title": "Integrations SDK"
+        "title": "Integrations SDK",
+        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate limiting, cursor sync, and OAuth2+PKCE."
       },
       {
         "id": "mobile-sync-app",
         "file": "MOBILE_SYNC_APP.md",
-        "title": "Mobile Sync App"
+        "title": "Mobile Sync App",
+        "description": "Architecture for a headless mobile companion app that syncs on-device health data (Android Health Connect, iOS HealthKit) to a self-hosted Health Assistant instance."
       }
     ]
   },
@@ -115,17 +132,26 @@
       {
         "id": "development",
         "file": "DEVELOPMENT.md",
-        "title": "Development Guide"
+        "title": "Development Guide",
+        "description": "Set up a local development environment for Health Assistant, the self-hosted, open-source health records platform. Covers the FastAPI backend, React frontend, Celery worker, testing, migrations, and code style."
       },
       {
         "id": "ci-cd-setup",
         "file": "CI_CD_SETUP.md",
-        "title": "CI/CD Deployment"
+        "title": "CI/CD Deployment",
+        "description": "CI/CD pipeline setup for Health Assistant, a self-hosted, open-source health records platform. Gitea Actions workflow, required secrets, and homelab deployment caveats."
+      },
+      {
+        "id": "seeding-and-demos",
+        "file": "SEEDING_AND_DEMOS.md",
+        "title": "Seeding & Demo Data",
+        "description": "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, and deterministic dates for screenshots."
       },
       {
         "id": "task-debugging-guide",
         "file": "TASK_DEBUGGING_GUIDE.md",
-        "title": "Task Debugging Guide"
+        "title": "Task Debugging Guide",
+        "description": "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
       }
     ]
   },
@@ -136,12 +162,14 @@
       {
         "id": "status",
         "file": "STATUS.md",
-        "title": "Status & Beta Roadmap"
+        "title": "Status & Beta Roadmap",
+        "description": "Current implementation status of Health Assistant, the self-hosted, open-source health records platform. What's done, what's in progress, and what's planned."
       },
       {
         "id": "development-plan",
         "file": "DEVELOPMENT_PLAN.md",
-        "title": "Development Roadmap"
+        "title": "Development Roadmap",
+        "description": "Roadmap for Health Assistant, the self-hosted, open-source health records platform: biomarker clinical insights, mobile companion app, advanced FHIR R4 conformance, and end-to-end testing."
       }
     ]
   }

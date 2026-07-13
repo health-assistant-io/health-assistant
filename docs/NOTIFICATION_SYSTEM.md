@@ -1,8 +1,3 @@
----
-title: "Notification System — Health Assistant"
-description: "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, and real-time WebSocket delivery."
----
-
 # Notification System
 
 Health Assistant's unified notification platform is a multi-source, multi-recipient, multi-channel, role-aware system with real-time delivery. It is the single surface for every kind of notice the app produces — scheduled reminders, biomarker alerts, AI/HITL proposals, integration sync outcomes, clinical-event lifecycle, and admin broadcasts.

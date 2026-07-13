@@ -1,8 +1,3 @@
----
-title: "Mobile Sync Architecture — Health Assistant"
-description: "Architecture for a headless mobile companion app that syncs on-device health data (Android Health Connect, iOS HealthKit) to a self-hosted Health Assistant instance."
----
-
 # Health Assistant — Mobile Sync Architecture
 
 ## Executive Summary

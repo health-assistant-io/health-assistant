@@ -1,8 +1,3 @@
----
-title: "Telemetry & TimescaleDB — Health Assistant"
-description: "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
----
-
 # Telemetry & TimescaleDB Architecture
 
 This document tracks the design decisions and architecture for handling high-frequency health data (IoT devices, wearables, continuous monitors) in Health Assistant.

@@ -1,8 +1,3 @@
----
-title: "Integrations Framework — Health Assistant"
-description: "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers with schema-driven config flows and background sync."
----
-
 # Integrations Framework
 
 Health Assistant includes a pluggable Integrations Framework inspired by Home Assistant. It allows users to securely connect third-party platforms (like wearables, labs, or notifications) to their personal profile.

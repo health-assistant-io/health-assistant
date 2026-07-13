@@ -1,8 +1,3 @@
----
-title: "Self-Hosted Installation Guide — Health Assistant"
-description: "Install Health Assistant, a self-hosted, open-source health records platform. Docker quick start, production deployment, environment setup with auto-generated keys, and a security checklist."
----
-
 # Health Assistant — Self-Hosted Installation Guide
 
 ## Quick Start (Recommended)

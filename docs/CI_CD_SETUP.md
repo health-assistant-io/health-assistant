@@ -1,8 +1,3 @@
----
-title: "CI/CD Pipeline Setup — Health Assistant"
-description: "CI/CD pipeline setup for Health Assistant, a self-hosted, open-source health records platform. Gitea Actions workflow, required secrets, and homelab deployment caveats."
----
-
 # Health Assistant — CI/CD Pipeline Setup
 
 This document describes the structure of the Health Assistant CI/CD pipeline, the required Gitea Secrets, and important configuration caveats for running in a self-hosted homelab environment.

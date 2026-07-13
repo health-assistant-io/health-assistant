@@ -1,8 +1,3 @@
----
-title: "FHIR R4 Facade — Health Assistant"
-description: "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 18 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
----
-
 # FHIR R4 Facade — Developer Guide
 
 Health Assistant exposes a **conformant FHIR R4 REST API** at `/api/v1/fhir/R4/*`.

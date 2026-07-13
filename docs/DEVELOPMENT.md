@@ -1,8 +1,3 @@
----
-title: "Development Guide — Health Assistant"
-description: "Set up a local development environment for Health Assistant, the self-hosted, open-source health records platform. Covers the FastAPI backend, React frontend, Celery worker, testing, migrations, and code style."
----
-
 # Health Assistant — Development Guide
 
 This guide covers local development for Health Assistant — a self-hosted, open-source health records platform built on FastAPI, React, and PostgreSQL/TimescaleDB. See [STATUS.md](STATUS.md) for what's implemented and [ARCHITECTURE.md](ARCHITECTURE.md) for the system design.

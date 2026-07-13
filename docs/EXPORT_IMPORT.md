@@ -1,8 +1,3 @@
----
-title: "Export & Import (Backup) — Health Assistant"
-description: "Backup and restore for Health Assistant, a self-hosted health records platform. FHIR R4B Bundle + BagIt-style ZIP exports, SHA256 integrity checks, and cross-tenant id remapping."
----
-
 # Export & Import (Backup)
 
 Health Assistant can export and re-import data as **backup files**, at three scopes and in three formats. Exports are FHIR R4B-conformant and integrity-checked; imports are validated with [`fhir.resources`](https://pypi.org/project/fhir.resources/) and upserted by natural key with automatic id remapping across tenants.

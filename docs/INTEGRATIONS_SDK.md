@@ -1,8 +1,3 @@
----
-title: "Integrations SDK — Health Assistant"
-description: "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate limiting, cursor sync, and OAuth2+PKCE."
----
-
 # Integrations SDK & Developer Guide
 
 Health Assistant provides an **Integrations SDK** (`integrations.sdk`) designed to make building new third-party integrations simple and secure.

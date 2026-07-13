@@ -1,8 +1,3 @@
----
-title: "Clinical Ontology Catalog — Health Assistant"
-description: "The JSON-based clinical ontology catalog format used by Health Assistant, a self-hosted health records platform. Bulk-import LOINC biomarkers, medical definitions, and unit conversions."
----
-
 # Clinical Ontology Catalog
 
 The Health Assistant platform uses a dynamic, JSON-based clinical ontology. This allows system administrators to bulk-import standard medical definitions (like LOINC biomarkers and standard units) without modifying the core application code.

@@ -1,8 +1,3 @@
----
-title: "Project Status & Beta Roadmap — Health Assistant"
-description: "Current implementation status of Health Assistant, the self-hosted, open-source health records platform. What's done, what's in progress, and what's planned."
----
-
 # Health Assistant — Project Status & Roadmap
 
 What's implemented, what's in progress, and what's planned for the self-hosted, open-source health records platform.
