@@ -3,7 +3,7 @@
 <img src="frontend/public/icon.svg" width="120" height="120" alt="Health Assistant logo">
 
 # Health Assistant
-### Self-hosted, privacy-first health data platform
+### Self-hosted health records for your household
 
 [![Version](https://img.shields.io/badge/version-v0.3.0--rc.6-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#scope--limitations)
@@ -34,6 +34,7 @@
 - [What is Health Assistant?](#what-is-health-assistant)
 - [What's different](#whats-different)
 - [Features](#features)
+- [Clinic-compatible by design](#clinic-compatible-by-design)
 - [Visual tour](#visual-tour)
 - [Quick start](#quick-start)
 - [Architecture at a glance](#architecture-at-a-glance)
@@ -50,89 +51,90 @@
 
 ## What is Health Assistant?
 
-A self-hosted web platform for centralizing, monitoring, and analyzing health and wellness data. You run it on your own infrastructure, you own the data, and it speaks **HL7 FHIR R4** natively — not just as an import format.
+A self-hosted web app for bringing your family's health data into one place you control — lab results, doctor visits, medications, wearable data, and the notes in between. You run it on your own infrastructure, so the data never leaves your home unless you say so.
 
-Under the hood it augments FHIR storage with two things a plain FHIR server doesn't have:
+Under the hood it's built on the same **HL7 FHIR** standard hospitals use, with a biomarker engine that normalizes your results across labs and a time-series store for device data. The everyday experience stays simple — but the foundation is there if you ever want to connect to a clinic, pull records from a hospital, or grow the same install into something clinic-grade.
 
-- a **Biomarker Engine** that normalizes units, scores results against reference ranges, and auto-maps incoming data to a managed catalog; and
-- a **TimescaleDB telemetry split** that keeps high-frequency device data (heart rate, steps, CGM) in a time-series hypertable instead of bloating the FHIR observation store.
-
-It is **Beta** software, oriented toward self-hosters, technical home users, and small clinics that want a FHIR-native record they control.
+It is **Beta** software, built for self-hosters and technical households first.
 
 ## What's different
 
-- **Your data stays on your infrastructure.** No cloud lock-in, no third-party data resale. The database, object storage, and queue all live wherever you deploy them.
-- **FHIR-native storage, plus a real R4 server facade.** Resources are stored as FHIR-enhanced relational rows *and* exposed as a conformant FHIR R4 REST API at `/api/v1/fhir/R4/*` (CapabilityStatement, Bundles, Provenance, tombstones). The facade is the interop surface; the frontend uses faster domain endpoints.
-- **The AI assists — it never writes clinical data.** The agentic chatbot proposes actions (create an event, add a medication, define a biomarker); a human reviews and explicitly approves every write through a structural human-in-the-loop wall.
-- **One platform for labs and device telemetry.** Discrete clinical results and high-frequency wearable data live in the same record, with frequency-aware routing and OHLC downsampling for the dashboard.
+- **Your data stays home.** No cloud lock-in, no third-party data resale. The database, uploaded files, and task queue all live wherever you deploy them.
+- **Understand your results, not just store them.** Labs from different providers are normalized to common units and scored against reference ranges, so trends stay comparable over time. The AI assistant explains results in plain language.
+- **The AI assists — it never writes your record.** The chat assistant proposes actions (track a new journey, add a medication, define a biomarker); you review and approve every single write through a structural human-in-the-loop wall.
+- **Family-first, clinic-ready.** Built for households today; the FHIR-native, multi-tenant foundation means the same software can grow into a clinic-grade record without a rewrite.
 
 ## Features
 
-### Clinical data model
+### Bring all your health data together
 
-- **FHIR R4-enhanced storage** — FHIR JSONB columns (`code`, `subject`, `value_quantity`) alongside relational columns (`biomarker_id`, `normalized_value`, `relative_score`, `tenant_id`). Validated on write so invalid FHIR never lands in the DB.
-- **FHIR R4 server facade** — 18 resources exposed at `/api/v1/fhir/R4/*`: `CapabilityStatement`, search Bundles with pagination, `201` + `Location` on create, `ETag`/`Last-Modified`, soft-delete tombstones (`410 Gone`), Provenance-on-write.
-- **Biomarker Engine** — `BiomarkerDefinition` is the canonical identity for a metric (LOINC/SNOMED/CUSTOM coding). Values auto-convert to a system unit via DB-driven multipliers, and a `relative_score` (0.0–1.0) positions each result inside its reference range for lab-agnostic trends. A mapping waterfall (code → name → slug/aliases → auto-create) never drops incoming data.
-- **Unified Catalog Registry** — six catalogs (biomarkers, medications, allergies, vaccines, anatomy, taxonomy/concepts) under one CRUD / search / FHIR / edge contract with ownership-based scope tiers (`system` / `tenant` / `user`) and per-item audit history.
-- **Knowledge graph** — `concepts` carry multiple domain tags, and typed polymorphic `concept_edges` (25 relation types: `AFFECTS`, `TREATS`, `PREVENTS`, `MEMBER_OF`, `EXAMINES`…) connect any catalog item to any other. A recursive-CTE traversal answers multi-hop queries like *which organ does this biomarker affect → what diseases affect it → what treats them*.
-- **TimescaleDB telemetry split** — high-frequency data routes to a hypertable; low-frequency data stays in FHIR rows. Routing is dynamic per biomarker and toggles a batch-migration task. Dashboard downsampling uses `time_bucket_gapfill` + OHLC so spikes survive aggregation.
+- **Upload anything** — lab reports, doctor letters, imaging, discharge summaries. Snap a photo or drop a PDF; an OCR + AI pipeline extracts the structured data (biomarkers, medications, findings) for you.
+- **Examinations** group every clinical visit: the documents, your notes, and the biomarker results, all in one place.
+- **Medications, allergies, and vaccinations** tracked per family member, each with its own reference catalog.
+- **Rich-text / Markdown notes** per examination — your words, formatted your way.
 
-### Clinical workflows
+### Understand your results
 
-- **Examinations** — clinical visit containers that group documents, rich-text/Markdown notes, and biomarker results by visit.
-- **Clinical Events** — longitudinal journeys (a pregnancy, a chronic-pain episode, a surgical recovery) that span multiple examinations. A JSONB `metadata_schema` drives dynamic, specialty-specific fields rendered by the frontend — no hardcoded forms.
-- **Bi-directional visit ↔ event mapping** with a `reason` field giving each examination clinical context inside the journey.
-- **Documents** tracked end-to-end through the OCR pipeline with live progress streamed over WebSocket.
-- **Draggable, persistent dashboard** (react-grid-layout) with per-patient card layouts saved to the backend.
+- **Biomarker trends over time** — cholesterol, glucose, thyroid, vitamins, anything you've had tested, charted longitudinally with normal/abnormal flagging.
+- **Normalized across labs** — results from different providers auto-convert to a common unit, so your trend line stays meaningful even when you switch labs.
+- **Relative score** — each result is positioned inside its reference range (0.0–1.0), giving you a lab-agnostic sense of where you sit.
+- **An AI assistant that explains things** — ask "what does this result mean?" or "how has my cholesterol changed?" and get an answer grounded in your own data, with citations back to the source.
 
-### AI
+### Track the long view
 
-- **OCR pipeline** — a vision LLM converts images / PDFs / DICOM into Markdown.
-- **NLP pipeline** — Pass 1 maps extracted metrics to existing catalog slugs; Pass 2 generates standardized definitions for unknowns and auto-expands the catalog.
-- **Agentic chatbot** — tool-calling with SSE streaming, inline citations, and 20+ tools: hybrid catalog search (trigram + FTS + Reciprocal Rank Fusion), multi-hop graph traversal, telemetry trends, document retrieval, medication lookup.
-- **Human-in-the-loop proposals** — the assistant proposes write actions (clinical events, biomarkers/medications added to an examination, new catalog definitions). The user reviews, edits, and explicitly confirms; every write goes through the canonical tenant-scoped REST endpoint. **The AI never writes clinical data directly.** Parallel proposals, partial resume, and auto-resume continuation turns are supported.
-- **Magic Fill** — maps unstructured pasted text into structured examination records.
-- **Provider-agnostic factory** — DB-driven, per-tenant model resolution with USER → TENANT → SYSTEM scope. OpenAI-compatible providers work out of the box (OpenAI, vLLM, Ollama). Anthropic is supported via an optional dependency. API keys are Fernet-encrypted at rest and masked in every response.
+- **Health journeys** — a pregnancy, a chronic condition, a surgical recovery, a weight-loss effort. Journeys span multiple visits, carry their own custom fields (trimester, pain intensity, dose), and link back to the examinations that fed them.
+- **Wearable & device data** — heart rate, steps, continuous glucose, sleep. High-frequency data goes into a dedicated time-series store (TimescaleDB) so it doesn't bloat your clinical records, with smart downsampling that preserves spikes on the dashboard.
+- **Reminders & alerts** — medication and follow-up reminders, plus alerts when a new result falls outside its reference range.
 
-### Integrations
+### An AI assistant that helps — carefully
 
-Pluggable, Home-Assistant-style. Each integration ships as a `manifest.json` + config flow + provider under `integrations/{domain}/`.
+- **Grounded in your data** — the assistant answers using your biomarker history, medications, documents, and catalog. It cites what it's drawing from.
+- **Proposes, never writes** — it can suggest "track this as a new journey", "add this medication", or "define this biomarker". A review card opens; you edit and approve. Every write goes through the same REST endpoint a manual action would. **The AI cannot edit your clinical record directly.**
+- **Bring your own LLM** — any OpenAI-compatible provider works: OpenAI, a local model via vLLM or Ollama, a self-hosted gateway. Configure per household.
+- **Magic Fill** — paste discharge notes or lab text; the assistant maps it into structured examination records for you to confirm.
 
-| Integration | Flow | What it does |
-|---|---|---|
-| **fhir_server** | pull + push | Two-way FHIR R4 sync with an external hospital / personal-health-record via SMART-on-FHIR + Dynamic Client Registration |
-| **webhook** | push | Receive data from any app or script via HTTP POST; HMAC-SHA256 body verification (opt-in) |
-| **health_assistant_bridge** | push | Connect mobile apps and custom clients via the official **Python** and **TypeScript** SDKs |
-| **mcp_client** | tools | Connect to Model Context Protocol servers (STDIO / HTTP / SSE) and expose their tools to the chat assistant |
-| **dev_dummy** | pull + push | Reference provider that simulates API flows, errors, and fake biomarker data for testing |
+### Private by default
 
-The **Integrations SDK** (`BaseHealthProvider`, `BaseConfigFlow`, `ObservationBuilder`) gives developers connection pooling, rate-limit handling, cursor-based delta sync, and OAuth2+PKCE out of the box. See the [SDK guide](docs/INTEGRATIONS_SDK.md).
+- **Self-hosted** — the database, object storage, and queue live on your infrastructure. Nothing phones home.
+- **No accounts to create with us** — you run it; you manage the users.
+- **Encrypted AI keys** — your LLM API key is Fernet-encrypted at rest and masked in every response.
+- **Prompt-injection screening** on all AI input, and an audit log on every clinical write.
 
-### Notifications
+### For the whole household
 
-A unified, GitHub/Slack-style fan-out system: one immutable event → N recipient inbox rows → N channel-delivery logs.
+- **Multi-person records** under one installation — you, your partner, the kids, an aging parent.
+- **Role-based access** — a parent can manage everyone's records; each member can have a scoped view of their own.
+- **Smart patient-context switching** — the whole UI refocuses on the selected family member.
+- **Multi-tenant under the hood** — today that means "one install per household"; tomorrow the same isolation can serve "one install per clinic, separated per department".
 
-- **Sources**: scheduled reminders, biomarker-threshold rules, HITL proposals, integration sync outcomes, clinical lifecycle, admin broadcasts.
-- **Channels**: in-app (real-time WebSocket over Redis pub/sub), Web Push (VAPID, dead-endpoint self-pruning). Email/SMS are stubbed.
-- **Rules engine** evaluated on every observation ingestion (`NotificationRule` replaces the legacy alerts table).
-- **Admin center** for tenant/system broadcasts with per-recipient delivery detail.
+### Make it yours
 
-### Security & operations
-
-- **Hard tenant isolation** on every query; `USER` role is further scoped to `Patient.user_id == user_id`. Four roles: `SYSTEM_ADMIN`, `ADMIN`, `MANAGER`, `USER`.
-- **JWT auth** with refresh tokens — no per-request DB lookup; trust lives in the token.
-- **AuditLog provenance** on every FHIR create/delete (who/what/when + old/new diff).
-- **Prompt-injection guard** scanning all AI input for OWASP LLM01 patterns before the LLM sees it.
-- **Export & import backups** — FHIR R4B Bundle + BagIt-style ZIP at patient/group/system scope; SHA256 manifest verification and cross-tenant id remapping on restore.
-- **Resilient boot** — `DATABASE_AVAILABLE` flag, stuck-task recovery, bootstrap race protection (`pg_advisory_xact_lock`), fail-fatal seeding in production.
-- **Production hardening** — insecure `POSTGRES_PASSWORD` rejected at boot; global 500 handler emits a `correlation_id` and never leaks `str(exc)`; WebSocket subprotocol auth; webhook HMAC.
-
-### Platform
-
-- **Installable PWA** (vite-plugin-pwa, injectManifest) with a Dexie offline cache and Web Push.
+- **Installable PWA** — add it to your phone or desktop, works offline, supports push notifications.
+- **Draggable dashboard** — arrange the cards (trend charts, imaging previews, reminders) per family member and save the layout.
 - **Secure full-screen viewers** for images, PDFs, and Markdown documents.
-- **Internationalization** — English and Greek.
-- **Centralized `useBiomarkers` normalizer** so every view renders biomarker data consistently.
+- **Languages** — English and Greek.
+
+### Connect your tools
+
+- **Webhook** — receive data from any app or custom script via HTTP POST (HMAC-verified).
+- **Bridge SDKs** (Python + TypeScript) — connect a mobile app or any custom client.
+- **FHIR Server sync** — pull records from a hospital or personal-health-record that supports SMART-on-FHIR.
+- **MCP client** — expose external Model Context Protocol tool servers to the AI assistant.
+- **Build your own** with the Integrations SDK (`BaseHealthProvider`, `BaseConfigFlow`, `ObservationBuilder`) — connection pooling, rate-limit handling, cursor-based delta sync, and OAuth2+PKCE included.
+
+## Clinic-compatible by design
+
+Health Assistant is built family-first. But the foundation is the same one hospitals use, so the same installation can grow into a clinic-grade record — or interoperate with one — without a rewrite. You don't need to care about any of this to use it at home; it's here for when you do.
+
+- **HL7 FHIR R4 storage** — clinical data is stored as FHIR-enhanced relational rows and validated on write, so invalid FHIR never lands in the database.
+- **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **18 resources** (Patient, Observation, Condition, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
+- **Unified clinical catalogs** — biomarkers, medications, allergies, vaccines, anatomy, and a taxonomy/knowledge graph (25 relation types) with recursive multi-hop traversal.
+- **Hard multi-tenant isolation** — every query is tenant-scoped; cross-tenant access is impossible.
+- **Role-based access control** — four roles: System Admin, Admin, Manager, User.
+- **Export & import** — FHIR R4B Bundle + BagIt-style ZIP backups at patient/group/system scope, with SHA256 manifest verification and cross-tenant id remapping on restore.
+- **Audit provenance** — every clinical create/delete records who, what, and when.
+
+External terminology code sets (LOINC, SNOMED CT, ICD-10, ATC, CVX) are used in the seed catalogs under their respective licenses — see [NOTICE](NOTICE) for the per-system terms and the SNOMED country-availability note.
 
 ## Visual tour
 
@@ -141,11 +143,11 @@ Reproducible screenshots captured against a seeded clinical dataset — see the 
 <table>
   <tr>
     <td width="50%" align="center"><a href="docs/images/dashboard-desktop.png"><img src="docs/images/dashboard-desktop.png" alt="Patient dashboard"/><br/><sub>Draggable dashboard</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/ai-chat-desktop.png"><img src="docs/images/ai-chat-desktop.png" alt="AI assistant"/><br/><sub>Agentic chat with HITL cards</sub></a></td>
+    <td width="50%" align="center"><a href="docs/images/ai-chat-desktop.png"><img src="docs/images/ai-chat-desktop.png" alt="AI assistant"/><br/><sub>AI chat with review cards</sub></a></td>
   </tr>
   <tr>
     <td width="50%" align="center"><a href="docs/images/biomarker-detail-desktop.png"><img src="docs/images/biomarker-detail-desktop.png" alt="Biomarker detail"/><br/><sub>Longitudinal biomarker trends</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/examination-detail-desktop.png"><img src="docs/images/examination-detail-desktop.png" alt="Examination detail"/><br/><sub>Examination with linked events</sub></a></td>
+    <td width="50%" align="center"><a href="docs/images/examination-detail-desktop.png"><img src="docs/images/examination-detail-desktop.png" alt="Examination detail"/><br/><sub>Examination with linked journeys</sub></a></td>
   </tr>
 </table>
 
@@ -181,7 +183,7 @@ Frontend: http://localhost:3000 · API docs: http://localhost:8000/docs · Flowe
 
 - **Docker** and Docker Compose (production) or **Python 3.12+ / Node 20+** (development).
 - **PostgreSQL with the TimescaleDB extension** is required — a plain Postgres will crash on the telemetry hypertable migration. The Docker compose files include a compatible image.
-- **An OpenAI-compatible LLM provider** (API key + endpoint) if you want OCR, NLP, or the chat assistant. The platform falls back to `OPENAI_*` env vars or per-tenant DB config.
+- **An OpenAI-compatible LLM provider** (API key + endpoint) for OCR, document extraction, and the chat assistant. Configure per household in `/settings/ai-config` or via env vars. The app works without one — you just lose the AI features.
 - **Redis** for the task queue (included in the compose files).
 
 ## Architecture at a glance
@@ -194,13 +196,13 @@ flowchart LR
     end
     subgraph Server["FastAPI server"]
         API[REST + WebSocket<br/>+ FHIR R4 facade]
-        W[Celery worker + beat<br/>OCR · NLP · sync · rules]
+        W[Celery worker + beat<br/>OCR · extraction · sync · reminders]
     end
     subgraph Datastore
-        PG[(PostgreSQL + TimescaleDB<br/>FHIR rows + telemetry hypertable)]
+        PG[(PostgreSQL + TimescaleDB<br/>records + telemetry)]
         RQ[(Redis<br/>queue + pub/sub)]
     end
-    LLM[External LLM<br/>OpenAI-compatible]
+    LLM[Your LLM<br/>OpenAI-compatible]
     INT[Integrations<br/>FHIR server · Webhook · MCP]
 
     FE --> API
@@ -212,9 +214,9 @@ flowchart LR
     W --> LLM
 ```
 
-The frontend talks to **domain endpoints** (`/patients/*`, `/observations/*`, …) returning ORM-shape dicts optimized for the UI. External systems talk to the **FHIR R4 facade** (`/api/v1/fhir/R4/*`) returning canonical FHIR JSON. Both surfaces sit on the same FHIR-enhanced relational tables — there is no dual-write.
+The frontend talks to **domain endpoints** optimized for the UI. External systems (a hospital's FHIR server, a webhook sender) talk to the **FHIR R4 facade**. Both surfaces sit on the same FHIR-enhanced relational tables — there is no dual-write.
 
-Background work (OCR/NLP processing, integration sync, notification triggers, stuck-task cleanup) runs in a separate Celery process coordinated through Redis; the FastAPI process does not run background jobs itself.
+Background work (document OCR/extraction, integration sync, reminders, alert checks) runs in a separate Celery process coordinated through Redis; the FastAPI process does not run background jobs itself.
 
 Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -223,23 +225,21 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 **Getting started**
 - [Visual Tour](docs/SCREENSHOTS.md) — every page, reproducible screenshots
 - [Installation Guide](docs/INSTALL.md) — Docker, manual setup, prod security checklist, nginx, troubleshooting
-- [Architecture Overview](docs/ARCHITECTURE.md) — tech stack, DB schema, FHIR/Biomarker engine, AI pipeline
+- [Architecture Overview](docs/ARCHITECTURE.md) — tech stack, DB schema, biomarker engine, AI pipeline
 
-**Core systems**
-- [Project Structure](docs/PROJECT_STRUCTURE.md) — repo layout
-- [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — hierarchy, roles, identity ↔ record linking
-- [Ontology & Catalog](docs/ONTOLOGY_CATALOG.md) — catalog schema, import behavior, mapping waterfall
+**Everyday use & core systems**
+- [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — households, roles, identity ↔ record linking
+- [Ontology & Catalog](docs/ONTOLOGY_CATALOG.md) — how incoming data maps to your catalog
 - [Taxonomy & Knowledge Graph](docs/TAXONOMY.md) — concepts, edges, cross-domain traversal
-- [Notification System](docs/NOTIFICATION_SYSTEM.md) — fan-out model, rules engine, Web Push
-- [Telemetry & Aggregation](docs/TELEMETRY_AND_AGGREGATION.md) — TimescaleDB split, OHLC downsampling
+- [Notification System](docs/NOTIFICATION_SYSTEM.md) — reminders, alerts, Web Push
+- [Telemetry & Aggregation](docs/TELEMETRY_AND_AGGREGATION.md) — wearable data, downsampling
 - [Export & Import (Backup)](docs/EXPORT_IMPORT.md) — FHIR Bundle + ZIP, SHA256 manifest
 
-**AI & intelligence**
-- [AI System & Configuration](docs/AI_SYSTEM.md) — provider factory, model resolution, chatbot, HITL proposals
-- [FHIR R4 Facade](docs/FHIR_R4_FACADE.md) — resource registry, search params, Provenance
+**AI**
+- [AI System & Configuration](docs/AI_SYSTEM.md) — provider setup, chatbot, human-in-the-loop proposals
 
 **Integrations & API**
-- [REST API Reference](docs/API.md) — auth, FHIR, clinical events, analytics, notifications
+- [REST API Reference](docs/API.md) · [FHIR R4 Facade](docs/FHIR_R4_FACADE.md)
 - [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integrations SDK](docs/INTEGRATIONS_SDK.md)
 - [Mobile Sync App](docs/MOBILE_SYNC_APP.md) — headless companion architecture
 
@@ -272,26 +272,26 @@ Interactive API docs are also available at `/docs` on a running backend.
 Health Assistant is **Beta** (`0.3.x`). The points below are honest boundaries — not every limitation is a bug.
 
 - **Pre-1.0 APIs.** REST endpoints, DB schemas, and FHIR projections may change before `1.0`. Pin a version for production deployments.
-- **FHIR coverage.** 18 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Write-time validation guarantees spec-compliant stored resources.
-- **Telemetry is outside strict FHIR.** High-frequency data lives in a TimescaleDB hypertable for performance and is intentionally excluded from standard FHIR patient exports. Toggling a biomarker between FHIR and telemetry triggers a batch-migration task.
+- **Self-hosted only.** There is no managed/cloud hosted offering. You run it on Linux via Docker. No native Windows or macOS desktop installers.
 - **TimescaleDB is mandatory.** A plain Postgres will crash on the telemetry hypertable migration. Use the bundled compose image or install the extension.
-- **Celery is a separate process.** The FastAPI process does not run background jobs. If you run `uvicorn` standalone, OCR/import/notifications/integration sync will queue silently in Redis. The provided compose files and `run-dev.sh` start them together.
-- **AI requires an external provider.** OCR, NLP, and the chat assistant call an OpenAI-compatible endpoint. Configure a provider + key in `/settings/ai-config` or via env vars.
+- **Celery is a separate process.** The FastAPI process does not run background jobs. If you run `uvicorn` standalone, document extraction, reminders, and integration sync will queue silently in Redis. The provided compose files and `run-dev.sh` start them together.
+- **AI features need an external LLM.** OCR, document extraction, and the chat assistant call an OpenAI-compatible endpoint you provide (OpenAI, vLLM, Ollama, etc.). The rest of the app works without one.
+- **Wearable data is one-directional so far.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted, but there is no first-party phone app yet — data arrives via the webhook, bridge SDK, or a FHIR server integration. A headless mobile companion is on the roadmap.
 - **Notification channels.** In-app (WebSocket) and Web Push (VAPID) are fully implemented. Email and SMS are stubbed.
+- **FHIR coverage.** 18 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
 - **Test coverage.** The backend has 830+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
-- **Platform support.** Linux / Docker / self-hosted. There are no native Windows or macOS desktop installers.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
 ## Status & roadmap
 
 A few headline items from [STATUS.md](docs/STATUS.md) and [DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md):
 
-- **Advanced FHIR R4 conformance** — `_format=xml`, transaction/batch Bundle processing, `POST /_search`.
-- **Biomarker clinical insights** — deeper trend analytics, organ/symptom correlations, contextual filtering.
-- **Headless mobile sync** — companion app bridging Android Health Connect / iOS HealthKit directly to the local instance.
-- **End-to-end test suite** — Playwright or Cypress covering the document → OCR → biomarker pipeline.
+- **Mobile companion** — headless app bridging Android Health Connect / iOS HealthKit directly to your instance.
+- **Biomarker insights** — deeper trend analytics, organ/symptom correlations, contextual "why does this matter?" explanations.
+- **Advanced FHIR R4 conformance** — `_format=xml`, transaction/batch Bundle processing, `POST /_search` (for clinic interop).
+- **End-to-end test suite** — Playwright or Cypress covering the document → extraction → biomarker pipeline.
 
-Already shipped recently: unified Catalog Registry with ownership-based access control, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade Stage 3, HITL proposals with auto-resume, and a unified multi-source notification system.
+Already shipped recently: unified catalog registry with ownership-based access, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade Stage 3, human-in-the-loop proposals with auto-resume, and a unified notifications system.
 
 ## Contributing
 
@@ -301,7 +301,7 @@ For backend changes, run `ruff check` / `ruff format` and the pytest suite (`cd 
 
 ## Support the project
 
-If Health Assistant has helped you take control of your health data, or if you believe in privacy-first healthcare infrastructure, please consider supporting continued development and maintenance.
+If Health Assistant has helped you take control of your family's health data, or if you believe privacy-first health infrastructure should exist, please consider supporting continued development and maintenance.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
 
