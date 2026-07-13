@@ -37,6 +37,12 @@ interface CatalogToolbarProps {
 
   /** When true, shows the SYSTEM_ADMIN-only "Export seeds" button. */
   canExportSeeds?: boolean;
+
+  /**
+   * Optional filter bar rendered as a second row below the main controls
+   * (e.g. the biomarker facet chips). When undefined, no second row is shown.
+   */
+  filterBar?: React.ReactNode;
 }
 
 const SCOPE_OPTIONS: { value: string; labelKey: string; fallback: string }[] = [
@@ -59,11 +65,13 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
   onViewModeChange,
   onNew,
   canExportSeeds,
+  filterBar,
 }) => {
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
       <CatalogTypeSelect types={types} activeType={activeType} onSelect={onSelectType} />
 
       {/* Scope segmented control */}
@@ -162,6 +170,13 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
         >
           <Plus className="w-4 h-4" /> {t('common.new', 'New')}
         </button>
+      )}
+      </div>
+
+      {filterBar && (
+        <div className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t border-gray-100 dark:border-gray-700">
+          {filterBar}
+        </div>
       )}
     </div>
   );

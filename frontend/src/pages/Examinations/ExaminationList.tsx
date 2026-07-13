@@ -23,7 +23,8 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { MasterDetailLayout } from '../../components/ui/MasterDetailLayout';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
-import { CategoryDropdown } from '../../components/ui/CategoryDropdown';
+import { FacetChip, useFilterState } from '../../components/ui/filters';
+import type { FacetDefinition } from '../../components/ui/filters';
 import { ExaminationPreview } from '../../components/examinations/ExaminationPreview';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { DatePicker } from '../../components/ui/DatePicker';
@@ -31,7 +32,17 @@ import { DatePicker } from '../../components/ui/DatePicker';
 function ExaminationList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['All']);
+  const categoryFacets: FacetDefinition<any>[] = [{
+    id: 'category',
+    label: t('examinations.categories'),
+    kind: 'multi',
+    mode: 'client',
+    predicate: (exam: any, value) => {
+      if (value.kind !== 'multi' || value.values.length === 0) return true;
+      return value.values.includes(getExamCategory(exam));
+    },
+  }];
+  const categoryFilter = useFilterState<any>(categoryFacets);
   const [dateFilter, setDateFilter] = useState('All Time');
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [examinations, setExaminations] = useState<any[]>([]);
@@ -250,7 +261,7 @@ function ExaminationList() {
 
   useEffect(() => {
     setSearchTerm('');
-    setSelectedCategories(['All']);
+    categoryFilter.clearAll();
     setDateFilter('All Time');
     setCustomRange({ start: '', end: '' });
     setOffset(0);
@@ -400,9 +411,9 @@ function ExaminationList() {
     return result;
   }, [dbCategories, examinations]);
 
-  const tabsWithCounts = useMemo(() => {
-    const counts: Record<string, number> = { 'All': examinations.length };
-    
+  const categoryOptions = useMemo(() => {
+    const counts: Record<string, number> = {};
+
     examinations.forEach(exam => {
       const cat = getExamCategory(exam);
       if (cat) {
@@ -411,29 +422,26 @@ function ExaminationList() {
     });
 
     const nonEmpty = sortedCategories.filter(cat => counts[cat] > 0);
-    
-    return [
-      { name: t('common.view_all') as string, id: 'All', count: examinations.length, icon: null, color: null },
-      ...nonEmpty.map(name => {
-        const catObj = dbCategories.find(c => c.name === name);
-        return {
-          name: t(`categories.${name}`, name) as string, // Use i18n translation or fallback to name
-          id: name,
-          count: counts[name] || 0,
-          icon: catObj?.icon || null,
-          color: catObj?.color || null
-        };
-      })
-    ];
+
+    return nonEmpty.map(name => {
+      const catObj = dbCategories.find(c => c.name === name);
+      return {
+        value: name,
+        label: t(`categories.${name}`, name) as string,
+        count: counts[name] || 0,
+        icon: catObj?.icon || null,
+        color: catObj?.color || null,
+      };
+    });
   }, [sortedCategories, examinations, dbCategories, t]);
 
   const filteredExaminations = examinations.filter(e => {
     const notesToSearch = (e.notes || '').toLowerCase();
     const patientNotesToSearch = (e.patient_notes || '').toLowerCase();
     const searchLower = searchTerm.toLowerCase();
-    
+
     const matchesSearch = notesToSearch.includes(searchLower) || patientNotesToSearch.includes(searchLower);
-    const matchesTab = selectedCategories.includes('All') || selectedCategories.includes(getExamCategory(e));
+    const matchesTab = categoryFilter.matches(e);
     
     let matchesDate = true;
     const examDate = new Date(e.examination_date);
@@ -487,18 +495,6 @@ function ExaminationList() {
     }
   };
 
-  const toggleCategory = (category: string) => {
-    setSelectedCategories(prev => {
-      if (category === 'All') return ['All'];
-      const filtered = prev.filter(c => c !== 'All');
-      if (filtered.includes(category)) {
-        const next = filtered.filter(c => c !== category);
-        return next.length === 0 ? ['All'] : next;
-      }
-      return [...filtered, category];
-    });
-  };
-
   const ListHeader = (
     <div className="flex items-center space-x-2 w-full">
       {isEditMode && (
@@ -513,11 +509,11 @@ function ExaminationList() {
       )}
       <h3 className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-wider">{t('examinations.history_timeline')} ({filteredExaminations.length})</h3>
       <div className="ml-auto">
-        { (searchTerm || !selectedCategories.includes('All') || dateFilter !== 'All Time') && (
+        { (searchTerm || categoryFilter.isActive || dateFilter !== 'All Time') && (
           <button 
             onClick={() => {
               setSearchTerm('');
-              setSelectedCategories(['All']);
+              categoryFilter.clearAll();
               setDateFilter('All Time');
               setCustomRange({ start: '', end: '' });
             }}
@@ -664,12 +660,12 @@ function ExaminationList() {
           </div>
         }
       >
-          <CategoryDropdown 
-             tabs={tabsWithCounts} 
-             selectedCategories={selectedCategories} 
-             onToggleCategory={toggleCategory} 
-             label={t('examinations.categories')}
-             allLabel={t('common.view_all')}
+          <FacetChip
+             facet={categoryFacets[0]}
+             value={categoryFilter.state.category}
+             options={categoryOptions}
+             onValueChange={(v) => categoryFilter.set('category', v)}
+             onToggleOption={(opt) => categoryFilter.toggle('category', opt)}
           />
       </StickyToolbar>
 

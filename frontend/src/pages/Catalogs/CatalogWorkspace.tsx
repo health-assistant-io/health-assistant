@@ -34,6 +34,8 @@ import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
 import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
 import { CatalogOntologyGraph } from '../../components/catalog/CatalogOntologyGraph';
 import { getCustomTabs } from '../../components/catalog/tabs/catalogTabs';
+import { getFacetsForType } from '../../components/catalog/catalogFacetRegistry';
+import { FilterBar, useFilterState, serializeFilterState, parseFilterState } from '../../components/ui/filters';
 import { BiomarkerMigrationWatcher } from '../../components/biomarkers/BiomarkerMigrationWatcher';
 import { ScopeBadge } from '../../components/catalog/ScopeBadge';
 import {
@@ -116,6 +118,28 @@ export const CatalogWorkspace: React.FC = () => {
     ? currentUserRole !== 'USER' && currentUserRole !== null
     : true;
   const itemId = searchParams.get('item') || '';
+
+  // Facet filters (registry-driven): biomarker gets category/telemetry/coding/
+  // unit facets; other types have none yet. Client-mode predicates run over
+  // the loaded items alongside the existing mine + page-search filters.
+  // Filter state is synced to the ?f= URL param so filters survive refresh/back.
+  const facets = useMemo(() => getFacetsForType(activeType), [activeType]);
+  const catalogFilter = useFilterState<CatalogItem>(facets, {
+    initialState: parseFilterState(facets, searchParams.get('f') || ''),
+  });
+
+  // Persist filter state to the ?f= URL param (replace, not push).
+  useEffect(() => {
+    const str = serializeFilterState(facets, catalogFilter.state);
+    setSearchParams(
+      (prev) => {
+        if (str) prev.set('f', str);
+        else prev.delete('f');
+        return prev;
+      },
+      { replace: true },
+    );
+  }, [catalogFilter.state, facets, setSearchParams]);
 
   // Register this page as a page-search provider (the header SearchLauncher
   // then filters the loaded items in-memory via `pageSearchTerm`). Cleared on
@@ -212,7 +236,7 @@ export const CatalogWorkspace: React.FC = () => {
     load();
   }, [load]);
 
-  /** In-memory filters: 'mine' ownership + page-search, over the loaded items. */
+  /** In-memory filters: 'mine' ownership + page-search + facet filters, over the loaded items. */
   const filteredItems = useMemo(() => {
     let result = items;
     if (isMineScope) {
@@ -228,8 +252,9 @@ export const CatalogWorkspace: React.FC = () => {
         return name.includes(q) || desc.includes(q);
       });
     }
+    result = catalogFilter.applyFilters(result);
     return result;
-  }, [items, isMineScope, pageSearchTerm, currentUserId]);
+  }, [items, isMineScope, pageSearchTerm, currentUserId, catalogFilter.applyFilters]);
 
   /** More pages available on the backend (only meaningful for non-'mine'). */
   const hasMore = !isMineScope && items.length < total;
@@ -238,7 +263,8 @@ export const CatalogWorkspace: React.FC = () => {
   useEffect(() => {
     setTab(INFO);
     setClassFilter('');
-  }, [activeType]);
+    catalogFilter.clearAll();
+  }, [activeType, catalogFilter.clearAll]);
 
   // Anatomy-only: load the anatomy_class concepts for the filter chips.
   // Concept-only: the kind chips are the static ConceptKind enum (no fetch).
@@ -705,6 +731,14 @@ export const CatalogWorkspace: React.FC = () => {
                 setIsNew(true);
               } : undefined}
               canExportSeeds={currentUserRole === 'SYSTEM_ADMIN'}
+              filterBar={facets.length > 0 ? (
+                <FilterBar<CatalogItem>
+                  facets={facets}
+                  filter={catalogFilter}
+                  items={items}
+                  showActivePills={false}
+                />
+              ) : undefined}
             />
           </div>
 
@@ -773,11 +807,12 @@ export const CatalogWorkspace: React.FC = () => {
                     }}
                     activeScope={scopeFilter}
                     activeClasses={classFilter ? classFilter.split(',') : []}
-                    hasActiveFilters={!!pageSearchTerm || !!scopeFilter || !!classFilter}
+                    hasActiveFilters={!!pageSearchTerm || !!scopeFilter || !!classFilter || catalogFilter.isActive}
                     onClearFilters={() => {
                       setPageSearchTerm('');
                       setScopeFilter('');
                       setClassFilter('');
+                      catalogFilter.clearAll();
                     }}
                   />
                 </div>

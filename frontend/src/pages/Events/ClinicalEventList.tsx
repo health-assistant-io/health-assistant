@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
@@ -24,7 +24,8 @@ import { getEventIcon, getEventStatusBadge } from '../../utils/clinicalEventUtil
 import { MasterDetailLayout } from '../../components/ui/MasterDetailLayout';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { PageContainer } from '../../components/ui/PageContainer';
-import { CategoryDropdown } from '../../components/ui/CategoryDropdown';
+import { FacetChip, useFilterState } from '../../components/ui/filters';
+import type { FacetDefinition } from '../../components/ui/filters';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 export const ClinicalEventList = () => {
@@ -33,7 +34,17 @@ export const ClinicalEventList = () => {
   const { currentPatient } = usePatientStore();
   const [events, setEvents] = useState<ClinicalEvent[]>([]);
   const [categories, setCategories] = useState<ClinicalEventCategory[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['All']);
+  const categoryFacets = useMemo<FacetDefinition<ClinicalEvent>[]>(() => [{
+    id: 'category',
+    label: t('events.categories'),
+    kind: 'multi',
+    mode: 'client',
+    predicate: (ev, value) => {
+      if (value.kind !== 'multi' || value.values.length === 0) return true;
+      return value.values.includes(ev.type_details?.category_concept_id || '');
+    },
+  }], [t]);
+  const categoryFilter = useFilterState<ClinicalEvent>(categoryFacets);
   const [loading, setLoading] = useState(true);
   const searchTerm = useUIStore(state => state.pageSearchTerm);
   const setSearchTerm = useUIStore(state => state.setPageSearchTerm);
@@ -117,9 +128,7 @@ export const ClinicalEventList = () => {
       ev.type_details?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ev.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesCategory = 
-      selectedCategories.includes('All') || 
-      selectedCategories.includes(ev.type_details?.category_concept_id || '');
+    const matchesCategory = categoryFilter.matches(ev);
     
     return matchesSearch && matchesCategory;
   });
@@ -132,30 +141,15 @@ export const ClinicalEventList = () => {
     events.some(e => e.type_details?.category_concept_id === cat.id)
   );
 
-  const tabsWithCounts = [
-    { name: t('common.view_all') as string, id: 'All', count: events.length, icon: null, color: null },
-    ...nonEmptyCategories.map(cat => ({
-      name: t(`categories.${cat.name}`, cat.name) as string, // Attempt translation or fallback to name
-      id: cat.id,
-      count: events.filter(e => e.type_details?.category_concept_id === cat.id).length,
-      icon: getEventIcon(cat.slug),
-      color: cat.color || null
-    }))
-  ];
+  const categoryOptions = nonEmptyCategories.map(cat => ({
+    value: cat.id,
+    label: t(`categories.${cat.name}`, cat.name),
+    count: events.filter(e => e.type_details?.category_concept_id === cat.id).length,
+    icon: getEventIcon(cat.slug),
+    color: cat.color || null,
+  }));
 
   const Sidebar = null;
-
-  const toggleCategory = (categoryId: string) => {
-    setSelectedCategories(prev => {
-      if (categoryId === 'All') return ['All'];
-      const filtered = prev.filter(c => c !== 'All');
-      if (filtered.includes(categoryId)) {
-        const next = filtered.filter(c => c !== categoryId);
-        return next.length === 0 ? ['All'] : next;
-      }
-      return [...filtered, categoryId];
-    });
-  };
 
   const ListHeader = (
     <>
@@ -313,12 +307,12 @@ export const ClinicalEventList = () => {
           </div>
         }
       >
-          <CategoryDropdown 
-             tabs={tabsWithCounts} 
-             selectedCategories={selectedCategories} 
-             onToggleCategory={toggleCategory} 
-             label={t('events.categories')}
-             allLabel={t('common.view_all')}
+          <FacetChip
+             facet={categoryFacets[0]}
+             value={categoryFilter.state.category}
+             options={categoryOptions}
+             onValueChange={(v) => categoryFilter.set('category', v)}
+             onToggleOption={(opt) => categoryFilter.toggle('category', opt)}
           />
       </StickyToolbar>
 

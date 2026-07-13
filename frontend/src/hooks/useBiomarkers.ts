@@ -411,11 +411,12 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
     return Array.from(uniqueMap.values()).map(enrich);
   }, [documents, trendsData, observations, enrich]);
 
-  const getGroupedData = useCallback((perspective: Perspective, activeTab: string = 'All', searchTerm: string = '', showAlertsOnly: boolean = false) => {
+  const getGroupedData = useCallback((perspective: Perspective, activeTab: string = 'All', searchTerm: string = '', showAlertsOnly: boolean = false, extraFilter?: (b: BiomarkerObservation) => boolean) => {
     const filtered = biomarkers.filter(b => {
       const matchesSearch = matchBiomarker(b, searchTerm);
       const matchesAlert = !showAlertsOnly || isAbnormal(b.interpretation);
-      return matchesSearch && matchesAlert;
+      const matchesExtra = !extraFilter || extraFilter(b);
+      return matchesSearch && matchesAlert && matchesExtra;
     });
 
     const groups: Record<string, BiomarkerObservation[]> = {};

@@ -22,7 +22,8 @@ import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { MasterDetailLayout } from '../../components/ui/MasterDetailLayout';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { DocumentCard } from '../../components/documents/DocumentCard';
-import { CategoryDropdown } from '../../components/ui/CategoryDropdown';
+import { FacetChip, useFilterState } from '../../components/ui/filters';
+import type { FacetDefinition } from '../../components/ui/filters';
 import { PageContainer } from '../../components/ui/PageContainer';
 
 function DocumentList() {
@@ -31,7 +32,17 @@ function DocumentList() {
   const searchTerm = useUIStore(state => state.pageSearchTerm);
   const setSearchTerm = useUIStore(state => state.setPageSearchTerm);
   const setIsPageSearchSupported = useUIStore(state => state.setIsPageSearchSupported);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['All']);
+  const categoryFacets: FacetDefinition<any>[] = [{
+    id: 'category',
+    label: t('documents_explorer.categories'),
+    kind: 'multi',
+    mode: 'client',
+    predicate: (doc: any, value) => {
+      if (value.kind !== 'multi' || value.values.length === 0) return true;
+      return value.values.includes(getDocCategory(doc));
+    },
+  }];
+  const categoryFilter = useFilterState<any>(categoryFacets);
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
@@ -166,9 +177,9 @@ function DocumentList() {
     return 'Other';
   };
 
-  const tabsWithCounts = useMemo(() => {
-    const counts: Record<string, number> = { 'All': documents.length };
-    
+  const categoryOptions = useMemo(() => {
+    const counts: Record<string, number> = {};
+
     documents.forEach(doc => {
       const cat = getDocCategory(doc);
       if (cat) {
@@ -188,26 +199,22 @@ function DocumentList() {
 
     const nonEmpty = sorted.filter(cat => counts[cat] > 0);
 
-    return [
-      { name: t('common.view_all') as string, id: 'All', count: documents.length, icon: null, color: null },
-      ...nonEmpty.map(name => {
-        const catObj = dbCategories.find(c => c.name === name);
-        return {
-          name: t(`categories.${name}`, name) as string, // Translate if available
-          id: name,
-          count: counts[name] || 0,
-          icon: catObj?.icon || null,
-          color: catObj?.color || null
-        };
-      })
-    ];
+    return nonEmpty.map(name => {
+      const catObj = dbCategories.find(c => c.name === name);
+      return {
+        value: name,
+        label: t(`categories.${name}`, name) as string,
+        count: counts[name] || 0,
+        icon: catObj?.icon || null,
+        color: catObj?.color || null,
+      };
+    });
   }, [documents, dbCategories, examMap, t]);
 
   const filteredDocuments = documents.filter(d => {
     const matchesSearch = d.filename.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const category = getDocCategory(d);
-    const matchesCategory = selectedCategories.includes('All') || selectedCategories.includes(category);
+
+    const matchesCategory = categoryFilter.matches(d);
     
     const ext = d.filename.split('.').pop()?.toLowerCase();
     let matchesType = fileTypeFilters.includes('All');
@@ -221,18 +228,6 @@ function DocumentList() {
     
     return matchesSearch && matchesCategory && matchesType;
   });
-
-  const toggleCategory = (category: string) => {
-    setSelectedCategories(prev => {
-      if (category === 'All') return ['All'];
-      const filtered = prev.filter(c => c !== 'All');
-      if (filtered.includes(category)) {
-        const next = filtered.filter(c => c !== category);
-        return next.length === 0 ? ['All'] : next;
-      }
-      return [...filtered, category];
-    });
-  };
 
   const toggleFileType = (type: string) => {
     setFileTypeFilters(prev => {
@@ -532,12 +527,12 @@ function DocumentList() {
           </div>
         }
       >
-          <CategoryDropdown 
-             tabs={tabsWithCounts} 
-             selectedCategories={selectedCategories} 
-             onToggleCategory={toggleCategory} 
-             label={t('documents_explorer.categories')}
-             allLabel={t('common.view_all')}
+          <FacetChip
+             facet={categoryFacets[0]}
+             value={categoryFilter.state.category}
+             options={categoryOptions}
+             onValueChange={(v) => categoryFilter.set('category', v)}
+             onToggleOption={(opt) => categoryFilter.toggle('category', opt)}
           />
       </StickyToolbar>
 
