@@ -3,7 +3,7 @@
 <img src="frontend/public/icon.svg" width="120" height="120" alt="Health Assistant logo">
 
 # Health Assistant
-### Self-hosted health records for your household
+### Self-hosted, privacy-first health records
 
 [![Version](https://img.shields.io/badge/version-v0.3.0--rc.6-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#scope--limitations)
@@ -51,18 +51,18 @@
 
 ## What is Health Assistant?
 
-A self-hosted web app for bringing your family's health data into one place you control — lab results, doctor visits, medications, wearable data, and the notes in between. You run it on your own infrastructure, so the data never leaves your home unless you say so.
+A self-hosted web app for centralizing the health data you care about — lab results, doctor visits, medications, wearable data, and the notes in between. You run it on your own infrastructure, so the data never leaves your servers unless you say so.
 
-Under the hood it's built on the same **HL7 FHIR** standard hospitals use, with a biomarker engine that normalizes your results across labs and a time-series store for device data. The everyday experience stays simple — but the foundation is there if you ever want to connect to a clinic, pull records from a hospital, or grow the same install into something clinic-grade.
+Under the hood it's built on the same **HL7 FHIR** standard hospitals use, with a biomarker engine that normalizes your results across labs and a time-series store for device data. The everyday experience stays simple — but the foundation is there if you ever want to connect to a clinic, pull records from a hospital, or scale the same install into something clinic-grade.
 
-It is **Beta** software, built for self-hosters and technical households first.
+It is **Beta** software, built for self-hosters and technical users first.
 
 ## What's different
 
-- **Your data stays home.** No cloud lock-in, no third-party data resale. The database, uploaded files, and task queue all live wherever you deploy them.
+- **Your data stays on your infrastructure.** No cloud lock-in, no third-party data resale. The database, uploaded files, and task queue all live wherever you deploy them.
 - **Understand your results, not just store them.** Labs from different providers are normalized to common units and scored against reference ranges, so trends stay comparable over time. The AI assistant explains results in plain language.
 - **The AI assists — it never writes your record.** The chat assistant proposes actions (track a new journey, add a medication, define a biomarker); you review and approve every single write through a structural human-in-the-loop wall.
-- **Family-first, clinic-ready.** Built for households today; the FHIR-native, multi-tenant foundation means the same software can grow into a clinic-grade record without a rewrite.
+- **Grows with you.** Today it serves a single user or a small group; the FHIR-native, multi-tenant foundation means the same installation can scale into a clinic-grade record without a rewrite.
 
 ## Features
 
@@ -70,7 +70,7 @@ It is **Beta** software, built for self-hosters and technical households first.
 
 - **Upload anything** — lab reports, doctor letters, imaging, discharge summaries. Snap a photo or drop a PDF; an OCR + AI pipeline extracts the structured data (biomarkers, medications, findings) for you.
 - **Examinations** group every clinical visit: the documents, your notes, and the biomarker results, all in one place.
-- **Medications, allergies, and vaccinations** tracked per family member, each with its own reference catalog.
+- **Medications, allergies, and vaccinations** tracked per person, each with its own reference catalog.
 - **Rich-text / Markdown notes** per examination — your words, formatted your way.
 
 ### Understand your results
@@ -90,7 +90,7 @@ It is **Beta** software, built for self-hosters and technical households first.
 
 - **Grounded in your data** — the assistant answers using your biomarker history, medications, documents, and catalog. It cites what it's drawing from.
 - **Proposes, never writes** — it can suggest "track this as a new journey", "add this medication", or "define this biomarker". A review card opens; you edit and approve. Every write goes through the same REST endpoint a manual action would. **The AI cannot edit your clinical record directly.**
-- **Bring your own LLM** — any OpenAI-compatible provider works: OpenAI, a local model via vLLM or Ollama, a self-hosted gateway. Configure per household.
+- **Bring your own LLM** — any OpenAI-compatible provider works: OpenAI, a local model via vLLM or Ollama, a self-hosted gateway. Configure per instance.
 - **Magic Fill** — paste discharge notes or lab text; the assistant maps it into structured examination records for you to confirm.
 
 ### Private by default
@@ -100,17 +100,17 @@ It is **Beta** software, built for self-hosters and technical households first.
 - **Encrypted AI keys** — your LLM API key is Fernet-encrypted at rest and masked in every response.
 - **Prompt-injection screening** on all AI input, and an audit log on every clinical write.
 
-### For the whole household
+### For multiple people
 
-- **Multi-person records** under one installation — you, your partner, the kids, an aging parent.
-- **Role-based access** — a parent can manage everyone's records; each member can have a scoped view of their own.
-- **Smart patient-context switching** — the whole UI refocuses on the selected family member.
-- **Multi-tenant under the hood** — today that means "one install per household"; tomorrow the same isolation can serve "one install per clinic, separated per department".
+- **Multi-person records** under one installation — yourself and the other people you track.
+- **Role-based access** — an admin manages everyone's records; each person can have a scoped view of their own.
+- **Smart patient-context switching** — the whole UI refocuses on the selected person.
+- **Multi-tenant under the hood** — today that means "one install per tenant"; tomorrow the same isolation can serve "one install per clinic, separated per department".
 
 ### Make it yours
 
 - **Installable PWA** — add it to your phone or desktop, works offline, supports push notifications.
-- **Draggable dashboard** — arrange the cards (trend charts, imaging previews, reminders) per family member and save the layout.
+- **Draggable dashboard** — arrange the cards (trend charts, imaging previews, reminders) per person and save the layout.
 - **Secure full-screen viewers** for images, PDFs, and Markdown documents.
 - **Languages** — English and Greek.
 
@@ -124,7 +124,7 @@ It is **Beta** software, built for self-hosters and technical households first.
 
 ## Clinic-compatible by design
 
-Health Assistant is built family-first. But the foundation is the same one hospitals use, so the same installation can grow into a clinic-grade record — or interoperate with one — without a rewrite. You don't need to care about any of this to use it at home; it's here for when you do.
+Health Assistant is self-hosted and privacy-first. But the foundation is the same one hospitals use, so the same installation can grow into a clinic-grade record — or interoperate with one — without a rewrite. You don't need to care about any of this for everyday use; it's here for when you do.
 
 - **HL7 FHIR R4 storage** — clinical data is stored as FHIR-enhanced relational rows and validated on write, so invalid FHIR never lands in the database.
 - **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **18 resources** (Patient, Observation, Condition, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
@@ -183,7 +183,7 @@ Frontend: http://localhost:3000 · API docs: http://localhost:8000/docs · Flowe
 
 - **Docker** and Docker Compose (production) or **Python 3.12+ / Node 20+** (development).
 - **PostgreSQL with the TimescaleDB extension** is required — a plain Postgres will crash on the telemetry hypertable migration. The Docker compose files include a compatible image.
-- **An OpenAI-compatible LLM provider** (API key + endpoint) for OCR, document extraction, and the chat assistant. Configure per household in `/settings/ai-config` or via env vars. The app works without one — you just lose the AI features.
+- **An OpenAI-compatible LLM provider** (API key + endpoint) for OCR, document extraction, and the chat assistant. Configure it in `/settings/ai-config` or via env vars. The app works without one — you just lose the AI features.
 - **Redis** for the task queue (included in the compose files).
 
 ## Architecture at a glance
@@ -228,7 +228,7 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - [Architecture Overview](docs/ARCHITECTURE.md) — tech stack, DB schema, biomarker engine, AI pipeline
 
 **Everyday use & core systems**
-- [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — households, roles, identity ↔ record linking
+- [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, identity ↔ record linking
 - [Ontology & Catalog](docs/ONTOLOGY_CATALOG.md) — how incoming data maps to your catalog
 - [Taxonomy & Knowledge Graph](docs/TAXONOMY.md) — concepts, edges, cross-domain traversal
 - [Notification System](docs/NOTIFICATION_SYSTEM.md) — reminders, alerts, Web Push
@@ -301,7 +301,7 @@ For backend changes, run `ruff check` / `ruff format` and the pytest suite (`cd 
 
 ## Support the project
 
-If Health Assistant has helped you take control of your family's health data, or if you believe privacy-first health infrastructure should exist, please consider supporting continued development and maintenance.
+If Health Assistant has helped you take control of your health data, or if you believe privacy-first health infrastructure should exist, please consider supporting continued development and maintenance.
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
 

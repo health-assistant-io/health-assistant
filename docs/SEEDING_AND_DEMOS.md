@@ -1,6 +1,11 @@
-# Seeding and Demos
+---
+title: "Seeding & Demo Data — Health Assistant"
+description: "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, and deterministic dates for screenshots."
+---
 
-Creating robust demo data is critical for E2E tests, documentation screenshots, and local development. This project follows specific best practices to ensure seeding is idempotent, deterministic, and maintainable.
+# Seeding & Demos
+
+Creating demo data is critical for E2E tests, documentation screenshots, and local development. This project follows specific best practices to ensure seeding is idempotent, deterministic, and maintainable.
 
 ## 0. The Seed Pipeline (`SeedService.seed_all`)
 

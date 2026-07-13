@@ -1,6 +1,11 @@
-# Tenancy and User Management
+---
+title: "Users, Tenants & Roles — Health Assistant"
+description: "Multi-tenant user management in Health Assistant, a self-hosted, open-source health records platform. Tenant isolation, organizational hierarchies, role-based access control, and identity-to-clinical-record linking."
+---
 
-Health Assistant is designed to be "Home-First, Clinic-Ready." This document explains how the system handles multiple users, organizational hierarchies, and identity linking.
+# Tenancy & User Management
+
+Health Assistant is a self-hosted, open-source health records platform with a multi-tenant architecture. This document explains how the system handles tenant isolation, organizational hierarchies, roles, and identity linking — from a single-user installation to a multi-department clinic.
 
 ## 1. The Data Model
 
@@ -8,13 +13,13 @@ Health Assistant separates **isolation boundaries** (Tenant), **organizational s
 
 ### Tenant — The Isolation Boundary
 The **Tenant** is the absolute boundary for data isolation.
-- **Home Use**: A Tenant represents the entire family or a single installation.
-- **Clinic Use**: A Tenant represents a Medical Group or a SaaS customer.
+- **Single-user / small group**: A Tenant represents one installation.
+- **Clinic use**: A Tenant represents a medical group or a SaaS customer.
 - **Isolation**: Users in Tenant A can *never* see data in Tenant B.
 
 ### Organization — Recursive Grouping
 An **Organization** represents a physical or logical grouping within a Tenant. Organizations are **recursive** via a self-referential `part_of_id` foreign key (FHIR `Organization.partOf`), so a tree of arbitrary depth can be modeled — there is no fixed number of tiers.
-- **Household**: In home setups, the system automatically creates a "Default Household" organization. This serves as the primary container for family members.
+- **Default**: On first registration, the system automatically creates a "Default Household" organization (type `HOUSEHOLD`). This serves as the primary container for the people in the tenant. The name is a default — it can be renamed, and `HOUSEHOLD` is just one of six org types.
 - **Clinic/Hospital**: Represents a specific branch or facility.
 - **Department**: A Department is simply an Organization whose `part_of_id` points to a parent Organization (typically of type `CLINIC` or `HOSPITAL`). It is not a separate model or table.
 - **Org Types**: `HOUSEHOLD`, `CLINIC`, `HOSPITAL`, `DEPARTMENT`, `PROVIDER_GROUP`, `OTHER`.
@@ -44,7 +49,7 @@ Health Assistant implements a dual-scope Role-Based Access Control (RBAC) system
 | Role | Scope | Description |
 | :--- | :--- | :--- |
 | **SYSTEM_ADMIN** | Global | The system owner. Can manage all tenants, global AI configurations, and system-wide settings. The first user registered in a new installation is automatically promoted to this role. |
-| **ADMIN** | Tenant | The Tenant owner (e.g., Head of Household or Clinic Manager). Can manage users and organizations within their own tenant. |
+| **ADMIN** | Tenant | The Tenant owner (e.g., the person who set up the installation, or a Clinic Manager). Can manage users and organizations within their own tenant. |
 | **MANAGER** | Tenant | Administrative staff or senior caregivers. Can view all data in the tenant and manage clinical records. |
 | **USER** | Tenant | Standard user. Access is typically restricted to their own records unless granted wider permissions. |
 
@@ -55,13 +60,13 @@ Health Assistant implements a dual-scope Role-Based Access Control (RBAC) system
 A unique feature of Health Assistant is the separation and linking of **Identity** (who logs in) and **Clinical Records** (the data).
 
 ### Why Link?
-In a household, the person who manages the app (the User) is often also a patient (the Patient record) or a caregiver (the Doctor record). In a clinic, a doctor's login maps to their professional Doctor profile. Linking allows the system to:
+Often, the person who manages the app (the User) is also a patient (the Patient record) or a caregiver (the Doctor record). In a clinic, a doctor's login maps to their professional Doctor profile. Linking allows the system to:
 - Automatically show "My Dashboard" when you log in (when a single Patient is linked).
 - Associate login accounts with professional licenses for doctors.
 
 ### How it Works — One-to-Many
 Linking is **one-to-many**, not one-to-one:
-- **`DoctorModel`** and **`Patient`** both contain an optional `user_id` foreign key. Neither column is unique-constrained, so a single User can be linked to **multiple** Patient records *and* **multiple** Doctor records simultaneously (e.g., a parent who is both a patient and a caregiver for several family members).
+- **`DoctorModel`** and **`Patient`** both contain an optional `user_id` foreign key. Neither column is unique-constrained, so a single User can be linked to **multiple** Patient records *and* **multiple** Doctor records simultaneously (e.g., someone who is both a patient and a caregiver for multiple people).
 - When a `user_id` is present on a clinical record, that record is "owned" by the login account.
 - **Home Setup**: Usually, you will create a Patient record for yourself and link it to your User account. A caregiver may additionally create Doctor records for themselves and link them.
 
@@ -84,15 +89,15 @@ Because one User may be linked to multiple Patient records (see §3), the system
 
 ## 5. Workflows
 
-### Home Setup (Zero-Config)
+### Self-Service Setup (Zero-Config)
 1. **Register**: The first user registers via `/auth/register` **without** supplying a `tenant_id`.
 2. **Auto-Provision**: The system detects this is the first user and:
    - Assigns them the `SYSTEM_ADMIN` role.
    - Creates a new `Tenant` automatically.
    - Creates a "Default Household" `Organization` automatically.
-3. **Ready**: The user can immediately start adding family members as Patients.
+3. **Ready**: The user can immediately start adding people as Patients.
 
-Subsequent self-onboarding users (e.g. another household setting up their
+Subsequent self-onboarding users (e.g. another user setting up their
 own installation) follow the same path: they omit `tenant_id`, get their
 own new tenant, and become `ADMIN` of it. Only the very first registration
 in the entire database becomes `SYSTEM_ADMIN` — this check is
@@ -113,7 +118,7 @@ a short-lived **invite token** minted by that tenant's admin.
    ```bash
    curl -X POST https://your-host/api/v1/auth/invite \
         -H "Authorization: Bearer $ADMIN_JWT" \
-        -d "email=newmember@family.com" -d "role=USER"
+         -d "email=newmember@example.com" -d "role=USER"
    # → { "invite_token": "...", "tenant_id": "...", "role": "USER", "expires_in_days": 7 }
    ```
 2. **Invitee registers** — `POST /api/v1/auth/register` with both
@@ -122,7 +127,7 @@ a short-lived **invite token** minted by that tenant's admin.
    ```bash
    curl -X POST https://your-host/api/v1/auth/register \
         -H "Content-Type: application/json" \
-        -d '{"email":"newmember@family.com", "password":"...", '\
+         -d '{"email":"newmember@example.com", "password":"...", '\
            '"tenant_id":"...", "invite_token":"..."}'
    ```
 3. **Failure modes** (all return 403):

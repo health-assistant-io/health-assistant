@@ -1,3 +1,8 @@
+---
+title: "Telemetry & TimescaleDB — Health Assistant"
+description: "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
+---
+
 # Telemetry & TimescaleDB Architecture
 
 This document tracks the design decisions and architecture for handling high-frequency health data (IoT devices, wearables, continuous monitors) in Health Assistant.
@@ -78,7 +83,7 @@ The system decouples the "Temporal Scope" (e.g., viewing the Last 30 Days) from 
 - **FHIR Interoperability Boundary:** The split architecture inherently moves high-frequency telemetry data outside of strict FHIR compliance. Currently, when exporting patient records to FHIR, telemetry data is excluded. Future versions will need to dynamically downsample and map TimescaleDB data back into FHIR `Observation` bundles during export.
 
 ## Unified Clinical View (UI & AI Integration)
-Despite the data being physically split across two different database engines, both the frontend and the AI Chatbot provide a seamless longitudinal view.
+Despite the data being physically split across two different database engines, both the frontend and the AI Chatbot provide a unified longitudinal view.
 
 1. **Frontend:** The `BiomarkerDetail` view uses the `AnalyticsService` to merge and sort FHIR and TimescaleDB data.
 2. **AI Chatbot:** The AI Assistant uses the `get_aggregated_biomarker_trends` tool, which routes through the same `AnalyticsService` logic. This ensures the AI can reason over high-frequency wearable data (steps, heart rate) without being overwhelmed by raw records, while strictly adhering to aggregated OHLC (Average, Min, Max) values.

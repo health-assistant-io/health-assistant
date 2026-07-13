@@ -16,7 +16,7 @@
       {
         "id": "install",
         "file": "INSTALL.md",
-        "title": "Installation Guide"
+        "title": "Self-Hosted Installation"
       },
       {
         "id": "architecture",
@@ -32,12 +32,12 @@
       {
         "id": "project-structure",
         "file": "PROJECT_STRUCTURE.md",
-        "title": "Project Structure"
+        "title": "Repository Structure"
       },
       {
         "id": "tenancy-and-user-management",
         "file": "TENANCY_AND_USER_MANAGEMENT.md",
-        "title": "User Management"
+        "title": "Users, Tenants & Roles"
       },
       {
         "id": "ontology-catalog",
@@ -57,7 +57,7 @@
       {
         "id": "telemetry-and-aggregation",
         "file": "TELEMETRY_AND_AGGREGATION.md",
-        "title": "Telemetry & Aggregation"
+        "title": "Telemetry & TimescaleDB"
       },
       {
         "id": "export-import",
@@ -74,11 +74,6 @@
         "id": "ai-system",
         "file": "AI_SYSTEM.md",
         "title": "AI System & Configuration"
-      },
-      {
-        "id": "ai-provider-tests",
-        "file": "AI_PROVIDER_TESTS.md",
-        "title": "Testing AI Providers"
       }
     ]
   },
@@ -107,11 +102,6 @@
         "title": "Integrations SDK"
       },
       {
-        "id": "user-integrations-plan",
-        "file": "USER_INTEGRATIONS_PLAN.md",
-        "title": "Integrations Plan"
-      },
-      {
         "id": "mobile-sync-app",
         "file": "MOBILE_SYNC_APP.md",
         "title": "Mobile Sync App"
@@ -133,29 +123,9 @@
         "title": "CI/CD Deployment"
       },
       {
-        "id": "release-process",
-        "file": "RELEASE_PROCESS.md",
-        "title": "Release Process"
-      },
-      {
         "id": "task-debugging-guide",
         "file": "TASK_DEBUGGING_GUIDE.md",
         "title": "Task Debugging Guide"
-      },
-      {
-        "id": "task-debugging",
-        "file": "TASK_DEBUGGING.md",
-        "title": "Task Debugging Internal"
-      },
-      {
-        "id": "task-progress-indicator",
-        "file": "TASK_PROGRESS_INDICATOR.md",
-        "title": "Task Progress Indicator"
-      },
-      {
-        "id": "ui-capture-pipeline",
-        "file": "UI_CAPTURE_PIPELINE.md",
-        "title": "UI Capture & Screenshots"
       }
     ]
   },
@@ -166,7 +136,7 @@
       {
         "id": "status",
         "file": "STATUS.md",
-        "title": "Current Status"
+        "title": "Status & Beta Roadmap"
       },
       {
         "id": "development-plan",

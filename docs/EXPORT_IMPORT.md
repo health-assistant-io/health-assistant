@@ -1,4 +1,9 @@
-# Export & Import (Backup) System
+---
+title: "Export & Import (Backup) — Health Assistant"
+description: "Backup and restore for Health Assistant, a self-hosted health records platform. FHIR R4B Bundle + BagIt-style ZIP exports, SHA256 integrity checks, and cross-tenant id remapping."
+---
+
+# Export & Import (Backup)
 
 Health Assistant can export and re-import data as **backup files**, at three scopes and in three formats. Exports are FHIR R4B-conformant and integrity-checked; imports are validated with [`fhir.resources`](https://pypi.org/project/fhir.resources/) and upserted by natural key with automatic id remapping across tenants.
 
@@ -155,7 +160,7 @@ Generated files are written to `UPLOAD_DIR/exports/<tenant_id>/`. There is no au
 
 ## 9. Frontend UI
 
-A production-ready page is available at **`/settings/export-import`** (admin-only — `ADMIN` and `SYSTEM_ADMIN` roles). It's wired into the Sidebar under **Settings → Export & Import**.
+A dedicated page is available at **`/settings/export-import`** (admin-only — `ADMIN` and `SYSTEM_ADMIN` roles). It's wired into the Sidebar under **Settings → Export & Import**.
 
 **Files**: `frontend/src/pages/Settings/ExportImport.tsx`, `frontend/src/services/backupService.ts` (named async fns wrapping the REST endpoints), `frontend/src/services/backupService.test.ts` (vitest), `frontend/src/types/backup.ts` (TS mirrors of the backend Pydantic schemas). Route registered in `frontend/src/App.tsx` (wrapped in the `(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN')` block). Sidebar entry in `frontend/src/components/layout/Sidebar.tsx` with `roles: ['ADMIN', 'SYSTEM_ADMIN']`. i18n keys under the `backup` namespace in `frontend/src/locales/{en,el}/common.json`.
 

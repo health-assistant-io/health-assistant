@@ -1,4 +1,9 @@
-# Task Debugging Guide - Stuck Documents
+---
+title: "Task Debugging Guide — Health Assistant"
+description: "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
+---
+
+# Task Debugging Guide — Stuck Documents
 
 **Date**: March 17, 2026
 

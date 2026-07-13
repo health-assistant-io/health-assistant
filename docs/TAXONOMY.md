@@ -1,3 +1,8 @@
+---
+title: "Taxonomy & Knowledge Graph — Health Assistant"
+description: "The unified medical taxonomy and knowledge graph in Health Assistant, a self-hosted health records platform. Multi-kind concepts, polymorphic edges, and cross-domain graph traversal."
+---
+
 # Taxonomy & Knowledge Graph
 
 > The unified, multi-kind medical vocabulary that classifies every domain

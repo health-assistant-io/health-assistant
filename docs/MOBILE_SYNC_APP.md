@@ -1,9 +1,14 @@
-# Health Assistant: Mobile Sync Architecture
+---
+title: "Mobile Sync Architecture — Health Assistant"
+description: "Architecture for a headless mobile companion app that syncs on-device health data (Android Health Connect, iOS HealthKit) to a self-hosted Health Assistant instance."
+---
+
+# Health Assistant — Mobile Sync Architecture
 
 ## Executive Summary
-This document outlines the architecture for a "headless" (minimal UI) mobile companion application built with **React Native (Expo)**. Its sole purpose is to securely read on-device health data from native health stores (Android Health Connect or iOS HealthKit) and synchronize it seamlessly with a self-hosted Health Assistant backend.
+This document outlines the architecture for a "headless" (minimal UI) mobile companion application built with **React Native (Expo)**. Its sole purpose is to securely read on-device health data from native health stores (Android Health Connect or iOS HealthKit) and synchronize it with a self-hosted Health Assistant backend.
 
-By utilizing this architecture, the main Health Assistant platform remains a highly robust, web-based Progressive Web App (PWA) without the burden of maintaining complex cross-platform mobile UI components, while still gaining powerful, privacy-first access to native health sensors (smartwatches, smart rings, scales).
+By utilizing this architecture, the main Health Assistant platform remains a web-based Progressive Web App (PWA) without the burden of maintaining complex cross-platform mobile UI components, while still gaining privacy-first access to native health sensors (smartwatches, smart rings, scales).
 
 ---
 

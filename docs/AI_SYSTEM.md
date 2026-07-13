@@ -1,3 +1,8 @@
+---
+title: "AI System & Configuration — Health Assistant"
+description: "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, and per-tenant model configuration."
+---
+
 # AI System & Configuration Guide
 
 This document describes the design, configuration, and extensibility of the AI processing system in Health Assistant.

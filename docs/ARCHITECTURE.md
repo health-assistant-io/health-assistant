@@ -1,6 +1,11 @@
-# Health Assistant - Technical Architecture
+---
+title: "Technical Architecture — Health Assistant"
+description: "Architecture of Health Assistant, a self-hosted, open-source health records platform: FastAPI backend, PostgreSQL + TimescaleDB data model, HL7 FHIR R4 storage, biomarker engine, AI/OCR pipeline, and React frontend."
+---
 
-See [STATUS.md](STATUS.md) for current implementation progress and roadmap.
+# Health Assistant — Technical Architecture
+
+Health Assistant is a self-hosted, open-source platform for centralizing health and medical data. This document covers the technical architecture: the FastAPI backend, the PostgreSQL + TimescaleDB data model, the HL7 FHIR R4 storage layer with the biomarker engine, the AI/OCR processing pipeline, and the React frontend. See [STATUS.md](STATUS.md) for implementation progress.
 
 ## Core Technologies
 
@@ -150,8 +155,8 @@ Developer guide: [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 ## Frontend Architecture
 
 ### Centralized Data Extractor (`useBiomarkers`)
-A robust custom hook serves as the single source of truth for all biomarker rendering:
-- **Universal Parsing**: Handles known, unknown, and legacy biomarker data formats seamlessly.
+A custom hook serves as the single source of truth for all biomarker rendering:
+- **Universal Parsing**: Handles known, unknown, and legacy biomarker data formats.
 - **Definition Enrichment**: Fetches the biomarker definition catalog once per session and enriches every observation with the canonical definition name + UUID, so `BiomarkerDefinition` is the authority for both identity and display (not the raw observation text). Unmapped observations (no definition) are flagged and show a popup to create or map them.
 - **Multi-Perspective Views**: Provides dynamic grouping logic for three perspectives:
     - **By System**: Clinical panels (e.g., Heart Health, Liver Function).

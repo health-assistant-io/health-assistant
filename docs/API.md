@@ -1,4 +1,9 @@
-# Health Assistant - API Documentation
+---
+title: "REST API Reference — Health Assistant"
+description: "REST API reference for Health Assistant, the self-hosted, open-source health records platform. Authentication, patients, observations, biomarkers, medications, clinical events, and FHIR endpoints."
+---
+
+# Health Assistant — REST API Reference
 
 ## Overview
 

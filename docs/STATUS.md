@@ -1,4 +1,11 @@
-# Project Status & Roadmap
+---
+title: "Project Status & Beta Roadmap — Health Assistant"
+description: "Current implementation status of Health Assistant, the self-hosted, open-source health records platform. What's done, what's in progress, and what's planned."
+---
+
+# Health Assistant — Project Status & Roadmap
+
+What's implemented, what's in progress, and what's planned for the self-hosted, open-source health records platform.
 
 ## Current Status
 
@@ -15,7 +22,7 @@
 - SQLAlchemy 2.0 ORM with PostgreSQL & Alembic migrations
 - JWT authentication with refresh tokens and presigned download tokens
 - FHIR resource models (Patient, Observation, DiagnosticReport, Medication)
-- Comprehensive Clinical Visit system (Examinations & Doctors)
+- Full Clinical Visit system (Examinations & Doctors)
 - AI OCR & NLP Pipeline (OpenAI Vision/LLM + spaCy)
 - Background task processing via Celery & Redis
 - Modular Notification Framework with Web Push (VAPID) support — replaced with the **unified notification system** (multi-source, multi-recipient, multi-channel, role-aware, real-time via WebSocket). See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md).
@@ -82,7 +89,7 @@
 
 ### 📅 Roadmap / Future Tasks
 1. **Advanced Analytics**: Multi-axis charts for trend visualization.
-2. **Data Portability**: Comprehensive patient history export (PDF/JSON). — *Partially delivered: FHIR Bundle + ZIP backup export/import landed (see [EXPORT_IMPORT.md](EXPORT_IMPORT.md)); PDF report export still pending.*
+2. **Data Portability**: Full patient history export (PDF/JSON). — *Partially delivered: FHIR Bundle + ZIP backup export/import landed (see [EXPORT_IMPORT.md](EXPORT_IMPORT.md)); PDF report export still pending.*
 3. **Testing**: Add E2E tests using Playwright or Cypress.
 4. **Mobile Sync**: Headless mobile sync architecture for wearable data.
 5. **Biomarker Insights**: Deeper clinical insights and correlations (See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)).

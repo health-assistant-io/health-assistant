@@ -1,6 +1,11 @@
-# Health Assistant - Project Structure
+---
+title: "Repository Structure — Health Assistant"
+description: "Codebase layout of Health Assistant, the self-hosted, open-source health records platform: FastAPI backend, React/Vite frontend, Integrations SDK, and documentation."
+---
 
-## Current Structure (Updated June 2026 - Beta)
+# Health Assistant — Repository Structure
+
+## Structure
 
 ```text
 Health Assistant/
