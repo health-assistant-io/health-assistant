@@ -22,3 +22,64 @@ Anatomy body surface diagrams (backend/data/seeds/anatomy_figures/*.webp):
   - Derivative works (rasterized to WebP, cropped per view) are distributed
     under the same CC BY-SA 3.0 license.
 
+--------------------------------------------------------------------------------
+Third-party terminology code sets
+--------------------------------------------------------------------------------
+
+The seed catalogs and FHIR resources in this product reference clinical code
+sets maintained by third parties. The codes themselves are used for
+interoperability; Health Assistant does not redistribute the underlying
+terminology databases. Each set carries its own terms — summarized below.
+
+LOINC (Logical Observation Identifiers Names and Codes)
+  - Used by: biomarker definitions (default_catalog.json, concepts.json).
+  - FHIR system: http://loinc.org
+  - Maintainer: Regenstrief Institute, Inc.
+  - License: free for commercial and non-commercial use with attribution.
+             https://loinc.org/license/
+  - Note: "LOINC" is a registered trademark of Regenstrief Institute, Inc.
+
+SNOMED CT (Systematized Nomenclature of Medicine — Clinical Terms)
+  - Used by: anatomy structures + concepts (anatomy_structures.json,
+    concepts.json).
+  - FHIR system: http://snomed.info/sct
+  - Maintainer: SNOMED International.
+  - License: SNOMED CT license. Use is free of charge inside SNOMED
+             International member countries (including the UK, US, Canada,
+             Australia, and most of the EU). Use or redistribution in
+             non-member countries requires an appropriate license.
+             https://www.snomed.org/get-snomed
+  - Note: deployers in non-member countries must secure their own SNOMED CT
+          license; the bundled anatomy SNOMED codes may be removed by editing
+          backend/data/seeds/anatomy_structures.json before import.
+
+ICD-10 (International Statistical Classification of Diseases, 10th Revision)
+  - Used by: disease concepts (diseases.json).
+  - FHIR system: http://hl7.org/fhir/sid/icd-10
+  - Maintainer: World Health Organization (WHO). The US clinical modification
+             (ICD-10-CM) is maintained by CMS/NCHS and is a US-government work
+             in the public domain.
+  - License: WHO copyright; use and reproduction permitted with attribution.
+             https://www.who.int/standards/classifications/classification-of-diseases
+
+ATC (Anatomical Therapeutic Chemical classification)
+  - Used by: medication class concepts (concepts.json).
+  - FHIR system: http://www.whocc.no/atc
+  - Maintainer: WHO Collaborating Centre for Drug Statistics Methodology, Oslo.
+  - License: free to use; attribution requested.
+             https://www.whocc.no/atc_ddd_index_and_methodology/
+
+CVX (Vaccine Administered — HL7 code set)
+  - Used by: vaccine catalog (vaccines.json).
+  - FHIR system: http://hl7.org/fhir/sid/cvx
+  - Maintainer: US Centers for Disease Control and Prevention (CDC) and HL7
+             International.
+  - License: public domain (CDC portion, US-government work); HL7 IP policy
+             applies to the HL7-maintained artefacts.
+             https://www2.cdc.gov/vaccines/iis/iisstandards/vaccines.asp
+
+CUSTOM
+  - Used by: Health-Assistant-defined codes with no external terminology.
+  - FHIR system: urn:uuid:health-assistant:custom-biomarker
+  - License: Apache 2.0 (this project).
+

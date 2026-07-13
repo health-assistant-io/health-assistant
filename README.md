@@ -307,7 +307,7 @@ If Health Assistant has helped you take control of your health data, or if you b
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE) for details. Third-party assets (anatomy surface diagrams) are distributed under their respective licenses (CC BY-SA 3.0).
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE) for details. Third-party assets (anatomy surface diagrams, CC BY-SA 3.0) and clinical terminology code sets (LOINC, SNOMED CT, ICD-10, ATC, CVX) are used under their respective licenses — see NOTICE for the per-system terms and the SNOMED country-availability note.
 
 ## Disclaimer
 
