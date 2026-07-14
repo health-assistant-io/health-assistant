@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, Plus, Save, Info, Calendar, Pill, Clock, X } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
 import { DatePicker } from '../ui/DatePicker';
+import { TimeList } from '../ui/TimeList';
 import { 
   searchMedicationCatalog, 
   MedicationCatalogEntry, 
@@ -272,18 +273,8 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
       }
     };
 
-    const addTime = () => {
-      setTiming({ ...timing, time_of_day: [...(timing.time_of_day || []), '09:00'] });
-    };
-
-    const removeTime = (index: number) => {
-      setTiming({ ...timing, time_of_day: timing.time_of_day?.filter((_, i) => i !== index) });
-    };
-
-    const updateTime = (index: number, val: string) => {
-      const newTimes = [...(timing.time_of_day || [])];
-      newTimes[index] = val;
-      setTiming({ ...timing, time_of_day: newTimes });
+    const setTimes = (next: string[]) => {
+      setTiming({ ...timing, time_of_day: next });
     };
 
     return (
@@ -621,31 +612,14 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">{t('medications.modal.scheduled_times')}</label>
-                    <button type="button" onClick={addTime} className="text-[10px] font-bold text-blue-600 uppercase hover:underline flex items-center">
-                      <Plus className="w-3 h-3 mr-1" /> {t('medications.modal.add_time')}
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                    {timing.time_of_day?.map((t_val, i) => (
-                      <div key={i} className="flex items-center space-x-2">
-                        <div className="relative flex-1">
-                          <Clock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-gray-400" />
-                          <input 
-                            type="time" 
-                            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
-                            value={t_val}
-                            onChange={e => updateTime(i, e.target.value)}
-                          />
-                        </div>
-                        <button type="button" onClick={() => removeTime(i)} className="p-2 text-gray-300 hover:text-red-500">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                <div>
+                   <TimeList
+                     label={t('medications.modal.scheduled_times')}
+                     addLabel={t('medications.modal.add_time')}
+                     emptyLabel={t('medications.modal.no_times_yet', 'No times scheduled yet.')}
+                     value={timing.time_of_day ?? []}
+                     onChange={setTimes}
+                   />
                 </div>
              </div>
           </div>

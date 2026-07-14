@@ -151,7 +151,14 @@
     "new": "New",
     "add": "Add",
     "remove": "Remove",
-    "searching": "Searching…"
+    "searching": "Searching…",
+    "select_time": "Select time",
+    "hour": "Hour",
+    "minute": "Minute",
+    "add_item": "Add item",
+    "clear_all": "Clear all",
+    "max_items_reached": "Maximum of {{n}} items.",
+    "add_time": "Add time"
   },
   "dashboard": {
     "title": "Patient Health Overview",
@@ -868,7 +875,8 @@
         "on_hold": "On Hold",
         "stopped": "Stopped",
         "intended": "Intended"
-      }
+      },
+      "no_times_yet": "No times scheduled yet."
     },
     "calendar": {
       "more": "more",
@@ -1747,6 +1755,14 @@
     "picker_n_selected": "{{count}} selected",
     "picker_relation": "Relation",
     "picker_relation_filter": "Filter relations…",
-    "picker_added": "Added"
+    "picker_added": "Added",
+    "field_dose_schedule": "Dose Schedule",
+    "field_dose_count": "Number of doses",
+    "field_dose_count_placeholder": "e.g. 2",
+    "field_dose_intervals": "Intervals between doses",
+    "field_dose_intervals_hint": "e.g. \"0, 1, 6 months\"",
+    "field_dose_interval_add": "Add interval",
+    "field_dose_interval_placeholder": "e.g. 1 month",
+    "field_dose_intervals_empty": "No intervals recorded yet."
   }
 }

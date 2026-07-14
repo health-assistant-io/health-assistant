@@ -18,6 +18,7 @@ import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorMod
 import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
 import { AnatomySearchPopup } from '../anatomy/AnatomySearchPopup';
 import { DatePicker } from '../ui/DatePicker';
+import { TimePicker } from '../ui/TimePicker';
 
 export type ClinicalEventCodingSystem = 'loinc' | 'snomed' | 'custom';
 
@@ -801,16 +802,14 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                     <Clock className="w-3 h-3 mr-1.5" />
                     {t('events.preferred_time')}
                   </label>
-                  <input
-                    type="time"
-                    className="w-full px-4 py-2.5 bg-white dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm font-black outline-none focus:ring-2 focus:ring-blue-500/20"
+                  <TimePicker
                     value={formData.event_metadata?.recurrence?.time_of_day}
-                    onChange={e =>
+                    onChange={(v) =>
                       setFormData({
                         ...formData,
                         event_metadata: {
                           ...formData.event_metadata,
-                          recurrence: { ...formData.event_metadata?.recurrence, time_of_day: e.target.value },
+                          recurrence: { ...formData.event_metadata?.recurrence, time_of_day: v },
                         },
                       })
                     }

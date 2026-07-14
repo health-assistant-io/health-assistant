@@ -147,7 +147,14 @@
     "new": "Νέο",
     "add": "Προσθήκη",
     "remove": "Αφαίρεση",
-    "searching": "Αναζήτηση…"
+    "searching": "Αναζήτηση…",
+    "select_time": "Επιλογή ώρας",
+    "hour": "Ώρα",
+    "minute": "Λεπτό",
+    "add_item": "Προσθήκη",
+    "clear_all": "Καθαρισμός όλων",
+    "max_items_reached": "Μέγιστο {{n}} στοιχείων.",
+    "add_time": "Προσθήκη ώρας"
   },
   "dashboard": {
     "title": "Επισκόπηση Υγείας Ασθενούς",
@@ -804,7 +811,8 @@
         "on_hold": "Σε αναμονή",
         "stopped": "Διακόπηκε",
         "intended": "Προγραμματισμένο"
-      }
+      },
+      "no_times_yet": "Δεν έχουν προστεθεί ώρες ακόμη."
     },
     "calendar": {
       "more": "περισσότερα",
@@ -1685,6 +1693,14 @@
     "picker_n_selected": "Επιλέχθηκαν {{count}}",
     "picker_relation": "Σχέση",
     "picker_relation_filter": "Φιλτράρισμα σχέσεων…",
-    "picker_added": "Προστέθηκε"
+    "picker_added": "Προστέθηκε",
+    "field_dose_schedule": "Πρόγραμμα Δόσεων",
+    "field_dose_count": "Αριθμός δόσεων",
+    "field_dose_count_placeholder": "π.χ. 2",
+    "field_dose_intervals": "Διαστήματα μεταξύ δόσεων",
+    "field_dose_intervals_hint": "π.χ. \"0, 1, 6 μήνες\"",
+    "field_dose_interval_add": "Προσθήκη διαστήματος",
+    "field_dose_interval_placeholder": "π.χ. 1 μήνας",
+    "field_dose_intervals_empty": "Δεν έχουν καταχωρηθεί διαστήματα ακόμη."
   }
 }
