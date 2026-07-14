@@ -8,6 +8,7 @@ import { useTenantStore } from '../../store/slices/tenantSlice';
 import { listPatients } from '../../services/patientService';
 import { PatientSelect } from '../patients';
 import { Search, ChevronDown, Settings, LogOut, Menu, X, Sparkles, Languages, Sun, Moon, ArrowLeft, Link as LinkIcon, Info, UserCircle } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { NotificationBell } from './NotificationBell';
 import { TenantSwitcher } from './TenantSwitcher';
@@ -20,6 +21,7 @@ function Header() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const { setPatients, setCurrentPatient } = usePatientStore();
   const { language, setLanguage, theme, setTheme } = useSettingsStore();
   const loadCurrentTenant = useTenantStore((s) => s.loadCurrentTenant);
@@ -258,7 +260,7 @@ function Header() {
           </div>
 
           <button 
-            onClick={() => toggleAIDrawer()}
+            onClick={() => isMobile ? navigate('/ai-assistant') : toggleAIDrawer()}
             className="relative p-2 text-indigo-400 hover:text-indigo-600 dark:text-indigo-500/80 dark:hover:text-indigo-400 transition-all hover:scale-110 active:scale-95"
             title="AI Assistant"
           >
