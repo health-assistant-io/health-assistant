@@ -25,7 +25,20 @@ describe('catalogFacetRegistry', () => {
   });
 
   it('returns concept facets for "concept"', () => {
-    expect(getFacetsForType('concept').map((f) => f.id)).toEqual(['status']);
+    expect(getFacetsForType('concept').map((f) => f.id)).toEqual(['kind', 'status']);
+  });
+
+  it('returns a server-side class facet for "anatomy" when classOptions are provided', () => {
+    const facets = getFacetsForType('anatomy', {
+      classOptions: [
+        { slug: 'organ', name: 'Organ' },
+        { slug: 'tissue', name: 'Tissue' },
+      ],
+    });
+    expect(facets.map((f) => f.id)).toEqual(['class']);
+    expect(facets[0].mode).toBe('server');
+    expect(facets[0].serverParam).toBe('class');
+    expect(facets[0].options?.map((o) => o.value)).toEqual(['organ', 'tissue']);
   });
 
   it('returns an empty array for types without facets', () => {

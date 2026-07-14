@@ -21,8 +21,50 @@ import {
   catalogMedicationFacets,
   catalogConceptFacets,
 } from './catalogFacets';
+import { CLASS_COLOR } from '../../types/anatomy';
 
-export function getFacetsForType(type: string): FacetDefinition<CatalogItem>[] {
+/**
+ * Dynamic facet options the workspace can inject (e.g. the fetched
+ * ``anatomy_class`` concepts). Kept separate from the pure facet definitions
+ * so the registry stays a pure data layer except for these externally-fetched
+ * option lists.
+ */
+export interface CatalogFacetContext {
+  /** Anatomy-class concept options (fetched), for the anatomy ``class`` facet. */
+  classOptions?: { slug: string; name: string }[];
+}
+
+/**
+ * Server-side ``class`` facet for taxonomy-class filtering (anatomy — and any
+ * other catalog whose items carry a ``class_concept_id`` FK). Options are
+ * injected so the dropdown is complete regardless of the loaded page.
+ */
+function makeClassFacet(
+  options: { slug: string; name: string }[],
+): FacetDefinition<CatalogItem> {
+  return {
+    id: 'class',
+    label: 'Class',
+    kind: 'multi',
+    mode: 'server',
+    icon: 'Layers',
+    options: options.map((c) => ({
+      value: c.slug,
+      label: c.name,
+      color: CLASS_COLOR(c.slug),
+    })),
+    serverParam: 'class',
+    serverValueSerializer: (value) => {
+      if (value.kind !== 'multi' || value.values.length === 0) return undefined;
+      return value.values;
+    },
+  };
+}
+
+export function getFacetsForType(
+  type: string,
+  ctx?: CatalogFacetContext,
+): FacetDefinition<CatalogItem>[] {
   switch (type) {
     case 'biomarker':
       return catalogBiomarkerFacets as unknown as FacetDefinition<CatalogItem>[];
@@ -34,6 +76,8 @@ export function getFacetsForType(type: string): FacetDefinition<CatalogItem>[] {
       return catalogMedicationFacets;
     case 'concept':
       return catalogConceptFacets;
+    case 'anatomy':
+      return ctx?.classOptions ? [makeClassFacet(ctx.classOptions)] : [];
     default:
       return [];
   }

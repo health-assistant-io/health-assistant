@@ -17,33 +17,59 @@ import type { CatalogItem } from '../../types/catalog';
 import { ScopeBadge } from './ScopeBadge';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { CLASS_COLOR } from '../../types/anatomy';
+import { CONCEPT_KIND_LABELS, KIND_COLORS } from '../../types/concept';
 
-/** Tiny colored chip for the item's taxonomy class (anatomy/biomarker/…). */
-const ClassBadge: React.FC<{ item: CatalogItem; onClick?: () => void; active?: boolean }> = ({
-  item,
-  onClick,
-  active,
-}) => {
-  const name = item.class_concept_name;
-  if (!name) return null;
-  const slug = item.class_concept_slug;
-  const color = CLASS_COLOR(slug);
+/**
+ * Tiny colored chip for the item's primary categorical tag.
+ *
+ * Renders the taxonomy ``class_concept`` when present (biomarker/anatomy/
+ * medication/allergy/vaccine), and falls back to the concept ``primary_kind``
+ * for taxonomy concepts — so every catalog type surfaces its most important
+ * category on the row. Clicking the badge toggles the matching filter facet.
+ */
+const ClassBadge: React.FC<{
+  item: CatalogItem;
+  /** Toggle the filter facet for this tag's value. */
+  onClick?: (value: string) => void;
+  /** Currently-active filter values (marks this tag active). */
+  activeValues?: string[];
+}> = ({ item, onClick, activeValues }) => {
+  const className = item.class_concept_name as string | undefined;
+  const classSlug = item.class_concept_slug as string | undefined;
+  // Concepts carry no class_concept — surface their primary_kind instead.
+  const kind = (!className
+    ? (item['primary_kind'] as string | undefined)
+    : undefined);
+
+  const value = classSlug ?? kind;
+  const label =
+    className ??
+    (kind ? CONCEPT_KIND_LABELS[kind as keyof typeof CONCEPT_KIND_LABELS] ?? kind : null);
+  const color = className
+    ? CLASS_COLOR(classSlug)
+    : kind
+      ? KIND_COLORS[kind as keyof typeof KIND_COLORS] ?? '#6b7280'
+      : '#6b7280';
+  const active = value ? activeValues?.includes(value) : false;
+
+  if (!label) return null;
+
   const cls = `inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
     onClick ? 'cursor-pointer ring-1 ring-inset ring-transparent hover:ring-current' : ''
   }`;
   const style = { backgroundColor: `${color}1a`, color, ...(active ? { boxShadow: `inset 0 0 0 2px ${color}` } : {}) };
-  if (onClick) {
+  if (onClick && value) {
     return (
-      <button type="button" onClick={onClick} className={cls} style={style} title={slug ?? name}>
+      <button type="button" onClick={() => onClick(value)} className={cls} style={style} title={value}>
         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-        {name}
+        {label}
       </button>
     );
   }
   return (
-    <span className={cls} style={style} title={slug ?? name}>
+    <span className={cls} style={style} title={value}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-      {name}
+      {label}
     </span>
   );
 };
@@ -323,8 +349,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
-            const clsSlug = item.class_concept_slug ? String(item.class_concept_slug) : null;
-            const clsActive = clsSlug ? activeClasses?.includes(clsSlug) : false;
             return (
               <li
                 key={String(item.id)}
@@ -360,10 +384,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   <div className="flex flex-col items-end gap-1">
                     <ClassBadge
                       item={item}
-                      active={clsActive}
-                      onClick={
-                        onClassClick && clsSlug ? () => onClassClick(clsSlug) : undefined
-                      }
+                      activeValues={activeClasses}
+                      onClick={onClassClick}
                     />
                     <ScopeBadge
                       scope={item.scope}
@@ -422,8 +444,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
-            const clsSlug = item.class_concept_slug ? String(item.class_concept_slug) : null;
-            const clsActive = clsSlug ? activeClasses?.includes(clsSlug) : false;
             return (
               <div
                 key={String(item.id)}
@@ -448,10 +468,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ClassBadge
                       item={item}
-                      active={clsActive}
-                      onClick={
-                        onClassClick && clsSlug ? () => onClassClick(clsSlug) : undefined
-                      }
+                      activeValues={activeClasses}
+                      onClick={onClassClick}
                     />
                     <ScopeBadge
                       scope={item.scope}

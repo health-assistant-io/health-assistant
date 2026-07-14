@@ -2,7 +2,8 @@
  * Catalog toolbar — the single consolidated control band above the split
  * layout. Groups every filter into one place so the list + preview panes get
  * the full remaining width:
- *   [Type ▾ searchable] [Scope ▾] [Class chips] [≡ cards] [+ New]
+ *   [Type ▾ searchable] [Scope ▾] [≡ cards] [+ New]
+ *   [ FilterBar (facet chips — kind/class/category/…, per catalog type) ]
  *
  * Item search is handled by the global page-search (header SearchLauncher),
  * not a local input — that's why there's no search box here. Wraps on narrow
@@ -12,7 +13,6 @@ import React from 'react';
 import { Plus, List as ListIcon, LayoutGrid, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { CatalogTypeSelect } from './CatalogTypeSelect';
-import { CLASS_COLOR } from '../../types/anatomy';
 import type { CatalogTypeMeta } from '../../types/catalog';
 import { downloadSeedsZip } from '../../services/seedService';
 
@@ -23,11 +23,6 @@ interface CatalogToolbarProps {
 
   scopeFilter: string;
   onScopeChange: (scope: string) => void;
-
-  /** Anatomy-only: class concept chips. Also reused for concept-kind chips. */
-  anatomyClasses: { slug: string; name: string }[];
-  classFilter: string;
-  onClassChange: (cls: string) => void;
 
   viewMode: 'list' | 'card';
   onViewModeChange: (mode: 'list' | 'card') => void;
@@ -40,7 +35,8 @@ interface CatalogToolbarProps {
 
   /**
    * Optional filter bar rendered as a second row below the main controls
-   * (e.g. the biomarker facet chips). When undefined, no second row is shown.
+   * (the per-type facet chips — kind/class/category/…). When undefined, no
+   * second row is shown.
    */
   filterBar?: React.ReactNode;
 }
@@ -58,9 +54,6 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
   onSelectType,
   scopeFilter,
   onScopeChange,
-  anatomyClasses,
-  classFilter,
-  onClassChange,
   viewMode,
   onViewModeChange,
   onNew,
@@ -91,45 +84,6 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
           </button>
         ))}
       </div>
-
-      {/* Anatomy-only class chips */}
-      {anatomyClasses.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          {anatomyClasses.map((cls) => {
-            const activeChip = classFilter
-              ? classFilter.split(',').includes(cls.slug)
-              : false;
-            const color = CLASS_COLOR(cls.slug);
-            return (
-              <button
-                key={cls.slug}
-                onClick={() => {
-                  const set = new Set(classFilter ? classFilter.split(',') : []);
-                  if (set.has(cls.slug)) set.delete(cls.slug);
-                  else set.add(cls.slug);
-                  onClassChange([...set].join(','));
-                }}
-                className={`px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
-                  activeChip
-                    ? 'text-white border-transparent'
-                    : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-                style={activeChip ? { backgroundColor: color } : undefined}
-              >
-                {cls.name}
-              </button>
-            );
-          })}
-          {classFilter && (
-            <button
-              onClick={() => onClassChange('')}
-              className="text-[11px] text-gray-400 hover:text-red-500 ml-1"
-            >
-              {t('common.clear', 'Clear')}
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Spacer pushes list controls right on wide screens */}
       <div className="flex-1 min-w-2" />

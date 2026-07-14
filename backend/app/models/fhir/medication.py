@@ -77,6 +77,12 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "class_concept_id": str(self.class_concept_id)
             if self.class_concept_id
             else None,
+            "class_concept_slug": self.class_concept.slug
+            if self.class_concept
+            else None,
+            "class_concept_name": self.class_concept.name
+            if self.class_concept
+            else None,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,

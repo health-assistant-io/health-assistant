@@ -6,6 +6,7 @@ import {
   vaccineCodingSystemFacet,
   medicationCustomFacet,
   conceptStatusFacet,
+  conceptKindFacet,
   catalogAllergyFacets,
   catalogVaccineFacets,
   catalogMedicationFacets,
@@ -101,12 +102,25 @@ describe('facet arrays', () => {
   it('medication has is_custom', () => {
     expect(catalogMedicationFacets.map((f) => f.id)).toEqual(['is_custom']);
   });
-  it('concept has status', () => {
-    expect(catalogConceptFacets.map((f) => f.id)).toEqual(['status']);
+  it('concept has kind + status', () => {
+    expect(catalogConceptFacets.map((f) => f.id)).toEqual(['kind', 'status']);
   });
-  it('every facet is client-mode', () => {
-    for (const f of [...catalogAllergyFacets, ...catalogVaccineFacets, ...catalogMedicationFacets, ...catalogConceptFacets]) {
+  it('non-kind facets are client-mode; kind is server-mode', () => {
+    for (const f of [...catalogAllergyFacets, ...catalogVaccineFacets, ...catalogMedicationFacets, catalogConceptFacets[1]]) {
       expect(f.mode).toBe('client');
     }
+    expect(conceptKindFacet.mode).toBe('server');
+    expect(conceptKindFacet.serverParam).toBe('kind');
+  });
+  it('conceptKindFacet serializes multi values for the API', () => {
+    const ser = conceptKindFacet.serverValueSerializer!;
+    expect(ser(multi(['specialty', 'disease']))).toEqual(['specialty', 'disease']);
+    expect(ser(multi([]))).toBeUndefined();
+  });
+  it('conceptKindFacet exposes static enum options', () => {
+    const opts = conceptKindFacet.options ?? [];
+    expect(opts.length).toBeGreaterThan(0);
+    expect(opts.map((o) => o.value)).toContain('specialty');
+    expect(opts.map((o) => o.value)).toContain('disease');
   });
 });

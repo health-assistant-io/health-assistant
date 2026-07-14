@@ -46,7 +46,6 @@ import {
   deleteCatalogItem,
 } from '../../services/catalogService';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
-import { CONCEPT_KIND_LABELS } from '../../types/concept';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
@@ -86,8 +85,9 @@ export const CatalogWorkspace: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [itemsLoading, setItemsLoading] = useState(false);
 
-  // Anatomy-only: taxonomy-class filter chips (organ/region/system/…).
-  const [classFilter, setClassFilter] = useState<string>('');
+  // Anatomy-only: taxonomy-class options for the (server-side) class facet.
+  // Fetched on type-switch; the kind facet for concepts uses static enum
+  // options (no fetch needed).
   const [anatomyClasses, setAnatomyClasses] = useState<
     { slug: string; name: string }[]
   >([]);
@@ -119,11 +119,16 @@ export const CatalogWorkspace: React.FC = () => {
     : true;
   const itemId = searchParams.get('item') || '';
 
-  // Facet filters (registry-driven): biomarker gets category/telemetry/coding/
-  // unit facets; other types have none yet. Client-mode predicates run over
-  // the loaded items alongside the existing mine + page-search filters.
-  // Filter state is synced to the ?f= URL param so filters survive refresh/back.
-  const facets = useMemo(() => getFacetsForType(activeType), [activeType]);
+  // Facet filters (registry-driven). Concept gets kind (server) + status;
+  // anatomy gets class (server, options fetched below); biomarker/allergy/
+  // vaccine/medication get their client-side facets. Client-mode predicates
+  // run over the loaded items; server-mode params are merged into the API
+  // call. Filter state is synced to the ?f= URL param so filters survive
+  // refresh/back.
+  const facets = useMemo(
+    () => getFacetsForType(activeType, { classOptions: anatomyClasses }),
+    [activeType, anatomyClasses],
+  );
   const catalogFilter = useFilterState<CatalogItem>(facets, {
     initialState: parseFilterState(facets, searchParams.get('f') || ''),
   });
@@ -179,21 +184,20 @@ export const CatalogWorkspace: React.FC = () => {
   const PAGE_SIZE = 50;
   const isMineScope = scopeFilter === 'mine';
 
+  // Server-side facet params (kind for concepts, class for anatomy/…).
+  // Stringified for a stable dependency so client-side facet toggles don't
+  // trigger a refetch — only server-facet changes do.
+  const serverFilterKey = JSON.stringify(catalogFilter.serverParams);
+
   const load = useCallback(async () => {
     if (!activeType) return;
     setItemsLoading(true);
     try {
-      // Concepts filter by ``kind`` (the tag join); other catalogs by ``class``
-      // (the class_concept_id FK). The toolbar chips feed the same state.
-      const kindOrClass =
-        activeType === 'concept'
-          ? { kind: classFilter || undefined }
-          : { class: classFilter || undefined };
       const resp = await listCatalogItems(activeType, {
         // 'mine' is a client-side ownership filter over the user-scope set, so
         // fetch it all in one shot (no pagination — offset would be wrong).
         scope: isMineScope ? 'user' : scopeFilter || undefined,
-        ...kindOrClass,
+        ...catalogFilter.serverParams,
         include: 'relations',
         limit: isMineScope ? 500 : PAGE_SIZE,
         offset: 0,
@@ -206,20 +210,19 @@ export const CatalogWorkspace: React.FC = () => {
     } finally {
       setItemsLoading(false);
     }
-  }, [activeType, scopeFilter, classFilter, isMineScope]);
+    // serverFilterKey (not serverParams) is the dep so toggling a client-side
+    // facet doesn't refetch — only server-facet changes do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType, scopeFilter, serverFilterKey, isMineScope]);
 
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMore = useCallback(async () => {
     if (!activeType || loadingMore || isMineScope) return;
     setLoadingMore(true);
     try {
-      const kindOrClass =
-        activeType === 'concept'
-          ? { kind: classFilter || undefined }
-          : { class: classFilter || undefined };
       const resp = await listCatalogItems(activeType, {
         scope: scopeFilter || undefined,
-        ...kindOrClass,
+        ...catalogFilter.serverParams,
         include: 'relations',
         limit: PAGE_SIZE,
         offset: items.length,
@@ -230,7 +233,8 @@ export const CatalogWorkspace: React.FC = () => {
     } finally {
       setLoadingMore(false);
     }
-  }, [activeType, scopeFilter, classFilter, items.length, loadingMore, isMineScope]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType, scopeFilter, serverFilterKey, items.length, loadingMore, isMineScope]);
 
   useEffect(() => {
     load();
@@ -259,26 +263,15 @@ export const CatalogWorkspace: React.FC = () => {
   /** More pages available on the backend (only meaningful for non-'mine'). */
   const hasMore = !isMineScope && items.length < total;
 
-  // Reset selection + tab + class filter when the catalog type changes.
+  // Reset selection + tab + filters when the catalog type changes.
   useEffect(() => {
     setTab(INFO);
-    setClassFilter('');
     catalogFilter.clearAll();
   }, [activeType, catalogFilter.clearAll]);
 
-  // Anatomy-only: load the anatomy_class concepts for the filter chips.
-  // Concept-only: the kind chips are the static ConceptKind enum (no fetch).
+  // Anatomy-only: fetch the anatomy_class concepts that back the (server-side)
+  // class facet options. Concept kind options are static (enum), so no fetch.
   useEffect(() => {
-    if (activeType === 'concept') {
-      // Kind chips for concepts come from the static enum labels.
-      setAnatomyClasses(
-        Object.entries(CONCEPT_KIND_LABELS).map(([slug, name]) => ({
-          slug,
-          name,
-        })),
-      );
-      return;
-    }
     if (activeType !== 'anatomy') {
       setAnatomyClasses([]);
       return;
@@ -721,9 +714,6 @@ export const CatalogWorkspace: React.FC = () => {
               onSelectType={selectType}
               scopeFilter={scopeFilter}
               onScopeChange={setScopeFilter}
-              anatomyClasses={anatomyClasses}
-              classFilter={classFilter}
-              onClassChange={setClassFilter}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               onNew={canCreate ? () => {
@@ -736,7 +726,7 @@ export const CatalogWorkspace: React.FC = () => {
                   facets={facets}
                   filter={catalogFilter}
                   items={items}
-                  showActivePills={false}
+                  showActivePills
                 />
               ) : undefined}
             />
@@ -799,19 +789,22 @@ export const CatalogWorkspace: React.FC = () => {
                     onLoadMore={loadMore}
                     loadingMore={loadingMore}
                     onScopeClick={(s) => setScopeFilter((prev) => (prev === s ? '' : s))}
-                    onClassClick={(slug) => {
-                      const set = new Set(classFilter ? classFilter.split(',') : []);
-                      if (set.has(slug)) set.delete(slug);
-                      else set.add(slug);
-                      setClassFilter([...set].join(','));
+                    onClassClick={(value) => {
+                      // Concepts filter by kind; other catalogs by class. Both
+                      // are server-side facets now, so toggling refetches.
+                      const facetId = activeType === 'concept' ? 'kind' : 'class';
+                      catalogFilter.toggle(facetId, value);
                     }}
                     activeScope={scopeFilter}
-                    activeClasses={classFilter ? classFilter.split(',') : []}
-                    hasActiveFilters={!!pageSearchTerm || !!scopeFilter || !!classFilter || catalogFilter.isActive}
+                    activeClasses={(() => {
+                      const facetId = activeType === 'concept' ? 'kind' : 'class';
+                      const v = catalogFilter.state[facetId];
+                      return v && v.kind === 'multi' ? v.values : [];
+                    })()}
+                    hasActiveFilters={!!pageSearchTerm || !!scopeFilter || catalogFilter.isActive}
                     onClearFilters={() => {
                       setPageSearchTerm('');
                       setScopeFilter('');
-                      setClassFilter('');
                       catalogFilter.clearAll();
                     }}
                   />

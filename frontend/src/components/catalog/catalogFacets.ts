@@ -11,6 +11,7 @@
 import type { FacetDefinition } from '../ui/filters';
 import { deriveCountedOptions } from '../ui/filters';
 import type { CatalogItem } from '../../types/catalog';
+import { CONCEPT_KIND_LABELS, KIND_COLORS } from '../../types/concept';
 
 function strField(field: string): (item: CatalogItem) => string | undefined {
   return (item) => {
@@ -92,6 +93,31 @@ export const catalogMedicationFacets: FacetDefinition<CatalogItem>[] = [
 
 // ── Concept ──────────────────────────────────────────────────────────────
 
+/**
+ * Concept ``kind`` facet — server-side so it composes with pagination (the
+ * backend filters ``concept_kind_tags`` before applying limit/offset). Static
+ * options from the ``ConceptKind`` enum, so the dropdown is complete regardless
+ * of which page is loaded (unlike client-derived options, which would only
+ * reflect the current page).
+ */
+export const conceptKindFacet: FacetDefinition<CatalogItem> = {
+  id: 'kind',
+  label: 'Kind',
+  kind: 'multi',
+  mode: 'server',
+  icon: 'Tags',
+  options: Object.entries(CONCEPT_KIND_LABELS).map(([value, label]) => ({
+    value,
+    label,
+    color: KIND_COLORS[value as keyof typeof KIND_COLORS] ?? null,
+  })),
+  serverParam: 'kind',
+  serverValueSerializer: (value) => {
+    if (value.kind !== 'multi' || value.values.length === 0) return undefined;
+    return value.values;
+  },
+};
+
 export const conceptStatusFacet: FacetDefinition<CatalogItem> = {
   id: 'status',
   label: 'Status',
@@ -107,5 +133,6 @@ export const conceptStatusFacet: FacetDefinition<CatalogItem> = {
 };
 
 export const catalogConceptFacets: FacetDefinition<CatalogItem>[] = [
+  conceptKindFacet,
   conceptStatusFacet,
 ];

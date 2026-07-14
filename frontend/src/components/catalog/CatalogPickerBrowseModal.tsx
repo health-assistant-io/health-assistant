@@ -216,13 +216,12 @@ export const CatalogPickerBrowseModal: React.FC<CatalogPickerBrowseModalProps> =
   const hasMore = activeType !== ALL && items.length < total;
 
   // Per-type client-mode facets (biomarker category/telemetry, allergy
-  // category, vaccine coding_system, medication is_custom, concept status) —
-  // mirrors the CatalogWorkspace toolbar. Facets are empty for "All"
-  // (cross-catalog) mode and for types with no registered facets, so the
-  // FilterBar renders nothing then. The filter applies in-memory to the
-  // loaded `items` (same model as the workspace).
+  // category, vaccine coding_system, medication is_custom, concept status).
+  // Server-mode facets (concept kind, anatomy class) are excluded — the picker
+  // filters in-memory and doesn't refetch on facet change. Facets are empty
+  // for "All" (cross-catalog) mode and for types with no client facets.
   const facets = useMemo(
-    () => (activeType !== ALL ? getFacetsForType(activeType) : []),
+    () => (activeType !== ALL ? getFacetsForType(activeType).filter((f) => f.mode !== 'server') : []),
     [activeType],
   );
   const pickerFilter = useFilterState(facets);
@@ -357,7 +356,7 @@ export const CatalogPickerBrowseModal: React.FC<CatalogPickerBrowseModalProps> =
                   facets={facets}
                   filter={pickerFilter}
                   items={items}
-                  showActivePills={false}
+                  showActivePills
                   resultCount={filteredItems.length}
                   totalCount={items.length}
                 />
