@@ -210,11 +210,6 @@ function Header() {
           )}
         </button>
 
-        {/* Tenant Switcher — shows active tenant, dropdown for SYSTEM_ADMIN */}
-        <div className="hidden sm:flex items-center">
-          <TenantSwitcher />
-        </div>
-
         {/* Global Patient Selector */}
         <div className="hidden sm:flex items-center">
           <PatientSelect />
@@ -285,10 +280,14 @@ function Header() {
             </div>
 
             {isUserMenuOpen && (
-              <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-xl z-[510] py-2 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
-                {/* Mobile/Compact Patient Selector in Menu */}
-                <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border space-y-2">
+              <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-xl z-[510] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* Tenant Switcher — always in the user menu */}
+                <div className="px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
                   <TenantSwitcher className="w-full" />
+                </div>
+
+                {/* Mobile/Compact Patient Selector in Menu */}
+                <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
                   <PatientSelect className="border-none bg-transparent shadow-none" align="right" />
                 </div>
 
