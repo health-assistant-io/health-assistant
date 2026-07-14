@@ -23,6 +23,11 @@ interface CatalogTypeSelectProps {
   allValue?: string;
   /** Label shown for the "All" entry (already i18n'd by the caller). */
   allLabel?: string;
+  /** When true, the "All" entry renders disabled (greyed, non-clickable).
+   *  Used when the picker is scoped to a single distinctive catalog (e.g. a
+   *  body-location field locked to anatomy) — the option stays visible so the
+   *  restriction is communicated, but can't be selected. */
+  allDisabled?: boolean;
 }
 
 export const CatalogTypeSelect: React.FC<CatalogTypeSelectProps> = ({
@@ -32,6 +37,7 @@ export const CatalogTypeSelect: React.FC<CatalogTypeSelectProps> = ({
   allowAll = false,
   allValue = 'all',
   allLabel = 'All',
+  allDisabled = false,
 }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -97,18 +103,36 @@ export const CatalogTypeSelect: React.FC<CatalogTypeSelectProps> = ({
               <>
                 {allowAll && !q.trim() && (
                   <button
+                    disabled={allDisabled}
                     onClick={() => {
+                      if (allDisabled) return;
                       onSelect(allValue);
                       setOpen(false);
                       setQ('');
                     }}
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 ${
-                      activeType === allValue ? 'text-blue-600 dark:text-blue-400 font-medium' : ''
+                    title={
+                      allDisabled
+                        ? t(
+                            'catalogs.type_all_disabled',
+                            'Locked to a single catalog for this field',
+                          )
+                        : undefined
+                    }
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+                      allDisabled
+                        ? 'cursor-not-allowed opacity-40'
+                        : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                    } ${
+                      !allDisabled && activeType === allValue
+                        ? 'text-blue-600 dark:text-blue-400 font-medium'
+                        : ''
                     }`}
                   >
                     <span className="w-4 h-4 shrink-0" />
                     <span className="flex-1 truncate">{allLabel}</span>
-                    {activeType === allValue && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    {!allDisabled && activeType === allValue && (
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    )}
                   </button>
                 )}
                 {filtered.map((tg) => {

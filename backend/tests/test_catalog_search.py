@@ -199,3 +199,145 @@ async def test_global_search_includes_all_catalog_types(async_client):
     assert "allergy" in types_hit
     assert "biomarker" in types_hit
     assert "medication" in types_hit
+
+
+# ---------------------------------------------------------------------------
+# search_catalogs(kind=…) — concept-kind narrowing (powers examination/event
+# category + specialty pickers from the same endpoint)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_concepts_with_kinds(token: str):
+    """Seed two concepts containing `token`, one tagged event_category and one
+    tagged specialty, plus a biomarker (non-concept) to verify kind leaves
+    other catalogs alone."""
+    from app.models.concept_model import ConceptKindTag
+    from app.models.enums import ConceptKind
+
+    ec_id = uuid.uuid4()
+    sp_id = uuid.uuid4()
+    async with AsyncSessionLocal() as db:
+        db.add_all(
+            [
+                Concept(
+                    id=ec_id,
+                    slug=f"ec-{token}-{uuid.uuid4().hex[:4]}",
+                    name=f"{token} Event Category",
+                    status=ConceptStatus.ACTIVE,
+                    tenant_id=None,
+                ),
+                Concept(
+                    id=sp_id,
+                    slug=f"sp-{token}-{uuid.uuid4().hex[:4]}",
+                    name=f"{token} Specialty",
+                    status=ConceptStatus.ACTIVE,
+                    tenant_id=None,
+                ),
+                BiomarkerDefinition(
+                    slug=f"bio-{token}-{uuid.uuid4().hex[:4]}",
+                    name=f"{token} Biomarker",
+                    tenant_id=None,
+                ),
+            ]
+        )
+        await db.flush()
+        db.add_all(
+            [
+                ConceptKindTag(concept_id=ec_id, kind=ConceptKind.EVENT_CATEGORY),
+                ConceptKindTag(concept_id=sp_id, kind=ConceptKind.SPECIALTY),
+            ]
+        )
+        await db.commit()
+    return ec_id, sp_id
+
+
+@pytest.mark.asyncio
+async def test_search_catalogs_kind_narrows_concepts_only():
+    """kind=EVENT_CATEGORY returns the event-category concept but not the
+    specialty concept, and leaves biomarker hits untouched."""
+    from app.models.enums import ConceptKind
+
+    tenant_id, _ = await _tenant_and_headers()
+    ec_id, sp_id = await _seed_concepts_with_kinds("flamingo")
+
+    async with AsyncSessionLocal() as db:
+        hits = await search_catalogs(
+            db,
+            tenant_id,
+            "flamingo",
+            kind=ConceptKind.EVENT_CATEGORY,
+        )
+    concepts = [h for h in hits if h["type"] == "concept"]
+    concept_ids = {h["id"] for h in concepts}
+    assert str(ec_id) in concept_ids, "event-category concept missing"
+    assert str(sp_id) not in concept_ids, "specialty concept leaked through kind filter"
+    # Non-concept catalogs are unaffected by kind.
+    assert any(h["type"] == "biomarker" for h in hits), "biomarker hit dropped by kind"
+
+
+@pytest.mark.asyncio
+async def test_search_catalogs_kind_with_types_concept_only():
+    """types=['concept'] + kind=SPECIALTY returns only specialty concepts."""
+    from app.models.enums import ConceptKind
+
+    tenant_id, _ = await _tenant_and_headers()
+    ec_id, sp_id = await _seed_concepts_with_kinds("peacock")
+
+    async with AsyncSessionLocal() as db:
+        hits = await search_catalogs(
+            db,
+            tenant_id,
+            "peacock",
+            types=["concept"],
+            kind=ConceptKind.SPECIALTY,
+        )
+    types_hit = {h["type"] for h in hits}
+    assert types_hit == {"concept"}
+    ids = {h["id"] for h in hits}
+    assert str(sp_id) in ids
+    assert str(ec_id) not in ids
+
+
+@pytest.mark.asyncio
+async def test_search_catalogs_kind_ignored_when_concept_excluded():
+    """If types excludes 'concept', kind has nothing to act on — must not
+    error and must return the non-concept hits normally."""
+    from app.models.enums import ConceptKind
+
+    tenant_id, _ = await _tenant_and_headers()
+    await _seed_concepts_with_kinds("pelican")
+    async with AsyncSessionLocal() as db:
+        hits = await search_catalogs(
+            db,
+            tenant_id,
+            "pelican",
+            types=["biomarker"],
+            kind=ConceptKind.EVENT_CATEGORY,
+        )
+    assert all(h["type"] == "biomarker" for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_catalogs_search_endpoint_kind_filter(async_client):
+    """GET /catalogs/search?kind=event_category narrows concepts server-side."""
+    ec_id, _ = await _seed_concepts_with_kinds("heron")
+    _, headers = await _tenant_and_headers()
+    resp = await async_client.get(
+        "/api/v1/catalogs/search?q=heron&kind=event_category", headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    concept_ids = {
+        h["id"] for h in resp.json()["results"] if h["type"] == "concept"
+    }
+    assert str(ec_id) in concept_ids
+
+
+@pytest.mark.asyncio
+async def test_catalogs_search_endpoint_rejects_unknown_kind(async_client):
+    """An unknown kind value is a 400 (fail-loud), not a silent empty result."""
+    _, headers = await _tenant_and_headers()
+    resp = await async_client.get(
+        "/api/v1/catalogs/search?q=foo&kind=not-a-real-kind", headers=headers
+    )
+    assert resp.status_code == 400
+    assert "Unknown kind" in resp.json()["detail"]

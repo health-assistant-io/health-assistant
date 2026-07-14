@@ -1,4 +1,5 @@
 import api from '../api/axios';
+import type { MetadataSchema } from '../types/metadataSchema';
 
 export interface ClinicalEventCategory {
   id: string;
@@ -17,7 +18,8 @@ export interface ClinicalEventType {
   description?: string;
   icon?: { type: string; value: string };
   color?: string;
-  metadata_schema?: Record<string, any>;
+  /** Typed descriptor driving DynamicMetadataForm. Backend-validated. */
+  metadata_schema?: MetadataSchema;
   // Phase 4a behavior-driving template fields.
   severity_scale?: Record<string, any>;
   phases?: Array<Record<string, any>>;

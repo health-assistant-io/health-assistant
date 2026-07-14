@@ -236,3 +236,57 @@ body {
     align-self: auto;
   }
 }
+
+/* ── ScaleSlider ─────────────────────────────────────────────────────────
+   A bounded number rendered as a green→red gradient slider + numeric input.
+   The track gradient is static (3-stop green/yellow/red); the thumb colour
+   tracks the current value via the --scale-thumb-color custom property set
+   inline by the component. Pseudo-elements can't be styled via Tailwind/inline
+   so they live here. */
+.scale-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #22c55e 0%, #eab308 50%, #ef4444 100%);
+  outline: none;
+  cursor: pointer;
+}
+.scale-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* WebKit / Blink */
+.scale-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid var(--scale-thumb-color, #22c55e);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+.scale-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+.scale-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+/* Firefox */
+.scale-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 3px solid var(--scale-thumb-color, #22c55e);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.scale-slider::-moz-range-track {
+  background: transparent;
+}
+

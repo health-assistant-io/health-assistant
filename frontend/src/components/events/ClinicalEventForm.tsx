@@ -16,9 +16,11 @@ import { listObservations } from '../../services/observationService';
 import { DynamicMetadataForm } from './DynamicMetadataForm';
 import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorModal';
 import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
-import { AnatomySearchPopup } from '../anatomy/AnatomySearchPopup';
+import { CatalogField } from '../catalog/CatalogField';
+import type { CatalogSelection } from '../../types/catalog';
 import { DatePicker } from '../ui/DatePicker';
 import { TimePicker } from '../ui/TimePicker';
+import { ScaleSlider } from '../ui/ScaleSlider';
 
 export type ClinicalEventCodingSystem = 'loinc' | 'snomed' | 'custom';
 
@@ -833,7 +835,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                     const now = new Date();
                     const date = now.toISOString().split('T')[0];
                     const time = now.toTimeString().split(' ')[0].substring(0, 5);
-                    const newOccurrence = { date, time, intensity: 5, notes: '', location: '' };
+                    const newOccurrence = { date, time, intensity: 5, notes: '', location: null as CatalogSelection | null };
                     setFormData({ ...formData, occurrences: [...formData.occurrences, newOccurrence] });
                   }}
                   className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 transition-all text-[10px] font-bold uppercase"
@@ -850,63 +852,29 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   </div>
                 ) : (
                   formData.occurrences.map((occ, i) => (
-                    <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col space-y-4 animate-in slide-in-from-top-2">
+                    <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col gap-3 animate-in slide-in-from-top-2">
+                      {/* Row 1: date + time + delete */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className="flex items-center space-x-1">
-                            <DatePicker
-                              variant="unstyled"
-                              className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-28 dark:text-dark-text"
-                              value={occ.date}
-                              onChange={date => {
-                                const updated = [...formData.occurrences];
-                                updated[i] = { ...updated[i], date: date };
-                                setFormData({ ...formData, occurrences: updated });
-                              }}
-                            />
-                            <input
-                              type="time"
-                              className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-20 dark:text-dark-text"
-                              value={occ.time || '12:00'}
-                              onChange={e => {
-                                const updated = [...formData.occurrences];
-                                updated[i] = { ...updated[i], time: e.target.value };
-                                setFormData({ ...formData, occurrences: updated });
-                              }}
-                            />
-                          </div>
-                          <div className="flex-1 flex items-center space-x-4">
-                            <div className="flex-1 flex items-center space-x-2">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">{t('events.intensity')}</label>
-                              <input
-                                type="range"
-                                min="1"
-                                max="10"
-                                className="flex-1 h-1 bg-gray-100 dark:bg-dark-bg rounded-lg appearance-none cursor-pointer accent-red-500"
-                                value={occ.intensity}
-                                onChange={e => {
-                                  const updated = [...formData.occurrences];
-                                  updated[i] = { ...updated[i], intensity: parseInt(e.target.value) };
-                                  setFormData({ ...formData, occurrences: updated });
-                                }}
-                              />
-                              <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-black text-white ${occ.intensity > 7 ? 'bg-red-500' : occ.intensity > 4 ? 'bg-yellow-500' : 'bg-green-500'}`}>
-                                {occ.intensity}
-                              </span>
-                            </div>
-                            <div className="w-1/3">
-                              <AnatomySearchPopup
-                                selectedId={occ.location}
-                                onSelect={(s) => {
-                                  const updated = [...formData.occurrences];
-                                  updated[i] = { ...updated[i], location: s.id };
-                                  setFormData({ ...formData, occurrences: updated });
-                                }}
-                                placeholder={t('events.location_placeholder')}
-                                innerClassName="px-3 py-1.5 text-[10px]"
-                              />
-                            </div>
-                          </div>
+                        <div className="flex items-center space-x-1">
+                          <DatePicker
+                            variant="unstyled"
+                            className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-28 dark:text-dark-text"
+                            value={occ.date}
+                            onChange={date => {
+                              const updated = [...formData.occurrences];
+                              updated[i] = { ...updated[i], date: date };
+                              setFormData({ ...formData, occurrences: updated });
+                            }}
+                          />
+                          <TimePicker
+                            variant="unstyled"
+                            value={occ.time || null}
+                            onChange={time => {
+                              const updated = [...formData.occurrences];
+                              updated[i] = { ...updated[i], time };
+                              setFormData({ ...formData, occurrences: updated });
+                            }}
+                          />
                         </div>
                         <button
                           type="button"
@@ -916,11 +884,41 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                               occurrences: formData.occurrences.filter((_, idx) => idx !== i),
                             });
                           }}
-                          className="ml-4 p-2 text-gray-300 hover:text-red-500 transition-colors"
+                          className="p-2 text-gray-300 hover:text-red-500 transition-colors"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
+                      {/* Row 2: intensity slider (full width) */}
+                      <div className="flex items-center space-x-2">
+                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-tighter shrink-0">{t('events.intensity')}</label>
+                        <ScaleSlider
+                          value={occ.intensity}
+                          onChange={(v) => {
+                            const updated = [...formData.occurrences];
+                            updated[i] = { ...updated[i], intensity: v === '' ? 0 : v };
+                            setFormData({ ...formData, occurrences: updated });
+                          }}
+                          min={1}
+                          max={10}
+                          lowLabel={t('events.intensity_low', 'Mild')}
+                          highLabel={t('events.intensity_high', 'Severe')}
+                          className="flex-1"
+                        />
+                      </div>
+                      {/* Row 3: body location (full width — own row so it isn't cropped) */}
+                      <CatalogField
+                        label={t('events.body_location', 'Body Location')}
+                        allowedTypes={['anatomy']}
+                        mode="single"
+                        value={occ.location ? [occ.location as CatalogSelection] : []}
+                        onChange={(next) => {
+                          const updated = [...formData.occurrences];
+                          updated[i] = { ...updated[i], location: next[0] ?? null };
+                          setFormData({ ...formData, occurrences: updated });
+                        }}
+                        placeholder={t('events.location_placeholder')}
+                      />
                       <input
                         type="text"
                         placeholder={t('events.occurrence_notes_placeholder')}

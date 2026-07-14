@@ -20,7 +20,6 @@ import {
   ClinicalEventStatus,
   ClinicalEvent
 } from '../../services/clinicalEventService';
-import { listBodyParts, BodyPart } from '../../services/bodyPartService';
 import { anatomyService } from '../../services/anatomyService';
 import type { AnatomyStructure } from '../../types/anatomy';
 import { OrganPreview } from '../../components/anatomy/OrganPreview';
@@ -40,7 +39,6 @@ const ClinicalEventDetail: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [event, setEvent] = useState<ClinicalEvent | null>(null);
-  const [bodyParts, setBodyParts] = useState<BodyPart[]>([]);
   const [bodyStructure, setBodyStructure] = useState<AnatomyStructure | null>(null);
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -55,14 +53,13 @@ const ClinicalEventDetail: React.FC = () => {
     if (!eventId) return;
     try {
       setLoading(true);
-      const [eventData, bodyPartsData] = await Promise.all([
-        getEvent(eventId),
-        listBodyParts()
-      ]);
+      const eventData = await getEvent(eventId);
       setEvent(eventData);
-      setBodyParts(bodyPartsData);
 
-      const metaBodyPartId = eventData.event_metadata?.body_part_id as string | undefined;
+      const metaBodyLocation = eventData.event_metadata?.body_location as
+        | { id?: string; type?: string }
+        | undefined;
+      const metaBodyPartId = metaBodyLocation?.id;
       if (metaBodyPartId) {
         try {
           const struct = await anatomyService.get(metaBodyPartId);
@@ -78,10 +75,35 @@ const ClinicalEventDetail: React.FC = () => {
     }
   };
 
-  const getBodyPartName = (id: string) => {
-    if (!id) return null;
-    const part = bodyParts.find(p => p.id === id);
-    return part ? part.name : id; // fallback to ID if not found
+
+  /**
+   * Format a metadata field value for display. Handles the catalog-select
+   * value shapes ({type,id,label} single, or an array of them for multi) plus
+   * the scalar types (text/number/date/boolean). Anything else falls back to
+   * a JSON string so no value silently renders as [object Object].
+   */
+  const formatMetadataValue = (val: unknown): string => {
+    if (val === null || val === undefined || val === '') return '';
+    if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+      return String(val);
+    }
+    // Single catalog-select value: {type, id, label}.
+    if (typeof val === 'object' && !Array.isArray(val)) {
+      const v = val as { label?: string; id?: string };
+      return v.label || v.id || JSON.stringify(val);
+    }
+    // Multi catalog-select value: array of {type, id, label}.
+    if (Array.isArray(val)) {
+      const labels = val
+        .map((item) =>
+          typeof item === 'object' && item !== null
+            ? (item as { label?: string }).label || (item as { id?: string }).id || ''
+            : String(item),
+        )
+        .filter(Boolean);
+      return labels.join(', ');
+    }
+    return JSON.stringify(val);
   };
 
   useEffect(() => {
@@ -378,12 +400,12 @@ const ClinicalEventDetail: React.FC = () => {
             {/* Pain Episode Details */}
             {['pain-episode', 'flare-up'].includes(event.type_details?.slug || '') && event.event_metadata && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6 border-t border-gray-100 dark:border-dark-border">
-                {event.event_metadata.body_part_id && (
+                {event.event_metadata.body_location && (
                   <div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Body Location</p>
                     <div className="flex items-center space-x-2">
                        <Target className="w-3.5 h-3.5 text-blue-500" />
-                       <p className="text-sm font-bold text-gray-900 dark:text-dark-text">{getBodyPartName(event.event_metadata.body_part_id)}</p>
+                       <p className="text-sm font-bold text-gray-900 dark:text-dark-text">{formatMetadataValue(event.event_metadata.body_location)}</p>
                     </div>
                   </div>
                 )}
@@ -420,7 +442,7 @@ const ClinicalEventDetail: React.FC = () => {
                     <div key={key}>
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{key.replace(/_/g, ' ')}</p>
                       <p className="text-sm font-bold text-gray-900 dark:text-dark-text">
-                        {key === 'body_part_id' ? getBodyPartName(String(value)) : (typeof value === 'object' ? JSON.stringify(value) : String(value))}
+                        {formatMetadataValue(value)}
                       </p>
                     </div>
                   ))}
@@ -462,7 +484,7 @@ const ClinicalEventDetail: React.FC = () => {
                     <div className="flex flex-wrap gap-3 mb-4">
                       {occ.location && (
                         <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100 dark:border-blue-800/30">
-                          {getBodyPartName(occ.location)}
+                          {formatMetadataValue(occ.location)}
                         </span>
                       )}
                     </div>

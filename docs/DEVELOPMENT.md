@@ -189,8 +189,8 @@ See [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) for the anatomy graph, demo dat
 The clinical events system is metadata-driven. To add new clinical event categories or types:
 
 1.  **Edit the Seed File**: Add the new configuration to `backend/data/seeds/clinical_event_types.json`.
-    -   Each category contains a list of types.
-    -   Each type can define a `metadata_schema` with specific fields (text, number, date, boolean).
+    -   Each item declares a `category_slug` (resolves to an `event_category` concept) and a `metadata_schema`.
+    -   The `metadata_schema` is **validated** by the typed Pydantic model (`app/schemas/clinical_event.py:MetadataSchema`) on seed load and on API create — a malformed field raises a precise error instead of silently rendering nothing.
 2.  **Sync with Database**:
     ```bash
     cd backend && source venv/bin/activate
@@ -198,6 +198,44 @@ The clinical events system is metadata-driven. To add new clinical event categor
     python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_clinical_event_types())"
     ```
 3.  **UI Auto-Generation**: The `ClinicalEventModal` will automatically render the new category as a tab and the `DynamicMetadataForm` will generate the input fields based on the schema you defined.
+
+### Field types (`metadata_schema.fields[]`)
+
+Each field is a typed descriptor. The `type` discriminator drives an exhaustive renderer switch in `DynamicMetadataForm` (adding a new type without a render branch is a compile error).
+
+| `type` | Render | Field-specific keys |
+|---|---|---|
+| `text` | Text input | `required` |
+| `number` | Number input + optional scale badge | `min`, `max`, `required` |
+| `date` | Date picker | `required` |
+| `boolean` | Toggle switch | `required` |
+| `catalog-select` | **`CatalogField` → `CatalogItemPicker`** (search any catalog) | `catalogs` (required), `concept_kind`, `multi`, `relation` |
+
+### Authoring a `catalog-select` field
+
+A `catalog-select` field lets the user pick from one or more catalogs (biomarker, medication, allergy, anatomy, vaccine, concept) via the same reusable picker that powers the catalog workspace. The picked value is stored in `event_metadata[field.name]` as `{type, id, label}` (single) or an array of those (when `multi: true`).
+
+```jsonc
+// Pick a single anatomy site (the legacy "body-parts" use case)
+{"name": "body_location", "label": "Body Location",
+ "type": "catalog-select", "catalogs": ["anatomy"], "multi": false,
+ "relation": "primary_site"}
+
+// Pick multiple related medications/allergies
+{"name": "triggers", "label": "Related triggers",
+ "type": "catalog-select", "catalogs": ["medication", "allergy"], "multi": true}
+
+// Pick an examination category concept (narrowed by ConceptKind)
+{"name": "category", "label": "Category",
+ "type": "catalog-select", "catalogs": ["concept"],
+ "concept_kind": "examination_category", "multi": false}
+```
+
+**Constraints (enforced server-side, fail-loud):**
+- `catalog-select` requires a non-empty `catalogs` list.
+- `concept_kind` may only be set when `catalogs` is exactly `["concept"]` (a kind filter is meaningless for other catalogs).
+
+The `concept_kind` filter is applied by `search_catalogs(kind=…)` (`GET /catalogs/search?kind=…`), which powers examination-category / event-category / specialty pickers from the same endpoint.
 
 ## Extending Notifications
 

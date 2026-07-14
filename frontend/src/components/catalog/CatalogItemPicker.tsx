@@ -20,7 +20,7 @@
  * Controlled: `value: CatalogSelection[]` + `onChange`. The selected chips
  * render below the input with a remove (X) each.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, X, LayoutGrid } from 'lucide-react';
 import { Portal } from '../ui/Portal';
@@ -46,6 +46,11 @@ export interface CatalogItemPickerProps {
   mode?: 'single' | 'multi';
   /** Restrict to a subset of catalog types; default = all registered. */
   allowedTypes?: CatalogType[];
+  /** ConceptKind value (e.g. `'event_category'`, `'specialty'`) that narrows
+   *  the `concept` catalog. Only meaningful when `allowedTypes` includes
+   *  `'concept'`; ignored for other catalogs. Lets the same picker power
+   *  examination/event-category + specialty selection. */
+  conceptKind?: string;
   /** Enable relation binding (chips get a relation dropdown). */
   relationPicker?: {
     /** Override the default option groups (mirrors ConceptRelationType). */
@@ -71,6 +76,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
   onChange,
   mode = 'multi',
   allowedTypes,
+  conceptKind,
   relationPicker,
   placeholder,
   className = '',
@@ -88,7 +94,15 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [popperRect, setPopperRect] = useState<DOMRect | null>(null);
 
-  const allowedList = allowedTypes?.map(String);
+  // Memoize so the array reference is stable across renders — this list is a
+  // useEffect dependency (inline search) AND a prop to the browse modal (whose
+  // own effects depend on it). Recomputing it every render (`.map(String)`)
+  // would trigger an infinite render loop (setState in effect → re-render → new
+  // array → effect re-runs → …).
+  const allowedList = useMemo(
+    () => (allowedTypes ? allowedTypes.map(String) : undefined),
+    [allowedTypes],
+  );
   const relationGroups = relationPicker?.options ?? RELATION_OPTION_GROUPS;
   const defaultRelation = relationPicker?.defaultRelation ?? DEFAULT_RELATION;
 
@@ -123,11 +137,16 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
     setSearching(true);
     const handle = setTimeout(async () => {
       try {
-        const resp = await searchCatalogs(query, { limit: 10 });
-        const filtered = allowedList?.length
-          ? resp.results.filter((r) => allowedList.includes(r.type))
-          : resp.results;
-        if (!cancelled) setResults(filtered);
+        // Push type + kind filtering server-side: the backend applies the
+        // per-type-floor guarantee to the allowed types and ignores kind for
+        // non-concept catalogs. This is both more efficient and more correct
+        // than fetching all and filtering client-side.
+        const resp = await searchCatalogs(query, {
+          limit: 10,
+          types: allowedList?.length ? allowedList.join(',') : undefined,
+          kind: conceptKind,
+        });
+        if (!cancelled) setResults(resp.results);
       } catch {
         if (!cancelled) setResults([]);
       } finally {
@@ -138,7 +157,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, allowedList]);
+  }, [query, allowedList, conceptKind]);
 
   /** Build a CatalogSelection from a search hit / browser item + catalog type. */
   const toSelection = useCallback(
@@ -324,6 +343,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
         picked={value}
         onTogglePick={handleBrowseToggle}
         allowedTypes={allowedList}
+        conceptKind={conceptKind}
         mode={mode}
       />
     </div>

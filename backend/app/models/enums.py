@@ -419,6 +419,62 @@ class EdgeEndpointType(str, enum.Enum):
     DOCUMENT = "document"
 
 
+class MetadataFieldType(str, enum.Enum):
+    """Discriminator for a ``ClinicalEventType.metadata_schema`` field.
+
+    Drives the frontend renderer switch in ``DynamicMetadataForm``. Each value
+    maps 1:1 to a render branch — the union is exhaustive (TS ``never`` guard),
+    so adding a new field type without a renderer branch is a compile error
+    (closes the legacy dead-branch class of bugs where ``select``/``code``
+    silently rendered nothing).
+
+    Values are lowercase kebab to match the JSONB wire format consumed verbatim
+    by the frontend ``MetadataFieldType`` literal union.
+    """
+
+    TEXT = "text"
+    NUMBER = "number"
+    DATE = "date"
+    BOOLEAN = "boolean"
+    CATALOG_SELECT = "catalog-select"
+
+
+class CatalogType(str, enum.Enum):
+    """The searchable catalog domains a ``CATALOG_SELECT`` metadata field can
+    reference.
+
+    Mirrors the frontend ``CatalogType`` literal union
+    (``frontend/src/types/catalog.ts``) and the catalog registry type keys
+    (``app/catalogs/registrations.py``). Values are lowercase so the same
+    string flows seed → JSONB → frontend unchanged.
+    """
+
+    BIOMARKER = "biomarker"
+    MEDICATION = "medication"
+    ALLERGY = "allergy"
+    ANATOMY = "anatomy"
+    VACCINE = "vaccine"
+    CONCEPT = "concept"
+
+
+class CatalogRelationType(str, enum.Enum):
+    """How a picked catalog item in a ``CATALOG_SELECT`` field relates to the
+    clinical event.
+
+    Generalizes the legacy ``EventAnatomyLink.relation_type`` free-text values
+    (``primary_site``/``radiates_to``/``referred_to``) into an enum, and adds
+    the semantic medical-knowledge relations so a non-anatomy field can declare
+    its binding semantics (e.g. a biomarker field ``relation=monitors``).
+    """
+
+    PRIMARY_SITE = "primary_site"
+    RADIATES_TO = "radiates_to"
+    REFERRED_TO = "referred_to"
+    MONITORS = "monitors"
+    TREATS = "treats"
+    INDICATES = "indicates"
+
+
 class ConceptRelationType(str, enum.Enum):
     """Typed relationships between Concepts, or between an entity and a Concept.
 

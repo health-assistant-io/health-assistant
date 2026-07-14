@@ -1,8 +1,9 @@
 {
   "metadata": {
-    "version": "2.0.0",
+    "version": "3.0.0",
     "source": "Health Assistant",
-    "last_updated": "2026-07-05"
+    "last_updated": "2026-07-14",
+    "schema_note": "Field descriptors use the typed MetadataFieldType/CatalogType enums. See docs/DEVELOPMENT.md 'Extending Clinical Events'."
   },
   "items": [
     {
@@ -30,8 +31,8 @@
       "metadata_schema": {
         "fields": [
           {"name": "intensity", "label": "Intensity (1-10)", "type": "number", "min": 1, "max": 10},
-          {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
-          {"name": "trigger", "label": "Trigger", "type": "text"}
+          {"name": "body_location", "label": "Body Location", "type": "catalog-select", "catalogs": ["anatomy"], "multi": false, "relation": "primary_site"},
+          {"name": "trigger", "label": "Trigger", "type": "text", "placeholder": "e.g. stress, weather change, lack of sleep"}
         ]
       }
     },
@@ -45,7 +46,7 @@
       "metadata_schema": {
         "fields": [
           {"name": "severity", "label": "Severity", "type": "text"},
-          {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
+          {"name": "body_location", "label": "Body Location", "type": "catalog-select", "catalogs": ["anatomy"], "multi": false, "relation": "primary_site"},
           {"name": "duration", "label": "Duration (Hours)", "type": "number"}
         ]
       }
@@ -60,7 +61,7 @@
       "metadata_schema": {
         "fields": [
           {"name": "mechanism", "label": "Mechanism of Injury", "type": "text"},
-          {"name": "body_part_id", "label": "Body Location", "type": "creatable-select", "source": "body-parts"},
+          {"name": "body_location", "label": "Body Location", "type": "catalog-select", "catalogs": ["anatomy"], "multi": true, "relation": "primary_site"},
           {"name": "emergency_flag", "label": "Emergency Visit?", "type": "boolean"}
         ]
       }

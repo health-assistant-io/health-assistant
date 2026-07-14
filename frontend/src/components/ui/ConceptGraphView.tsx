@@ -76,6 +76,15 @@ interface ConceptGraphViewProps {
   edges: ConceptGraphEdgeData[];
   selectedNodeId?: string;
   hiddenKinds?: string[];
+  /** Node ids that render dimmed (low opacity, ``cursor: not-allowed``) and
+   *  are ignored by ``onSelectNode`` clicks. Used by the catalog picker graph
+   *  to show non-allowed catalog types for relational context while keeping
+   *  them non-selectable. Opt-in; no-op when omitted. */
+  disabledNodeIds?: Set<string>;
+  /** Node ids that are already "picked" (in the picker's selection). Renders
+   *  a green accent so the user can see what they've already added. Opt-in;
+   *  no-op when omitted. */
+  pickedNodeIds?: Set<string>;
   onSelectNode?: (id: string) => void;
   onFocusNode?: (id: string) => void;
   /** Called when the user clicks empty canvas or the detail card's close
@@ -368,6 +377,8 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
   edges,
   selectedNodeId,
   hiddenKinds = [],
+  disabledNodeIds,
+  pickedNodeIds,
   onSelectNode,
   onFocusNode,
   onClearSelection,
@@ -380,6 +391,14 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
   className = 'h-full',
 }) => {
   const hiddenSet = useMemo(() => new Set(hiddenKinds), [hiddenKinds]);
+  const disabledSet = useMemo(
+    () => (disabledNodeIds ? new Set(disabledNodeIds) : null),
+    [disabledNodeIds],
+  );
+  const pickedSet = useMemo(
+    () => (pickedNodeIds ? new Set(pickedNodeIds) : null),
+    [pickedNodeIds],
+  );
 
   // Search-to-find + hover state.
   const [searchTerm, setSearchTerm] = useState('');
@@ -569,27 +588,48 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
             ? [data.primary_kind]
             : [];
         const isSelected = n.id === selectedNodeId;
+        // Disabled (non-selectable, e.g. a non-allowed catalog type in the
+        // picker graph): dim heavily + non-interactive cursor. Takes
+        // precedence — a disabled node is never picked/selected.
+        const isDisabled = disabledSet ? disabledSet.has(n.id) : false;
+        // Picked (already in the picker's selection): green accent so the
+        // user sees what they've added without consulting the chips.
+        const isPicked = !isDisabled && pickedSet ? pickedSet.has(n.id) : false;
         // Multi-kind: a node is dimmed only when ALL of its kinds are hidden.
         const dimmed = nodeKinds.length > 0 && nodeKinds.every((k) => hiddenSet.has(k));
         // Search dimming: non-matching nodes fade when a search is active.
         const name = typeof data.name === 'string' ? data.name.toLowerCase() : '';
         const searchMiss = lowerSearch.length > 0 && !name.includes(lowerSearch);
+        const baseOpacity = isDisabled
+          ? 0.3
+          : dimmed
+            ? 0.15
+            : searchMiss
+              ? 0.2
+              : 1;
         return {
           ...n,
-          data: { ...data, isSelected },
+          data: { ...data, isSelected, isDisabled, isPicked },
           style: {
             ...n.style,
-            opacity: dimmed ? 0.15 : searchMiss ? 0.2 : 1,
-            border: isSelected ? '3px solid #1d4ed8' : '1px solid rgba(255,255,255,0.3)',
-            fontWeight: isSelected ? 'bold' : 'normal',
+            opacity: baseOpacity,
+            cursor: isDisabled ? 'not-allowed' : 'pointer',
+            border: isSelected
+              ? '3px solid #1d4ed8'
+              : isPicked
+                ? '2px solid #16a34a'
+                : '1px solid rgba(255,255,255,0.3)',
+            fontWeight: isSelected || isPicked ? 'bold' : 'normal',
             boxShadow: isSelected
               ? '0 0 0 4px rgba(37,99,235,0.25)'
-              : '0 1px 3px rgba(0,0,0,0.15)',
+              : isPicked
+                ? '0 0 0 3px rgba(22,163,74,0.2)'
+                : '0 1px 3px rgba(0,0,0,0.15)',
           },
         };
       }),
     );
-  }, [selectedNodeId, hiddenSet, setRfNodes, lowerSearch]);
+  }, [selectedNodeId, hiddenSet, disabledSet, pickedSet, setRfNodes, lowerSearch]);
 
   // ── Right-click context menu state (declared early so click/drag handlers
   //    below can reference closeContextMenu). ──
@@ -620,9 +660,12 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
     (_e: React.MouseEvent, node: Node) => {
       if (didDragRef.current) return; // ignore click right after a drag
       closeContextMenu();
+      // Disabled nodes (e.g. non-allowed catalog types in the picker graph)
+      // are visible for relational context but never selectable.
+      if (disabledSet && disabledSet.has(node.id)) return;
       onSelectNode?.(node.id);
     },
-    [onSelectNode, closeContextMenu],
+    [onSelectNode, closeContextMenu, disabledSet],
   );
 
   const onNodeDoubleClick = useCallback(

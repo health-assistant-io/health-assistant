@@ -708,6 +708,7 @@ async def search_catalogs(
     query: str,
     *,
     types: Optional[List[str]] = None,
+    kind: Optional[ConceptKind] = None,
     limit_per_type: int = 5,
     limit_total: int = 20,
     enrich: bool = True,
@@ -718,6 +719,13 @@ async def search_catalogs(
     trigram+FTS query per catalog, fuses ALL hits GLOBALLY via the per-row
     RRF score already computed, and returns the top ``limit_total`` as
     enriched dicts.
+
+    ``kind`` narrows the ``concept`` catalog to a single ``ConceptKind``
+    (e.g. ``EVENT_CATEGORY`` for event-category concepts, ``SPECIALTY`` for
+    specialties). It is silently ignored for non-concept catalogs (a kind
+    filter is meaningless for biomarkers/anatomy/etc.) and when ``types``
+    excludes ``concept``. This lets the same picker power examination-category,
+    specialty, and event-category selection without a separate endpoint.
 
     Set ``enrich=False`` for the legacy minimal ``{type, id, label}`` payload
     (used by the autocomplete-style global ``/search`` endpoint where the
@@ -732,6 +740,7 @@ async def search_catalogs(
       catalog-specific enrichment (only when ``enrich=True``).
     """
     from app.catalogs.registry import CatalogRegistry
+    from app.services.concept_service import concepts_with_kind
 
     norm = _normalize(query)
     if norm is None:
@@ -743,6 +752,17 @@ async def search_catalogs(
     # type name is the right key here.
     selected = types if types else list(specs.keys())
 
+    # Resolve concept-kind member ids up front (one query) so the per-catalog
+    # loop stays free of JOINs. ``kind`` is only applied on the concept spec;
+    # other catalogs ignore it (documented). If the kind resolves to no
+    # concepts, concept hits will be empty — handled naturally below.
+    concept_kind_ids: Optional[List] = None
+    if kind is not None and "concept" in selected:
+        kind_ids_result = await db.execute(
+            select(Concept.id).where(concepts_with_kind(kind))
+        )
+        concept_kind_ids = [r[0] for r in kind_ids_result.all()]
+
     all_hits: List[Tuple[str, _HybridHit]] = []
     for type_name in selected:
         # Prefer the spec (drives the hybrid SQL); fall back to the registry
@@ -750,9 +770,25 @@ async def search_catalogs(
         # but defensive).
         spec = specs.get(type_name)
         if spec is not None:
+            # Apply the kind filter only on the concept catalog.
+            extra_where_sql = ""
+            extra_params: Optional[dict] = None
+            if (
+                kind is not None
+                and type_name == "concept"
+                and concept_kind_ids is not None
+            ):
+                if not concept_kind_ids:
+                    # No concepts of this kind exist — skip concept search
+                    # entirely (avoids ANY(:kind_ids) with an empty list,
+                    # which asyncpg treats as match-nothing anyway).
+                    continue
+                extra_where_sql = "AND t.id = ANY(:kind_ids)"
+                extra_params = {"kind_ids": concept_kind_ids}
             try:
                 hits = await _hybrid_search_one(
-                    db, spec, norm, tenant_id, limit=limit_per_type * 2
+                    db, spec, norm, tenant_id, limit=limit_per_type * 2,
+                    extra_where_sql=extra_where_sql, extra_params=extra_params,
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 import logging

@@ -106,10 +106,14 @@ export async function deleteCatalogItem(
 /**
  * Unified cross-catalog search. Returns ranked hits across all (or selected)
  * catalog types. Powers the global search box.
+ *
+ * `kind` narrows the `concept` catalog to one ConceptKind (e.g.
+ * `'event_category'`, `'specialty'`); ignored for non-concept catalogs. Lets
+ * the same picker power examination/event-category + specialty selection.
  */
 export async function searchCatalogs(
   q: string,
-  params?: { types?: string; limit?: number },
+  params?: { types?: string; kind?: string; limit?: number },
 ): Promise<CatalogSearchResponse> {
   const { data } = await api.get<CatalogSearchResponse>('/catalogs/search', {
     params: { q, ...params },

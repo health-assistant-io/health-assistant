@@ -115,6 +115,13 @@ async def search_catalogs_endpoint(
     types: Optional[str] = Query(
         None, description="Comma-separated catalog types to search (default: all)"
     ),
+    kind: Optional[str] = Query(
+        None,
+        description="ConceptKind value (e.g. 'event_category', 'specialty', "
+        "'disease') to narrow the concept catalog. Ignored for non-concept "
+        "catalogs. Powers concept-kind-filtered pickers (examination "
+        "categories, event categories, specialties) from the same endpoint.",
+    ),
     limit: int = Query(20, ge=1, le=100),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -123,14 +130,37 @@ async def search_catalogs_endpoint(
 
     Returns ``{"results": [{"type", "id", "label"}, ...]}`` across all
     registered catalogs (biomarker, medication, allergy, anatomy, concept, …)
-    or a ``types`` subset. Defined before ``/{type}`` so the literal ``search``
-    path isn't captured by the type path-param.
+    or a ``types`` subset. ``kind`` further narrows the ``concept`` catalog to
+    one ConceptKind. Defined before ``/{type}`` so the literal ``search`` path
+    isn't captured by the type path-param.
     """
+    from app.models.enums import ConceptKind
     from app.services.catalog_search_service import search_catalogs
 
     type_list = [t.strip() for t in types.split(",") if t.strip()] if types else None
+
+    # Validate the kind param up front so a typo is a 400, not a silent
+    # "no results because nothing matched an unknown kind".
+    kind_enum: Optional[ConceptKind] = None
+    if kind:
+        try:
+            kind_enum = ConceptKind(kind.strip().lower())
+        except ValueError:
+            valid = sorted(k.value for k in ConceptKind)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unknown kind '{kind}'. Valid ConceptKind values: {valid}"
+                ),
+            ) from None
+
     results = await search_catalogs(
-        db, current_user.tenant_id, q, types=type_list, limit_total=limit
+        db,
+        current_user.tenant_id,
+        q,
+        types=type_list,
+        kind=kind_enum,
+        limit_total=limit,
     )
     return {"results": results}
 

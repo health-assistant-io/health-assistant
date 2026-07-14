@@ -61,6 +61,8 @@ class SeedService:
     ) -> Dict[str, int]:
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
+        from app.schemas.clinical_event import MetadataSchema
+        from pydantic import ValidationError
 
         items = data if isinstance(data, list) else data.get("items", [])
 
@@ -77,6 +79,24 @@ class SeedService:
 
         for type_item in items:
             try:
+                # Fail-loud: validate the metadata_schema shape before upsert.
+                # A malformed descriptor would silently render nothing in the
+                # dynamic form; the typed Pydantic model rejects it here so the
+                # seed run surfaces the error instead of writing a broken type.
+                raw_schema = type_item.get("metadata_schema")
+                if raw_schema is not None:
+                    try:
+                        MetadataSchema.model_validate(raw_schema)
+                    except ValidationError as ve:
+                        logger.error(
+                            "Clinical event type '%s' has an invalid "
+                            "metadata_schema; skipping. Details: %s",
+                            type_item.get("slug"),
+                            ve,
+                        )
+                        stats["errors"] += 1
+                        continue
+
                 cat_slug = type_item.get("category_slug")
                 cat_concept_id = None
                 if cat_slug:
