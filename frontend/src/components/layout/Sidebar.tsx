@@ -1,13 +1,13 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
-  FileText,
   X,
   Sparkles,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   User,
+  Bell,
   ShieldCheck,
   BookOpen
 } from 'lucide-react';
@@ -56,7 +56,7 @@ function Sidebar() {
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
   const theme = useSettingsStore(state => state.theme);
-  const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record', '/clinical-data']);
+  const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record']);
   const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,50 +140,34 @@ function Sidebar() {
     // 1. Dashboard
     { path: '/dashboard', labelKey: 'common.dashboard', icon: LayoutDashboard },
 
-    // 2. Patient Record (grouped)
+    // 2. Patient Record (grouped — clinical record, treatments & alerts, timeline)
     {
       path: '/patient-record',
       labelKey: 'common.patient_record',
       icon: User,
       subItems: [
         { path: '/patient-info', labelKey: 'common.patient_overview', dynamicPath: 'patient-detail' },
+        // ── Clinical Record ──
+        { path: '/examinations', labelKey: 'common.examinations', section: 'common.section_clinical_record' },
+        { path: '/documents', labelKey: 'common.documents_explorer' },
         { path: '/analytics/trends', labelKey: 'common.biomarkers' },
         { path: '/analytics/correlative', labelKey: 'common.correlative_analytics' },
-        { path: '/medications', labelKey: 'common.medications' },
+        // ── Treatments & Alerts ──
+        { path: '/medications', labelKey: 'common.medications', section: 'common.section_treatments_alerts' },
         { path: '/vaccinations', labelKey: 'common.vaccinations' },
         { path: '/alerts', labelKey: 'common.allergy_alerts' },
-        { path: '/notifications', labelKey: 'common.notifications' },
-        { path: '/events', labelKey: 'events.title' },
+        // ── Timeline ──
+        { path: '/events', labelKey: 'events.title', section: 'common.section_timeline' },
         { path: '/calendar', labelKey: 'common.calendar' },
       ],
     },
 
-    // 3. Clinical Data (grouped)
-    {
-      path: '/clinical-data',
-      labelKey: 'common.clinical_data',
-      icon: FileText,
-      subItems: [
-        { path: '/examinations', labelKey: 'common.examinations' },
-        { path: '/documents', labelKey: 'common.documents_explorer' },
-      ],
-    },
+    // 3. Notifications (app-level, not patient-scoped)
+    { path: '/notifications', labelKey: 'common.notifications', icon: Bell },
 
-    // 4. Catalogs (reference catalogs — all users). Unified workspace at
-    //    /catalogs?type=... (Phase C). The parent /catalogs is a real route now.
-    {
-      path: '/catalogs',
-      labelKey: 'common.catalogs',
-      icon: BookOpen,
-      subItems: [
-        { path: '/catalogs?type=biomarker', labelKey: 'common.biomarkers' },
-        { path: '/catalogs?type=medication', labelKey: 'common.medications' },
-        { path: '/catalogs?type=vaccine', labelKey: 'common.vaccines' },
-        { path: '/catalogs?type=allergy', labelKey: 'common.allergies' },
-        { path: '/catalogs?type=anatomy', labelKey: 'common.anatomy' },
-        { path: '/catalogs?type=concept', labelKey: 'common.concepts' },
-      ],
-    },
+    // 4. Catalogs (reference catalogs — all users). Single link to the unified
+    //    tabbed workspace at /catalogs (formerly expanded into 6 ?type= shortcuts).
+    { path: '/catalogs', labelKey: 'common.catalogs', icon: BookOpen },
 
     // 5. AI Assistant
     { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
