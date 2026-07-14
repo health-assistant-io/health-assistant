@@ -151,7 +151,7 @@ function UserManagement() {
                         {user.email[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-[#1a2b4b] dark:text-dark-text group-hover/name:text-blue-600 dark:group-hover/name:text-blue-400 transition-colors">
+                        <p className="font-bold text-brand-navy dark:text-dark-text group-hover/name:text-blue-600 dark:group-hover/name:text-blue-400 transition-colors">
                           {user.email}
                         </p>
                         <p className="text-[10px] text-gray-400 font-mono uppercase tracking-tighter">{user.id.substring(0, 8)}...</p>
@@ -195,7 +195,7 @@ function UserManagement() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50">
-              <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text">{t('admin.invite_user')}</h2>
+              <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text">{t('admin.invite_user')}</h2>
               <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors text-gray-400">
                 <X className="w-5 h-5" />
               </button>
@@ -249,7 +249,7 @@ function UserManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-[#0088CC] text-white rounded-xl hover:bg-[#0077B3] transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-blue-200 dark:shadow-none"
+                  className="flex-1 px-4 py-3 bg-brand-cyan text-white rounded-xl hover:bg-brand-cyan-hover transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-blue-200 dark:shadow-none"
                 >
                   <Save className="w-4 h-4" />
                   <span>{t('common.save')}</span>

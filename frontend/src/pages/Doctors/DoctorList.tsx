@@ -238,7 +238,7 @@ function DoctorList() {
               </div>
             </div>
             
-            <h3 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text mb-1 group-hover:text-blue-600 transition-colors">{t('doctors.dr')} {doctor.name}</h3>
+            <h3 className="text-xl font-bold text-brand-navy dark:text-dark-text mb-1 group-hover:text-blue-600 transition-colors">{t('doctors.dr')} {doctor.name}</h3>
             <p className="text-blue-600 dark:text-blue-400 font-medium text-sm mb-4">{doctor.specialty || t('doctors.general_practitioner')}</p>
             
             <div className="space-y-3 pt-4 border-t border-gray-50 dark:border-dark-border">

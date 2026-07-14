@@ -136,32 +136,32 @@ function Header() {
   };
 
   return (
-    <header className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 md:px-6 py-2 md:py-2.5 flex items-center justify-between z-[500] sticky top-0 shadow-sm transition-all duration-300">
-      <div className="flex items-center space-x-2 md:space-x-4 flex-shrink-0">
+    <header className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 md:px-6 py-2 md:py-2.5 safe-top flex items-center justify-between z-[500] sticky top-0 shadow-sm transition-all duration-300">
+      <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
         {/* Mobile/Tablet Sidebar Toggle */}
         <button 
           onClick={toggleSidebar}
-          className="lg:hidden p-2 -ml-2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text transition-colors"
+          className="lg:hidden p-2 -ml-2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text transition-colors shrink-0"
         >
           {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
 
         {/* Dynamic Header Section (Title/Icon/Back) */}
-        <div className="flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-sm shadow-sm min-w-0 max-w-sm sm:max-w-md">
+        <div className="flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-3 sm:pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-sm shadow-sm min-w-0 max-w-sm sm:max-w-md">
           {pageHeaderConfig?.showBackButton && (
             <>
               <button 
                 onClick={() => navigate(-1)}
-                className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-all hover:bg-white dark:hover:bg-dark-surface rounded-xl active:scale-90 group/back ml-0.5"
+                className="hidden sm:flex w-9 h-9 items-center justify-center text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-all hover:bg-white dark:hover:bg-dark-surface rounded-xl active:scale-90 group/back ml-0.5 shrink-0"
                 title="Go Back"
               >
                 <ArrowLeft className="w-5 h-5 group-hover/back:-translate-x-1 transition-transform" />
               </button>
-              <div className="w-px h-6 bg-gray-200/60 dark:bg-dark-border/60 mx-2" />
+              <div className="hidden sm:block w-px h-6 bg-gray-200/60 dark:bg-dark-border/60 mx-2 shrink-0" />
             </>
           )}
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 min-w-0">
             {pageHeaderConfig?.icon && (
               <div className={`hidden sm:flex w-9 h-9 ${isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0 overflow-hidden`}>
                 {isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? (
@@ -178,7 +178,7 @@ function Header() {
                   currentLabel={pageHeaderConfig.title}
                 />
               )}
-              <h1 className="text-base md:text-lg font-black text-[#1a2b4b] dark:text-dark-text tracking-tight truncate leading-none">
+              <h1 className="text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none sm:truncate break-words">
                 {getPageTitle()}
               </h1>
               {pageHeaderConfig?.subtitle && (

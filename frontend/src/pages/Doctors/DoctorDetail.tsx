@@ -135,7 +135,7 @@ function DoctorDetail() {
           </div>
           <div className="flex-1 text-center md:text-left space-y-6">
             <div>
-              <h1 className="text-4xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight mb-2">
+              <h1 className="text-4xl font-black text-brand-navy dark:text-dark-text tracking-tight mb-2">
                 {t('doctors.dr')} {doctor.name}
               </h1>
               <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
@@ -255,7 +255,7 @@ function DoctorDetail() {
               <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
-              <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text tracking-tight">Clinical Involvement</h2>
+              <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text tracking-tight">Clinical Involvement</h2>
             </div>
             <span className="px-4 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted text-xs font-black uppercase tracking-widest rounded-full">
               {examinations.length} Examinations

@@ -168,6 +168,20 @@ body {
   .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #475569;
   }
+
+  /* iOS safe-area insets for notched phones (requires viewport-fit=cover) */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
 }
 
 /* HITL task card — responsive to its OWN width (the chat drawer is resizable,

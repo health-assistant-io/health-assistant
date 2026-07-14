@@ -43,7 +43,7 @@ export const VisualizationSettings: React.FC<VisualizationSettingsProps> = ({
           <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
           <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] animate-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between p-6 pb-0">
-              <h3 className="text-sm font-black text-[#1a2b4b] dark:text-dark-text uppercase tracking-widest">{t('biomarkers.visualization_settings')}</h3>
+              <h3 className="text-sm font-black text-brand-navy dark:text-dark-text uppercase tracking-widest">{t('biomarkers.visualization_settings')}</h3>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
                 <X className="w-5 h-5 text-gray-400" />
               </button>

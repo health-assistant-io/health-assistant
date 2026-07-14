@@ -158,7 +158,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
                         e.stopPropagation(); 
                         setSelectedInfo({ info, name: displayBiomarkerName }); 
                       }}
-                      className="p-1 text-blue-400 hover:text-blue-600 transition-colors"
+                      className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors"
                     >
                       <Info className="w-3.5 h-3.5" />
                     </button>

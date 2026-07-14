@@ -23,7 +23,7 @@ const AboutPage = () => {
               <Heart className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-white mb-2">Our Mission</h2>
+              <h2 className="text-xl font-black text-brand-navy dark:text-white mb-2">Our Mission</h2>
               <p className="text-gray-600 dark:text-dark-muted leading-relaxed">
                 Health Assistant is a self-hosted, privacy-first platform designed to empower individuals with control over their medical data. 
                 Inspired by the philosophy of local control and open standards, it centralizes health records, analyzes biomarkers, 
@@ -40,7 +40,7 @@ const AboutPage = () => {
               <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl flex items-center justify-center">
                 <Code className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               </div>
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-white">Created By</h2>
+              <h2 className="text-xl font-black text-brand-navy dark:text-white">Created By</h2>
             </div>
             <div className="space-y-4">
               <div>
@@ -85,7 +85,7 @@ const AboutPage = () => {
               <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center">
                 <ShieldCheck className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-white">License & Open Source</h2>
+              <h2 className="text-xl font-black text-brand-navy dark:text-white">License & Open Source</h2>
             </div>
             <p className="text-gray-600 dark:text-dark-muted text-sm leading-relaxed mb-6">
               Health Assistant is proud to be open-source. We believe that health software should be transparent, 

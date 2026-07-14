@@ -199,8 +199,9 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
                 e.stopPropagation(); 
                 setSelectedInfo({ info: lab.info, name: lab.name }); 
               }}
-              className="ml-2 p-1 text-blue-400 transition-colors hover:text-blue-600 relative z-30"
+              className="ml-2 p-1.5 text-blue-400 transition-colors hover:text-blue-600 relative z-30"
               title={t('common.details')}
+              aria-label={t('common.details')}
             >
               <Info className="w-3.5 h-3.5" />
             </button>
@@ -263,8 +264,9 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
         <div className="mb-6 p-4 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-100 dark:border-dark-border space-y-4 animate-in slide-in-from-top-2 duration-200 nodrag relative" onMouseDown={e => e.stopPropagation()}>
           <button 
             onClick={(e) => { e.stopPropagation(); setShowConfig(false); }}
-            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
+            className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
             title={t('common.dismiss')}
+            aria-label={t('common.dismiss')}
           >
             <X className="w-4 h-4" />
           </button>

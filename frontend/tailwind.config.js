@@ -11,6 +11,21 @@ module.exports = {
         'xs': '480px',
       },
       colors: {
+        brand: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+          navy: '#1a2b4b',
+          cyan: '#0088CC',
+          cyanHover: '#0077B3',
+        },
         dark: {
           bg: '#0f172a',        // slate-900
           surface: '#1e293b',   // slate-800
@@ -50,5 +65,6 @@ module.exports = {
   },
   plugins: [
     require('@tailwindcss/typography'),
+    require('tailwindcss-animate'),
   ],
 }

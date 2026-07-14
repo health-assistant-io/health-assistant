@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Info, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useModalA11y } from '../../../hooks/useModalA11y';
 
 export interface BiomarkerInfoModalProps {
   info: string | null;
@@ -14,12 +15,14 @@ export interface BiomarkerInfoModalProps {
 
 export const BiomarkerInfoModal: React.FC<BiomarkerInfoModalProps> = ({ info, name, onClose, slug }) => {
   const { t } = useTranslation();
+  useModalA11y(true, onClose);
   return createPortal(
   <div 
-    className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
   >
-    <div 
+    <div
+      role="dialog" aria-modal="true"
       className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
       onClick={(e) => e.stopPropagation()}
     >
@@ -59,7 +62,7 @@ export const BiomarkerInfoModal: React.FC<BiomarkerInfoModalProps> = ({ info, na
       <div className="p-6 bg-gray-50 dark:bg-dark-bg border-t border-gray-100 dark:border-dark-border flex justify-end">
         <button 
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-          className="px-8 py-2.5 bg-[#1a2b4b] text-white rounded-xl font-bold text-sm hover:bg-black transition-all shadow-md active:scale-95"
+          className="px-8 py-2.5 bg-brand-navy text-white rounded-xl font-bold text-sm hover:bg-black transition-all shadow-md active:scale-95"
         >
           {t('common.dismiss')}
         </button>

@@ -121,7 +121,7 @@ export const RangeGaugeCard = React.forwardRef((props: any, ref: any) => {
           <h3 className="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight leading-tight break-words">{displayBiomarkerName}</h3>
         </div>
         {latestPoint?.info && (
-          <button onClick={(e) => { e.stopPropagation(); setSelectedInfo({ info: latestPoint.info, name: displayBiomarkerName }); }} className="p-1 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); setSelectedInfo({ info: latestPoint.info, name: displayBiomarkerName }); }} className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0">
             <Info className="w-3.5 h-3.5" />
           </button>
         )}

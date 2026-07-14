@@ -18,7 +18,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Database, X, Save, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw, List as ListIcon, GitBranch } from 'lucide-react';
+import { Database, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw, List as ListIcon, GitBranch } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -30,6 +30,7 @@ import { CatalogRelationsGraph } from '../../components/catalog/CatalogRelations
 import { CatalogRelationsIndex } from '../../components/catalog/CatalogRelationsIndex';
 import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelationsEditor';
 import { CatalogAuditHistoryModal } from '../../components/catalog/CatalogAuditHistoryModal';
+import { FormModal } from '../../components/ui/FormModal';
 import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
 import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
 import { CatalogOntologyGraph } from '../../components/catalog/CatalogOntologyGraph';
@@ -840,63 +841,37 @@ export const CatalogWorkspace: React.FC = () => {
         const ItemForm = getCatalogForm(active.type);
         const editingId = editing.id ? String(editing.id) : null;
         return (
-          <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl bg-white dark:bg-gray-800 shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between shrink-0 px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-700">
-                <h3 className="text-lg font-semibold">
-                  {isNew ? t('catalogs.create', 'Create') : t('catalogs.edit', 'Edit')} {active.type}
-                </h3>
-                <button
-                  onClick={() => {
-                    setEditing(null);
-                    setIsNew(false);
-                  }}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+          <FormModal
+            isOpen
+            onClose={() => {
+              setEditing(null);
+              setIsNew(false);
+            }}
+            title={`${isNew ? t('catalogs.create', 'Create') : t('catalogs.edit', 'Edit')} ${active.type}`}
+            onSubmit={handleSave}
+            submitting={saving}
+            submitLabel={saving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            cancelLabel={t('common.cancel', 'Cancel')}
+            bodyClassName="px-6 py-4 space-y-4"
+          >
+            <ItemForm
+              typeMeta={active}
+              values={editing}
+              mode={isNew ? 'create' : 'edit'}
+              onChange={(patch) => setEditing({ ...editing, ...patch })}
+            />
 
-              <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 space-y-4">
-                <ItemForm
-                  typeMeta={active}
-                  values={editing}
-                  mode={isNew ? 'create' : 'edit'}
-                  onChange={(patch) => setEditing({ ...editing, ...patch })}
-                />
-
-                {!isNew && editingId && (
-                  <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-                    <CatalogRelationsEditor typeMeta={active} itemId={editingId} />
-                  </div>
-                )}
-                {isNew && (
-                  <p className="text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
-                    {t('catalogs.relations_save_first', 'Save the item first, then you can add relations.')}
-                  </p>
-                )}
+            {!isNew && editingId && (
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                <CatalogRelationsEditor typeMeta={active} itemId={editingId} />
               </div>
-
-              <div className="flex justify-end gap-2 shrink-0 px-6 pb-6 pt-4 border-t border-gray-100 dark:border-gray-700">
-                <button
-                  onClick={() => {
-                    setEditing(null);
-                    setIsNew(false);
-                  }}
-                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                  {t('common.cancel', 'Cancel')}
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-4 h-4" />
-                  {saving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
-                </button>
-              </div>
-            </div>
-          </div>
+            )}
+            {isNew && (
+              <p className="text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
+                {t('catalogs.relations_save_first', 'Save the item first, then you can add relations.')}
+              </p>
+            )}
+          </FormModal>
         );
       })()}
     </PageContainer>

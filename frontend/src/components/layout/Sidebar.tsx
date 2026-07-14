@@ -16,7 +16,8 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
-import { useState, useMemo, useRef, Fragment } from 'react';
+import { useIsTablet } from '../../hooks/useMediaQuery';
+import { useState, useMemo, useRef, Fragment, useEffect } from 'react';
 import AppVersion from '../ui/AppVersion';
 import CreateMenu from '../ui/CreateMenu';
 
@@ -43,7 +44,14 @@ function Sidebar() {
   const { t } = useTranslation();
   const location = useLocation();
   const setSidebarOpen = useUIStore(state => state.setSidebarOpen);
+  const sidebarOpen = useUIStore(state => state.sidebarOpen);
   const sidebarCollapsed = useUIStore(state => state.sidebarCollapsed);
+  // On mobile/tablet (< lg) the sidebar is always fully expanded — the
+  // collapsed icon-only mode is a desktop space-saving feature only.
+  // The persisted `sidebarCollapsed` store value is the desktop preference
+  // and is preserved across navigation; we just ignore it below lg.
+  const isMobileView = useIsTablet();
+  const effectiveCollapsed = sidebarCollapsed && !isMobileView;
   const toggleSidebarCollapse = useUIStore(state => state.toggleSidebarCollapse);
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
@@ -52,6 +60,15 @@ function Sidebar() {
   const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Collapse all expanded submenus when the mobile sidebar closes so they
+  // don't linger expanded on reopen. Desktop (lg+) keeps the sidebar
+  // permanently visible, so its expand state is preserved.
+  useEffect(() => {
+    if (!sidebarOpen && isMobileView) {
+      setExpandedItems([]);
+    }
+  }, [sidebarOpen, isMobileView]);
 
   // Resolve a sub-item path (handles the /patient-info dynamic token)
   const resolveSubPath = (path: string): string => {
@@ -96,14 +113,14 @@ function Sidebar() {
   };
 
   const handleMouseEnter = (e: React.MouseEvent, item: MenuItem) => {
-    if (!sidebarCollapsed) return;
+    if (!effectiveCollapsed) return;
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     const rect = e.currentTarget.getBoundingClientRect();
     setHoveredMenu({ path: item.path, rect, items: item.subItems, labelKey: item.labelKey });
   };
 
   const handleMouseLeave = () => {
-    if (!sidebarCollapsed) return;
+    if (!effectiveCollapsed) return;
     hoverTimeoutRef.current = setTimeout(() => {
       setHoveredMenu(null);
     }, 150);
@@ -235,22 +252,24 @@ function Sidebar() {
     <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`${sidebarCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative isolate`}
+      className={`${effectiveCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-r border-gray-100 dark:border-dark-border flex flex-col h-full shadow-lg lg:shadow-none transition-all duration-300 relative isolate safe-top safe-bottom`}
     >
-      <div className={`p-6 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} mt-2 mb-4`}>
+      {/* Mobile close button — centered on the outer right edge, rounded square */}
+      {sidebarOpen && !effectiveCollapsed && (
+        <button
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+          className="lg:hidden absolute top-1/2 -translate-y-1/2 -right-4 z-50 w-8 h-8 flex items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+
+      <div className={`p-6 flex items-center ${effectiveCollapsed ? 'justify-center' : 'justify-start'} mt-2 mb-4`}>
         <Link to="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
           <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-9 h-9 shrink-0" alt="Health Assistant Logo" />
-          {!sidebarCollapsed && <h1 className="text-xl font-bold text-[#1a2b4b] dark:text-white truncate">Health Assistant</h1>}
+          {!effectiveCollapsed && <h1 className="text-xl font-bold text-brand-navy dark:text-white truncate">Health Assistant</h1>}
         </Link>
-        
-        {!sidebarCollapsed && (
-          <button 
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        )}
       </div>
 
       {/* Invisible hover bridge — keeps the handle visible when the cursor is near the sidebar edge */}
@@ -259,11 +278,11 @@ function Sidebar() {
       {/* Collapse/expand handle — sits outside the sidebar panel and is revealed on hover */}
       <button
         onClick={toggleSidebarCollapse}
-        title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        aria-label={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        title={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        aria-label={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-50 w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       >
-        {sidebarCollapsed ? (
+        {effectiveCollapsed ? (
           <ChevronRight className="w-4 h-4" />
         ) : (
           <ChevronLeft className="w-4 h-4" />
@@ -277,22 +296,22 @@ function Sidebar() {
           const isExpanded = expandedItems.includes(item.path);
           
           if (item.subItems) {
-            if (!sidebarCollapsed) {
+            if (!effectiveCollapsed) {
               return (
                 <div key={item.path} className="space-y-1">
                   <button
                     onClick={() => toggleExpand(item.path)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
                       isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-bold'
                         : 'text-gray-500 hover:bg-gray-50 dark:text-dark-muted dark:hover:bg-dark-border'
                     }`}
                   >
                     <div className="flex items-center min-w-0 pr-2">
-                      <Icon className={`w-5 h-5 mr-3 shrink-0 ${isActive ? 'text-[#0088CC] dark:text-blue-400' : 'text-gray-400'}`} />
+                      <Icon className={`w-5 h-5 mr-3 shrink-0 ${isActive ? 'text-brand-cyan dark:text-blue-400' : 'text-gray-400'}`} />
                       <span className="truncate">{t(item.labelKey)}</span>
                     </div>
-                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isActive ? 'text-[#0088CC] dark:text-blue-400' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isActive ? 'text-brand-cyan dark:text-blue-400' : 'text-gray-400'} ${isExpanded ? 'rotate-180' : ''}`} />
                   </button>
                   
                   {isExpanded && (
@@ -306,9 +325,10 @@ function Sidebar() {
                           )}
                           <Link
                             to={resolveSubPath(subItem.path)}
+                            aria-current={isSubActive(subItem) ? 'page' : undefined}
                             className={`block px-4 py-2 text-sm rounded-xl transition-all duration-200 ${
                               isSubActive(subItem)
-                                ? 'text-[#0088CC] dark:text-blue-400 font-black'
+                                ? 'text-brand-cyan dark:text-blue-400 font-black'
                                 : 'text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text'
                             }`}
                           >
@@ -330,7 +350,7 @@ function Sidebar() {
                   <div
                     className={`flex items-center justify-center px-0 py-3 rounded-xl transition-all duration-200 cursor-pointer relative group ${
                       isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold shadow-sm'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-bold shadow-sm'
                         : 'text-gray-500 hover:bg-gray-50 dark:text-dark-muted dark:hover:bg-dark-border hover:translate-x-1'
                     }`}
                     onClick={(e) => {
@@ -341,8 +361,8 @@ function Sidebar() {
                        }
                     }}
                   >
-                    <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-[#0088CC] dark:text-blue-400' : 'text-gray-400'}`} />
-                    <ChevronRight className={`w-3 h-3 absolute right-1 top-1/2 -translate-y-1/2 transition-all duration-200 ${isActive ? 'text-[#0088CC] dark:text-blue-400 opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`} />
+                    <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-brand-cyan dark:text-blue-400' : 'text-gray-400'}`} />
+                    <ChevronRight className={`w-3 h-3 absolute right-1 top-1/2 -translate-y-1/2 transition-all duration-200 ${isActive ? 'text-brand-cyan dark:text-blue-400 opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`} />
                   </div>
                 </div>
               );
@@ -357,14 +377,15 @@ function Sidebar() {
             >
               <Link
                 to={item.path}
-                className={`flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'px-4'} py-3 rounded-xl transition-all duration-200 ${
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex items-center ${effectiveCollapsed ? 'justify-center px-0' : 'px-4'} py-3 rounded-xl transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold shadow-sm'
+                    ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-bold shadow-sm'
                     : 'text-gray-500 hover:bg-gray-50 dark:text-dark-muted dark:hover:bg-dark-border hover:translate-x-1'
                 }`}
               >
-                <Icon className={`w-5 h-5 ${sidebarCollapsed ? '' : 'mr-3'} shrink-0 ${isActive ? 'text-[#0088CC] dark:text-blue-400' : 'text-gray-400'}`} />
-                {!sidebarCollapsed && <span className="truncate">{t(item.labelKey)}</span>}
+                <Icon className={`w-5 h-5 ${effectiveCollapsed ? '' : 'mr-3'} shrink-0 ${isActive ? 'text-brand-cyan dark:text-blue-400' : 'text-gray-400'}`} />
+                {!effectiveCollapsed && <span className="truncate">{t(item.labelKey)}</span>}
               </Link>
             </div>
           );
@@ -372,13 +393,13 @@ function Sidebar() {
       </nav>
 
       <div className={`p-4 space-y-2 mt-auto border-t border-gray-50 dark:border-white/5`}>
-        <CreateMenu collapsed={sidebarCollapsed} />
+        <CreateMenu collapsed={effectiveCollapsed} />
 
-        <AppVersion collapsed={sidebarCollapsed} className="pt-1" />
+        <AppVersion collapsed={effectiveCollapsed} className="pt-1" />
       </div>
 
       {/* Collapsed Submenu Popup */}
-      {hoveredMenu && sidebarCollapsed && (
+      {hoveredMenu && effectiveCollapsed && (
         hoveredMenu.items ? (
           <div
             onMouseEnter={handlePopupMouseEnter}
@@ -403,9 +424,10 @@ function Sidebar() {
                   )}
                   <Link
                     to={resolveSubPath(subItem.path)}
+                    aria-current={isSubActive(subItem) ? 'page' : undefined}
                     className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
                       isSubActive(subItem)
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-[#0088CC] dark:text-blue-400 font-bold'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-bold'
                         : 'text-gray-600 hover:bg-gray-50 dark:text-dark-text dark:hover:bg-dark-border hover:text-gray-900'
                     }`}
                     onClick={() => setHoveredMenu(null)}

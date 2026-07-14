@@ -75,7 +75,7 @@ export const PatientSelect: React.FC<Props> = ({
         
         {currentPatient ? (
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-black text-[#1a2b4b] dark:text-dark-text truncate leading-tight">
+            <div className="text-xs font-black text-brand-navy dark:text-dark-text truncate leading-tight">
               {getPatientName(currentPatient)}
             </div>
             <div className="text-[9px] text-gray-400 dark:text-dark-muted font-black uppercase tracking-[0.1em] leading-tight mt-0.5 opacity-80">

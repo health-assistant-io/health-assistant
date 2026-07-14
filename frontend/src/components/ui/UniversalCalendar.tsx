@@ -569,7 +569,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               <CalendarIcon className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase leading-none flex items-center space-x-1.5">
+              <h2 className="text-xl font-black text-brand-navy dark:text-dark-text tracking-tight uppercase leading-none flex items-center space-x-1.5">
                 <span>{title || (viewType === 'classic' ? format(currentDate, 'MMMM yyyy') : t('common.calendar'))}</span>
                 {titleTo && (
                   <ExternalLink
@@ -688,7 +688,7 @@ export const UniversalCalendar: React.FC<Props> = ({
             <div className="relative" ref={viewDropdownRef}>
               <button 
                 onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}
-                className="flex items-center space-x-2 px-3 py-2 bg-[#1a2b4b] text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-black transition-all shadow-lg active:scale-95"
+                className="flex items-center space-x-2 px-3 py-2 bg-brand-navy text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-black transition-all shadow-lg active:scale-95"
               >
                 {viewType === 'timeline' && <Layout className="w-3.5 h-3.5" />}
                 {viewType === 'classic' && <Grid className="w-3.5 h-3.5" />}
@@ -791,7 +791,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                   <button onClick={() => setSelectedEvent(null)} className="px-10 py-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-900 dark:text-dark-text font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-gray-100 dark:hover:bg-dark-border transition-all shadow-sm active:scale-95">
                     {t('common.dismiss')}
                   </button>
-                  <button onClick={() => navigateToDetail(selectedEvent)} className="px-10 py-4 bg-[#1a2b4b] text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-black transition-all shadow-xl active:scale-95 flex items-center">
+                  <button onClick={() => navigateToDetail(selectedEvent)} className="px-10 py-4 bg-brand-navy text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-black transition-all shadow-xl active:scale-95 flex items-center">
                     Go to Record
                     <ChevronRight className="w-4 h-4 ml-2" />
                   </button>

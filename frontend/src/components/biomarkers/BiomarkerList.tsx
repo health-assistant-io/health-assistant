@@ -244,7 +244,7 @@ export const BiomarkerList = React.memo(({
         <div className={`flex justify-between items-start ${isNavigable ? 'cursor-pointer' : ''} ${compact ? 'mb-2' : 'mb-4'}`} onClick={() => isNavigable && navigate(`/biomarkers/details/${targetId}`)}>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
-              <h3 className={`${compact ? 'text-base' : 'text-lg sm:text-xl'} font-black text-[#1a2b4b] dark:text-dark-text ${isNavigable ? 'group-hover:text-blue-600' : ''} transition-colors leading-tight mr-2`}>{marker.displayName}</h3>
+              <h3 className={`${compact ? 'text-base' : 'text-lg sm:text-xl'} font-black text-brand-navy dark:text-dark-text ${isNavigable ? 'group-hover:text-blue-600' : ''} transition-colors leading-tight mr-2`}>{marker.displayName}</h3>
               {marker.isTelemetry && (
                 <div className="flex items-center justify-center p-1 mr-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-md" title="Telemetry/IoT Data">
                   <Activity className="w-3.5 h-3.5" />
@@ -708,7 +708,7 @@ export const BiomarkerList = React.memo(({
               <div className="flex items-center space-x-4">
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-2xl shadow-inner"><Info className="w-6 h-6 text-blue-600" /></div>
                 <div>
-                  <h3 className="text-xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight">{selectedInfo.displayName}</h3>
+                  <h3 className="text-xl font-black text-brand-navy dark:text-dark-text tracking-tight">{selectedInfo.displayName}</h3>
                   <p className="text-[10px] text-gray-400 font-mono font-black uppercase tracking-widest">{selectedInfo.slug || 'Clinical Parameter'}</p>
                 </div>
               </div>

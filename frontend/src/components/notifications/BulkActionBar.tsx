@@ -41,8 +41,9 @@ export function BulkActionBar({ selectedCount, onClearSelection, onMarkSelectedR
         </button>
         <button
           onClick={onClearSelection}
-          className="p-1 hover:bg-white/20 rounded-lg"
+          className="p-1.5 hover:bg-white/20 rounded-lg"
           title={t('common.clear_selection', { defaultValue: 'Clear selection' })}
+          aria-label={t('common.clear_selection', { defaultValue: 'Clear selection' })}
         >
           <X className="w-4 h-4" />
         </button>

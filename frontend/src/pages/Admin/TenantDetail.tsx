@@ -433,7 +433,7 @@ function OverviewPanel({ detail }: { detail: TenantDetail }) {
                 <Icon className={`w-5 h-5 text-${c.color}-500`} />
                 {c.sub && <span className="text-[10px] text-gray-400 font-bold">{c.sub}</span>}
               </div>
-              <p className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text">{c.value.toLocaleString()}</p>
+              <p className="text-2xl font-black text-brand-navy dark:text-dark-text">{c.value.toLocaleString()}</p>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">{c.label}</p>
             </div>
           );
@@ -522,7 +522,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
         </button>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50 dark:bg-dark-bg text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -536,7 +536,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
           <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
             {users.map((u) => (
               <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg/50">
-                <td className="px-4 py-3 text-sm font-medium text-[#1a2b4b] dark:text-dark-text">{u.email}</td>
+                <td className="px-4 py-3 text-sm font-medium text-brand-navy dark:text-dark-text">{u.email}</td>
                 <td className="px-4 py-3">
                   <select
                     value={u.role}
@@ -687,7 +687,7 @@ function AuditPanel({ tenantId }: { tenantId: string }) {
         />
         <span className="text-xs text-gray-400">{total} entries</span>
       </div>
-      <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50 dark:bg-dark-bg text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">

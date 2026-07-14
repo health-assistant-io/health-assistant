@@ -186,7 +186,7 @@ function TenantManagement() {
                     <Database className="w-6 h-6 text-indigo-500" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-lg font-black text-[#1a2b4b] dark:text-dark-text tracking-tight truncate">
+                    <h3 className="text-lg font-black text-brand-navy dark:text-dark-text tracking-tight truncate">
                       {tenant.name}
                     </h3>
                     <div className="flex items-center space-x-2 mt-0.5">
@@ -242,7 +242,7 @@ function TenantManagement() {
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center">
                     <Building2 className="w-3 h-3 mr-1" /> {t('admin.tenants.created')}
                   </p>
-                  <p className="font-bold text-[#1a2b4b] dark:text-dark-text">
+                  <p className="font-bold text-brand-navy dark:text-dark-text">
                     {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}
                   </p>
                 </div>
@@ -250,7 +250,7 @@ function TenantManagement() {
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center">
                     <Calendar className="w-3 h-3 mr-1" /> {t('admin.tenants.updated')}
                   </p>
-                  <p className="font-bold text-[#1a2b4b] dark:text-dark-text">
+                  <p className="font-bold text-brand-navy dark:text-dark-text">
                     {tenant.updated_at ? new Date(tenant.updated_at).toLocaleDateString() : '—'}
                   </p>
                 </div>
@@ -305,7 +305,7 @@ function TenantManagement() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50">
-              <h2 className="text-xl font-black text-[#1a2b4b] dark:text-dark-text uppercase tracking-tight">
+              <h2 className="text-xl font-black text-brand-navy dark:text-dark-text uppercase tracking-tight">
                 {t('admin.tenants.create_title')}
               </h2>
               <button

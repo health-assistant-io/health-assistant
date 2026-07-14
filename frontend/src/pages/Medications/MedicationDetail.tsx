@@ -261,7 +261,7 @@ function MedicationDetail() {
                     <button onClick={handleReprocess} disabled={reprocessing} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition-all font-semibold shadow-sm active:scale-95 text-sm flex items-center space-x-2">
                       <Sparkles className="w-4 h-4" /> <span>{reprocessing ? t('medications.reprocessing') : t('medications.ai_reprocess')}</span>
                     </button>
-                    <button onClick={handleToggleEdit} className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-[#1a2b4b] dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm text-sm flex items-center space-x-2">
+                    <button onClick={handleToggleEdit} className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-brand-navy dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm text-sm flex items-center space-x-2">
                       <Edit2 className="w-4 h-4" /> <span>{t('common.edit')}</span>
                     </button>
                   </>
@@ -314,7 +314,7 @@ function MedicationDetail() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in duration-500">
             <div className="xl:col-span-2 space-y-6">
               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-sm">
-                <h3 className="text-lg font-black text-[#1a2b4b] dark:text-dark-text mb-6 flex items-center uppercase tracking-tight">
+                <h3 className="text-lg font-black text-brand-navy dark:text-dark-text mb-6 flex items-center uppercase tracking-tight">
                   <Info className="w-5 h-5 mr-3 text-blue-500" />
                   {t('medications.description')}
                 </h3>
@@ -545,7 +545,7 @@ function MedicationDetail() {
             <div className="xl:col-span-2 space-y-6">
                <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
                   <div className="p-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
-                    <h3 className="text-lg font-black text-[#1a2b4b] dark:text-dark-text uppercase tracking-tight flex items-center">
+                    <h3 className="text-lg font-black text-brand-navy dark:text-dark-text uppercase tracking-tight flex items-center">
                       <Users className="w-5 h-5 mr-3 text-purple-500" />
                       {t('medications.patient_usage')}
                     </h3>

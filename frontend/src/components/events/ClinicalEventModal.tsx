@@ -1,5 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import {
   ClinicalEvent,
   createEvent,
@@ -9,6 +8,7 @@ import {
   ClinicalEventForm,
   ClinicalEventFormPayload,
 } from './ClinicalEventForm';
+import { Modal } from '../ui/Modal';
 
 interface Props {
   isOpen: boolean;
@@ -19,8 +19,6 @@ interface Props {
 }
 
 export const ClinicalEventModal: React.FC<Props> = ({ isOpen, onClose, patientId, event, onSuccess }) => {
-  if (!isOpen) return null;
-
   const handleSubmit = async (payload: ClinicalEventFormPayload) => {
     try {
       const savedEvent = event ? await updateEvent(event.id, payload) : await createEvent(payload);
@@ -32,22 +30,23 @@ export const ClinicalEventModal: React.FC<Props> = ({ isOpen, onClose, patientId
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div
-        className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={e => e.stopPropagation()}
-      >
-        <ClinicalEventForm
-          patientId={patientId}
-          event={event}
-          showHeader
-          showActions
-          onCancel={onClose}
-          onSubmit={handleSubmit}
-        />
-      </div>
-    </div>,
-    document.body
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title=""
+      hideHeader
+      bodyClassName="p-0"
+      size="lg"
+    >
+      <ClinicalEventForm
+        patientId={patientId}
+        event={event}
+        showHeader
+        showActions
+        onCancel={onClose}
+        onSubmit={handleSubmit}
+      />
+    </Modal>
   );
 };

@@ -881,7 +881,7 @@ const ExaminationDetail = () => {
                   <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                      <ClipboardList className="w-5 h-5 text-blue-500" />
                   </div>
-                  <h3 className="text-lg font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase">{t('common.info')}</h3>
+                  <h3 className="text-lg font-black text-brand-navy dark:text-dark-text tracking-tight uppercase">{t('common.info')}</h3>
                </div>
  
                <div className="space-y-6">
@@ -899,7 +899,7 @@ const ExaminationDetail = () => {
                              onChange={setTempDate}
                            />
                         ) : (
-                           <p className="font-bold text-[#1a2b4b] dark:text-dark-text">
+                           <p className="font-bold text-brand-navy dark:text-dark-text">
                               {new Date(examination?.examination_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
                            </p>
                         )}
@@ -1000,7 +1000,7 @@ const ExaminationDetail = () => {
                      <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-xl">
                         <Activity className="w-5 h-5 text-red-500" />
                      </div>
-                     <h3 className="text-lg font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase">{t('examination_detail.widgets.critical_biomarkers')}</h3>
+                     <h3 className="text-lg font-black text-brand-navy dark:text-dark-text tracking-tight uppercase">{t('examination_detail.widgets.critical_biomarkers')}</h3>
                   </div>
                   
                   <div className="flex items-center space-x-6">

@@ -136,7 +136,8 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
             setIsOpen(!isOpen);
           }}
           title="Define or map this biomarker"
-          className="p-1 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors nodrag"
+          aria-label="Define or map this biomarker"
+          className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors nodrag"
         >
           {isWorking ? (
             <Activity className="w-3.5 h-3.5 animate-spin" />
@@ -190,7 +191,8 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); reset(); }}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full"
+                aria-label="Close map panel"
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full"
               >
                 <X className="w-3.5 h-3.5 text-gray-400" />
               </button>

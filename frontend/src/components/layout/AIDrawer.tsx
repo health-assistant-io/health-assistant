@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { AIChatInterface } from './AIChatInterface';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 const STORAGE_KEY = 'ai-drawer-width';
 const DEFAULT_WIDTH = 560;
 const MIN_WIDTH = 384;
 const MAX_WIDTH = 860;
-const MOBILE_BREAKPOINT = 640;
 
 const readStoredWidth = (): number => {
   if (typeof window === 'undefined') return DEFAULT_WIDTH;
@@ -29,17 +29,8 @@ interface Props {
 export const AIDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
   const [drawerWidth, setDrawerWidth] = useState<number>(readStoredWidth);
-  const [isMobile, setIsMobile] = useState<boolean>(
-    () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
-  );
+  const isMobile = useIsMobile();
   const drawerRef = useRef<HTMLDivElement>(null);
-
-  // Track viewport to keep full-width on mobile
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const startDrag = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (isMobile || !drawerRef.current) return;
@@ -102,7 +93,7 @@ export const AIDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
       {/* Drawer */}
       <div
         ref={drawerRef}
-        className="fixed top-0 right-0 h-screen w-full bg-white dark:bg-dark-bg z-[560] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300"
+        className="fixed top-0 right-0 h-screen w-full bg-white dark:bg-dark-bg z-[560] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300 safe-top safe-bottom"
         style={widthStyle}
       >
         <AIChatInterface isFullScreen={false} onClose={onClose} />

@@ -8,6 +8,7 @@ import type { NotificationInboxItem, NotificationAction } from '../../services/n
 import axios from '../../api/axios';
 import DisplayBlockRenderer from '../integrations/displayBlocks';
 import { CategoryIcon, SourceBadge, SeverityDot, actionHandlerFor, actionClassName } from './notificationUi';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface Props {
   item: NotificationInboxItem;
@@ -23,6 +24,8 @@ export function NotificationDetailModal({ item, dateLocale, onClose, onMarkRead 
   const [actionResult, setActionResult] = useState<{ message: string; results?: any[] } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null); // action.id while in flight
+
+  useModalA11y(true, onClose);
 
   const handlePost = async (action: NotificationAction) => {
     if (!action.endpoint) return;
@@ -45,8 +48,9 @@ export function NotificationDetailModal({ item, dateLocale, onClose, onMarkRead 
   const displayBlocks: any[] = n.payload?.display_blocks ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
+        role="dialog" aria-modal="true"
         className="bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >

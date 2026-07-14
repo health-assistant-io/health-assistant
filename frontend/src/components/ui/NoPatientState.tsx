@@ -65,7 +65,7 @@ export const NoPatientState: React.FC<NoPatientStateProps> = ({
         <Icon className="w-10 h-10" />
       </div>
       <div className="space-y-2">
-        <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight">
+        <h2 className="text-2xl font-black text-brand-navy dark:text-dark-text tracking-tight">
           {resolvedTitle}
         </h2>
         <p className="text-gray-500 dark:text-dark-muted max-w-md">{resolvedDescription}</p>

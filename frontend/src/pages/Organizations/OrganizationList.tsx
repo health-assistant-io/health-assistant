@@ -229,7 +229,7 @@ function OrganizationList() {
               </div>
             </div>
             
-            <h3 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text mb-1 group-hover:text-blue-600 transition-colors">{org.name}</h3>
+            <h3 className="text-xl font-bold text-brand-navy dark:text-dark-text mb-1 group-hover:text-blue-600 transition-colors">{org.name}</h3>
             <p className="text-blue-600 dark:text-blue-400 font-medium text-sm mb-4">
               {org.type?.[0]?.coding?.[0]?.display || t('organizations.hospital')}
             </p>

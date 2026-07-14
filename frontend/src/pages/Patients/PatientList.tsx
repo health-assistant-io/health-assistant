@@ -219,7 +219,7 @@ function Patients() {
                 </div>
 
                 <div className="cursor-pointer" onClick={() => navigate(`/patients/${patient.id}`)}>
-                  <h3 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text group-hover:text-blue-600 transition-colors">
+                  <h3 className="text-xl font-bold text-brand-navy dark:text-dark-text group-hover:text-blue-600 transition-colors">
                     {patient.name?.given?.join(' ')} {patient.name?.family}
                   </h3>
                   

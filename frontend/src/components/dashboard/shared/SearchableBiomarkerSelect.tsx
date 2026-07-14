@@ -103,12 +103,14 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
         <span className="truncate mr-2 flex-1 text-left">{getDisplayValue()}</span>
         <div className="flex items-center space-x-1">
           {((multiple && Array.isArray(value) && value.length > 0) || (!multiple && value)) && (
-            <div 
+            <button
+              type="button"
               onClick={clearSelection}
-              className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-dark-border text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
+              aria-label="Clear selection"
+              className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-dark-border text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
             >
               <X className="w-3 h-3" />
-            </div>
+            </button>
           )}
           <ChevronDown className={`w-3 h-3 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
         </div>

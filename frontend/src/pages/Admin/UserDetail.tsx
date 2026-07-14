@@ -217,7 +217,7 @@ function UserDetail() {
             </div>
 
             <div className="text-center space-y-1 mb-8">
-              <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text">{user.email}</h2>
+              <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text">{user.email}</h2>
               <span className={`inline-block px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
                 ROLE_OPTIONS.find(r => r.value === user.role)?.color || 'bg-gray-100 text-gray-600'
               }`}>
@@ -290,7 +290,7 @@ function UserDetail() {
                           <Shield className="w-4 h-4" />
                         </div>
                         <div>
-                          <p className="font-bold text-sm text-[#1a2b4b] dark:text-dark-text">{t(option.label)}</p>
+                          <p className="font-bold text-sm text-brand-navy dark:text-dark-text">{t(option.label)}</p>
                           <p className="text-[9px] text-gray-500 uppercase tracking-widest font-black">Scope: {option.value.includes('SYSTEM') ? 'Global' : 'Tenant'}</p>
                         </div>
                       </div>
@@ -316,7 +316,7 @@ function UserDetail() {
                     type="button"
                     onClick={handleSaveRole}
                     disabled={savingRole}
-                    className="flex-1 px-3 py-2 bg-[#0088CC] text-white rounded-xl hover:bg-[#0077B3] transition-all font-bold flex items-center justify-center space-x-2 text-sm"
+                    className="flex-1 px-3 py-2 bg-brand-cyan text-white rounded-xl hover:bg-brand-cyan-hover transition-all font-bold flex items-center justify-center space-x-2 text-sm"
                   >
                     <Save className="w-4 h-4" />
                     <span>{t('common.save')}</span>
@@ -336,7 +336,7 @@ function UserDetail() {
                   <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
                     <LinkIcon className="w-5 h-5 text-indigo-600" />
                   </div>
-                  <h3 className="text-lg font-bold text-[#1a2b4b] dark:text-dark-text tracking-tight">Linked Clinical Profiles</h3>
+                  <h3 className="text-lg font-bold text-brand-navy dark:text-dark-text tracking-tight">Linked Clinical Profiles</h3>
                </div>
                <button
                  onClick={openLinkModal}
@@ -369,7 +369,7 @@ function UserDetail() {
                              {patient.name?.family?.[0] || 'P'}
                           </div>
                           <div>
-                            <p className="font-bold text-[#1a2b4b] dark:text-dark-text">{patient.name?.given?.join(' ')} {patient.name?.family}</p>
+                            <p className="font-bold text-brand-navy dark:text-dark-text">{patient.name?.given?.join(' ')} {patient.name?.family}</p>
                             <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">MRN: {patient.mrn || 'N/A'}</p>
                           </div>
                         </div>
@@ -410,7 +410,7 @@ function UserDetail() {
                              <Stethoscope className="w-6 h-6" />
                           </div>
                           <div>
-                            <p className="font-bold text-[#1a2b4b] dark:text-dark-text">Dr. {doctor.name}</p>
+                            <p className="font-bold text-brand-navy dark:text-dark-text">Dr. {doctor.name}</p>
                             <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">{doctor.specialty || 'General Practitioner'}</p>
                           </div>
                         </div>
@@ -458,7 +458,7 @@ function UserDetail() {
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50 shrink-0">
               <div>
-                <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text">{t('admin.link_new_record')}</h2>
+                <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text">{t('admin.link_new_record')}</h2>
                 <p className="text-sm text-gray-500 dark:text-dark-muted">{t('admin.link_new_record_help', { email: user.email })}</p>
               </div>
               <button onClick={() => setIsLinkModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors text-gray-400">
@@ -502,7 +502,7 @@ function UserDetail() {
                         {p.name?.family?.[0] || 'P'}
                       </div>
                       <div>
-                        <p className="font-bold text-[#1a2b4b] dark:text-dark-text">{p.name?.given?.join(' ')} {p.name?.family}</p>
+                        <p className="font-bold text-brand-navy dark:text-dark-text">{p.name?.given?.join(' ')} {p.name?.family}</p>
                         <p className="text-xs text-gray-400">{p.gender} • {p.birth_date}</p>
                       </div>
                     </div>
@@ -523,7 +523,7 @@ function UserDetail() {
                         <Stethoscope className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="font-bold text-[#1a2b4b] dark:text-dark-text">Dr. {d.name}</p>
+                        <p className="font-bold text-brand-navy dark:text-dark-text">Dr. {d.name}</p>
                         <p className="text-xs text-gray-400">{d.specialty}</p>
                       </div>
                     </div>

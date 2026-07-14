@@ -124,7 +124,8 @@ export const AIAssistButton: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => { setIsOpen(false); setError(null); }}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full text-gray-400"
+              aria-label="Close AI assistant"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full text-gray-400"
             >
               <X className="w-3.5 h-3.5" />
             </button>

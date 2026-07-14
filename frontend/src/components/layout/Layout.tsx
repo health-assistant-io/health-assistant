@@ -96,7 +96,7 @@ function Layout() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
         <TenantSwitchBanner />
         <Header />
-        <main className={`flex-1 flex flex-col min-w-0 relative ${isAiPage ? 'bg-white dark:bg-dark-bg p-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden pt-1 sm:pt-2 md:pt-3 lg:pt-4 pb-4 sm:pb-6 md:pb-8 lg:pb-10 px-2 sm:px-4 md:px-6 lg:px-8'}`}>
+        <main className={`flex-1 flex flex-col min-w-0 relative ${isAiPage ? 'bg-white dark:bg-dark-bg p-0 overflow-hidden' : 'overflow-y-auto overflow-x-hidden pt-1 sm:pt-2 md:pt-3 lg:pt-4 pb-4 sm:pb-6 md:pb-8 lg:pb-10 px-2 sm:px-4 md:px-6 lg:px-8 safe-bottom'}`}>
           <div className="flex-1 flex flex-col min-h-0 relative w-full">
             <Outlet />
           </div>

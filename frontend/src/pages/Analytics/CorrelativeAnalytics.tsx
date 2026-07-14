@@ -468,7 +468,7 @@ const CorrelativeAnalytics: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <h2 className="text-3xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight">
+                  <h2 className="text-3xl font-black text-brand-navy dark:text-dark-text tracking-tight">
                     Correlative Visualizer
                   </h2>
                   <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase rounded border border-indigo-100 dark:border-indigo-800">
@@ -542,7 +542,7 @@ const CorrelativeAnalytics: React.FC = () => {
           {/* Intelligent Insights Footer */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
              {correlationScore !== null ? (
-               <div className="bg-gradient-to-br from-[#1a2b4b] to-[#2c3e50] rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-900/20 relative overflow-hidden group">
+               <div className="bg-gradient-to-br from-brand-navy to-[#2c3e50] rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-900/20 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity">
                     <TrendingUp className="w-48 h-48" />
                   </div>

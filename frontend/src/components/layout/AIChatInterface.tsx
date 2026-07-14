@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { CLINICAL_WORKFLOWS, ClinicalAction } from '../../config/clinicalWorkflows';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 import { ToolCallInfo, Message, TaskInfo } from '../../types/ai';
 import { CitationButton } from '../ai/CitationButton';
@@ -80,6 +81,7 @@ export const AIChatInterface: React.FC<Props> = ({
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [internalTab, setInternalTab] = useState<'chat' | 'insights' | 'actions'>('chat');
   
   const activeTab = externalTab || internalTab;
@@ -708,8 +710,8 @@ export const AIChatInterface: React.FC<Props> = ({
              </div>
           </div>
 
-          {/* Tabs Row (Only for Drawer Mode or Mobile Full Screen) */}
-          {(typeof window !== 'undefined' && window.innerWidth < 640) && (
+           {/* Tabs Row (Only for Drawer Mode or Mobile Full Screen) */}
+           {isMobile && (
             <div className={`flex border-b border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/50 px-2 shrink-0 ${isFullScreen ? 'sm:hidden' : ''}`}>
               {tabs.map(tab => (
                 <button

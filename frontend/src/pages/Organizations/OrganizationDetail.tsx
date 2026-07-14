@@ -137,7 +137,7 @@ function OrganizationDetail() {
               </div>
               
               <div className="text-center space-y-2 mb-8">
-                <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text">{organization.name}</h2>
+                <h2 className="text-2xl font-black text-brand-navy dark:text-dark-text">{organization.name}</h2>
                 <p className="text-sm font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
                   {organization.type?.[0]?.coding?.[0]?.display || 'Medical Facility'}
                 </p>
@@ -233,7 +233,7 @@ function OrganizationDetail() {
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
                   <Activity className="w-5 h-5 text-indigo-600" />
                 </div>
-                <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text tracking-tight">{t('organizations.clinical_visits')}</h2>
+                <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text tracking-tight">{t('organizations.clinical_visits')}</h2>
               </div>
               <span className="px-4 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted text-xs font-black uppercase tracking-widest rounded-full">
                 {examinations.length} Visits
@@ -307,7 +307,7 @@ function OrganizationDetail() {
                 <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
                   <Building className="w-5 h-5 text-purple-600" />
                 </div>
-                <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text tracking-tight">{t('organizations.departments')}</h2>
+                <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text tracking-tight">{t('organizations.departments')}</h2>
               </div>
               <span className="px-4 py-1.5 bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted text-xs font-black uppercase tracking-widest rounded-full">
                 {organization.departments?.length || 0} Units

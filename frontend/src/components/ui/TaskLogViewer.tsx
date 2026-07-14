@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getExaminationLogs } from '../../services/examinationService';
 import { X, Terminal, Clock, AlertCircle, CheckCircle, Activity, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface TaskLog {
   id: string;
@@ -23,6 +24,8 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
   const [loading, setLoading] = useState(true);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useModalA11y(isOpen, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -65,7 +68,7 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0f172a] border border-slate-800 w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div role="dialog" aria-modal="true" className="bg-[#0f172a] border border-slate-800 w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center space-x-3">

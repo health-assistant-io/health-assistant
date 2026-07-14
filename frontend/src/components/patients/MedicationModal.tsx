@@ -1,12 +1,12 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
-import { 
+import {
   MedicationRecord,
-  addCustomMedication, 
+  addCustomMedication,
   addPatientMedication,
   updatePatientMedication
 } from '../../services/medicationService';
 import { MedicationForm, MedicationFormPayload } from './MedicationForm';
+import { Modal } from '../ui/Modal';
 
 interface Props {
   isOpen: boolean;
@@ -58,23 +58,14 @@ export const MedicationModal: React.FC<Props> = ({ isOpen, onClose, patientId, m
     onClose();
   };
 
-  return createPortal(
-    <div 
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[90vh]" 
-        onClick={e => e.stopPropagation()}
-      >
-        <MedicationForm
-          patientId={patientId}
-          medication={medication}
-          onSubmit={handleSubmit}
-          onCancel={onClose}
-        />
-      </div>
-    </div>,
-    document.body
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="" hideHeader footer={undefined} bodyClassName="p-0">
+      <MedicationForm
+        patientId={patientId}
+        medication={medication}
+        onSubmit={handleSubmit}
+        onCancel={onClose}
+      />
+    </Modal>
   );
 };

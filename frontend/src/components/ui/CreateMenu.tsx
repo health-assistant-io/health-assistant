@@ -236,7 +236,7 @@ const CreateMenu: React.FC<CreateMenuProps> = ({
   // ---------- Trigger button ----------
   const triggerBase =
     variant === 'primary'
-      ? 'bg-[#0088CC] hover:bg-[#0077B3] text-white shadow-md shadow-blue-100 dark:shadow-none'
+      ? 'bg-brand-cyan hover:bg-brand-cyan-hover text-white shadow-md shadow-blue-100 dark:shadow-none'
       : 'bg-gray-50 dark:bg-dark-bg hover:bg-gray-100 dark:hover:bg-dark-border text-gray-700 dark:text-dark-text';
 
   const triggerShape = collapsed

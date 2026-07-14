@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Wand2, Loader2 } from 'lucide-react';
 import { getAIAssistance } from '../../services/aiAssistanceService';
 import { AIBadge } from './AIBadge';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface Props {
   isOpen: boolean;
@@ -29,6 +30,8 @@ export const AIMagicFillModal: React.FC<Props> = ({
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useModalA11y(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -61,7 +64,7 @@ export const AIMagicFillModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+      <div role="dialog" aria-modal="true" className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
         {/* Header */}
         <div className="px-10 py-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-blue-50/50 dark:from-indigo-900/10 dark:to-blue-900/10">
           <div className="flex items-center space-x-4">
@@ -70,7 +73,7 @@ export const AIMagicFillModal: React.FC<Props> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-2xl font-black text-[#1a2b4b] dark:text-dark-text tracking-tight uppercase">{title}</h2>
+                <h2 className="text-2xl font-black text-brand-navy dark:text-dark-text tracking-tight uppercase">{title}</h2>
                 <AIBadge taskType={taskType} />
               </div>
               <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-[0.2em] mt-1">{subtitle}</p>

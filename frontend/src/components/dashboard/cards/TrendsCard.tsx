@@ -150,7 +150,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
                       e.stopPropagation(); 
                       setSelectedInfo({ info, name: displayBiomarkerName }); 
                     }}
-                    className="p-1 text-blue-400 hover:text-blue-600 transition-colors relative z-30"
+                    className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors relative z-30"
                   >
                     <Info className="w-3.5 h-3.5" />
                   </button>

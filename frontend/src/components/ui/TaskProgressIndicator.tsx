@@ -87,8 +87,9 @@ export function TaskProgressIndicator({
           {examinationId && (
             <button 
               onClick={() => setIsLogViewerOpen(true)}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-dark-bg rounded text-gray-400"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded text-gray-400"
               title="View technical logs"
+              aria-label="View technical logs"
             >
               <Terminal className="w-3 h-3" />
             </button>

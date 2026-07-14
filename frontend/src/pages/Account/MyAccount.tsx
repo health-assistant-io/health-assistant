@@ -99,7 +99,7 @@ function MyAccount() {
             </div>
 
             <div className="text-center space-y-1 mb-8">
-              <h2 className="text-xl font-bold text-[#1a2b4b] dark:text-dark-text break-all">{user.email}</h2>
+              <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text break-all">{user.email}</h2>
               <span className="inline-block px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-widest rounded-full">
                 {roleLabel}
               </span>
@@ -167,7 +167,7 @@ function MyAccount() {
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
                   <LinkIcon className="w-5 h-5 text-indigo-600" />
                 </div>
-                <h3 className="text-lg font-bold text-[#1a2b4b] dark:text-dark-text tracking-tight">
+                <h3 className="text-lg font-bold text-brand-navy dark:text-dark-text tracking-tight">
                   {t('account.linked_profiles', 'Your Linked Records')}
                 </h3>
               </div>
@@ -199,7 +199,7 @@ function MyAccount() {
                             {patient.name?.family?.[0] || patient.name?.text?.[0] || 'P'}
                           </div>
                           <div>
-                            <p className="font-bold text-[#1a2b4b] dark:text-dark-text">
+                            <p className="font-bold text-brand-navy dark:text-dark-text">
                               {patient.name?.given?.join(' ')} {patient.name?.family || patient.name?.text}
                             </p>
                             <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
@@ -239,7 +239,7 @@ function MyAccount() {
                             <Stethoscope className="w-6 h-6" />
                           </div>
                           <div>
-                            <p className="font-bold text-[#1a2b4b] dark:text-dark-text">Dr. {doctor.name}</p>
+                            <p className="font-bold text-brand-navy dark:text-dark-text">Dr. {doctor.name}</p>
                             <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
                               {doctor.specialty || t('account.general_practitioner', 'General Practitioner')}
                             </p>

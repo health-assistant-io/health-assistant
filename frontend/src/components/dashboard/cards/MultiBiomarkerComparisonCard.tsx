@@ -106,7 +106,7 @@ export const MultiBiomarkerComparisonCard = React.forwardRef((props: any, ref: a
             </div>
           }
         />
-        <button onClick={() => setSelectedInfo({ info: t('dashboard.cards.multi_biomarker_comparison_info', { defaultValue: 'Each biomarker is normalized to **% of its reference range** (0% = at minimum, 100% = at maximum). This lets you compare trends across biomarkers with different units.' }), name: t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' }) })} className="p-1 text-blue-400 hover:text-blue-600 transition-colors">
+                 <button onClick={() => setSelectedInfo({ info: t('dashboard.cards.multi_biomarker_comparison_info', { defaultValue: 'Each biomarker is normalized to **% of its reference range** (0% = at minimum, 100% = at maximum). This lets you compare trends across biomarkers with different units.' }), name: t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' }) })} className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors">
           <Info className="w-3.5 h-3.5" />
         </button>
       </div>

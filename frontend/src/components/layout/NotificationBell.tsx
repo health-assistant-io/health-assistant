@@ -125,8 +125,17 @@ export function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl z-[550] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gray-50/50 dark:bg-dark-bg/50">
+        <div className="fixed inset-0 z-[550] sm:absolute sm:right-0 sm:mt-3 sm:inset-auto sm:w-96 bg-white dark:bg-dark-surface sm:border border-gray-100 dark:sm:border-dark-border sm:rounded-xl shadow-xl overflow-hidden safe-top sm:safe-top-0 animate-in fade-in slide-in-from-bottom-4 sm:slide-in-from-top-2 duration-200 flex flex-col">
+           {/* Mobile close button */}
+           <button
+             onClick={() => setIsOpen(false)}
+             className="sm:hidden absolute top-4 right-4 z-10 p-2 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm text-gray-500 dark:text-gray-300"
+             aria-label="Close notifications"
+           >
+             <Bell className="w-5 h-5" />
+           </button>
+
+          <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gray-50/50 dark:bg-dark-bg/50 shrink-0">
             <h3 className="text-sm font-bold text-gray-700 dark:text-dark-text">
               {t('common.notifications')}
             </h3>
@@ -146,7 +155,7 @@ export function NotificationBell() {
             </div>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="flex-1 sm:max-h-[400px] overflow-y-auto">
             {inbox.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <Bell className="w-12 h-12 text-gray-200 dark:text-dark-border mx-auto mb-3" />
@@ -256,7 +265,7 @@ export function NotificationBell() {
             )}
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-50 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/50 flex items-center justify-between">
+          <div className="px-4 py-2 border-t border-gray-50 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/50 flex items-center justify-between safe-bottom shrink-0">
             <a
               href="/notifications"
               onClick={(e) => {

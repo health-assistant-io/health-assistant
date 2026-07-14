@@ -164,9 +164,9 @@ export const FacetChip = <T,>({
         </Popover>
       </div>
 
-      {/* Active value pills (desktop) */}
+      {/* Active value pills */}
       {showActivePills && selected.length > 0 && (
-        <div className="hidden lg:flex flex-wrap items-center gap-2 overflow-hidden max-w-[400px]">
+        <div className="flex flex-wrap items-center gap-2 overflow-hidden max-w-[400px]">
           {selected.map((sel) => {
             const opt = options.find((o) => o.value === sel);
             if (!opt) return null;
@@ -180,7 +180,7 @@ export const FacetChip = <T,>({
                 <button
                   type="button"
                   onClick={() => onToggleOption(sel)}
-                  className="hover:bg-blue-100 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                  className="hover:bg-blue-100 dark:hover:bg-blue-800 rounded-full p-1 transition-colors"
                   aria-label={`Remove ${opt.label}`}
                 >
                   <X className="w-3 h-3" />
