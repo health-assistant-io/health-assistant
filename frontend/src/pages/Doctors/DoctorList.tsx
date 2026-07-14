@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, User, Mail, Phone, ShieldCheck, Trash2, Edit2, X, Save, Stethoscope, Building, Globe, Hash, Info, PlusCircle } from 'lucide-react';
+import { Plus, User, Mail, Phone, ShieldCheck, Trash2, Edit2, X, Stethoscope, Building, Globe, Hash, Info, PlusCircle } from 'lucide-react';
 import { listDoctors, createDoctor, updateDoctor, deleteDoctor, Doctor, ContactPoint } from '../../services/doctorService';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
+import { FormModal } from '../../components/ui/FormModal';
 
 function DoctorList() {
   const { t } = useTranslation();
@@ -158,8 +159,7 @@ function DoctorList() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     try {
       // Practitioner.address is FHIR 0..* — send the single edited address as a list.
       const payload = { ...formData, address: [formData.address] };
@@ -295,243 +295,223 @@ function DoctorList() {
       )}
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-dark-surface rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-surface/50">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-blue-600" />
-                </div>
-                <h2 className="text-xl font-bold">{editingDoctor ? t('doctors.edit_doctor') : t('doctors.add_new_doctor')}</h2>
-              </div>
-              <button onClick={handleCloseModal} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+      <FormModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        title={editingDoctor ? t('doctors.edit_doctor') : t('doctors.add_new_doctor')}
+        icon={
+          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+            <User className="w-5 h-5 text-blue-600" />
+          </div>
+        }
+        onSubmit={handleSubmit}
+        submitDisabled={!formData.name.trim()}
+        submitLabel={editingDoctor ? t('doctors.update_doctor') : t('doctors.save_doctor')}
+        cancelLabel={t('common.cancel')}
+        size="md"
+        bodyClassName="p-6 space-y-8"
+      >
+        {/* Basic Info */}
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
+             <Info className="w-4 h-4" />
+             <span>{t('patients.personal_info')}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.full_name')} *</label>
+              <input
+                type="text"
+                required
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Sarah Wilson"
+              />
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              {/* Basic Info */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
-                   <Info className="w-4 h-4" />
-                   <span>{t('patients.personal_info')}</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.full_name')} *</label>
-                    <input
-                      type="text"
-                      required
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g. Sarah Wilson"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.specialty')}</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.specialty}
-                      onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                      placeholder="e.g. Cardiology"
-                    />
-                  </div>
-                </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.specialty')}</label>
+              <input
+                type="text"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.specialty}
+                onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                placeholder="e.g. Cardiology"
+              />
+            </div>
+          </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.license_number')}</label>
-                    <div className="relative">
-                      <ShieldCheck className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                        value={formData.license_number}
-                        onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                        placeholder="Medical License ID"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.email')} (Primary)</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <input
-                        type="email"
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="doctor@example.com"
-                      />
-                    </div>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.license_number')}</label>
+              <div className="relative">
+                <ShieldCheck className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  value={formData.license_number}
+                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+                  placeholder="Medical License ID"
+                />
               </div>
-
-              {/* Office Details */}
-              <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-dark-border">
-                <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
-                   <Building className="w-4 h-4" />
-                   <span>Office Details</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.office_number')}</label>
-                    <div className="relative">
-                      <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                        value={formData.office_number}
-                        onChange={(e) => setFormData({ ...formData, office_number: e.target.value })}
-                        placeholder="Room 302"
-                      />
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.office_details')}</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.office_details}
-                      onChange={(e) => setFormData({ ...formData, office_details: e.target.value })}
-                      placeholder={t('doctors.office_details_placeholder')}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted">{t('doctors.address')}</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text mb-2"
-                    value={formData.address.line[0] || ''}
-                    onChange={(e) => handleUpdateAddress('line', e.target.value)}
-                    placeholder={t('doctors.street')}
-                  />
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input
-                      type="text"
-                      className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
-                      value={formData.address.city}
-                      onChange={(e) => handleUpdateAddress('city', e.target.value)}
-                      placeholder={t('doctors.city')}
-                    />
-                    <input
-                      type="text"
-                      className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
-                      value={formData.address.state}
-                      onChange={(e) => handleUpdateAddress('state', e.target.value)}
-                      placeholder={t('doctors.state')}
-                    />
-                    <input
-                      type="text"
-                      className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
-                      value={formData.address.postalCode}
-                      onChange={(e) => handleUpdateAddress('postalCode', e.target.value)}
-                      placeholder={t('doctors.postal_code')}
-                    />
-                    <input
-                      type="text"
-                      className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
-                      value={formData.address.country}
-                      onChange={(e) => handleUpdateAddress('country', e.target.value)}
-                      placeholder={t('doctors.country')}
-                    />
-                  </div>
-                </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.email')} (Primary)</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <input
+                  type="email"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="doctor@example.com"
+                />
               </div>
-
-              {/* Additional Contact Methods (Telecom) */}
-              <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-dark-border">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
-                     <Globe className="w-4 h-4" />
-                     <span>{t('doctors.telecom')}</span>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={handleAddTelecom}
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center space-x-1"
-                  >
-                    <PlusCircle className="w-3 h-3" />
-                    <span>{t('doctors.add_phone')}</span>
-                  </button>
-                </div>
-
-                {formData.telecom.length === 0 && (
-                  <p className="text-sm text-gray-500 italic px-4 py-3 bg-gray-50 dark:bg-dark-bg/30 rounded-xl text-center border border-dashed border-gray-200 dark:border-dark-border">
-                    No additional contact methods added.
-                  </p>
-                )}
-
-                <div className="space-y-3">
-                  {formData.telecom.map((item, index) => (
-                    <div key={index} className="flex items-center space-x-2 animate-in slide-in-from-left-2 duration-200">
-                      <select
-                        className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        value={item.system}
-                        onChange={(e) => handleUpdateTelecom(index, 'system', e.target.value)}
-                      >
-                        <option value="phone">Phone</option>
-                        <option value="email">Email</option>
-                        <option value="fax">Fax</option>
-                        <option value="sms">SMS</option>
-                        <option value="other">Other</option>
-                      </select>
-                      <select
-                        className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        value={item.use}
-                        onChange={(e) => handleUpdateTelecom(index, 'use', e.target.value)}
-                      >
-                        <option value="work">{t('doctors.work')}</option>
-                        <option value="mobile">{t('doctors.mobile')}</option>
-                        <option value="home">{t('doctors.home')}</option>
-                        <option value="other">{t('doctors.other')}</option>
-                      </select>
-                      <input
-                        type="text"
-                        required
-                        className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                        value={item.value}
-                        onChange={(e) => handleUpdateTelecom(index, 'value', e.target.value)}
-                        placeholder="Value..."
-                      />
-                      <button 
-                        type="button"
-                        onClick={() => handleRemoveTelecom(index)}
-                        className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-gray-100 dark:border-dark-border flex space-x-3">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-6 py-3 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-colors font-bold text-gray-700 dark:text-dark-muted"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{editingDoctor ? t('doctors.update_doctor') : t('doctors.save_doctor')}</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
-      )}
+
+        {/* Office Details */}
+        <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-dark-border">
+          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
+             <Building className="w-4 h-4" />
+             <span>Office Details</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.office_number')}</label>
+              <div className="relative">
+                <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  value={formData.office_number}
+                  onChange={(e) => setFormData({ ...formData, office_number: e.target.value })}
+                  placeholder="Room 302"
+                />
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.office_details')}</label>
+              <input
+                type="text"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.office_details}
+                onChange={(e) => setFormData({ ...formData, office_details: e.target.value })}
+                placeholder={t('doctors.office_details_placeholder')}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted">{t('doctors.address')}</label>
+            <input
+              type="text"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text mb-2"
+              value={formData.address.line[0] || ''}
+              onChange={(e) => handleUpdateAddress('line', e.target.value)}
+              placeholder={t('doctors.street')}
+            />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <input
+                type="text"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                value={formData.address.city}
+                onChange={(e) => handleUpdateAddress('city', e.target.value)}
+                placeholder={t('doctors.city')}
+              />
+              <input
+                type="text"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                value={formData.address.state}
+                onChange={(e) => handleUpdateAddress('state', e.target.value)}
+                placeholder={t('doctors.state')}
+              />
+              <input
+                type="text"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                value={formData.address.postalCode}
+                onChange={(e) => handleUpdateAddress('postalCode', e.target.value)}
+                placeholder={t('doctors.postal_code')}
+              />
+              <input
+                type="text"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                value={formData.address.country}
+                onChange={(e) => handleUpdateAddress('country', e.target.value)}
+                placeholder={t('doctors.country')}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Contact Methods (Telecom) */}
+        <div className="space-y-4 pt-6 border-t border-gray-100 dark:border-dark-border">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm uppercase tracking-wider">
+               <Globe className="w-4 h-4" />
+               <span>{t('doctors.telecom')}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddTelecom}
+              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center space-x-1"
+            >
+              <PlusCircle className="w-3 h-3" />
+              <span>{t('doctors.add_phone')}</span>
+            </button>
+          </div>
+
+          {formData.telecom.length === 0 && (
+            <p className="text-sm text-gray-500 italic px-4 py-3 bg-gray-50 dark:bg-dark-bg/30 rounded-xl text-center border border-dashed border-gray-200 dark:border-dark-border">
+              No additional contact methods added.
+            </p>
+          )}
+
+          <div className="space-y-3">
+            {formData.telecom.map((item, index) => (
+              <div key={index} className="flex items-center space-x-2 animate-in slide-in-from-left-2 duration-200">
+                <select
+                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={item.system}
+                  onChange={(e) => handleUpdateTelecom(index, 'system', e.target.value)}
+                >
+                  <option value="phone">Phone</option>
+                  <option value="email">Email</option>
+                  <option value="fax">Fax</option>
+                  <option value="sms">SMS</option>
+                  <option value="other">Other</option>
+                </select>
+                <select
+                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={item.use}
+                  onChange={(e) => handleUpdateTelecom(index, 'use', e.target.value)}
+                >
+                  <option value="work">{t('doctors.work')}</option>
+                  <option value="mobile">{t('doctors.mobile')}</option>
+                  <option value="home">{t('doctors.home')}</option>
+                  <option value="other">{t('doctors.other')}</option>
+                </select>
+                <input
+                  type="text"
+                  required
+                  className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  value={item.value}
+                  onChange={(e) => handleUpdateTelecom(index, 'value', e.target.value)}
+                  placeholder="Value..."
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTelecom(index)}
+                  className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </FormModal>
     </div>
   );
 }

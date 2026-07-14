@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Building2, Mail, Phone, MapPin, Trash2, Edit2, X, Save, Building } from 'lucide-react';
+import { Plus, Building2, Mail, Phone, MapPin, Trash2, Edit2, Building } from 'lucide-react';
 import { listOrganizations, createOrganization, updateOrganization, deleteOrganization } from '../../services/organizationService';
 import { listDoctors } from '../../services/doctorService';
 import { Organization, Doctor } from '../../types/clinical';
@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
+import { FormModal } from '../../components/ui/FormModal';
 
 const ORGANIZATION_TYPES = [
   { value: 'prov', label: 'organizations.hospital' },
@@ -116,9 +117,7 @@ function OrganizationList() {
     setEditingOrganization(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSubmit = async () => {
     // Construct FHIR-like objects for the API
     const payload = {
       name: formData.name,
@@ -284,146 +283,131 @@ function OrganizationList() {
       )}
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-          <div className="bg-white dark:bg-dark-surface rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-bold">{editingOrganization ? t('organizations.edit_organization') : t('organizations.add_new_organization')}</h2>
-              <button onClick={handleCloseModal} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto no-scrollbar">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.name')} *</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Central City Hospital"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.type')}</label>
-                  <select
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  >
-                    {ORGANIZATION_TYPES.map(ot => (
-                      <option key={ot.value} value={ot.value}>{t(ot.label)}</option>
-                    ))}
-                  </select>
-                </div>
+      <FormModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        title={editingOrganization ? t('organizations.edit_organization') : t('organizations.add_new_organization')}
+        icon={
+          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+            <Building2 className="w-5 h-5 text-blue-600" />
+          </div>
+        }
+        onSubmit={handleSubmit}
+        submitDisabled={!formData.name.trim()}
+        submitLabel={editingOrganization ? t('organizations.update_organization') : t('organizations.save_organization')}
+        cancelLabel={t('common.cancel')}
+        size="md"
+        bodyClassName="p-6 space-y-6"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.name')} *</label>
+            <input
+              type="text"
+              required
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Central City Hospital"
+            />
+          </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.email')}</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="contact@facility.com"
-                  />
-                </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.type')}</label>
+            <select
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+            >
+              {ORGANIZATION_TYPES.map(ot => (
+                <option key={ot.value} value={ot.value}>{t(ot.label)}</option>
+              ))}
+            </select>
+          </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.phone')}</label>
-                  <input
-                    type="tel"
-                    className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+1 (555) 000-0000"
-                  />
-                </div>
-              </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.email')}</label>
+            <input
+              type="email"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="contact@facility.com"
+            />
+          </div>
 
-              <div className="space-y-4 pt-4 border-t border-gray-50 dark:border-dark-border">
-                <h3 className="font-bold text-gray-900 dark:text-dark-text">{t('organizations.address')}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.street')}</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.address.line}
-                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, line: e.target.value } })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.city')}</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.address.city}
-                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.state')}</label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
-                      value={formData.address.state}
-                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-4 border-t border-gray-50 dark:border-dark-border">
-                <h3 className="font-bold text-gray-900 dark:text-dark-text">{t('organizations.link_doctors')}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2">
-                  {doctors.map(doctor => (
-                    <div 
-                      key={doctor.id}
-                      onClick={() => toggleDoctorSelection(doctor.id)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center space-x-3 ${
-                        formData.doctor_ids.includes(doctor.id)
-                          ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-800'
-                          : 'bg-gray-50 border-gray-200 dark:bg-dark-bg dark:border-dark-border'
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                        formData.doctor_ids.includes(doctor.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
-                      }`}>
-                        {formData.doctor_ids.includes(doctor.id) && <Plus className="w-3 h-3 text-white" />}
-                      </div>
-                      <div className="truncate">
-                        <p className="text-sm font-bold truncate">Dr. {doctor.name}</p>
-                        <p className="text-[10px] text-gray-500 truncate">{doctor.specialty}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 flex space-x-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-colors font-bold text-gray-700 dark:text-dark-muted"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{editingOrganization ? t('organizations.update_organization') : t('organizations.save_organization')}</span>
-                </button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.phone')}</label>
+            <input
+              type="tel"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              placeholder="+1 (555) 000-0000"
+            />
           </div>
         </div>
-      )}
+
+        <div className="space-y-4 pt-4 border-t border-gray-50 dark:border-dark-border">
+          <h3 className="font-bold text-gray-900 dark:text-dark-text">{t('organizations.address')}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.street')}</label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.address.line}
+                onChange={(e) => setFormData({ ...formData, address: { ...formData.address, line: e.target.value } })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.city')}</label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.address.city}
+                onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.state')}</label>
+              <input
+                type="text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                value={formData.address.state}
+                onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 pt-4 border-t border-gray-50 dark:border-dark-border">
+          <h3 className="font-bold text-gray-900 dark:text-dark-text">{t('organizations.link_doctors')}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2">
+            {doctors.map(doctor => (
+              <div
+                key={doctor.id}
+                onClick={() => toggleDoctorSelection(doctor.id)}
+                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center space-x-3 ${
+                  formData.doctor_ids.includes(doctor.id)
+                    ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-800'
+                    : 'bg-gray-50 border-gray-200 dark:bg-dark-bg dark:border-dark-border'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                  formData.doctor_ids.includes(doctor.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                }`}>
+                  {formData.doctor_ids.includes(doctor.id) && <Plus className="w-3 h-3 text-white" />}
+                </div>
+                <div className="truncate">
+                  <p className="text-sm font-bold truncate">Dr. {doctor.name}</p>
+                  <p className="text-[10px] text-gray-500 truncate">{doctor.specialty}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </FormModal>
     </div>
   );
 }

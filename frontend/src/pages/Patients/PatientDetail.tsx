@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getPatient, updatePatient, deletePatient } from '../../services/patientService';
 import { Patient } from '../../types/patient';
-import { Edit2, Trash2, Fingerprint, X, Save, User } from 'lucide-react';
+import { Edit2, Trash2, Fingerprint, User } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { AllergySummary } from '../../components/patients/AllergySummary';
@@ -16,6 +16,7 @@ import { formatAge } from '../../utils/dateUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { DatePicker } from '../../components/ui/DatePicker';
+import { FormModal } from '../../components/ui/FormModal';
 
 function PatientDetail() {
   const { t } = useTranslation();
@@ -76,8 +77,7 @@ function PatientDetail() {
     setIsModalOpen(true);
   };
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditSubmit = async () => {
     setSubmitting(true);
     setError(null);
 
@@ -232,116 +232,93 @@ function PatientDetail() {
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-dark-surface rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-white dark:bg-dark-surface sticky top-0 z-10">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text">
-                {t('patients.update_profile_title')}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl flex items-start space-x-2">
-                  <Fingerprint className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
+      <FormModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={t('patients.update_profile_title')}
+        icon={
+          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+            <User className="w-5 h-5 text-blue-600" />
+          </div>
+        }
+        onSubmit={handleEditSubmit}
+        submitting={submitting}
+        submitDisabled={!formData.firstName.trim() || !formData.lastName.trim()}
+        submitLabel={t('common.save')}
+        cancelLabel={t('common.cancel')}
+        size="sm"
+        bodyClassName="p-6 space-y-4"
+      >
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl flex items-start space-x-2">
+            <Fingerprint className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.first_name')} *</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.last_name')} *</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.dob')}</label>
-                <DatePicker
-                  value={formData.birthDate}
-                  onChange={(date) => setFormData({ ...formData, birthDate: date })}
-                  placeholder={t('patients.dob_placeholder', 'Select Date of Birth')}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.gender')} *</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['male', 'female', 'other', 'unknown'].map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, gender: g as any })}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                        formData.gender?.toLowerCase() === g 
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
-                          : 'bg-white dark:bg-dark-bg border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-50'
-                      }`}
-                    >
-                      {g.charAt(0).toUpperCase() + g.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.mrn')}</label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-                  value={formData.mrn}
-                  onChange={(e) => setFormData({ ...formData, mrn: e.target.value })}
-                  placeholder="e.g. PAT-123456"
-                />
-              </div>
-
-              <div className="pt-6 flex space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-colors font-bold text-gray-700 dark:text-dark-muted"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-lg shadow-emerald-200 dark:shadow-none disabled:opacity-50 active:scale-95"
-                >
-                  {submitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>{t('common.save')}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.first_name')} *</label>
+            <input
+              type="text"
+              required
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
+              value={formData.firstName}
+              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.last_name')} *</label>
+            <input
+              type="text"
+              required
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
+              value={formData.lastName}
+              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+            />
           </div>
         </div>
-      )}
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.dob')}</label>
+          <DatePicker
+            value={formData.birthDate}
+            onChange={(date) => setFormData({ ...formData, birthDate: date })}
+            placeholder={t('patients.dob_placeholder', 'Select Date of Birth')}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.gender')} *</label>
+          <div className="grid grid-cols-2 gap-2">
+            {['male', 'female', 'other', 'unknown'].map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setFormData({ ...formData, gender: g as any })}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                  formData.gender?.toLowerCase() === g
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                    : 'bg-white dark:bg-dark-bg border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-50'
+                }`}
+              >
+                {g.charAt(0).toUpperCase() + g.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.mrn')}</label>
+          <input
+            type="text"
+            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
+            value={formData.mrn}
+            onChange={(e) => setFormData({ ...formData, mrn: e.target.value })}
+            placeholder="e.g. PAT-123456"
+          />
+        </div>
+      </FormModal>
     </div>
   );
 }

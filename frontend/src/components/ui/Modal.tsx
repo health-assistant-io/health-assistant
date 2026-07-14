@@ -164,17 +164,6 @@ export const Modal: React.FC<ModalProps> = ({
             </div>
           )}
 
-          {/* Floating close when no header */}
-          {hideHeader && (
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="absolute top-4 right-4 z-10 p-2.5 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm text-gray-500 dark:text-gray-300 hover:bg-black/10 dark:hover:bg-white/20 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-
           {/* Scrollable body */}
           <div className={`overflow-y-auto custom-scrollbar flex-1 ${bodyClassName}`}>
             {children}
