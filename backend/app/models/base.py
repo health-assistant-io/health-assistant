@@ -61,7 +61,12 @@ class VersionedMixin:
 
 
 class UUIDMixin:
-    id = Column(UUID(as_uuid=True), primary_key=True, default=text("gen_random_uuid()"))
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=text("gen_random_uuid()"),
+        server_default=text("gen_random_uuid()"),
+    )
 
 
 class SoftDeleteMixin:

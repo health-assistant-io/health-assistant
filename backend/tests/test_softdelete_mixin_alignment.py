@@ -154,18 +154,15 @@ async def test_crud_delete_sets_deleted_at(module_name, class_name):
 
 
 def test_initial_schema_has_deleted_at_on_nine_tables():
-    """The squashed initial migration must create deleted_at on all nine
+    """The consolidated baseline must create deleted_at on all nine
     SoftDeleteMixin tables (previously a separate alignment migration)."""
+    import glob
     from pathlib import Path
 
-    migration_path = (
-        Path(__file__).resolve().parents[1]
-        / "alembic"
-        / "versions"
-        / "0001_initial_schema.py"
-    )
-    assert migration_path.exists(), "squashed initial migration missing"
-    src = migration_path.read_text()
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    files = [p for p in glob.glob(str(versions_dir / "*.py")) if not p.endswith("__init__.py")]
+    assert len(files) == 1, f"expected a single baseline migration, found {files}"
+    src = Path(files[0]).read_text()
 
     expected = {
         "fhir_patients",
@@ -180,26 +177,23 @@ def test_initial_schema_has_deleted_at_on_nine_tables():
     }
     for table in expected:
         assert f"'deleted_at'" in src, (
-            f"deleted_at column missing from initial schema (table {table})"
+            f"deleted_at column missing from consolidated baseline (table {table})"
         )
 
 
 def test_initial_schema_loads_cleanly():
-    """The squashed initial migration imports without errors."""
+    """The consolidated baseline migration imports without errors and is the root."""
+    import glob
     import importlib.util
     from pathlib import Path
 
-    migration_path = (
-        Path(__file__).resolve().parents[1]
-        / "alembic"
-        / "versions"
-        / "0001_initial_schema.py"
-    )
-    spec = importlib.util.spec_from_file_location("initial_schema", migration_path)
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    files = [p for p in glob.glob(str(versions_dir / "*.py")) if not p.endswith("__init__.py")]
+    assert len(files) == 1, f"expected a single baseline migration, found {files}"
+    spec = importlib.util.spec_from_file_location("consolidated_baseline", files[0])
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert mod.revision == "0001"
-    assert mod.down_revision is None
+    assert mod.down_revision is None, "consolidated baseline must be the root"
     assert callable(mod.upgrade)
     assert callable(mod.downgrade)
 

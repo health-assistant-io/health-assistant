@@ -184,30 +184,28 @@ unified **Catalogs workspace** (`CatalogWorkspace`) at `/catalogs?type=concept`:
 
 ## Migrations
 
-- `1a3dd1256035` — creates `concepts` + `concept_edges` + the 6 concept
-  enums.
-- `2b4ee2367046` — consolidates the old category tables into `concepts`
-  (adds `class_concept_id` / `specialty_concept_id` / `category_concept_id`
-  FKs to entity tables; greenfield, no data migration).
-- `9a3f7c2e1b4d` — the multi-kind refactor: moves `kind` from a column to
-  the `concept_kind_tags` join table, adds `primary_kind`, swaps the unique
-  index to `(slug, tenant)`. Pure schema change — deduplication of legacy
-  same-name concepts lives in the seed data (single source of truth).
-- `e1f2a3b4c5d6` — standardizes every classification FK into `concepts.id` on
-  the `<role>_concept_id` naming convention. Renames `examinations.category_id`
-  and `clinical_event_types.category_id` to `category_concept_id` (column +
-  FK constraint + index, data-preserving `ALTER TABLE RENAME`); reconciles the
-  `documents.category_concept_id` model/DB drift (column existed since
-  `2b4ee2367046` but the ORM didn't declare it — now declared, index added);
-  backfills the missing indexes on the rest of the concept-FK family
-  (`anatomy_structures` / `biomarker_definitions.class_concept_id`,
-  `doctors.specialty_concept_id`, `concepts.parent_id`).
-- `g8b9c0d1e2f3` — re-backfills the `scope` column on `concepts` rows.
-- `h9c0d1e2f3a4` — unifies `anatomy_relations` into `concept_edges`
-  (`src_type='anatomy'`, `dst_type='anatomy'`); drops the `anatomy_relations`
-  table and its enum. Adds the 6 anatomy relation types (`BRANCH_OF`,
-  `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`,
-  `CONTINUOUS_WITH`) to `ConceptRelationType`.
+The taxonomy schema is part of the single consolidated baseline
+(``alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py``), which supersedes
+the historical incremental chain. The net schema it establishes:
+
+- ``concepts`` + ``concept_edges`` + the concept enums.
+- The old scattered category tables consolidated into ``concepts``; entity
+  tables carry ``class_concept_id`` / ``specialty_concept_id`` /
+  ``category_concept_id`` FKs.
+- The multi-kind model: ``kind`` lives on the ``concept_kind_tags`` join table
+  with a ``primary_kind`` on ``concepts``; the slug unique index is
+  per-tenant ``(slug, COALESCE(tenant_id, <sentinel>))``.
+- Every classification FK standardized into ``concepts.id`` on the
+  ``<role>_concept_id`` naming convention
+  (``examinations.category_concept_id``, ``clinical_event_types.category_concept_id``,
+  ``documents.category_concept_id``, ``anatomy_structures`` /
+  ``biomarker_definitions.class_concept_id``, ``doctors.specialty_concept_id``,
+  ``concepts.parent_id``).
+- ``anatomy_relations`` unified into ``concept_edges``
+  (``src_type='anatomy'``, ``dst_type='anatomy'``); the ``anatomy_relations``
+  table is gone, and the 6 anatomy relation types (``BRANCH_OF``,
+  ``DRAINS_INTO``, ``ARTICULATES_WITH``, ``INNERVATED_BY``, ``SUPPLIED_BY``,
+  ``CONTINUOUS_WITH``) are part of ``ConceptRelationType``.
 
 ## Naming convention
 

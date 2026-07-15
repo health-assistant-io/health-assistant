@@ -1,150 +1,65 @@
-"""Tests for the squashed initial schema migration (0001).
+"""Tests for the single consolidated schema baseline.
 
-Verifies the single consolidated migration:
-- Creates the expected table set.
-- Seeds examination categories with deterministic UUIDs.
-- Creates all PG enum types idempotently.
+Verifies the one squashed migration that supersedes the historical chain:
+- Is the sole migration (single head, base root).
+- Creates the full expected table set (derived from the ORM metadata so it
+  cannot drift).
+- Installs the required extensions.
+- Leaves the post-consolidation invariants: unified concept tables present,
+  the legacy scattered category tables gone.
 - Round-trips cleanly (upgrade -> downgrade -> upgrade).
 """
+import glob
 import importlib.util
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 
+import app.models  # noqa: F401  (registers every model on Base.metadata)
 from app.core.config import settings
+from app.models.base import Base
+
+VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 
 
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "alembic"
-    / "versions"
-    / "0001_initial_schema.py"
-)
+def _migration_files():
+    return sorted(
+        p for p in glob.glob(str(VERSIONS_DIR / "*.py")) if not p.endswith("__init__.py")
+    )
 
 
 def _load_migration_module():
-    spec = importlib.util.spec_from_file_location("initial_schema", MIGRATION_PATH)
+    files = _migration_files()
+    assert len(files) == 1, f"expected a single baseline migration, found {files}"
+    path = Path(files[0])
+    spec = importlib.util.spec_from_file_location("consolidated_baseline", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod
+    return mod, path
 
 
-def test_migration_file_exists():
-    assert MIGRATION_PATH.exists(), "squashed initial migration missing"
+def test_there_is_exactly_one_migration_file():
+    files = _migration_files()
+    assert len(files) == 1, (
+        f"the chain should be squashed to a single migration; found {files}"
+    )
 
 
 def test_revision_identifiers():
-    mod = _load_migration_module()
-    assert mod.revision == "0001"
+    mod, _ = _load_migration_module()
     assert mod.down_revision is None, (
-        "squashed initial must be the base (down_revision=None)"
+        "the consolidated baseline must be the root (down_revision=None)"
     )
 
 
-def test_enum_types_defined():
-    """Every PG enum used by the models must appear in ENUM_TYPES."""
-    mod = _load_migration_module()
-    names = {name for name, _ in mod.ENUM_TYPES}
-    expected = {
-        "aiscope",
-        "allergycategory",
-        "allergyclinicalstatus",
-        "allergycriticality",
-        "clinicaleventstatus",
-        "codingsystem",
-        "exportscope",
-        "exporttype",
-        "gender",
-        "integrationstatus",
-        "jobstatus",
-        "medicationintent",
-        "medicationstatus",
-        "notificationchannel",
-        "notificationstatus",
-        "notificationtype",
-        "organizationtype",
-        "quantitytype",
-        "role",
-        "triggertype",
-    }
-    missing = expected - names
-    assert not missing, f"ENUM_TYPES missing: {missing}"
-
-
-def test_medicatonstatus_enum_values_match_python():
-    """The medicationstatus PG enum must carry every Python MedicationStatus
-    value (the audit's D1 fix, now baked into the squashed schema)."""
-    from app.models.enums import MedicationStatus
-
-    mod = _load_migration_module()
-    meds_entry = next(v for name, v in mod.ENUM_TYPES if name == "medicationstatus")
-    # Values appear quoted inside the parenthesised list.
-    pg_values = {v.strip().strip("'") for v in meds_entry.strip("()").split(",")}
-    python_values = {v.value for v in MedicationStatus}
-    assert pg_values == python_values, (
-        f"PG medicationstatus {pg_values} != Python {python_values}"
-    )
-
-
-@pytest.mark.parametrize(
-    "table",
-    [
-        "users",
-        "tenants",
-        "fhir_patients",
-        "fhir_observations",
-        "fhir_medications",
-        "fhir_allergy_intolerances",
-        "fhir_diagnostic_reports",
-        "fhir_organizations",
-        "fhir_provenance",
-        "fhir_devices",
-        "fhir_communications",
-        "documents",
-        "examinations",
-        "clinical_events",
-        "clinical_event_types",
-        "medication_catalog",
-        "allergy_catalog",
-        "biomarker_definitions",
-        "biomarker_relationships",
-        "biomarker_event_correlations",
-        "telemetry_data",
-        "notifications",
-        "notification_triggers",
-        "notification_subscriptions",
-        "notification_recipients",
-        "notification_deliveries",
-        "notification_rules",
-        "audit_logs",
-        "task_logs",
-        "chat_sessions",
-        "chat_messages",
-        "user_integrations",
-        "system_integrations",
-        "system_settings",
-        "ai_providers",
-        "ai_models",
-        "ai_task_assignments",
-        "export_jobs",
-        "import_jobs",
-        "patient_layouts",
-        "doctors",
-        "body_parts",
-        "units",
-        "laboratories",
-        "event_examination_links",
-        "event_observation_links",
-        "examination_doctors",
-        "organization_doctors",
-    ],
-)
-def test_table_exists_in_migration(table):
-    """The squashed migration must define every expected table."""
-    src = MIGRATION_PATH.read_text()
+@pytest.mark.parametrize("table", sorted(Base.metadata.tables))
+def test_every_model_table_is_created_by_the_baseline(table):
+    """The baseline must define every table registered on the ORM metadata."""
+    mod, path = _load_migration_module()
+    src = path.read_text()
     assert f"op.create_table('{table}'" in src, (
-        f"Table '{table}' is missing from the squashed initial migration"
+        f"Table '{table}' is missing from the consolidated baseline"
     )
 
 
@@ -154,7 +69,7 @@ def test_concept_tables_exist():
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            for table in ("concepts", "concept_edges"):
+            for table in ("concepts", "concept_edges", "concept_kind_tags"):
                 result = conn.execute(
                     text(
                         "SELECT count(*) FROM information_schema.tables "
@@ -168,7 +83,7 @@ def test_concept_tables_exist():
 
 
 def test_old_category_tables_dropped():
-    """The old scattered category tables have been dropped."""
+    """The legacy scattered category tables must not exist."""
     sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
@@ -178,6 +93,9 @@ def test_old_category_tables_dropped():
                 "clinical_event_categories",
                 "biomarker_groups",
                 "biomarker_group_members",
+                "biomarker_relationships",
+                "biomarker_event_correlations",
+                "body_parts",
             ):
                 result = conn.execute(
                     text(
@@ -186,7 +104,7 @@ def test_old_category_tables_dropped():
                     ),
                     {"t": table},
                 ).scalar()
-                assert result == 0, f"Old table '{table}' should have been dropped"
+                assert result == 0, f"Old table '{table}' should not exist"
     finally:
         engine.dispose()
 
@@ -199,11 +117,50 @@ def test_extensions_installed():
         with engine.connect() as conn:
             for ext in ("pgcrypto", "pg_trgm", "timescaledb"):
                 result = conn.execute(
-                    text(
-                        "SELECT 1 FROM pg_extension WHERE extname = :ext"
-                    ),
+                    text("SELECT 1 FROM pg_extension WHERE extname = :ext"),
                     {"ext": ext},
                 ).scalar()
                 assert result == 1, f"extension {ext} not installed"
     finally:
         engine.dispose()
+
+
+def test_pg_enum_types_carry_every_python_enum_value():
+    """Every value of every PG-backed Python enum must exist as a label on the
+    matching Postgres enum type (the consolidated baseline creates them inline
+    via ``sa.Enum(...)`` during table creation)."""
+    from app.models import enums
+
+    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    engine = create_engine(sync_url)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT t.typname, e.enumlabel "
+                    "FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid"
+                )
+            ).all()
+            pg_values: dict[str, set[str]] = {}
+            for typname, label in rows:
+                pg_values.setdefault(typname, set()).add(label)
+    finally:
+        engine.dispose()
+
+    # (pg_type_name, python_enum_class). Comparison is case-insensitive: some
+    # enums (e.g. CodingSystem) deliberately store uppercase labels in Postgres
+    # while their Python .value is lowercase -- a pre-existing quirk unrelated
+    # to whether the baseline created the type.
+    checks = [
+        ("medicationstatus", enums.MedicationStatus),
+        ("gender", enums.Gender),
+        ("role", enums.Role),
+        ("codingsystem", enums.CodingSystem),
+        ("quantitytype", enums.QuantityType),
+    ]
+    for pg_name, py_enum in checks:
+        python_values = {v.value.lower() for v in py_enum}
+        pg_labels = {lab.lower() for lab in pg_values.get(pg_name, set())}
+        assert python_values <= pg_labels, (
+            f"{pg_name}: PG missing values {python_values - pg_labels}"
+        )
