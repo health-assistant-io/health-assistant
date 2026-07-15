@@ -21,7 +21,7 @@ from app.schemas.examination import (
     ExaminationBulkDeleteRequest,
 )
 from app.models.enums import Role
-from app.api.v1.endpoints.utils import check_patient_access, check_examination_access
+from app.services.access import check_patient_access, check_examination_access
 import logging
 
 logger = logging.getLogger(__name__)
@@ -434,7 +434,7 @@ async def get_examination_documents(
 ):
     await check_examination_access(examination_id, current_user, db)
     from app.models.document_model import DocumentModel
-    from app.services.document_service_db import enrich_document_entities
+    from app.services.document_service import enrich_document_entities
     from sqlalchemy import not_
 
     # Subquery to find all parent_ids that have children (meaning they have been edited)
@@ -467,7 +467,7 @@ async def extract_examination_data(
     - 'full': OCR for all included docs + LLM analysis (default)
     - 'extract_only': LLM analysis only using existing text
     """
-    from app.services.document_service_db import (
+    from app.services.document_service import (
         trigger_cumulative_extraction,
         trigger_full_examination_extraction,
     )
@@ -543,7 +543,7 @@ async def bulk_delete_examinations(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.document_model import DocumentModel
-    from app.services.document_service_db import delete_document
+    from app.services.document_service import delete_document
     from app.models.fhir import Observation, Medication
     from sqlalchemy import delete
 
@@ -603,7 +603,7 @@ async def delete_examination(
 
     # Delete all associated documents first (and their physical files)
     from app.models.document_model import DocumentModel
-    from app.services.document_service_db import delete_document
+    from app.services.document_service import delete_document
     from app.models.fhir import Observation, Medication
     from sqlalchemy import delete
 

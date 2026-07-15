@@ -66,6 +66,14 @@ export const Modal: React.FC<ModalProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
 
+  // Keep the latest ``onClose`` without re-running the focus effect on every
+  // render. Parents commonly pass an inline arrow (``() => setOpen(false)``),
+  // so including ``onClose`` in the effect deps would tear the effect down +
+  // re-run on each keystroke — its cleanup restores focus to the pre-modal
+  // element, yanking the caret out of the input mid-typing.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   const handleTab = useCallback((e: KeyboardEvent) => {
     if (e.key !== 'Tab' || !panelRef.current) return;
     const nodes = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
@@ -86,7 +94,7 @@ export const Modal: React.FC<ModalProps> = ({
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
 
     previousFocus.current = document.activeElement as HTMLElement;
@@ -108,7 +116,9 @@ export const Modal: React.FC<ModalProps> = ({
       document.body.style.overflow = prevOverflow;
       previousFocus.current?.focus();
     };
-  }, [isOpen, onClose, handleTab]);
+    // Only re-run on open/close transition — see the onCloseRef comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

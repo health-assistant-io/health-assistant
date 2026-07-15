@@ -15,7 +15,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.v1.endpoints.utils import check_patient_access
+from app.services.access import check_patient_access
 from app.core.database import AsyncSessionLocal
 from app.core.errors import (
     AuthorizationError,

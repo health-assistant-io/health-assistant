@@ -560,7 +560,7 @@ async def edit_document_service(
 
     # Trigger OCR for new document if extraction is enabled
     if new_document.include_in_extraction:
-        from app.services.document_service_db import trigger_extraction
+        from app.services.document_service import trigger_extraction
 
         await trigger_extraction(str(new_document.id), db)
 

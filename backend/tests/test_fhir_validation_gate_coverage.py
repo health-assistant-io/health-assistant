@@ -9,8 +9,8 @@ write paths that previously bypassed ``assert_valid_fhir``:
 | organization_service.create / update      | Organization              |
 | medication_service.add_patient_medication | Medication + MedicationCatalog |
 | medication_service.create/update_catalog  | Medication                |
-| document_service_db.upload_document       | DocumentReference         |
-| document_service_db.edited-copy           | DocumentReference         |
+| document_service.upload_document       | DocumentReference         |
+| document_service.edited-copy           | DocumentReference         |
 
 Each of these now calls ``assert_valid_fhir(obj)`` right before ``commit()``
 so invalid FHIR can never be persisted via these paths either (mirroring the
@@ -192,14 +192,14 @@ async def test_medication_catalog_update_invokes_validation_gate():
 
 
 # ---------------------------------------------------------------------------
-# document_service_db — upload_document + edited-copy
+# document_service — upload_document + edited-copy
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_document_upload_invokes_validation_gate(monkeypatch):
     """upload_document must validate the DocumentModel before commit. We
     monkeypatch assert_valid_fhir to raise and verify upload propagates."""
-    from app.services import document_service_db
+    from app.services import document_service
 
     db = AsyncMock(spec=AsyncSession)
 
@@ -216,21 +216,21 @@ async def test_document_upload_invokes_validation_gate(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "app.services.document_service_db.write_file_if_not_exists",
+        "app.services.document_service.write_file_if_not_exists",
         _fake_write,
         raising=False,
     )
 
     # Use a deterministic uuid so the doc_id check passes.
     monkeypatch.setattr(
-        "app.services.document_service_db.uuid4",
+        "app.services.document_service.uuid4",
         lambda: "00000000-0000-0000-0000-0000000000aa",
     )
 
-    with patch("app.services.document_service_db.assert_valid_fhir") as mock_gate:
+    with patch("app.services.document_service.assert_valid_fhir") as mock_gate:
         mock_gate.side_effect = FhirSerializationError("invalid DocumentReference")
         with pytest.raises(FhirSerializationError):
-            await document_service_db.upload_document(
+            await document_service.upload_document(
                 file=upload,
                 patient_id=None,
                 owner_id="00000000-0000-0000-0000-000000000001",
@@ -249,7 +249,7 @@ def test_gate_imported_in_all_four_services():
     """The four previously-ungated services must import assert_valid_fhir."""
     from app.services import (
         doctor_service,
-        document_service_db,
+        document_service,
         medication_service,
         organization_service,
     )
@@ -258,7 +258,7 @@ def test_gate_imported_in_all_four_services():
         doctor_service,
         organization_service,
         medication_service,
-        document_service_db,
+        document_service,
     ):
         assert hasattr(mod, "assert_valid_fhir"), (
             f"{mod.__name__} must import assert_valid_fhir to gate writes"

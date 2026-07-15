@@ -5,11 +5,12 @@ Module-level async functions (same style as ``fhir_service``). The endpoint
 facade and the import path can also call these so that link-sync, soft-delete,
 notification, and access semantics are consistent across every write surface.
 
-Note on layering: this module imports the ``check_*_access`` helpers from
-``app.api.v1.endpoints.utils``. Those helpers are shared domain-authorization
-logic that currently lives under the endpoints package; the HTTPException they
-raise on denial is allowed to propagate (FastAPI maps it). A future refactor
-can relocate them to ``app/services/access.py``.
+Layering: this module imports the ``check_*_access`` helpers from
+``app.services.access``. Those helpers raise domain exceptions
+(``NotFoundError``/``AuthorizationError``/``ValidationError``) on denial, which
+this service lets propagate; the global ``DomainError`` handler maps each to its
+HTTP status, so the same code path is reusable from a Celery task or the facade
+without coupling to the router (audit C2).
 """
 
 import datetime as _dt
@@ -22,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.v1.endpoints.utils import (
+from app.services.access import (
     check_event_access,
     check_examination_access,
     check_observation_access,

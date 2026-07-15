@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.tenants import router as tenants_router
 from app.api.v1.endpoints.users import router as users_router
-from app.api.v1.endpoints.documents_db import router as documents_router
+from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
 from app.api.v1.endpoints.patients import router as patients_router
 from app.api.v1.endpoints.observations import router as observations_router

@@ -5,7 +5,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.biomarker_model import BiomarkerDefinition, BiomarkerReferenceRange, Unit
 from app.models.enums import ConceptKind, QuantityType
 from app.schemas.biomarker import CatalogImportPayload
 from app.services.concept_service import (
@@ -19,6 +19,67 @@ logger = logging.getLogger(__name__)
 class CatalogImportService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _upsert_reference_ranges(self, biomarker_id: UUID, desired) -> None:
+        """Idempotently upsert stratified reference ranges for a biomarker.
+
+        Matches an existing row by its stratification key (sex, age_min,
+        age_max, unit_id) and updates the bounds; inserts when no match.
+        **Upsert-only** — rows not present in ``desired`` are left untouched,
+        so user-added ranges survive a re-seed/re-import.
+        """
+        if not desired:
+            return
+        existing = (
+            await self.db.execute(
+                select(BiomarkerReferenceRange).where(
+                    BiomarkerReferenceRange.biomarker_id == biomarker_id
+                )
+            )
+        ).scalars().all()
+
+        def _key(rr):
+            return (
+                getattr(rr, "sex", None),
+                getattr(rr, "age_min", None),
+                getattr(rr, "age_max", None),
+                str(getattr(rr, "unit_id", None)) if getattr(rr, "unit_id", None) else None,
+            )
+
+        by_key = {}
+        for rr in existing:
+            by_key[_key(rr)] = rr
+
+        for want in desired:
+            k = _key(want)
+            low = getattr(want, "low", None)
+            high = getattr(want, "high", None)
+            text = getattr(want, "text", None)
+            applies_to = getattr(want, "applies_to", None)
+            sex = getattr(want, "sex", None)
+            age_min = getattr(want, "age_min", None)
+            age_max = getattr(want, "age_max", None)
+            unit_id = getattr(want, "unit_id", None)
+            match = by_key.get(k)
+            if match is not None:
+                match.low = low
+                match.high = high
+                match.text = text
+                match.applies_to = applies_to
+            else:
+                self.db.add(
+                    BiomarkerReferenceRange(
+                        biomarker_id=biomarker_id,
+                        sex=sex,
+                        age_min=age_min,
+                        age_max=age_max,
+                        unit_id=unit_id,
+                        low=low,
+                        high=high,
+                        text=text,
+                        applies_to=applies_to,
+                    )
+                )
 
     async def _resolve_class_concept(self, bio_data) -> Optional[UUID]:
         """Resolve a biomarker's class concept, preferring the explicit slug
@@ -133,6 +194,9 @@ class CatalogImportService:
                     existing_bio.reference_range_max = bio_data.reference_range_max
                     if pref_unit_id:
                         existing_bio.preferred_unit_id = pref_unit_id
+                    await self._upsert_reference_ranges(
+                        existing_bio.id, getattr(bio_data, "reference_ranges", None)
+                    )
                     stats["biomarkers_updated"] += 1
                 else:
                     class_concept_id = bio_data.class_concept_id
@@ -151,6 +215,10 @@ class CatalogImportService:
                         preferred_unit_id=pref_unit_id,
                     )
                     self.db.add(new_bio)
+                    await self.db.flush()  # populate new_bio.id for the FK
+                    await self._upsert_reference_ranges(
+                        new_bio.id, getattr(bio_data, "reference_ranges", None)
+                    )
                     stats["biomarkers_added"] += 1
             except Exception as e:
                 logger.error(f"Error processing biomarker {bio_data.slug}: {e}")

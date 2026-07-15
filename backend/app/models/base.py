@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, func, text, Integer, Boolean, UUID, ForeignKey
+from sqlalchemy import Column, DateTime, func, text, Integer, UUID, ForeignKey
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -45,8 +45,19 @@ class AuditMixin:
 
 
 class VersionedMixin:
+    """Version column powering the FHIR R4 facade optimistic-lock primitive.
+
+    ``version`` is bumped on every facade update (``app/facade/crud.update``),
+    read for ``If-Match`` optimistic locking (HTTP 412), and exposed in the
+    ``ETag`` header (``W/"<version>"``). It is NOT a full version-history
+    implementation — the CapabilityStatement honestly declares
+    ``versioning="no-version"`` (no ``vread`` / ``history-instance``).
+
+    The former ``is_current`` column was dead data (never queried anywhere)
+    and has been removed (audit B4).
+    """
+
     version = Column(Integer, default=1)
-    is_current = Column(Boolean, default=True)
 
 
 class UUIDMixin:
@@ -63,8 +74,7 @@ class SoftDeleteMixin:
     ``deleted_at IS NULL``.
 
     The ``is_active`` property is a convenience for query predicates
-    (``Model.is_active`` → ``deleted_at IS NULL``). Note this is distinct
-    from :class:`VersionedMixin.is_current`, which tracks versioning state.
+    (``Model.is_active`` → ``deleted_at IS NULL``).
     """
 
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)

@@ -1,5 +1,22 @@
 export type CodingSystemType = 'loinc' | 'snomed' | 'custom';
 
+/** A reference range scoped to a sub-population (audit B9/F3).
+ * A null/undefined dimension means "any value" for that axis (sex → both,
+ * age_* → unbounded on that side, unit_id → any unit). The backend resolver
+ * picks the most-specific applicable row for a patient. */
+export interface BiomarkerReferenceRange {
+  id?: string;
+  biomarker_id?: string;
+  sex?: 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN' | null;
+  age_min?: number | null;
+  age_max?: number | null;
+  unit_id?: string | null;
+  low?: number | null;
+  high?: number | null;
+  text?: string | null;
+  applies_to?: string | null;
+}
+
 export enum DataSourceType {
   TELEMETRY = 'telemetry',
   EXAMINATION = 'examination',
@@ -22,6 +39,7 @@ export interface Biomarker {
   is_telemetry?: boolean;
   reference_range_min?: number;
   reference_range_max?: number;
+  reference_ranges?: BiomarkerReferenceRange[];
   meta_data?: {
     migration_status?: 'in_progress' | 'completed' | 'failed';
     migration_progress?: number;

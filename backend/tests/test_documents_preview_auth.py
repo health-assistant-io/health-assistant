@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
-from app.api.v1.endpoints import documents_db as docs_endpoint
+from app.api.v1.endpoints import documents as docs_endpoint
 from app.models.enums import Role
 from app.schemas.user import TokenData
 

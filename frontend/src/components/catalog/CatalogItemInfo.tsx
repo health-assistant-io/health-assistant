@@ -19,7 +19,7 @@ import { useAuthStore } from '../../store/slices/authSlice';
 
 const META_KEYS = new Set([
   'id', 'tenant_id', 'created_by', 'updated_by', 'created_at', 'updated_at',
-  'scope', 'is_current', 'version', 'is_custom',
+  'scope', 'version', 'is_custom',
 ]);
 
 function renderValue(value: unknown): string {

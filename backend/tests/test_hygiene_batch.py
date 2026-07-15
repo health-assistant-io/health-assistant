@@ -100,7 +100,7 @@ def test_b11_vapid_keys_present_in_production_ok():
 def test_b14_check_observation_access_handles_missing_reference():
     """A subject dict without 'reference' must not raise AttributeError."""
     src = inspect.getsource(
-        __import__("app.api.v1.endpoints.utils", fromlist=["check_observation_access"]).check_observation_access
+        __import__("app.services.access", fromlist=["check_observation_access"]).check_observation_access
     )
     # The fix uses .get("reference", "") (or equivalent defensive pattern)
     # so the absent-key case yields an empty string instead of None.

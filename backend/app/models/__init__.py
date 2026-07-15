@@ -34,6 +34,7 @@ from .patient_layout import PatientLayoutModel
 from .biomarker_model import (
     Unit,
     BiomarkerDefinition,
+    BiomarkerReferenceRange,
     Laboratory,
 )
 from .fhir import (
@@ -108,6 +109,7 @@ __all__ = [
     "CommunicationModel",
     "Unit",
     "BiomarkerDefinition",
+    "BiomarkerReferenceRange",
     "Laboratory",
     "AIProviderModel",
     "AIModel",

@@ -21,7 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.endpoints.utils import check_patient_access
+from app.services.access import check_patient_access
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user

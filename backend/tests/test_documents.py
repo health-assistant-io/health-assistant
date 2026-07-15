@@ -55,7 +55,7 @@ def mock_document():
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.documents_db.get_document")
+@patch("app.api.v1.endpoints.documents.get_document")
 async def test_get_document(
     mock_get_document, async_client: AsyncClient, mock_document
 ):
@@ -78,7 +78,7 @@ async def test_get_document(
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.documents_db.get_documents")
+@patch("app.api.v1.endpoints.documents.get_documents")
 async def test_list_documents(
     mock_get_documents, async_client: AsyncClient, mock_document
 ):
@@ -101,8 +101,8 @@ async def test_list_documents(
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.documents_db.delete_document")
-@patch("app.api.v1.endpoints.documents_db.get_document")
+@patch("app.api.v1.endpoints.documents.delete_document")
+@patch("app.api.v1.endpoints.documents.get_document")
 async def test_delete_document(
     mock_get_document, mock_delete_document, async_client: AsyncClient, mock_document
 ):

@@ -12,8 +12,9 @@ import type { CatalogItemFormProps } from './catalogForms';
 import { Field, TextInput } from './FormFields';
 import { ChipInput } from '../../ui/ChipInput';
 import { RichTextEditor } from '../../ui/RichTextEditor';
+import { ReferenceRangesEditor } from './ReferenceRangesEditor';
 import biomarkerService from '../../../services/biomarkerService';
-import type { Unit } from '../../../types/biomarker';
+import type { Unit, BiomarkerReferenceRange } from '../../../types/biomarker';
 
 export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -114,6 +115,25 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
           </select>
         </Field>
       </div>
+
+      {/* Stratified reference ranges (audit B9/F3).
+          A pure draft editor — works on create AND edit. The catalog
+          workspace reconciles the draft against the server after the
+          biomarker is saved (so ranges can be set on first creation too).
+          The default range above is the resolver fallback. */}
+      <Field
+        label={t('biomarker_catalog.reference_ranges', 'Stratified reference ranges')}
+        hint={t(
+          'biomarker_catalog.reference_ranges_hint',
+          'Optional demographic-specific ranges (sex/age/unit). The most specific match wins; otherwise the default range above is used.',
+        )}
+      >
+        <ReferenceRangesEditor
+          ranges={(values.reference_ranges as BiomarkerReferenceRange[]) ?? []}
+          onChange={(next) => onChange({ reference_ranges: next })}
+          units={units}
+        />
+      </Field>
 
       {/* IoT telemetry toggle — flipping this on save triggers the
           FHIR↔TimescaleDB data migration (see migrate_biomarker_data task).

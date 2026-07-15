@@ -51,7 +51,6 @@ _READONLY_FIELDS = frozenset(
         "created_by",
         "updated_by",
         "version",
-        "is_current",
     }
 )
 
@@ -834,6 +833,23 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
             "info": bio.info,
             "reference_range_min": bio.reference_range_min,
             "reference_range_max": bio.reference_range_max,
+            # Stratified reference ranges (audit B9/F3). ``reference_ranges`` is
+            # lazy="selectin" → batch-loaded on first access.
+            "reference_ranges": [
+                {
+                    "id": rr.id,
+                    "biomarker_id": rr.biomarker_id,
+                    "sex": rr.sex.value if rr.sex else None,
+                    "age_min": rr.age_min,
+                    "age_max": rr.age_max,
+                    "unit_id": rr.unit_id,
+                    "low": rr.low,
+                    "high": rr.high,
+                    "text": rr.text,
+                    "applies_to": rr.applies_to,
+                }
+                for rr in (bio.reference_ranges or [])
+            ],
             "is_telemetry": bio.is_telemetry,
             "meta_data": bio.meta_data,
             "preferred_unit_symbol": unit_symbol,

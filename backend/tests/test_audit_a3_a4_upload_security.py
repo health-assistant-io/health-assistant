@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.services.document_service_db import (
+from app.services.document_service import (
     _read_capped,
     _validate_upload_extension,
     should_serve_inline,
@@ -106,9 +106,9 @@ class TestDownloadHeaders:
 
     def test_download_sets_nosniff_and_inline_logic(self):
         import inspect
-        from app.api.v1.endpoints import documents_db
+        from app.api.v1.endpoints import documents
 
-        src = inspect.getsource(documents_db.download_document_endpoint)
+        src = inspect.getsource(documents.download_document_endpoint)
         assert "X-Content-Type-Options" in src
         assert "nosniff" in src
         assert "should_serve_inline" in src

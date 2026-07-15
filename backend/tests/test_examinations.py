@@ -68,7 +68,7 @@ async def test_create_examination(async_client: AsyncClient):
     app.dependency_overrides[get_db] = create_override_get_db
 
     pid = uuid.uuid4()
-    with patch("app.api.v1.endpoints.utils.check_patient_access") as mock_check:
+    with patch("app.services.access.check_patient_access") as mock_check:
         response = await async_client.post(
             "/api/v1/examinations",
             json={
@@ -140,7 +140,7 @@ async def test_create_examination_with_doctors(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.api.v1.endpoints.utils.check_patient_access") as mock_check:
+    with patch("app.services.access.check_patient_access") as mock_check:
         response = await async_client.post(
             "/api/v1/examinations",
             json={
@@ -185,7 +185,7 @@ async def test_get_examination(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.api.v1.endpoints.utils.check_patient_access") as mock_check:
+    with patch("app.services.access.check_patient_access") as mock_check:
         response = await async_client.get(f"/api/v1/examinations/{exam_id}")
     assert response.status_code == 200
     assert response.json()["id"] == str(exam_id)
@@ -225,7 +225,7 @@ async def test_update_examination(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.api.v1.endpoints.utils.check_patient_access") as mock_check:
+    with patch("app.services.access.check_patient_access") as mock_check:
         response = await async_client.put(
             f"/api/v1/examinations/{exam_id}", json={"notes": "Updated notes"}
         )

@@ -363,7 +363,7 @@ def process_document_sync(
 ):
     """In-process OCR fallback for when Celery/Redis is unavailable (audit C10).
 
-    The upload endpoint (``documents_db.trigger_extraction``) normally enqueues
+    The upload endpoint (``documents.trigger_extraction``) normally enqueues
     the OCR pipeline via ``ocr_document.delay(...)``. When Celery can't reach
     the broker, it instead schedules this through FastAPI ``BackgroundTasks``
     so a single-node deployment still extracts without a worker. Calling the

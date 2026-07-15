@@ -8,6 +8,7 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.biomarker_model import (
     BiomarkerDefinition,
+    BiomarkerReferenceRange,
     Unit,
 )
 from app.models.fhir.patient import Observation
@@ -16,6 +17,9 @@ from app.schemas.biomarker import (
     BiomarkerUpdate,
     BiomarkerResponse,
     BiomarkerRemapRequest,
+    BiomarkerReferenceRangeCreate,
+    BiomarkerReferenceRangeUpdate,
+    BiomarkerReferenceRangeResponse,
     UnitResponse,
     UnitCreate,
 )
@@ -71,6 +75,9 @@ async def get_biomarkers(
             "is_telemetry": bio.is_telemetry,
             "meta_data": bio.meta_data,
             "preferred_unit_symbol": symbol,
+            # Stratified ranges (audit B9/F3). ``reference_ranges`` is
+            # lazy="selectin" → batch-loaded on first access (one round trip).
+            "reference_ranges": bio.reference_ranges,
         }
         response.append(bio_dict)
 
@@ -596,6 +603,186 @@ async def update_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stratified reference ranges (audit B9 / F3)
+#
+# Nested under the parent biomarker. Access is INHERITED from the parent:
+#   - read  → parent visible to the caller (global + tenant);
+#   - write → caller may modify the parent (``DEFAULT_CATALOG_POLICY.check_modify``).
+# A stratified row only makes sense alongside its biomarker, so there is no
+# top-level ``/reference-ranges`` collection — always
+# ``/biomarkers/{biomarker_id}/reference-ranges``.
+# ---------------------------------------------------------------------------
+
+
+async def _load_parent_biomarker(
+    biomarker_id: UUID, current_user: TokenData, db: AsyncSession
+) -> BiomarkerDefinition:
+    """Load a biomarker visible to the caller (global + tenant) or 404."""
+    result = await db.execute(
+        select(BiomarkerDefinition).where(
+            BiomarkerDefinition.id == biomarker_id,
+            _tenant_scope(current_user.tenant_id),
+        )
+    )
+    bio = result.scalar_one_or_none()
+    if bio is None:
+        raise HTTPException(status_code=404, detail="Biomarker not found")
+    return bio
+
+
+@router.get(
+    "/{biomarker_id}/reference-ranges",
+    response_model=List[BiomarkerReferenceRangeResponse],
+)
+async def list_reference_ranges(
+    biomarker_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """List all stratified reference ranges for a biomarker (most-specific last)."""
+    await _load_parent_biomarker(biomarker_id, current_user, db)
+    result = await db.execute(
+        select(BiomarkerReferenceRange)
+        .where(BiomarkerReferenceRange.biomarker_id == biomarker_id)
+        .order_by(
+            BiomarkerReferenceRange.sex.asc(),
+            BiomarkerReferenceRange.age_min.asc(),
+            BiomarkerReferenceRange.unit_id.asc(),
+        )
+    )
+    return result.scalars().all()
+
+
+@router.post(
+    "/{biomarker_id}/reference-ranges",
+    response_model=BiomarkerReferenceRangeResponse,
+    status_code=201,
+)
+async def create_reference_range(
+    biomarker_id: UUID,
+    payload: BiomarkerReferenceRangeCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Add a stratified reference range. Write access inherited from the parent."""
+    bio = await _load_parent_biomarker(biomarker_id, current_user, db)
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        bio.scope,
+        item_created_by=bio.created_by,
+        actor_user_id=current_user.user_id,
+    )
+    new_range = BiomarkerReferenceRange(
+        biomarker_id=biomarker_id,
+        sex=payload.sex,
+        age_min=payload.age_min,
+        age_max=payload.age_max,
+        unit_id=payload.unit_id,
+        low=payload.low,
+        high=payload.high,
+        text=payload.text,
+        applies_to=payload.applies_to,
+        created_by=current_user.user_id,
+        updated_by=current_user.user_id,
+    )
+    db.add(new_range)
+    try:
+        await db.commit()
+        await db.refresh(new_range)
+        return new_range
+    except Exception:
+        await db.rollback()
+        logger.exception("reference-range create failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
+
+
+@router.put(
+    "/{biomarker_id}/reference-ranges/{range_id}",
+    response_model=BiomarkerReferenceRangeResponse,
+)
+async def update_reference_range(
+    biomarker_id: UUID,
+    range_id: UUID,
+    payload: BiomarkerReferenceRangeUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Update a stratified reference range. Write access inherited from the parent."""
+    bio = await _load_parent_biomarker(biomarker_id, current_user, db)
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        bio.scope,
+        item_created_by=bio.created_by,
+        actor_user_id=current_user.user_id,
+    )
+    result = await db.execute(
+        select(BiomarkerReferenceRange).where(
+            BiomarkerReferenceRange.id == range_id,
+            BiomarkerReferenceRange.biomarker_id == biomarker_id,
+        )
+    )
+    db_range = result.scalar_one_or_none()
+    if db_range is None:
+        raise HTTPException(status_code=404, detail="Reference range not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(db_range, key, value)
+    db_range.updated_by = current_user.user_id
+    try:
+        await db.commit()
+        await db.refresh(db_range)
+        return db_range
+    except Exception:
+        await db.rollback()
+        logger.exception("reference-range update failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
+
+
+@router.delete("/{biomarker_id}/reference-ranges/{range_id}")
+async def delete_reference_range(
+    biomarker_id: UUID,
+    range_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Delete a stratified reference range. Write access inherited from the parent."""
+    bio = await _load_parent_biomarker(biomarker_id, current_user, db)
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        bio.scope,
+        item_created_by=bio.created_by,
+        actor_user_id=current_user.user_id,
+    )
+    result = await db.execute(
+        select(BiomarkerReferenceRange).where(
+            BiomarkerReferenceRange.id == range_id,
+            BiomarkerReferenceRange.biomarker_id == biomarker_id,
+        )
+    )
+    db_range = result.scalar_one_or_none()
+    if db_range is None:
+        raise HTTPException(status_code=404, detail="Reference range not found")
+    await db.delete(db_range)
+    try:
+        await db.commit()
+        return {"status": "success", "message": "Reference range deleted"}
+    except Exception:
+        await db.rollback()
+        logger.exception("reference-range delete failed")
         raise HTTPException(
             status_code=400,
             detail="Request could not be completed (see server log).",

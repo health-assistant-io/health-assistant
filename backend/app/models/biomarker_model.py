@@ -9,7 +9,7 @@ from app.models.base import (
     VersionedMixin,
     TimestampMixin,
 )
-from app.models.enums import QuantityType, CodingSystem, CatalogScope
+from app.models.enums import QuantityType, CodingSystem, CatalogScope, Gender
 
 
 class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
@@ -84,6 +84,13 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         foreign_keys="[BiomarkerDefinition.class_concept_id]",
         lazy="selectin",
     )
+    reference_ranges = relationship(
+        "BiomarkerReferenceRange",
+        back_populates="biomarker",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -99,6 +106,64 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         """Backward-compat: the old ``category`` column was replaced by the
         ``class_concept_id`` FK to ``concepts``. Return the concept name."""
         return self.class_concept.name if self.class_concept else None
+
+
+class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):
+    """A stratified reference range for a biomarker (audit B9 / F3).
+
+    ``BiomarkerDefinition`` previously carried a single global
+    ``reference_range_min``/``max`` — unreliable for anyone outside the
+    "default" demographic (wrong sex/age/unit → wrong ``relative_score`` and
+    status). FHIR ``Observation.referenceRange`` supports ``0..*`` ranges each
+    scoped by ``age``/``appliesTo``(sex)/unit, so this child table mirrors that.
+
+    Each row applies to a sub-population; a NULL dimension means "any value for
+    that axis" (NULL ``sex`` → both sexes, NULL ``age_min``/``age_max`` → all
+    ages, NULL ``unit_id`` → any unit). The resolver
+    (:func:`app.services.reference_ranges.resolve_reference_range`) picks the
+    most-specific matching row for a given patient, falling back to the
+    biomarker's legacy global range when no stratified row matches.
+    """
+
+    __tablename__ = "biomarker_reference_ranges"
+
+    biomarker_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sex = Column(Enum(Gender), nullable=True)  # NULL → applies to any sex
+    age_min = Column(Float, nullable=True)  # years (inclusive); NULL → no lower bound
+    age_max = Column(Float, nullable=True)  # years (inclusive); NULL → no upper bound
+    unit_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("units.id", ondelete="SET NULL"),
+        nullable=True,
+    )  # NULL → applies to any unit
+    low = Column(Float, nullable=True)
+    high = Column(Float, nullable=True)
+    text = Column(Text, nullable=True)  # human-readable range (FHIR referenceRange.text)
+    # Optional population/condition tag (e.g. "pregnant", "pediatric") — reserved
+    # for future stratification without a schema change.
+    applies_to = Column(String(100), nullable=True)
+
+    # Relationship back to the parent definition.
+    biomarker = relationship(
+        "BiomarkerDefinition", back_populates="reference_ranges"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "low IS NULL OR high IS NULL OR low <= high",
+            name="ck_biomarker_reference_ranges_low_le_high",
+        ),
+        # Enforce sane age windows at the DB layer.
+        CheckConstraint(
+            "age_min IS NULL OR age_max IS NULL OR age_min <= age_max",
+            name="ck_biomarker_reference_ranges_age_window",
+        ),
+    )
 
 
 class Laboratory(Base, UUIDMixin, AuditMixin, TimestampMixin, TenantMixin):

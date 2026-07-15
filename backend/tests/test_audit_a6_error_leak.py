@@ -16,17 +16,17 @@ from app.api.v1.endpoints import (
     admin,
     ai_assistance,
     biomarkers,
-    documents_db,
+    documents,
     import_data,
 )
 
 
 # Endpoints that previously leaked ``str(e)`` (audit A6 reference list).
 LEAKY_ENDPOINTS = [
-    documents_db.trigger_extraction_endpoint,
-    documents_db.upload_temp_preview,
-    documents_db.get_dicom_metadata_endpoint,
-    documents_db.get_document_preview_endpoint,
+    documents.trigger_extraction_endpoint,
+    documents.upload_temp_preview,
+    documents.get_dicom_metadata_endpoint,
+    documents.get_document_preview_endpoint,
     import_data.import_backup,
     ai_assistance.assist_user,
 ]
@@ -48,7 +48,7 @@ def test_endpoint_does_not_leak_str_e(fn):
 
 def test_documents_upload_does_not_echo_tenant_id():
     """The tenant-not-found path must not echo the tenant_id value back."""
-    src = inspect.getsource(documents_db.upload_document_endpoint)
+    src = inspect.getsource(documents.upload_document_endpoint)
     assert '"Tenant not found: {tenant_id}"' not in src
     assert "Tenant not found" in src  # generic message still present
 

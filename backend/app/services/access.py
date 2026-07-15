@@ -1,20 +1,36 @@
+"""Tenant/patient access-check helpers (audit C2).
+
+Canonical resource-access checks shared by the router layer AND the service
+layer. Each helper: (1) str→UUID coerces, (2) selects by id AND tenant
+(cross-tenant → 404), (3) for the ``USER`` role verifies the resource belongs
+to a patient owned by ``current_user.user_id`` (403 otherwise), (4) returns
+the model instance.
+
+These raise domain exceptions (``NotFoundError`` / ``AuthorizationError`` /
+``ValidationError`` from :mod:`app.core.errors`), NOT ``HTTPException``. The
+global ``DomainError`` handler in ``main.py`` maps each to its HTTP status,
+so the same helper is callable from a FastAPI endpoint, a Celery task, an
+importer, or the FHIR facade without coupling to Starlette/HTTPException.
+
+This module lives under ``app/services`` (not ``app/api``) precisely so the
+service layer can import it without a layer inversion — the audit (C2) found
+``clinical_event_service`` importing these from ``app.api.v1.endpoints.utils``,
+which coupled it to the router and made it unusable from Celery/import/facade.
+"""
 from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.errors import (
-    AuthorizationError,
-    NotFoundError,
-    ValidationError,
-)
-from app.models.enums import Role
-from app.models.fhir.patient import Patient, Observation
-from app.schemas.user import TokenData
 
-from app.models.examination_model import ExaminationModel
-from app.models.fhir.medication import Medication
-from app.models.fhir.vaccine import PatientImmunization
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.models.clinical_event import ClinicalEvent
+from app.models.enums import Role
+from app.models.examination_model import ExaminationModel
 from app.models.fhir.allergy import AllergyIntolerance
+from app.models.fhir.medication import Medication
+from app.models.fhir.patient import Observation, Patient
+from app.models.fhir.vaccine import PatientImmunization
+from app.schemas.user import TokenData
 
 
 async def check_patient_access(

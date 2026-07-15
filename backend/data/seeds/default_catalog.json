@@ -1,8 +1,9 @@
 {
   "metadata": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "source": "Health-Assistant Standard Ontology",
-    "last_updated": "2026-06-11"
+    "last_updated": "2026-07-15",
+    "reference_ranges_note": "Reference ranges are widely-published adult defaults (Mayo Clinic Labs / Cleveland Clinic / ATA conventions) provided as ILLUSTRATIVE defaults for a fresh install — they are method- and population-dependent and NOT clinically authoritative. Labs should configure their own ranges. Where sex/age differences are well established (hemoglobin, HDL, creatinine, TSH) a stratified example is included to exercise the biomarker_reference_ranges resolver (audit B9/F3)."
   },
   "units": [
     { "symbol": "mg/dL", "name": "Milligrams per deciliter", "quantity_type": "MASS_CONCENTRATION" },
@@ -22,7 +23,9 @@
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mmol/L",
       "aliases": ["Glucose", "Fasting Blood Sugar", "FBS", "Glu"],
-      "info": "Measures blood sugar levels after fasting."
+      "info": "Measures blood sugar levels after fasting.",
+      "reference_range_min": 3.9,
+      "reference_range_max": 5.5
     },
     {
       "slug": "cholesterol-total",
@@ -31,7 +34,9 @@
       "name": "Total Cholesterol",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mmol/L",
-      "aliases": ["Cholesterol", "Chol", "TC"]
+      "aliases": ["Cholesterol", "Chol", "TC"],
+      "reference_range_min": null,
+      "reference_range_max": 5.2
     },
     {
       "slug": "cholesterol-hdl",
@@ -40,7 +45,13 @@
       "name": "HDL Cholesterol",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mmol/L",
-      "aliases": ["HDL", "HDL-C"]
+      "aliases": ["HDL", "HDL-C"],
+      "reference_range_min": 1.0,
+      "reference_range_max": 2.0,
+      "reference_ranges": [
+        { "sex": "MALE", "low": 1.0, "high": 2.0, "text": "≥ 1.0 mmol/L (protective)" },
+        { "sex": "FEMALE", "low": 1.2, "high": 2.0, "text": "≥ 1.2 mmol/L (protective)" }
+      ]
     },
     {
       "slug": "cholesterol-ldl",
@@ -49,7 +60,9 @@
       "name": "LDL Cholesterol",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mmol/L",
-      "aliases": ["LDL", "LDL-C"]
+      "aliases": ["LDL", "LDL-C"],
+      "reference_range_min": null,
+      "reference_range_max": 2.6
     },
     {
       "slug": "triglycerides",
@@ -58,7 +71,9 @@
       "name": "Triglycerides",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mmol/L",
-      "aliases": ["TG", "Trig"]
+      "aliases": ["TG", "Trig"],
+      "reference_range_min": null,
+      "reference_range_max": 1.7
     },
     {
       "slug": "hemoglobin",
@@ -67,7 +82,13 @@
       "name": "Hemoglobin",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "g/L",
-      "aliases": ["Hb", "Hgb"]
+      "aliases": ["Hb", "Hgb"],
+      "reference_range_min": 120,
+      "reference_range_max": 175,
+      "reference_ranges": [
+        { "sex": "MALE", "low": 135, "high": 175, "text": "Adult male: 135–175 g/L" },
+        { "sex": "FEMALE", "low": 120, "high": 155, "text": "Adult female: 120–155 g/L" }
+      ]
     },
     {
       "slug": "wbc",
@@ -76,7 +97,9 @@
       "name": "White Blood Cells",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "10^9/L",
-      "aliases": ["WBC", "Leukocytes"]
+      "aliases": ["WBC", "Leukocytes"],
+      "reference_range_min": 4.0,
+      "reference_range_max": 11.0
     },
     {
       "slug": "platelets",
@@ -85,7 +108,9 @@
       "name": "Platelets",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "10^9/L",
-      "aliases": ["PLT", "Thrombocytes"]
+      "aliases": ["PLT", "Thrombocytes"],
+      "reference_range_min": 150,
+      "reference_range_max": 400
     },
     {
       "slug": "creatinine",
@@ -94,7 +119,13 @@
       "name": "Creatinine",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "µmol/L",
-      "aliases": ["Cr", "Creat"]
+      "aliases": ["Cr", "Creat"],
+      "reference_range_min": 45,
+      "reference_range_max": 110,
+      "reference_ranges": [
+        { "sex": "MALE", "low": 60, "high": 110, "text": "Adult male: 60–110 µmol/L" },
+        { "sex": "FEMALE", "low": 45, "high": 90, "text": "Adult female: 45–90 µmol/L" }
+      ]
     },
     {
       "slug": "tsh",
@@ -103,7 +134,12 @@
       "name": "Thyroid Stimulating Hormone",
       "category": "blood_laboratory",
       "preferred_unit_symbol": "mIU/L",
-      "aliases": ["TSH"]
+      "aliases": ["TSH"],
+      "reference_range_min": 0.4,
+      "reference_range_max": 4.0,
+      "reference_ranges": [
+        { "age_min": 0, "age_max": 18, "low": 0.7, "high": 5.7, "text": "Pediatric (0–18 y): 0.7–5.7 mIU/L" }
+      ]
     }
   ]
 }

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from sqlalchemy import select
 from app.core.security import get_current_user
-from app.api.v1.endpoints.utils import check_patient_access
+from app.services.access import check_patient_access
 from app.models.enums import Role
 from app.services.analytics_service import (
     get_analytics_summary,
@@ -103,21 +103,42 @@ async def get_anomalies_endpoint(
 
 
 @router.get("/reference-ranges")
-async def get_reference_ranges_endpoint(current_user=Depends(get_current_user)):
-    """Get standard reference ranges for common biomarkers"""
-    reference_ranges = {
-        "glucose": {"min": 3.9, "max": 5.6, "unit": "mmol/L"},
-        "cholesterol": {"min": 0, "max": 5.2, "unit": "mmol/L"},
-        "hdl": {"min": 1.0, "max": None, "unit": "mmol/L"},
-        "ldl": {"min": 0, "max": 3.0, "unit": "mmol/L"},
-        "hemoglobin": {"min": 120, "max": 180, "unit": "g/L"},
-        "white_blood_cells": {"min": 4.0, "max": 11.0, "unit": "10^9/L"},
-        "platelets": {"min": 150, "max": 450, "unit": "10^9/L"},
-        "creatinine": {"min": 60, "max": 110, "unit": "umol/L"},
-        "tsh": {"min": 0.4, "max": 4.0, "unit": "mIU/L"},
-        "vitamin_d": {"min": 50, "max": 125, "unit": "nmol/L"},
+async def get_reference_ranges_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Return each visible biomarker's default reference range.
+
+    Sourced from the biomarker catalog (legacy global
+    ``reference_range_min``/``max``), not a hardcoded dict — the previous
+    static table drifted from the real catalog and duplicated the source of
+    truth. Stratified ranges live under
+    ``/biomarkers/{id}/reference-ranges``.
+    """
+    from sqlalchemy import or_
+
+    from app.models.biomarker_model import BiomarkerDefinition, Unit
+
+    result = await db.execute(
+        select(
+            BiomarkerDefinition.slug,
+            BiomarkerDefinition.reference_range_min,
+            BiomarkerDefinition.reference_range_max,
+            Unit.symbol,
+        )
+        .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
+        .where(
+            or_(
+                BiomarkerDefinition.tenant_id.is_(None),
+                BiomarkerDefinition.tenant_id == current_user.tenant_id,
+            )
+        )
+    )
+    return {
+        slug: {"min": rmin, "max": rmax, "unit": unit}
+        for slug, rmin, rmax, unit in result.all()
+        if rmin is not None or rmax is not None
     }
-    return reference_ranges
 
 
 from app.services.analytics_service import get_category_analytics

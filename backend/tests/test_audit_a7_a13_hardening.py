@@ -78,7 +78,7 @@ class TestNoPrintLeaks:
 class TestGetDocumentTenantScope:
     @pytest.mark.asyncio
     async def test_get_document_filters_by_tenant(self, monkeypatch):
-        from app.services import document_service_db as svc
+        from app.services import document_service as svc
 
         captured = {}
 

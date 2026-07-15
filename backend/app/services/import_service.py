@@ -2648,7 +2648,7 @@ class ImportService:
         id_remap: Dict[str, str],
         owner_id: UUID,
     ) -> int:
-        from app.services.document_service_db import UPLOAD_DIR as RESOLVED_UPLOAD_DIR
+        from app.services.document_service import UPLOAD_DIR as RESOLVED_UPLOAD_DIR
 
         tenant_dir = Path(str(RESOLVED_UPLOAD_DIR)) / str(tenant_id)
         tenant_dir.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@ from typing import Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
@@ -547,9 +548,11 @@ async def get_biomarker_trends(
     observations = result.scalars().all()
 
     # Fetch Biomarker Definitions and their Groups
-    bio_defs_query = select(
-        BiomarkerDefinition, Unit.symbol.label("unit_symbol")
-    ).outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
+    bio_defs_query = (
+        select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
+        .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
+        .options(selectinload(BiomarkerDefinition.reference_ranges))
+    )
     bio_defs_res = await db.execute(bio_defs_query)
     bio_defs_rows = bio_defs_res.all()
     bio_map_def = {}
@@ -566,6 +569,24 @@ async def get_biomarker_trends(
             for alias in b.aliases:
                 if alias.lower() not in bio_name_map:
                     bio_name_map[alias.lower()] = b
+
+    # Stratified reference ranges (audit B9/F3): load the patient once so the
+    # fallback range below can be resolved by sex/age instead of using the
+    # single global definition range (which gave wrong status for anyone
+    # outside the "default" demographic).
+    _patient_ctx = None
+    if patient_id:
+        from app.models.fhir import Patient
+        import uuid as _uuid
+
+        try:
+            _pid = _uuid.UUID(str(patient_id))
+        except ValueError:
+            _pid = None
+        if _pid is not None:
+            _patient_ctx = (
+                await db.execute(select(Patient).where(Patient.id == _pid))
+            ).scalar_one_or_none()
 
     # Fetch clinical groups via concept_edges (MEMBER_OF) — replaces the old
     # BiomarkerGroup/BiomarkerGroupMember tables. A biomarker may belong to one
@@ -763,8 +784,22 @@ async def get_biomarker_trends(
                 # unless they are obviously different (e.g. mass vs molar).
                 # For now, we allow it if the observation itself has no range.
                 if units_match or (ref_range_min is None and ref_range_max is None):
-                    ref_range_min = b_def.reference_range_min
-                    ref_range_max = b_def.reference_range_max
+                    # Stratified resolution (audit B9/F3): pick the most-specific
+                    # reference range for this patient's sex/age/unit instead of
+                    # the single global definition range. Falls back to the global
+                    # range when no stratified row matches (resolver contract).
+                    from app.services.reference_ranges import pick_reference_range
+
+                    resolved = pick_reference_range(
+                        b_def,
+                        getattr(b_def, "reference_ranges", None) or [],
+                        sex=getattr(_patient_ctx, "gender", None),
+                        age=getattr(_patient_ctx, "age", None),
+                        unit_id=getattr(obs, "raw_unit_id", None),
+                    )
+                    if resolved is not None:
+                        ref_range_min = resolved.low
+                        ref_range_max = resolved.high
 
             if ref_range_min is not None and ref_range_max is not None:
                 ref_range_text = f"{ref_range_min} - {ref_range_max}"

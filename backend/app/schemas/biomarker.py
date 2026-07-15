@@ -1,8 +1,8 @@
 import re
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from uuid import UUID
 from typing import Optional, List
-from app.models.enums import CodingSystem
+from app.models.enums import CodingSystem, Gender
 
 # Safe identifier for biomarker slugs. The slug is interpolated into raw SQL
 # in the telemetry analytics path (see app/services/analytics_service.py), so
@@ -74,6 +74,10 @@ class BiomarkerBase(BaseModel):
 class BiomarkerCreate(BiomarkerBase):
     preferred_unit_symbol: Optional[str] = None
     preferred_unit_id: Optional[UUID] = None
+    # Stratified reference ranges (audit B9/F3). Carried through the catalog
+    # import/seed path so the default catalog can ship demographic-specific
+    # ranges. Forward-ref resolved via model_rebuild() at module end.
+    reference_ranges: List["BiomarkerReferenceRangeCreate"] = []
 
     @field_validator("slug")
     @classmethod
@@ -118,6 +122,68 @@ class BiomarkerResponse(BiomarkerBase):
     preferred_unit_id: Optional[UUID]
     preferred_unit_symbol: Optional[str] = None
     meta_data: Optional[dict] = None
+    # Stratified reference ranges (audit B9/F3). Forward-ref resolved at the
+    # bottom of the module via model_rebuild().
+    reference_ranges: List["BiomarkerReferenceRangeResponse"] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Stratified reference ranges (audit B9 / F3)
+# ---------------------------------------------------------------------------
+
+
+class BiomarkerReferenceRangeBase(BaseModel):
+    """A reference range scoped to a sub-population (sex / age window / unit).
+
+    A NULL dimension means "any value" for that axis (NULL ``sex`` → both
+    sexes, NULL ``age_*`` → unbounded on that side, NULL ``unit_id`` → any
+    unit). The resolver (``app.services.reference_ranges``) picks the
+    most-specific applicable row for a patient.
+    """
+
+    sex: Optional[Gender] = None
+    age_min: Optional[float] = None
+    age_max: Optional[float] = None
+    unit_id: Optional[UUID] = None
+    low: Optional[float] = None
+    high: Optional[float] = None
+    text: Optional[str] = None
+    applies_to: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_range(self):
+        if self.low is not None and self.high is not None and self.low > self.high:
+            raise ValueError("low must be <= high")
+        if (
+            self.age_min is not None
+            and self.age_max is not None
+            and self.age_min > self.age_max
+        ):
+            raise ValueError("age_min must be <= age_max")
+        return self
+
+
+class BiomarkerReferenceRangeCreate(BiomarkerReferenceRangeBase):
+    pass
+
+
+class BiomarkerReferenceRangeUpdate(BiomarkerReferenceRangeBase):
+    # Every field optional on update; only supplied fields are applied.
+    sex: Optional[Gender] = None
+    age_min: Optional[float] = None
+    age_max: Optional[float] = None
+    unit_id: Optional[UUID] = None
+    low: Optional[float] = None
+    high: Optional[float] = None
+    text: Optional[str] = None
+    applies_to: Optional[str] = None
+
+
+class BiomarkerReferenceRangeResponse(BiomarkerReferenceRangeBase):
+    id: UUID
+    biomarker_id: UUID
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -132,3 +198,9 @@ class CatalogImportPayload(BaseModel):
     metadata: Optional[CatalogMetadata] = None
     units: List[UnitCreate] = []
     biomarkers: List[BiomarkerCreate] = []
+
+
+# Resolve the forward reference on BiomarkerResponse.reference_ranges and
+# BiomarkerCreate.reference_ranges.
+BiomarkerResponse.model_rebuild()
+BiomarkerCreate.model_rebuild()

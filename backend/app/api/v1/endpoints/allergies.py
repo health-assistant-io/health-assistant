@@ -8,7 +8,7 @@ from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.enums import Role
 from app.models.fhir.patient import Patient
-from app.api.v1.endpoints.utils import check_patient_access, check_allergy_access
+from app.services.access import check_patient_access, check_allergy_access
 from app.schemas.allergy import (
     AllergyCatalogCreate,
     AllergyCatalogResponse,

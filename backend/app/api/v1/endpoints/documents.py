@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, Optional, cast
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.services.document_service_db import (
+from app.services.document_service import (
     upload_document,
     get_document,
     get_documents,
@@ -147,7 +147,7 @@ async def list_documents(
         tenant_id=tenant_id_str, owner_id=owner_id, limit=limit, offset=offset, db=db
     )
 
-    from app.services.document_service_db import enrich_document_entities
+    from app.services.document_service import enrich_document_entities
 
     return [await enrich_document_entities(doc.to_dict(), db) for doc in documents]
 
@@ -182,7 +182,7 @@ async def get_document_endpoint(
             status_code=403, detail="Not authorized to view this document"
         )
 
-    from app.services.document_service_db import enrich_document_entities
+    from app.services.document_service import enrich_document_entities
 
     return await enrich_document_entities(document.to_dict(), db)
 
@@ -236,11 +236,11 @@ async def update_document_endpoint(
             "uploaded",
             "failed",
         ]:
-            from app.services.document_service_db import trigger_extraction
+            from app.services.document_service import trigger_extraction
 
             await trigger_extraction(str(updated_document.id), db)
         else:
-            from app.services.document_service_db import trigger_cumulative_extraction
+            from app.services.document_service import trigger_cumulative_extraction
 
             await trigger_cumulative_extraction(
                 str(updated_document.examination_id), db
@@ -279,7 +279,7 @@ async def edit_document_endpoint(
             status_code=403, detail="Not authorized to edit this document"
         )
 
-    from app.services.document_service_db import edit_document_service
+    from app.services.document_service import edit_document_service
 
     new_document = await edit_document_service(
         document_id, edit_params.model_dump(), db
@@ -351,7 +351,7 @@ async def download_document_endpoint(
     # depth forces an attachment for those extensions regardless. All other
     # types get X-Content-Type-Options: nosniff so browsers don't MIME-sniff a
     # benign extension into something executable.
-    from app.services.document_service_db import should_serve_inline
+    from app.services.document_service import should_serve_inline
 
     serve_inline = should_serve_inline(document.filename)
     headers = {"X-Content-Type-Options": "nosniff"}
@@ -479,7 +479,7 @@ async def upload_temp_preview(
 
     try:
         # Save temp file — cap size to prevent RAM exhaustion (audit A4)
-        from app.services.document_service_db import _read_capped
+        from app.services.document_service import _read_capped
         from app.core.config import settings as _settings
 
         content = await _read_capped(file, _settings.MAX_UPLOAD_SIZE * 1024 * 1024)

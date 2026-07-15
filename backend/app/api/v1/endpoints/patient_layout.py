@@ -9,7 +9,7 @@ from app.schemas.patient_layout import (
     PatientLayoutUpdate,
     PatientLayoutResponse,
 )
-from app.api.v1.endpoints.utils import check_patient_access
+from app.services.access import check_patient_access
 from app.services.patient_layout_service import (
     get_patient_layouts,
     get_active_layout,

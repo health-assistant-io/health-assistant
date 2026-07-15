@@ -85,7 +85,7 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
 
     # We need to mock delete_document service call because it touches the filesystem
     with patch(
-        "app.services.document_service_db.delete_document", new_callable=AsyncMock
+        "app.services.document_service.delete_document", new_callable=AsyncMock
     ) as mock_delete_doc:
         response = await async_client.delete(f"/api/v1/examinations/{exam_id}")
 

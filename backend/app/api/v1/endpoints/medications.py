@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
-from app.api.v1.endpoints.utils import check_patient_access, check_medication_access
+from app.services.access import check_patient_access, check_medication_access
 from app.schemas.medication import (
     MedicationCatalogCreate,
     MedicationCatalogUpdate,

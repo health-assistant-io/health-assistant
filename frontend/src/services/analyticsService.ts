@@ -189,20 +189,6 @@ export async function getAnalyticsSummary(
   return response.data;
 }
 
-export async function getReferenceRanges(): Promise<{
-  [key: string]: {
-    min: number;
-    max: number;
-    unit: string;
-  };
-}> {
-  const response = await api.get<{
-    [key: string]: { min: number; max: number; unit: string };
-  }>(
-    '/analytics/reference-ranges'
-  );
-  return response.data;
-}
 export async function getCategoryAnalytics(
   categoryName: string,
   patientId?: string

@@ -732,7 +732,7 @@ class ExportService:
     # ---------------- write ----------------
 
     def _exports_dir(self, tenant_id: UUID) -> Path:
-        from app.services.document_service_db import UPLOAD_DIR as RESOLVED_UPLOAD_DIR
+        from app.services.document_service import UPLOAD_DIR as RESOLVED_UPLOAD_DIR
 
         base = Path(RESOLVED_UPLOAD_DIR) / EXPORT_DIR_NAME / str(tenant_id)
         base.mkdir(parents=True, exist_ok=True)

@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document_model import DocumentModel
-from app.services.document_service_db import _resolve_practitioner_id
+from app.services.document_service import _resolve_practitioner_id
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ async def test_resolve_practitioner_id_invalid_uuid_returns_none():
 async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
     """upload_document must call _resolve_practitioner_id and copy the result
     onto DocumentModel.practitioner_id before persisting."""
-    from app.services import document_service_db
+    from app.services import document_service
 
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
@@ -148,23 +148,23 @@ async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
     async def _fake_write(path, content):
         return None
     monkeypatch.setattr(
-        "app.services.document_service_db.write_file_if_not_exists",
+        "app.services.document_service.write_file_if_not_exists",
         _fake_write,
         raising=False,
     )
     monkeypatch.setattr(
-        "app.services.document_service_db.uuid4",
+        "app.services.document_service.uuid4",
         lambda: uuid.UUID("00000000-0000-0000-0000-0000000000aa"),
     )
 
     doctor_id = uuid.uuid4()
     with patch.object(
-        document_service_db, "_resolve_practitioner_id", new=AsyncMock(return_value=doctor_id)
+        document_service, "_resolve_practitioner_id", new=AsyncMock(return_value=doctor_id)
     ) as mock_resolve:
         # The gate must pass (mock it — full integration is exercised by
         # test_fhir_validation_gate_coverage.py).
-        with patch.object(document_service_db, "assert_valid_fhir"):
-            await document_service_db.upload_document(
+        with patch.object(document_service, "assert_valid_fhir"):
+            await document_service.upload_document(
                 file=upload,
                 patient_id=None,
                 owner_id=str(uuid.uuid4()),
@@ -184,7 +184,7 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
     """When the resolver returns None (admin/manager uploads), practitioner_id
     stays NULL — author will be omitted from the FHIR resource rather than
     emit a wrong reference."""
-    from app.services import document_service_db
+    from app.services import document_service
 
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
@@ -197,20 +197,20 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
     async def _fake_write(path, content):
         return None
     monkeypatch.setattr(
-        "app.services.document_service_db.write_file_if_not_exists",
+        "app.services.document_service.write_file_if_not_exists",
         _fake_write,
         raising=False,
     )
     monkeypatch.setattr(
-        "app.services.document_service_db.uuid4",
+        "app.services.document_service.uuid4",
         lambda: uuid.UUID("00000000-0000-0000-0000-0000000000bb"),
     )
 
     with patch.object(
-        document_service_db, "_resolve_practitioner_id", new=AsyncMock(return_value=None)
+        document_service, "_resolve_practitioner_id", new=AsyncMock(return_value=None)
     ):
-        with patch.object(document_service_db, "assert_valid_fhir"):
-            await document_service_db.upload_document(
+        with patch.object(document_service, "assert_valid_fhir"):
+            await document_service.upload_document(
                 file=upload,
                 patient_id=None,
                 owner_id=str(uuid.uuid4()),

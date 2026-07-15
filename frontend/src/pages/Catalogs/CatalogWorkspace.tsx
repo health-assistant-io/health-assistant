@@ -46,6 +46,8 @@ import {
   updateCatalogItem,
   deleteCatalogItem,
 } from '../../services/catalogService';
+import biomarkerService from '../../services/biomarkerService';
+import type { BiomarkerReferenceRange } from '../../types/biomarker';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -327,26 +329,42 @@ export const CatalogWorkspace: React.FC = () => {
     setSaving(true);
     try {
       const writeTarget = getWriteTarget(activeType);
+      let savedId: string | undefined;
       if (isNew) {
         if (writeTarget) {
           await writeTarget.create(buildWritePayload(activeType, editing, 'create'));
         } else {
-          await createCatalogItem(activeType, editing);
+          const created = await createCatalogItem(activeType, editing);
+          savedId = created?.id ? String(created.id) : undefined;
         }
       } else {
-        const id = String(editing.id);
+        savedId = String(editing.id);
         if (writeTarget) {
-          await writeTarget.update(id, buildWritePayload(activeType, editing, 'edit'));
+          await writeTarget.update(savedId, buildWritePayload(activeType, editing, 'edit'));
           // No returned row to patch locally for concept writes; a full
           // load() below reconciles the list.
         } else {
-          const saved = await updateCatalogItem(activeType, id, editing);
+          const saved = await updateCatalogItem(activeType, savedId, editing);
           // Patch the returned row into the local list so the Info preview
           // reflects the edit immediately (the response is the updated item).
           setItems((prev) =>
             prev.map((it) =>
               String(it.id) === String(saved.id) ? { ...it, ...saved } : it,
             ),
+          );
+        }
+      }
+      // Biomarker stratified reference ranges (audit B9/F3): the editor works
+      // in draft mode (so ranges can be set on first create too). Reconcile
+      // them against the server now that the biomarker has an id.
+      if (activeType === 'biomarker' && savedId) {
+        const desiredRanges = (editing.reference_ranges as any[]) ?? [];
+        // Skip the sync entirely when there's nothing to create and the
+        // biomarker is brand new (avoids a pointless list call).
+        if (!isNew || desiredRanges.length > 0) {
+          await biomarkerService.syncReferenceRanges(
+            savedId,
+            desiredRanges as BiomarkerReferenceRange[],
           );
         }
       }

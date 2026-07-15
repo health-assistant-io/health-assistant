@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.endpoints.utils import (
+from app.services.access import (
     check_immunization_access,
     check_patient_access,
 )
