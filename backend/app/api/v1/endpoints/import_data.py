@@ -1,3 +1,4 @@
+import logging
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,8 @@ from app.schemas.user import TokenData
 from app.services.import_service import ImportService
 
 router = APIRouter(prefix="/import", tags=["data-import"])
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_uuid(v: str) -> UUID:
@@ -68,9 +71,12 @@ async def import_backup(
             str(job.id), str(tmp_path), str(user_id), json.dumps(config_dict)
         )
         return ImportJobResponse(**job.to_dict())
-    except Exception as e:
+    except Exception:
         tmp_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # Re-raise so the global handler returns a generic 500 + correlation
+        # id. Backup import errors can include DB/FS internals — never echo.
+        logger.exception("Backup import job creation failed")
+        raise
 
 
 @router.post("/fhir")

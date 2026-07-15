@@ -76,10 +76,22 @@ POST /api/v1/auth/refresh
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "Bearer",
   "expires_in": 86400
 }
 ```
+
+> **Refresh-token rotation (audit A5):** each call **revokes** the presented refresh token (tracked by `jti` in Redis) and issues a brand-new one — clients must use the *new* `refresh_token` returned here on the next call (old ones are single-use). An access token can no longer be replayed at this endpoint (the `type=refresh` claim is enforced). Degrades open if Redis is unreachable.
+
+### Logout / Revoke Refresh Tokens
+
+```http
+POST /api/v1/auth/logout
+POST /api/v1/auth/logout-all
+```
+
+**Request Body:** `{ "refresh_token": "..." }` (one token for `logout`; `logout-all` revokes every refresh token for the calling user regardless of body). Requires a valid access token. Returns `200 OK`.
 
 ### Register New User
 
@@ -1036,7 +1048,7 @@ Vaccines also appear in the unified catalog endpoints (`/catalogs/vaccine`,
 | 404 | Not Found (also returned for cross-tenant calls — no leak) |
 | 410 | Gone (FHIR R4 facade: tombstone of a soft-deleted resource) |
 | 422 | Validation error |
-| 429 | Too Many Requests (rate limited — future) |
+| 429 | Too Many Requests — auth endpoints (`/auth/login`/`register`/`refresh`/`invite`) are Redis-backed rate-limited per client IP (audit A2; degrades open if Redis is down) |
 | 500 | Internal Server Error |
 
 ## Current API Status
@@ -1045,7 +1057,9 @@ Vaccines also appear in the unified catalog endpoints (`/catalogs/vaccine`,
 
 #### Authentication
 - `POST /api/v1/auth/login` - Login and get tokens
-- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/refresh` - Refresh access token (rotates the refresh token — audit A5)
+- `POST /api/v1/auth/logout` - Revoke one refresh token (audit A5)
+- `POST /api/v1/auth/logout-all` - Revoke every refresh token for the calling user (audit A5)
 - `GET /api/v1/auth/validate` - Validate current token
 - `POST /api/v1/auth/register` - Register new user (bootstrap or invite)
 - `POST /api/v1/auth/invite` - Issue a tenant invite token (ADMIN+)

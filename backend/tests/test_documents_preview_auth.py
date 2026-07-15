@@ -334,8 +334,16 @@ async def test_preview_dead_code_branch_removed():
     import inspect
 
     src = inspect.getsource(docs_endpoint.get_document_preview_endpoint)
-    # The duplicate `except Exception as e:` block (K9) is gone.
-    assert src.count("except Exception as e:") == 1, (
-        "Preview endpoint should have exactly one generic except clause "
-        "(the duplicate dead code from K9 should be gone)."
+    # Audit K9 removed the unreachable dead code; audit A6 requires that no
+    # broad except leaks the raw exception to the client via detail=str(e).
+    assert "detail=str(e)" not in src, (
+        "Preview endpoint must not leak raw exception detail (audit A6)."
+    )
+    assert "detail=f\"Failed" not in src, (
+        "Preview endpoint must not embed str(e) in detail (audit A6)."
+    )
+    # The function-level generic handler re-raises (lets the global handler
+    # produce a correlation id) instead of returning a hand-crafted 500.
+    assert "raise HTTPException(\n            status_code=500" not in src, (
+        "Preview endpoint should re-raise, not craft its own 500 (audit A6)."
     )

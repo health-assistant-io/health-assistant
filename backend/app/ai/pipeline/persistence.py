@@ -20,6 +20,7 @@ the savepoint regression tests (``inst._persist_results(...)`` on a
 import datetime
 import logging
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -181,12 +182,12 @@ async def persist_results(
     # end begin_nested — savepoint released cleanly, outer txn continues
 
 
-def find_source_doc(text_to_find: str, docs: List[DocumentModel]) -> Optional[str]:
+def find_source_doc(text_to_find: str, docs: List[DocumentModel]) -> Optional[UUID]:
     if not docs:
         return None
     for d in docs:
         if text_to_find.lower() in str(d.extracted_text).lower():
-            return str(d.id)
+            return d.id
     return None
 
 
@@ -198,7 +199,7 @@ async def save_observation(
     exam,
     patient_ref: str,
     effective_date: datetime.datetime,
-    document_id: Optional[str] = None,
+    document_id: Optional[UUID] = None,
 ) -> None:
     val_float = b.value
     biomarker_id = target_bio.id if target_bio else None
@@ -290,6 +291,7 @@ async def save_observation(
     obs = Observation(
         examination_id=exam.id,
         document_id=document_id,
+        patient_id=exam.patient_id,
         tenant_id=exam.tenant_id,
         status="final",
         code={"coding": coding, "text": b.name},

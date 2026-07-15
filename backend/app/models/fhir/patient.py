@@ -60,7 +60,7 @@ class Patient(
     telecom = Column(JSONB, nullable=True)
 
     # Additional metadata
-    mrn = Column(String, nullable=True, unique=True)  # Medical Record Number
+    mrn = Column(String, nullable=True)  # Medical Record Number (per-tenant unique via index)
     emergency_contact = Column(JSONB, nullable=True)
     dashboard_layout = Column(JSONB, nullable=True)  # Custom dashboard layout
 
@@ -149,7 +149,22 @@ class Observation(
     __tablename__ = "fhir_observations"
 
     # Custom linkage for Health Assistant
-    document_id = Column(String, nullable=True, index=True)
+    document_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Patient FK maintained from the ``subject`` JSONB reference (audit B3).
+    # Kept in sync on every write path; enables ON DELETE CASCADE + btree
+    # patient scoping without parsing JSONB on every read. ``subject`` remains
+    # the FHIR-serialization projection.
+    patient_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("fhir_patients.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     examination_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("examinations.id", ondelete="CASCADE"),
@@ -242,7 +257,8 @@ class Observation(
             "relative_score": self.relative_score,
             "method": self.method,
             "examination_id": str(self.examination_id) if self.examination_id else None,
-            "document_id": self.document_id,
+            "document_id": str(self.document_id) if self.document_id else None,
+            "patient_id": str(self.patient_id) if self.patient_id else None,
         }
 
     def to_fhir_dict(self) -> dict:
@@ -305,6 +321,13 @@ class DiagnosticReport(
     category = Column(JSONB, nullable=True)
     code = Column(JSONB, nullable=False)
     subject = Column(JSONB, nullable=False)  # Reference to Patient
+    # Patient FK maintained from ``subject`` (audit B3) — see Observation.
+    patient_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("fhir_patients.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     effective_datetime = Column(DateTime(timezone=True), nullable=True)
     issued = Column(DateTime(timezone=True), nullable=True)
     performer = Column(JSONB, nullable=True)
@@ -330,6 +353,7 @@ class DiagnosticReport(
             "category": self.category,
             "code": self.code,
             "subject": self.subject,
+            "patient_id": str(self.patient_id) if self.patient_id else None,
             "effective_datetime": self.effective_datetime.isoformat()
             if self.effective_datetime
             else None,

@@ -365,14 +365,24 @@ def save_figure_image(
     {slug}-source.{ext} when kind='source') and return (relative_path, w, h)."""
     from PIL import Image as PILImage
     import io
+    import re
 
     base = _figures_base_dir()
     suffix = "-source" if kind == "source" else ""
-    path = base / f"{slug}{suffix}.{ext}"
+    # Audit A13: slug is interpolated into a filesystem path. Sanitise to a
+    # strict basename (no separators, no traversal) and confirm the resolved
+    # path stays within the figures base dir — defence-in-depth even though
+    # the only writer is SYSTEM_ADMIN-gated.
+    safe_slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(slug)).strip(".-") or "figure"
+    path = (base / f"{safe_slug}{suffix}.{ext}").resolve()
+    try:
+        path.relative_to(base.resolve())
+    except ValueError:
+        raise ValueError(f"Refusing to write anatomy figure outside base dir: {slug!r}")
     path.write_bytes(data)
     with PILImage.open(io.BytesIO(data)) as img:
         w, h = img.size
-    return f"{FIGURES_DIR}/{slug}{suffix}.{ext}", w, h
+    return f"{FIGURES_DIR}/{safe_slug}{suffix}.{ext}", w, h
 
 
 def figure_image_abspath(figure: AnatomyFigure) -> Optional[Path]:

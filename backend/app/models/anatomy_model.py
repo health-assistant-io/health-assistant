@@ -18,7 +18,7 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
     __tablename__ = "anatomy_structures"
 
     name = Column(String(100), nullable=False)
-    slug = Column(String(100), nullable=False, unique=True, index=True)
+    slug = Column(String(100), nullable=False, index=True)
     class_concept_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("concepts.id", ondelete="SET NULL"),

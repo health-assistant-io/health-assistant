@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Date, ForeignKey, Index, Text, Integer, Boolean
+from sqlalchemy import Column, String, Date, ForeignKey, Index, Text, Integer, Boolean, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -111,7 +111,13 @@ class ExaminationModel(
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("idx_exam_tenant_patient", "tenant_id", "patient_id"),)
+    __table_args__ = (
+        Index("idx_exam_tenant_patient", "tenant_id", "patient_id"),
+        CheckConstraint(
+            "extraction_progress BETWEEN 0 AND 100",
+            name="ck_examinations_extraction_progress_bounds",
+        ),
+    )
 
     def to_dict(self) -> dict:
         updated_at_value = getattr(self, "updated_at", None)

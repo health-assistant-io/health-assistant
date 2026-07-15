@@ -20,7 +20,7 @@ and cursor management stay in lockstep.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
@@ -31,6 +31,8 @@ from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
+from app.services.fhir_helpers import coerce_patient_id
+from app.core.converters import utcnow as _now
 
 logger = logging.getLogger(__name__)
 
@@ -168,10 +170,6 @@ class SyncResult:
     error_type: Optional[str] = None  # "auth" | "rate_limit" | "data" | None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 async def _try_acquire_lock(integration_id: UUID) -> Tuple[bool, str]:
@@ -357,6 +355,11 @@ async def run_sync(
                     else obs_data
                 )
                 observations.append(Observation(**obs_dict))
+        # audit B3: keep the relational patient_id in sync with the FHIR subject
+        # reference on integration-sourced observations (the SDK builder only
+        # sets ``subject``).
+        for _obs in observations:
+            _obs.patient_id = coerce_patient_id(_obs.patient_id, _obs.subject)
 
             from app.services.fhir_service import map_observations_to_biomarkers
 

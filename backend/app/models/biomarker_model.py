@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -31,11 +31,17 @@ class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
     # Relationships
     base_unit = relationship("Unit", remote_side="[Unit.id]")
 
+    __table_args__ = (
+        CheckConstraint(
+            "conversion_multiplier > 0", name="ck_units_positive_conversion_multiplier"
+        ),
+    )
+
 
 class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, VersionedMixin):
     __tablename__ = "biomarker_definitions"
 
-    slug = Column(String(255), unique=True, nullable=False, index=True)
+    slug = Column(String(255), nullable=False, index=True)
     coding_system = Column(
         Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC
     )
@@ -77,6 +83,15 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         "Concept",
         foreign_keys="[BiomarkerDefinition.class_concept_id]",
         lazy="selectin",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "reference_range_min IS NULL "
+            "OR reference_range_max IS NULL "
+            "OR reference_range_min <= reference_range_max",
+            name="ck_biomarker_definitions_ref_range_order",
+        ),
     )
 
     @property

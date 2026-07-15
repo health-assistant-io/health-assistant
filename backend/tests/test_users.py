@@ -1,7 +1,8 @@
 import pytest
 from httpx import AsyncClient
 from unittest.mock import patch
-from app.models.user import User
+from app.models.enums import Role
+from app.models.user_model import UserModel
 import uuid
 
 
@@ -53,11 +54,14 @@ def override_get_switched_admin():
 
 @pytest.fixture
 def mock_target_user():
-    return User(
+    return UserModel(
         id=uuid.uuid4(),
         email="target@example.com",
-        role="user",
-        tenant_id=str(uuid.uuid4()),
+        role=Role.USER,
+        tenant_id=uuid.uuid4(),
+        is_active=True,
+        is_service_account=False,
+        settings={},
     )
 
 
@@ -92,11 +96,14 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
     switched_admin = override_get_switched_admin()
     app.dependency_overrides[get_current_user] = lambda: switched_admin
 
-    admin_user = User(
+    admin_user = UserModel(
         id=switched_admin.user_id,
         email="sysadmin@example.com",
-        role="SYSTEM_ADMIN",
-        tenant_id=str(switched_admin.original_tenant_id),
+        role=Role.SYSTEM_ADMIN,
+        tenant_id=switched_admin.original_tenant_id,
+        is_active=True,
+        is_service_account=False,
+        settings={},
     )
     mock_get_user_by_id.return_value = admin_user
 

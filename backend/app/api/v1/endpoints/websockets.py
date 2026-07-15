@@ -66,6 +66,15 @@ async def _extract_token(websocket: WebSocket, query_token: str | None) -> str |
     for part in parts:
         if part.lower() != "bearer" and part.count(".") >= 2:
             return part
+    # Legacy fallback: the ?token= query string. This exposes the JWT in
+    # reverse-proxy access logs and browser history (audit A12). Emit a
+    # deprecation warning so operators notice and migrate clients to the
+    # subprotocol form; will be removed in a future release.
+    if query_token:
+        logger.warning(
+            "WebSocket auth used the deprecated ?token= query-string fallback "
+            "(client should use Sec-WebSocket-Protocol subprotocol instead)."
+        )
     return query_token
 
 
@@ -174,19 +183,13 @@ async def websocket_notifications_endpoint(
     hygiene mirror ``/ws/tasks`` (subprotocol-preferred token).
     """
     resolved_token = await _extract_token(websocket, token)
-    print(
-        f"[WS-DEBUG] /ws/notifications resolved_token={'<set>' if resolved_token else '<None>'}",
-        flush=True,
-    )
     if not resolved_token:
         await websocket.close(code=1008)
         return
 
     try:
         current_user: TokenData = await get_current_user_ws(resolved_token)
-        print(f"[WS-DEBUG] auth OK user={current_user.user_id}", flush=True)
     except Exception as e:
-        print(f"[WS-DEBUG] auth RAISED: {type(e).__name__}: {e}", flush=True)
         logger.info("Notification WebSocket auth rejected: %s", e)
         await websocket.close(code=1008)
         return

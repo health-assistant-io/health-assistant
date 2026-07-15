@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Iterable, Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.converters import to_uuid as _uuid, utcnow as _now
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 from app.core.redis import publish_message
 from app.models.enums import (
@@ -56,21 +56,6 @@ logger = logging.getLogger(__name__)
 _CLINICAL_SOURCES = frozenset(
     {NotificationSource.RULE, NotificationSource.CLINICAL, NotificationSource.AGENT}
 )
-
-
-def _uuid(value: str | UUID | None) -> UUID | None:
-    if value is None:
-        return None
-    if isinstance(value, UUID):
-        return value
-    try:
-        return UUID(str(value))
-    except (ValueError, TypeError):
-        return None
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 async def emit(

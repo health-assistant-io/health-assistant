@@ -6,6 +6,7 @@ from sqlalchemy import select, func, and_
 from app.models.fhir import Patient, Observation, DiagnosticReport, Medication
 from app.services.fhir_helpers import (
     _extract_patient_id,
+    coerce_patient_id,
     _normalize_interpretation,
     assert_valid_fhir,
     validate_and_filter_observations,
@@ -303,6 +304,20 @@ async def create_observation(
     value_quantity = observation_data.get("value_quantity")
     subject = observation_data.get("subject") or {}
 
+    # document_id is a UUID FK (audit B2). Accept str or UUID; drop anything
+    # that isn't a valid UUID so a malformed value can't poison the insert.
+    _doc_id = observation_data.get("document_id")
+    if isinstance(_doc_id, str) and _doc_id:
+        try:
+            _doc_id = UUID(_doc_id)
+        except ValueError:
+            _doc_id = None
+
+    # patient_id FK (audit B3): derive from an explicit patient_id or from the
+    # subject reference so the relational column stays in sync with the FHIR
+    # JSONB and patient-delete cascades.
+    _patient_id = coerce_patient_id(observation_data.get("patient_id"), subject)
+
     new_obs = Observation(
         tenant_id=tenant_id,
         status=observation_data.get("status", "final"),
@@ -317,7 +332,8 @@ async def create_observation(
         ),
         raw_value=observation_data.get("raw_value")
         or (value_quantity.get("value") if value_quantity else None),
-        document_id=observation_data.get("document_id"),
+        document_id=_doc_id,
+        patient_id=_patient_id,
     )
     assert_valid_fhir(new_obs)
 
@@ -327,13 +343,7 @@ async def create_observation(
         await session.refresh(new_obs)
 
     # Evaluate biomarker rules (event-driven notification source).
-    patient_id = None
-    patient_id_str = observation_data.get("patient_id") or _extract_patient_id(subject)
-    if patient_id_str:
-        try:
-            patient_id = UUID(str(patient_id_str))
-        except (ValueError, TypeError):
-            pass
+    patient_id = _patient_id
 
     if patient_id and new_obs.biomarker_id:
         try:
@@ -610,6 +620,7 @@ async def create_diagnostic_report(
         subject=report_data.get("subject") or {},
         conclusion=report_data.get("conclusion"),
         effective_datetime=_parse_datetime(report_data.get("effective_datetime")),
+        patient_id=coerce_patient_id(report_data.get("patient_id"), report_data.get("subject")),
     )
     assert_valid_fhir(new_report)
 

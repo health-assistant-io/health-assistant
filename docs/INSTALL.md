@@ -196,7 +196,8 @@ docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
 - [ ] Set up database backups
-- [ ] Configure rate limiting
+- [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`) — just ensure Redis is reachable; it degrades open if Redis is down (audit A2)
+- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS) (audit A7); tighten `APP_CSP_CONTENT` if you serve the SPA from the backend origin
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
 

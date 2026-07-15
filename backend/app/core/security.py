@@ -1,7 +1,7 @@
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 from app.core.config import settings
 from fastapi import HTTPException, status, Header, Depends, Request
 
@@ -51,6 +51,47 @@ def decode_access_token(token: str) -> dict:
         return payload
     except jwt.PyJWTError:
         return None
+
+
+# Refresh tokens carry a ``type=refresh`` claim + a unique ``jti`` so they can
+# be rotated and revoked server-side (audit A5). A plain access token must not
+# be accepted at /auth/refresh.
+REFRESH_TOKEN_TYPE = "refresh"
+REFRESH_TOKEN_DAYS = 7
+
+
+def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> tuple[str, str]:
+    """Create a refresh JWT. Returns ``(token, jti)``.
+
+    The token embeds ``type="refresh"`` and a random ``jti``; the caller must
+    register the jti via ``token_store.register_refresh`` for it to be valid.
+    """
+    to_encode = data.copy()
+    if expires_delta is None:
+        expires_delta = timedelta(days=REFRESH_TOKEN_DAYS)
+    expire = datetime.now(timezone.utc) + expires_delta
+    jti = uuid4().hex
+    to_encode.update(
+        {"exp": expire, "iat": datetime.now(timezone.utc), "type": REFRESH_TOKEN_TYPE, "jti": jti}
+    )
+    encoded_jwt = jwt.encode(
+        to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
+    return encoded_jwt, jti
+
+
+def decode_refresh_token(token: str) -> dict | None:
+    """Decode a refresh token, enforcing the ``type=refresh`` claim.
+
+    Returns the payload or None if the token is invalid, expired, or not a
+    refresh token (prevents an access token from being reused at /refresh).
+    """
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+    if payload.get("type") != REFRESH_TOKEN_TYPE:
+        return None
+    return payload
 
 
 def verify_access_token(token: str) -> dict:

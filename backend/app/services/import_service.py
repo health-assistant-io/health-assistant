@@ -53,6 +53,8 @@ from app.services.fhir_converter import (
     fhir_to_orm,
     validate_bundle,
 )
+from app.services.fhir_helpers import coerce_patient_id
+from app.core.converters import parse_dt as _parse_dt, to_uuid as _uuid
 from app.schemas.import_data import (
     CSVImportConfig,
     FHIRImportConfig,
@@ -62,29 +64,6 @@ from app.schemas.import_data import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _uuid(v: Any) -> Optional[UUID]:
-    if v is None:
-        return None
-    if isinstance(v, UUID):
-        return v
-    try:
-        return UUID(str(v))
-    except (ValueError, AttributeError):
-        return None
-
-
-def _parse_dt(v: Any) -> Optional[datetime]:
-    if not v or isinstance(v, datetime):
-        return v
-    try:
-        s = str(v)
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        return datetime.fromisoformat(s)
-    except (ValueError, TypeError):
-        return None
 
 
 def _parse_date(v: Any) -> Optional[date]:
@@ -1170,6 +1149,7 @@ class ImportService:
                     status=orm.get("status") or "final",
                     code=orm.get("code"),
                     subject=orm.get("subject"),
+                    patient_id=coerce_patient_id(None, orm.get("subject")),
                     effective_datetime=_parse_dt(orm.get("effective_datetime")),
                     value_quantity=orm.get("value_quantity"),
                     value_string=orm.get("value_string"),
@@ -1188,6 +1168,7 @@ class ImportService:
             status=orm.get("status") or "final",
             code=orm.get("code") or {"text": "unknown"},
             subject=orm.get("subject") or {"reference": "Patient/unknown"},
+            patient_id=coerce_patient_id(None, orm.get("subject")),
             effective_datetime=_parse_dt(orm.get("effective_datetime")),
             value_quantity=orm.get("value_quantity"),
             value_string=orm.get("value_string"),
@@ -1346,6 +1327,7 @@ class ImportService:
                     status=orm.get("status") or "final",
                     code=orm.get("code"),
                     subject=orm.get("subject"),
+                    patient_id=coerce_patient_id(None, orm.get("subject")),
                     effective_datetime=_parse_dt(orm.get("effective_datetime")),
                     issued=_parse_dt(orm.get("issued")),
                     performer=orm.get("performer"),
@@ -1361,6 +1343,7 @@ class ImportService:
             status=orm.get("status") or "final",
             code=orm.get("code") or {"text": "unknown"},
             subject=orm.get("subject") or {"reference": "Patient/unknown"},
+            patient_id=coerce_patient_id(None, orm.get("subject")),
             effective_datetime=_parse_dt(orm.get("effective_datetime")),
             issued=_parse_dt(orm.get("issued")),
             performer=orm.get("performer"),

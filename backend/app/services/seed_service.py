@@ -264,7 +264,12 @@ class SeedService:
 
                 if db_part:
                     db_part.name = item.get("name", db_part.name)
-                    db_part.class_concept_id = class_concept_id
+                    # Never nullify an existing class_concept_id on re-seed.
+                    # If the concept currently can't be resolved (e.g. its
+                    # kind tag is missing from a prior partial seed), keep the
+                    # previously-resolved value rather than destroying it.
+                    if class_concept_id is not None:
+                        db_part.class_concept_id = class_concept_id
                     db_part.standard_system = standard_sys
                     db_part.standard_code = item.get(
                         "standard_code", db_part.standard_code

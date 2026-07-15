@@ -6,6 +6,7 @@ from sqlalchemy import (
     Text,
     DateTime,
     Enum as SQLEnum,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from app.models.base import (
@@ -51,6 +52,12 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     smart_scope = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "progress BETWEEN 0 AND 100", name="ck_export_jobs_progress_bounds"
+        ),
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -102,6 +109,12 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     warnings = Column(JSONB, nullable=True)
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "progress BETWEEN 0 AND 100", name="ck_import_jobs_progress_bounds"
+        ),
+    )
 
     def to_dict(self) -> dict:
         return {

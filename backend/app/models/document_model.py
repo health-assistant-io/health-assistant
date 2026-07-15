@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Boolean
+from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Boolean, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import relationship
@@ -99,6 +99,9 @@ class DocumentModel(
             "ix_documents_entities_gin",
             sa_text("entities"),
             postgresql_using="gin",
+        ),
+        CheckConstraint(
+            "progress BETWEEN 0 AND 100", name="ck_documents_progress_bounds"
         ),
     )
 

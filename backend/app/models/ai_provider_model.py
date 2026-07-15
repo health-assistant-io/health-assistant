@@ -9,6 +9,7 @@ from sqlalchemy import (
     UUID,
     Index,
     Enum as SQLEnum,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -129,6 +130,10 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
 
     __table_args__ = (
         Index("idx_ai_models_provider_active", "provider_id", "is_active"),
+        CheckConstraint("max_tokens > 0", name="ck_ai_models_positive_max_tokens"),
+        CheckConstraint(
+            "temperature BETWEEN 0 AND 2", name="ck_ai_models_temperature_bounds"
+        ),
     )
 
     def to_dict(self) -> dict:

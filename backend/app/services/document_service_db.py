@@ -40,6 +40,70 @@ def get_upload_dir():
 
 UPLOAD_DIR = get_upload_dir()
 
+# Allowed upload extensions (audit A3). Deliberately EXCLUDES types that can
+# carry active content executable in the browser at the app origin — svg,
+# html/htm, xml, js — because the download endpoint serves files inline and a
+# stored XSS would run with the victim's session. Medical documents are
+# PDF/images/DICOM/text only.
+ALLOWED_UPLOAD_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        # Documents
+        ".pdf", ".txt", ".md",
+        # Raster images (no svg — svg can embed <script>)
+        ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".tif", ".gif",
+        # Medical imaging
+        ".dcm",
+    }
+)
+
+# Extensions that must NEVER be served inline (force-download only). Even if
+# one slipped past the upload allowlist, it is served as an attachment.
+_INLINE_BLOCKED_EXTENSIONS: frozenset[str] = frozenset(
+    {".svg", ".svgz", ".html", ".htm", ".xml", ".xhtml", ".js"}
+)
+
+
+def _validate_upload_extension(filename: Optional[str]) -> str:
+    """Return the lowercased extension if allowed, else raise 400."""
+    name = filename or "unknown"
+    ext = Path(name).suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext or '(none)'}'. "
+            f"Allowed: {sorted(ALLOWED_UPLOAD_EXTENSIONS)}.",
+        )
+    return ext
+
+
+def should_serve_inline(filename: Optional[str]) -> bool:
+    """True if the file may be served ``inline`` (not an active-content type)."""
+    name = filename or ""
+    return Path(name).suffix.lower() not in _INLINE_BLOCKED_EXTENSIONS
+
+
+async def _read_capped(file, max_bytes: int) -> bytes:
+    """Read an UploadFile in chunks, aborting with 413 if it exceeds ``max_bytes``.
+
+    Prevents a single oversized request from exhausting server RAM (audit A4)
+    — the previous ``await file.read()`` loaded the whole body unconditionally.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)  # 1 MiB steps
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum allowed size is "
+                f"{max_bytes // (1024 * 1024)} MB.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 async def _resolve_practitioner_id(
     db: AsyncSession, owner_id: str | UUID, tenant_id: str | UUID
@@ -82,7 +146,7 @@ async def upload_document(
     # Generate unique filename
     doc_id = uuid4()
     filename = file.filename or "unknown"
-    file_extension = Path(filename).suffix if file.filename else ".bin"
+    file_extension = _validate_upload_extension(filename)
     safe_filename = f"{doc_id}{file_extension}"
 
     tenant_dir = UPLOAD_DIR / str(tenant_id)
@@ -90,11 +154,14 @@ async def upload_document(
 
     file_path = tenant_dir / safe_filename
 
-    # Save file to disk
+    # Save file to disk — cap the size to prevent RAM exhaustion (audit A4)
+    max_bytes = settings.MAX_UPLOAD_SIZE * 1024 * 1024
     try:
-        content = await file.read()
+        content = await _read_capped(file, max_bytes)
         with open(file_path, "wb") as buffer:
             buffer.write(content)
+    except HTTPException:
+        raise
     except Exception as e:
         import logging
 
@@ -136,11 +203,20 @@ async def upload_document(
     return document
 
 
-async def get_document(document_id: str, db: AsyncSession) -> Optional[DocumentModel]:
-    """Get document by ID from database"""
-    result = await db.execute(
-        select(DocumentModel).where(DocumentModel.id == document_id)
-    )
+async def get_document(
+    document_id: str, db: AsyncSession, tenant_id: Optional[str | UUID] = None
+) -> Optional[DocumentModel]:
+    """Get document by ID from database.
+
+    When ``tenant_id`` is provided the query is scoped to that tenant (audit
+    A10) so a caller cannot read a cross-tenant document even if it forgets to
+    re-check. Callers that legitimately need cross-tenant reads (e.g. the
+    presigned-token download path, which authorises separately) may omit it.
+    """
+    stmt = select(DocumentModel).where(DocumentModel.id == document_id)
+    if tenant_id is not None:
+        stmt = stmt.where(DocumentModel.tenant_id == tenant_id)
+    result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 
@@ -153,7 +229,7 @@ async def enrich_document_entities(doc_dict: dict, db: AsyncSession):
 
     # Fetch observations linked to this document
     obs_result = await db.execute(
-        select(Observation).where(Observation.document_id == doc_dict["id"])
+        select(Observation).where(Observation.document_id == UUID(doc_dict["id"]))
     )
     observations = obs_result.scalars().all()
 
@@ -518,7 +594,7 @@ async def delete_document(
 
     try:
         await db.execute(
-            text("DELETE FROM fhir_observations WHERE document_id = :doc_id"),
+            text("DELETE FROM fhir_observations WHERE document_id = :doc_id::uuid"),
             {"doc_id": str(document_id)},
         )
     except Exception as e:

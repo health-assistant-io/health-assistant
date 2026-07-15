@@ -29,7 +29,7 @@ Health Assistant is a self-hosted, open-source platform for centralizing health 
 - **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_concept_id` FK → `concepts.id`)
 - **doctors**: Care team profiles (id, tenant_id, user_id, name, `specialty_concept_id` FK → `concepts.id`, license_number, contact_info)
 - **documents**: File tracking (id, owner_id, filename, file_path, status, progress, extracted_text, entities, `category_concept_id` FK → `concepts.id`)
-- **fhir_observations**: Biomarkers/Vitals (id, document_id, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime)
+- **fhir_observations**: Biomarkers/Vitals (id, `patient_id` FK → `fhir_patients.id` ON DELETE CASCADE, `document_id` FK → `documents.id` ON DELETE SET NULL, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime)
 - **units**: Smart units with conversion logic (id, symbol, quantity_type, conversion_multiplier)
 - **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id, `class_concept_id` FK → `concepts.id`)
 - **laboratories**: Source tracking for lab reports (id, name, location)

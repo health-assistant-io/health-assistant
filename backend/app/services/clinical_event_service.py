@@ -28,6 +28,7 @@ from app.api.v1.endpoints.utils import (
     check_observation_access,
     check_patient_access,
 )
+from app.core.errors import DomainError
 from app.models.biomarker_model import (
     BiomarkerDefinition,
     Unit,
@@ -759,7 +760,7 @@ async def _attach_examination_links(
                     reason=link.reason or "Initial association",
                 )
             )
-        except HTTPException:
+        except (HTTPException, DomainError):
             logger.warning(
                 "Skipping examination link %s: access denied or not found",
                 link.examination_id,
@@ -787,7 +788,7 @@ async def _attach_observation_links(
                     notes=link.notes,
                 )
             )
-        except HTTPException:
+        except (HTTPException, DomainError):
             logger.warning(
                 "Skipping observation link %s: access denied or not found",
                 link.observation_id,
@@ -834,7 +835,7 @@ async def _sync_examination_links(
                     reason=link.reason or "Associated visit",
                 )
             )
-        except HTTPException:
+        except (HTTPException, DomainError):
             logger.warning(
                 "Skipping examination link %s: access denied or not found",
                 link.examination_id,
@@ -878,7 +879,7 @@ async def _sync_observation_links(
                     notes=link.notes,
                 )
             )
-        except HTTPException:
+        except (HTTPException, DomainError):
             logger.warning(
                 "Skipping observation link %s: access denied or not found",
                 link.observation_id,

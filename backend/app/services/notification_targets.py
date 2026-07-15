@@ -37,6 +37,7 @@ from app.models.doctor_model import DoctorModel
 from app.models.fhir.patient import Patient
 from app.models.examination_model import ExaminationModel
 from app.models.associations import examination_doctors
+from app.core.converters import to_uuid as _uuid
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +50,6 @@ class TargetSpec(dict):
     """
 
     __slots__ = ()
-
-
-def _uuid(value: str | UUID | None) -> UUID | None:
-    if value is None:
-        return None
-    if isinstance(value, UUID):
-        return value
-    try:
-        return UUID(str(value))
-    except (ValueError, TypeError):
-        return None
 
 
 async def resolve_targets(

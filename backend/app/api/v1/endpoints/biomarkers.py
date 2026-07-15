@@ -1,4 +1,5 @@
 from typing import List
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update as sa_update, or_
@@ -23,6 +24,8 @@ from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from uuid import UUID
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
+
+logger = logging.getLogger(__name__)
 
 
 def _tenant_scope(tenant_id):
@@ -106,9 +109,13 @@ async def create_unit(
         await db.commit()
         await db.refresh(new_unit)
         return new_unit
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
 
 @router.post("/", response_model=BiomarkerResponse)
@@ -180,9 +187,13 @@ async def create_biomarker(
             "meta_data": new_bio.meta_data,
             "preferred_unit_symbol": symbol,
         }
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
 
 @router.delete("/{biomarker_id}")
@@ -214,9 +225,13 @@ async def delete_biomarker(
     try:
         await db.commit()
         return {"status": "success", "message": "Biomarker deleted"}
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
 
 @router.post("/bulk-delete")
@@ -258,9 +273,13 @@ async def bulk_delete_biomarkers(
             "status": "success",
             "message": f"{len(biomarker_ids)} biomarkers deleted",
         }
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
 
 @router.get("/slug/{slug}")
@@ -384,9 +403,13 @@ async def retry_biomarker_migration(
     try:
         await db.commit()
         await db.refresh(db_biomarker)
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
     # Return with symbol
     u_res = await db.execute(
@@ -454,9 +477,13 @@ async def remap_observations(
     updated = result.rowcount or 0
     try:
         await db.commit()
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )
 
     return {
         "status": "success",
@@ -566,6 +593,10 @@ async def update_biomarker(
             "meta_data": db_biomarker.meta_data,
             "preferred_unit_symbol": symbol,
         }
-    except Exception as e:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("biomarker operation failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Request could not be completed (see server log).",
+        )

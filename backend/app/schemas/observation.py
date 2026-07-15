@@ -25,7 +25,7 @@ class ObservationBase(BaseModel):
     lab_reference_range: Optional[Dict[str, Any]] = None
     relative_score: Optional[float] = None
     method: Optional[str] = None
-    document_id: Optional[str] = None
+    document_id: Optional[UUID] = None
     examination_id: Optional[UUID] = None
 
 

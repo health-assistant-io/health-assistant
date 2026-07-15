@@ -206,7 +206,8 @@ async def test_document_upload_invokes_validation_gate(monkeypatch):
     # Build a minimal Starlette UploadFile stub.
     upload = MagicMock()
     upload.filename = "test.pdf"
-    upload.read = AsyncMock(return_value=b"%PDF-1.4 fake content")
+    # EOF-correct read: content once, then empty (mirrors a real UploadFile).
+    upload.read = AsyncMock(side_effect=[b"%PDF-1.4 fake content", b""])
 
     # Avoid filesystem touching — patch the write paths.
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)

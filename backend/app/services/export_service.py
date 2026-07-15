@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.converters import to_uuid as _uuid
 from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
@@ -59,17 +60,6 @@ class ExportError(Exception):
     more resources fail FHIR validation). Carries a human-readable report so the
     job failure surfaces exactly what to fix — backups must never silently drop
     data (fail-loud policy)."""
-
-
-def _uuid(v: Any) -> Optional[UUID]:
-    if v is None:
-        return None
-    if isinstance(v, UUID):
-        return v
-    try:
-        return UUID(str(v))
-    except (ValueError, AttributeError):
-        return None
 
 
 def _patient_filter_conditions(

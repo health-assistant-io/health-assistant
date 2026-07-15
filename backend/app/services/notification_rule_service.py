@@ -22,6 +22,7 @@ from uuid import UUID
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.converters import to_uuid as _uuid
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import (
@@ -38,17 +39,6 @@ from app.models.notification_rule import NotificationRule
 from app.services import notification_service
 
 logger = logging.getLogger(__name__)
-
-
-def _uuid(value: str | UUID | None) -> Optional[UUID]:
-    if value is None:
-        return None
-    if isinstance(value, UUID):
-        return value
-    try:
-        return UUID(str(value))
-    except (ValueError, TypeError):
-        return None
 
 
 # ---------------------------------------------------------------------------

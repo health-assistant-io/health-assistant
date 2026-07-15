@@ -1,7 +1,7 @@
 from typing import Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, String, cast
+from sqlalchemy import select, func
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
@@ -9,6 +9,7 @@ from app.models.user_model import UserModel
 # FHIR models
 from app.models.fhir import Observation, Medication, DiagnosticReport
 from app.services.fhir_helpers import _flatten_interpretation
+from app.schemas.biomarker import is_safe_slug
 
 import re
 import logging
@@ -628,7 +629,7 @@ async def get_biomarker_trends(
                     _Concept,
                     ExaminationModel.category_concept_id == _Concept.id,
                 )
-                .where(cast(DocumentModel.id, String).in_(chunk))
+                .where(DocumentModel.id.in_(chunk))
             )
             for row in doc_query.all():
                 doc_id = row[0]
@@ -647,7 +648,7 @@ async def get_biomarker_trends(
                             category = cat["id"]
                             break
 
-                exam_info_map[str(doc_id)] = {
+                exam_info_map[doc_id] = {
                     "date": exam_date,
                     "category": category,
                     "exam_id": str(exam_id) if exam_id else None,
@@ -779,9 +780,9 @@ async def get_biomarker_trends(
             if (
                 not exam_id
                 and obs.document_id
-                and str(obs.document_id) in exam_info_map
+                and obs.document_id in exam_info_map
             ):
-                info = exam_info_map[str(obs.document_id)]
+                info = exam_info_map[obs.document_id]
                 exam_date = info["date"]
                 source_category = info["category"]
                 exam_id = info["exam_id"]
@@ -942,6 +943,17 @@ async def get_biomarker_trends(
             col = "calories"
             where_clause = "calories IS NOT NULL"
         else:
+            # Defense-in-depth: the slug is interpolated into raw SQL below.
+            # Schema validation should have prevented unsafe slugs at write
+            # time, but rows may pre-date that guard or arrive via the AI
+            # pipeline / import — refuse to interpolate anything that is not
+            # a strict identifier.
+            if not is_safe_slug(slug):
+                logger.warning(
+                    "Skipping telemetry query for unsafe biomarker slug %r",
+                    slug,
+                )
+                continue
             col = f"CAST(data->>'{slug}' AS FLOAT)"
             where_clause = f"data ? '{slug}'"
 
@@ -1278,7 +1290,7 @@ async def get_category_analytics(
                     "type": doc_category,
                 }
             )
-            matched_doc_ids.append(str(doc.id))
+            matched_doc_ids.append(doc.id)
 
     reports.sort(key=lambda x: x["date"], reverse=True)
 
@@ -1311,10 +1323,10 @@ async def get_category_analytics(
             if val is not None:
                 obs_date = obs.effective_datetime
                 if obs.document_id and obs.document_id in [
-                    str(d.id) for d in documents
+                    d.id for d in documents
                 ]:
                     doc_obj = next(
-                        (d for d in documents if str(d.id) == obs.document_id), None
+                        (d for d in documents if d.id == obs.document_id), None
                     )
                     if (
                         doc_obj

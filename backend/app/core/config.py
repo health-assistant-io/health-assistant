@@ -101,7 +101,11 @@ class Settings(BaseSettings):
 
     # Security
     # SECRET_KEY signs JWTs. It must be explicitly provided in production.
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    # Read via pydantic (Optional[str] = None) rather than os.getenv at class
+    # definition time — the os.getenv default baked in the value before the
+    # prod-guard validator below could reject it, making it untestable and
+    # inconsistent with how VAPID keys are handled (audit C7).
+    SECRET_KEY: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
@@ -140,7 +144,8 @@ class Settings(BaseSettings):
     AI_AGENT_MAX_ITERATIONS: int = 20
 
     # MCP Client integration (see integrations/mcp_client/)
-    INTEGRATION_SECRET_KEY: str = os.getenv("INTEGRATION_SECRET_KEY", "")
+    # Pydantic-read (audit C7) — same rationale as SECRET_KEY above.
+    INTEGRATION_SECRET_KEY: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_integration_secret_key(self) -> "Settings":

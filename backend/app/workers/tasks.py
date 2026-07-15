@@ -695,6 +695,7 @@ async def migrate_biomarker_data(
                                 elif val is not None:
                                     obs = Observation(
                                         tenant_id=tr.tenant_id,
+                                        patient_id=resolved_patient_id,
                                         subject={
                                             "reference": f"Patient/{resolved_patient_id}"
                                         },

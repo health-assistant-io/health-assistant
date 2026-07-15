@@ -1290,6 +1290,11 @@ async def integration_webhook(
                     else obs_data
                 )
                 obs = Observation(**obs_dict)
+                # audit B3: sync relational patient_id with the FHIR subject ref
+                # (the SDK ObservationCreate carries only ``subject``).
+                from app.services.fhir_helpers import coerce_patient_id
+
+                obs.patient_id = coerce_patient_id(obs.patient_id, obs.subject)
                 observations.append(obs)
 
             from app.services.fhir_service import map_observations_to_biomarkers

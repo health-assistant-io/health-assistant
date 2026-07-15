@@ -136,8 +136,6 @@ export async function performTenantSwitch(
   localStorage.setItem('refreshToken', result.refresh_token);
   // Let the caller (usually authSlice.login) propagate to the store.
   onTokensUpdated(result.access_token, result.refresh_token);
-  // Let the caller (usually authSlice.login) propagate to the store.
-  onTokensUpdated(result.access_token, result.refresh_token);
   // Record the switch state.
   useTenantSwitchStore.getState().enterTenant(result.tenant, result.original_tenant_id);
   return result.tenant;

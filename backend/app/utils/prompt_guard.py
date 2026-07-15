@@ -147,12 +147,28 @@ def scan_prompt_injection(text: str) -> dict:
     }
 
 
+def should_block_high_risk() -> bool:
+    """True when high-risk inputs must be rejected at the boundary (audit A8).
+
+    Off by default to preserve current non-blocking behaviour. Enable in
+    production via the ``PROMPT_GUARD_BLOCK_HIGH=true`` env var so a clinical
+    platform where the AI proposes form fills / biomarker definitions refuses
+    obvious prompt-injection attempts before they reach the LLM. The HITL
+    review wall remains the structural defence regardless.
+    """
+    import os
+
+    return os.getenv("PROMPT_GUARD_BLOCK_HIGH", "").lower() in ("1", "true", "yes", "on")
+
+
 def check_user_input_safety(text: str, *, context: str = "") -> dict:
     """Public API for the AI endpoints.
 
     Scans user input, logs suspicious patterns at WARNING, and returns the
-    structured result. The caller decides whether to block, sanitize, or
-    proceed — this function does NOT block by default.
+    structured result. By default the caller decides whether to block;
+    when ``PROMPT_GUARD_BLOCK_HIGH=true`` is set, ``safe`` is forced to
+    ``False`` for high-risk input so callers that check the ``safe`` flag
+    will reject it (audit A8 — configurable block threshold).
 
     ``context`` is an optional label for log correlation (e.g. "chat",
     "magic_fill", "define_biomarker").
@@ -166,6 +182,8 @@ def check_user_input_safety(text: str, *, context: str = "") -> dict:
             result["risk"],
             result["snippets"],
         )
+        if result["risk"] == "high" and should_block_high_risk():
+            result["blocked"] = True
     return result
 
 

@@ -18,7 +18,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "clinical_event_types"
 
     name = Column(String(100), nullable=False)
-    slug = Column(String(100), nullable=False, unique=True)
+    slug = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     icon = Column(JSONB, nullable=True)  # { "type": "lucide", "value": "Activity" }
     color = Column(String(50), nullable=True)

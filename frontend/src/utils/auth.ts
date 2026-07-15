@@ -2,6 +2,8 @@
  * Validates JWT token by checking with the backend
  * Returns true if valid, false if expired/invalid
  */
+import { OFFLINE_DB_NAME } from '../services/db';
+
 export async function validateToken(token: string): Promise<boolean> {
   try {
     const response = await fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/validate`, {
@@ -87,8 +89,10 @@ export async function clearAuthData(): Promise<void> {
 
   // 5. Clear IndexedDB
   if (window.indexedDB) {
-    // Explicitly delete our known DBs
-    const dbNames = ['health_assistant-offline', 'health_assistant-cache', 'workbox-precache-v2'];
+    // Explicitly delete our known DBs. The offline cache name is imported
+    // from db.ts so a rename can't silently resurrect a stale copy (audit D1:
+    // the hardcoded list used an underscore where the DB opens a hyphen).
+    const dbNames = [OFFLINE_DB_NAME, 'health-assistant-cache', 'workbox-precache-v2'];
     dbNames.forEach(dbName => {
       try {
         window.indexedDB.deleteDatabase(dbName);

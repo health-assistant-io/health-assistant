@@ -8,6 +8,7 @@ call time rather than breaking module import.
 
 import datetime as dt
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID
 
 from app.models.enums import ExportScope  # noqa: F401  (re-exported for callers)
 from app.schemas.backup import PROVENANCE_SYSTEM, PROVENANCE_CODE
@@ -289,6 +290,22 @@ def _extract_patient_id(ref: Optional[Dict[str, Any]]) -> Optional[str]:
         if reference.startswith("urn:uuid:"):
             return reference.replace("urn:uuid:", "")
     return None
+
+
+def coerce_patient_id(
+    explicit: Any, subject: Optional[Dict[str, Any]]
+) -> Optional[UUID]:
+    """Resolve a relational ``patient_id`` for an Observation/DiagnosticReport
+    (audit B3). Prefers an explicit value, then derives it from the FHIR
+    ``subject`` reference; returns a validated ``UUID`` or ``None``.
+    """
+    raw = explicit if explicit else _extract_patient_id(subject)
+    if raw is None:
+        return None
+    try:
+        return UUID(str(raw))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def _flatten_interpretation(interpretation: Any) -> Optional[str]:

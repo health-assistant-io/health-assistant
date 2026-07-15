@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.enums import QuantityType
 from app.models.fhir.medication import MedicationCatalog
+from app.schemas.biomarker import sanitize_slug
 from app.services.concept_service import resolve_biomarker_class_concept
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,15 @@ async def process_unknown_biomarkers(
     unit_map = {u.symbol.lower(): u for u in unit_res.scalars().all()}
 
     for def_data in new_bio_defs.definitions:
-        slug_map[def_data.raw_name_match] = def_data.proposed_slug
+        # Sanitize the AI-proposed slug before any DB use. Direct model writes
+        # bypass the Pydantic ``slug`` validator, so coerce here to keep the
+        # slug SQL-safe (it is interpolated into raw SQL by analytics).
+        proposed_slug = sanitize_slug(def_data.proposed_slug)
+        slug_map[def_data.raw_name_match] = proposed_slug
 
         existing = await db.execute(
             select(BiomarkerDefinition).where(
-                BiomarkerDefinition.slug == def_data.proposed_slug
+                BiomarkerDefinition.slug == proposed_slug
             )
         )
         if not existing.scalar_one_or_none():
@@ -66,7 +71,7 @@ async def process_unknown_biomarkers(
 
             db.add(
                 BiomarkerDefinition(
-                    slug=def_data.proposed_slug,
+                    slug=proposed_slug,
                     coding_system=def_data.proposed_coding_system,
                     code=def_data.proposed_code,
                     name=def_data.name,

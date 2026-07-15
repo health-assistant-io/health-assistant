@@ -69,7 +69,7 @@ async def upload_document_endpoint(
     tenant = result.fetchone()
 
     if not tenant:
-        raise HTTPException(status_code=400, detail=f"Tenant not found: {tenant_id}")
+        raise HTTPException(status_code=400, detail="Tenant not found")
 
     # Convert include_in_extraction if it comes as a string from FormData
     if isinstance(include_in_extraction, str):
@@ -159,7 +159,11 @@ async def get_document_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get document information"""
-    document = await get_document(document_id, db)
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -194,7 +198,11 @@ async def update_document_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update document"""
-    document = await get_document(document_id, db)
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -249,7 +257,11 @@ async def edit_document_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Apply image edits (crop, brightness, contrast) to a document"""
-    document = await get_document(document_id, db)
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -334,11 +346,22 @@ async def download_document_endpoint(
     if not content_type:
         content_type = "application/octet-stream"
 
+    # Audit A3: never serve active-content types inline (stored-XSS at the app
+    # origin). The upload allowlist already blocks svg/html/xml, but defence-in-
+    # depth forces an attachment for those extensions regardless. All other
+    # types get X-Content-Type-Options: nosniff so browsers don't MIME-sniff a
+    # benign extension into something executable.
+    from app.services.document_service_db import should_serve_inline
+
+    serve_inline = should_serve_inline(document.filename)
+    headers = {"X-Content-Type-Options": "nosniff"}
+
     return FileResponse(
         str(document.file_path),
         filename=str(document.filename),
         media_type=content_type,
-        content_disposition_type="inline",  # Crucial to view in browser instead of forcing download
+        content_disposition_type="inline" if serve_inline else "attachment",
+        headers=headers,
     )
 
 
@@ -350,7 +373,11 @@ async def trigger_extraction_endpoint(
 ):
     """Trigger document extraction"""
     try:
-        document = await get_document(document_id, db)
+        document = await get_document(
+            document_id,
+            db,
+            None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+        )
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
@@ -370,9 +397,11 @@ async def trigger_extraction_endpoint(
         return {"job_id": job_id, "message": "Extraction started"}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Extraction error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+    except Exception:
+        # Re-raise so the global handler returns a generic 500 + correlation
+        # id. Never surface the raw exception (may leak internals/PHI).
+        logger.exception("Document extraction trigger failed")
+        raise
 
 
 @router.get("/{document_id}/extract/status")
@@ -382,7 +411,11 @@ async def get_extraction_status_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get document extraction status"""
-    document = await get_document(document_id, db)
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -445,9 +478,12 @@ async def upload_temp_preview(
     temp_path = temp_dir / f"preview_{uuid.uuid4()}{ext}"
 
     try:
-        # Save temp file
+        # Save temp file — cap size to prevent RAM exhaustion (audit A4)
+        from app.services.document_service_db import _read_capped
+        from app.core.config import settings as _settings
+
+        content = await _read_capped(file, _settings.MAX_UPLOAD_SIZE * 1024 * 1024)
         with open(temp_path, "wb") as buffer:
-            content = await file.read()
             buffer.write(content)
 
         # Convert to image
@@ -475,11 +511,11 @@ async def upload_temp_preview(
         return Response(
             content=images[requested_frame], media_type="image/jpeg", headers=headers
         )
-    except Exception as e:
+    except Exception:
         if temp_path.exists():
             os.remove(temp_path)
-        logger.error(f"Temp preview failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Temp document preview generation failed")
+        raise
 
 
 @router.get("/{document_id}/dicom-metadata")
@@ -550,11 +586,9 @@ async def get_dicom_metadata_endpoint(
                 metadata[tag] = {"label": label, "value": str(val)}
 
         return metadata
-    except Exception as e:
-        logger.error(f"Failed to read DICOM metadata: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to read DICOM metadata: {str(e)}"
-        )
+    except Exception:
+        logger.exception("Failed to read DICOM metadata")
+        raise
 
 
 @router.get("/{document_id}/preview")
@@ -681,11 +715,9 @@ async def get_document_preview_endpoint(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Preview generation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Preview generation failed: {str(e)}"
-        )
+    except Exception:
+        logger.exception("Document preview generation failed")
+        raise
 
 
 @router.delete("/{document_id}")
@@ -695,7 +727,11 @@ async def delete_document_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a document"""
-    document = await get_document(document_id, db)
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")

@@ -10,6 +10,7 @@ from app.api.v1 import api_router
 from app.core.config import settings
 from app.catalogs.policy import CatalogPermissionDenied
 from app.services.fhir_helpers import FhirSerializationError
+from app.core.errors import DomainError
 
 # Configure logging
 setup_logging(log_name="backend", debug=settings.DEBUG)
@@ -195,6 +196,21 @@ async def fhir_validation_handler(request: Request, exc: FhirSerializationError)
     )
 
 
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError):
+    """Map service-layer domain exceptions to their HTTP status (audit C1).
+
+    ``DomainError`` subclasses (NotFoundError/AuthorizationError/ValidationError/
+    ConflictError/ConcurrencyError) carry a safe, client-facing ``detail`` and a
+    ``status_code``. Logged at INFO (these are expected client errors, not server
+    faults) — unlike the global 500 handler, no correlation id is needed.
+    """
+    logger.info("Domain error [%s] %s: %s", exc.status_code, type(exc).__name__, exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code, content={"detail": exc.detail}
+    )
+
+
 @app.exception_handler(CatalogPermissionDenied)
 async def catalog_permission_denied_handler(
     request: Request, exc: CatalogPermissionDenied
@@ -211,6 +227,22 @@ async def catalog_permission_denied_handler(
 
 # CORS middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+# Security: baseline response headers (audit A7). Applied to every response.
+# HSTS only makes sense over HTTPS and is most effective when set by the
+# reverse proxy; we still emit it so direct-HTTPS deployments are protected.
+# CSP is intentionally permissive for an API+SPA (the frontend is a separate
+# origin); tighten APP_CSP_CONTENT via env if you serve the SPA from here.
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 
 # Security: CORS configuration
 if settings.APP_ENV == "development":

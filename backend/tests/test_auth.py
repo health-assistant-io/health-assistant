@@ -2,21 +2,24 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import patch
 from app.core.security import get_password_hash
-from app.models.user import User
+from app.models.enums import Role
+from app.models.user_model import UserModel
 import uuid
 
 
-# A test user fixture
+# A test user fixture (real model, transient instance — never flushed)
 @pytest.fixture
 def mock_user():
-    user = User(
+    return UserModel(
         id=uuid.uuid4(),
         email="test@example.com",
         hashed_password=get_password_hash("testpassword123"),
-        role="user",
-        tenant_id=str(uuid.uuid4()),
+        role=Role.USER,
+        tenant_id=uuid.uuid4(),
+        is_active=True,
+        is_service_account=False,
+        settings={},
     )
-    return user
 
 
 @pytest.mark.asyncio
@@ -205,4 +208,14 @@ async def test_refresh_token(
     assert refresh_response.status_code == 200
     data = refresh_response.json()
     assert "access_token" in data
-    assert data["refresh_token"] == refresh_token
+    # Audit A5: refresh tokens now ROTATE — a new refresh token is issued on
+    # each refresh (the old jti is revoked server-side), so the returned token
+    # must differ from the one presented.
+    assert "refresh_token" in data
+    assert data["refresh_token"] != refresh_token
+    # The new refresh token is a valid typed refresh token.
+    from app.core.security import decode_refresh_token
+
+    new_payload = decode_refresh_token(data["refresh_token"])
+    assert new_payload is not None
+    assert new_payload.get("type") == "refresh"

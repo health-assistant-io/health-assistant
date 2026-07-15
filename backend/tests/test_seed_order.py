@@ -18,6 +18,16 @@ from app.services.seed_service import SeedService
 @pytest.mark.asyncio
 async def test_seed_all_resolves_anatomy_class():
     """Every seeded anatomy structure must resolve its anatomy_class concept."""
+    # Reset anatomy_structures so the test is deterministic regardless of
+    # accumulated state from prior tests (the shared test DB is not cleaned
+    # between runs). seed_all re-inserts every row and resolves its
+    # class_concept_id against the (idempotent) concept catalog.
+    from sqlalchemy import delete
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(delete(AnatomyStructure))
+        await db.commit()
+
     await SeedService().seed_all()
     async with AsyncSessionLocal() as db:
         total = (

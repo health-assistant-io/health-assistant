@@ -361,6 +361,16 @@ async def cleanup_stuck_extractions():
 def process_document_sync(
     document_id: str, file_path: str, tenant_id: str, user_id: Optional[str] = None
 ):
+    """In-process OCR fallback for when Celery/Redis is unavailable (audit C10).
+
+    The upload endpoint (``documents_db.trigger_extraction``) normally enqueues
+    the OCR pipeline via ``ocr_document.delay(...)``. When Celery can't reach
+    the broker, it instead schedules this through FastAPI ``BackgroundTasks``
+    so a single-node deployment still extracts without a worker. Calling the
+    Celery task object directly runs its body **synchronously** in the current
+    process (Celery's ``Task.__call__``), so despite the ``async def`` body the
+    caller blocks until extraction completes — the name is intentional.
+    """
     return ocr_document(document_id, file_path, tenant_id, user_id)
 
 

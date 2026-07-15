@@ -140,7 +140,8 @@ async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
     upload.filename = "test.pdf"
-    upload.read = AsyncMock(return_value=b"fake")
+    # EOF-correct read: content once, then empty (mirrors a real UploadFile).
+    upload.read = AsyncMock(side_effect=[b"fake", b""])
 
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)
     monkeypatch.setattr("os.path.isdir", lambda *a, **kw: True)
@@ -188,7 +189,8 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
     upload.filename = "test.pdf"
-    upload.read = AsyncMock(return_value=b"fake")
+    # EOF-correct read: content once, then empty (mirrors a real UploadFile).
+    upload.read = AsyncMock(side_effect=[b"fake", b""])
 
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)
     monkeypatch.setattr("os.path.isdir", lambda *a, **kw: True)

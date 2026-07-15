@@ -121,8 +121,11 @@ async def import_catalog_from_file(
         payload = CatalogImportPayload.model_validate(data)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid catalog payload: {e}")
+    except Exception:
+        logger.exception("Catalog payload validation failed")
+        raise HTTPException(
+            status_code=400, detail="Invalid catalog payload (see server log)."
+        )
 
     background_tasks.add_task(
         _run_catalog_import,

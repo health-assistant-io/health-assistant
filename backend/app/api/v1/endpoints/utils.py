@@ -1,7 +1,11 @@
 from uuid import UUID
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.errors import (
+    AuthorizationError,
+    NotFoundError,
+    ValidationError,
+)
 from app.models.enums import Role
 from app.models.fhir.patient import Patient, Observation
 from app.schemas.user import TokenData
@@ -21,7 +25,7 @@ async def check_patient_access(
         try:
             patient_id = UUID(patient_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid patient ID format")
+            raise ValidationError("Invalid patient ID format")
 
     result = await db.execute(
         select(Patient).where(
@@ -31,15 +35,13 @@ async def check_patient_access(
     patient = result.scalar_one_or_none()
 
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise NotFoundError("Patient not found")
 
     # Check access for standard users
     if current_user.role == Role.USER.value:
         # Access denied if patient is not assigned to this user
         if not patient.user_id or str(patient.user_id) != str(current_user.user_id):
-            raise HTTPException(
-                status_code=403, detail="Access denied to this patient's data"
-            )
+            raise AuthorizationError("Access denied to this patient's data")
 
     return patient
 
@@ -52,7 +54,7 @@ async def check_examination_access(
         try:
             examination_id = UUID(examination_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid examination ID format")
+            raise ValidationError("Invalid examination ID format")
 
     result = await db.execute(
         select(ExaminationModel).where(
@@ -63,7 +65,7 @@ async def check_examination_access(
     examination = result.scalar_one_or_none()
 
     if not examination:
-        raise HTTPException(status_code=404, detail="Examination not found")
+        raise NotFoundError("Examination not found")
 
     # This will check if the user has access to the patient linked to this examination
     await check_patient_access(examination.patient_id, current_user, db)
@@ -79,7 +81,7 @@ async def check_medication_access(
         try:
             medication_id = UUID(medication_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid medication ID format")
+            raise ValidationError("Invalid medication ID format")
 
     result = await db.execute(
         select(Medication).where(
@@ -90,7 +92,7 @@ async def check_medication_access(
     medication = result.scalar_one_or_none()
 
     if not medication:
-        raise HTTPException(status_code=404, detail="Medication record not found")
+        raise NotFoundError("Medication record not found")
 
     # This will check if the user has access to the patient linked to this medication
     await check_patient_access(medication.patient_id, current_user, db)
@@ -109,9 +111,7 @@ async def check_immunization_access(
         try:
             immunization_id = UUID(immunization_id)
         except ValueError:
-            raise HTTPException(
-                status_code=400, detail="Invalid immunization ID format"
-            )
+            raise ValidationError("Invalid immunization ID format")
 
     result = await db.execute(
         select(PatientImmunization).where(
@@ -122,7 +122,7 @@ async def check_immunization_access(
     )
     record = result.scalar_one_or_none()
     if not record:
-        raise HTTPException(status_code=404, detail="Immunization record not found")
+        raise NotFoundError("Immunization record not found")
     await check_patient_access(record.patient_id, current_user, db)
     return record
 
@@ -135,7 +135,7 @@ async def check_event_access(
         try:
             event_id = UUID(event_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid event ID format")
+            raise ValidationError("Invalid event ID format")
 
     result = await db.execute(
         select(ClinicalEvent).where(
@@ -147,7 +147,7 @@ async def check_event_access(
     event = result.scalar_one_or_none()
 
     if not event:
-        raise HTTPException(status_code=404, detail="Clinical event not found")
+        raise NotFoundError("Clinical event not found")
 
     # This will check if the user has access to the patient linked to this event
     await check_patient_access(event.patient_id, current_user, db)
@@ -163,7 +163,7 @@ async def check_allergy_access(
         try:
             allergy_id = UUID(allergy_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid allergy ID format")
+            raise ValidationError("Invalid allergy ID format")
 
     result = await db.execute(
         select(AllergyIntolerance).where(
@@ -174,7 +174,7 @@ async def check_allergy_access(
     allergy = result.scalar_one_or_none()
 
     if not allergy:
-        raise HTTPException(status_code=404, detail="Allergy record not found")
+        raise NotFoundError("Allergy record not found")
 
     # This will check if the user has access to the patient linked to this allergy
     await check_patient_access(allergy.patient_id, current_user, db)
@@ -190,7 +190,7 @@ async def check_observation_access(
         try:
             observation_id = UUID(observation_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid observation ID format")
+            raise ValidationError("Invalid observation ID format")
 
     result = await db.execute(
         select(Observation).where(
@@ -201,17 +201,15 @@ async def check_observation_access(
     observation = result.scalar_one_or_none()
 
     if not observation:
-        raise HTTPException(status_code=404, detail="Observation record not found")
+        raise NotFoundError("Observation record not found")
 
-    # In FHIR Observation model, patient_id is inside 'subject' JSONB
-    # But Health Assistant model might have patient_id directly or subject
-    # Let's check Observation model structure again
-
-    patient_id = (observation.subject or {}).get("reference", "").split("/")[-1] or None
+    # Prefer the maintained relational patient_id (audit B3); fall back to the
+    # FHIR subject reference for legacy rows.
+    patient_id = observation.patient_id or (
+        (observation.subject or {}).get("reference", "").split("/")[-1] or None
+    )
     if not patient_id:
-        raise HTTPException(
-            status_code=400, detail="Observation does not have a linked patient"
-        )
+        raise ValidationError("Observation does not have a linked patient")
 
     await check_patient_access(patient_id, current_user, db)
 

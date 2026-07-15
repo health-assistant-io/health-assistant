@@ -55,6 +55,11 @@ export interface Metadata {
   updatedAt: number;
 }
 
+/** Canonical name of the offline IndexedDB. Imported by the logout wipe
+ * (utils/auth.ts) so the two can never drift again (audit D1: a hyphen vs
+ * underscore mismatch left cached PHI surviving across user switches). */
+export const OFFLINE_DB_NAME = 'health-assistant-offline';
+
 export class HealthAssistantDB extends Dexie {
   pendingSync!: Table<PendingSync>;
   localDrafts!: Table<LocalDraft>;
@@ -64,7 +69,7 @@ export class HealthAssistantDB extends Dexie {
   metadata!: Table<Metadata>;
 
   constructor() {
-      super('health-assistant-offline');
+      super(OFFLINE_DB_NAME);
     this.version(5).stores({
       pendingSync: '++id, method, url, status, timestamp',
       localDrafts: 'id, type, updatedAt',

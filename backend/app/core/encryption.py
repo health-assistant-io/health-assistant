@@ -63,10 +63,11 @@ def is_encrypted(value: Optional[str]) -> bool:
 def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
     """Encrypt a plaintext string for storage.
 
-    Returns None if the input is None. If no Fernet key is configured,
-    logs a warning and returns the plaintext unchanged so the app remains
-    functional in dev — callers should ensure the key is set in prod via
-    the startup check.
+    Returns None if the input is None. If no Fernet key is configured, raises
+    ``RuntimeError`` in production (fail-closed — never silently store secrets
+    in cleartext) and only falls back to plaintext in dev/test with a loud
+    warning. The production boot guard in ``config.py`` already requires the
+    key; this is defence-in-depth for a misconfigured instance.
     """
     if plaintext is None:
         return None
@@ -76,11 +77,19 @@ def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
         return plaintext
     fernet = _fernet_singleton()
     if fernet is None:
-        logger.warning(
-            "INTEGRATION_SECRET_KEY not set — storing secret in PLAINTEXT. "
-            "Set the key (Fernet, base64 32 bytes) in production."
+        from app.core.config import get_settings
+
+        env = (get_settings().APP_ENV or "").lower()
+        if env in ("development", "dev", "test", "testing"):
+            logger.warning(
+                "INTEGRATION_SECRET_KEY not set — storing secret in PLAINTEXT "
+                "(dev/test only). Set the key (Fernet, base64 32 bytes) for prod."
+            )
+            return plaintext
+        raise RuntimeError(
+            "Refusing to store a secret in plaintext: INTEGRATION_SECRET_KEY "
+            "is not configured (APP_ENV=%s)." % (env or "unset")
         )
-        return plaintext
     token = fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
     return f"{ENCRYPTED_PREFIX}{token}"
 

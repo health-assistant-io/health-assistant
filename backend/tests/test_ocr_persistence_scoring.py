@@ -54,6 +54,7 @@ def _biomarker(bio_id, preferred_unit_id=None):
         preferred_unit_id=preferred_unit_id,
         category=None,
         coding_system=None,
+        class_concept=None,
     )
 
 

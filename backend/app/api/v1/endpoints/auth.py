@@ -29,17 +29,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit
 from app.core.security import (
     RoleChecker,
+    REFRESH_TOKEN_DAYS,
     create_access_token,
     create_invite_token,
+    create_refresh_token,
     decode_access_token,
+    decode_refresh_token,
     get_current_user,
     get_password_hash,
     get_current_user_id,
     verify_invite_token,
     verify_password,
 )
+from app.core import token_store
 from app.models.enums import Role
 from app.models.user_model import UserModel
 from app.schemas.auth import TokenRefresh, TokenResponse, UserRegister
@@ -60,7 +65,10 @@ _BOOTSTRAP_ADVISORY_KEY = 0x48414F424F4F54  # 'HAOBOOT' as int56
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    _rl=Depends(rate_limit("login", max_requests=20, window=60)),
+):
     """Authenticate user and return tokens"""
     user = await get_user_by_email(form_data.username)
 
@@ -80,25 +88,27 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         )
 
     access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    token_claims = {
+        "sub": user.email,
+        "user_id": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "role": getattr(user.role, "value", user.role),
+    }
     access_token = create_access_token(
-        data={
-            "sub": user.email,
-            "user_id": str(user.id),
-            "tenant_id": str(user.tenant_id),
-            "role": getattr(user.role, "value", user.role),
-        },
+        data=token_claims,
         expires_delta=access_token_expires,
     )
 
-    refresh_token_expires = timedelta(days=7)
-    refresh_token = create_access_token(
-        data={
-            "sub": user.email,
-            "user_id": str(user.id),
-            "tenant_id": str(user.tenant_id),
-            "role": getattr(user.role, "value", user.role),
-        },
+    # Refresh tokens are typed + jti-tracked so they can be rotated/revoked
+    # (audit A5). The jti is registered server-side; /auth/refresh replaces
+    # it with a fresh one on each use.
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
+    refresh_token, jti = create_refresh_token(
+        data=token_claims,
         expires_delta=refresh_token_expires,
+    )
+    await token_store.register_refresh(
+        str(user.id), jti, int(refresh_token_expires.total_seconds())
     )
 
     return TokenResponse(
@@ -110,7 +120,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.post("/register", response_model=UserResponse)
-async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
+async def register(
+    user_data: UserRegister,
+    db: AsyncSession = Depends(get_db),
+    _rl=Depends(rate_limit("register", max_requests=5, window=60)),
+):
     """Register a new user.
 
     See module docstring for the two onboarding paths.
@@ -215,6 +229,7 @@ async def create_invite(
     role: str = Role.USER.value,
     expires_days: int = 7,
     current_user: TokenData = Depends(get_current_user),
+    _rl=Depends(rate_limit("invite", max_requests=10, window=60)),
 ):
     """Mint a tenant invite token.
 
@@ -270,9 +285,18 @@ async def validate_token(user_id: str = Depends(get_current_user_id)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(token_data: TokenRefresh):
-    """Refresh access token"""
-    payload = decode_access_token(token_data.refresh_token)
+async def refresh_token(
+    token_data: TokenRefresh,
+    _rl=Depends(rate_limit("refresh", max_requests=30, window=60)),
+):
+    """Refresh access token (with rotation — audit A5).
+
+    The presented refresh token's ``jti`` must be active server-side. On
+    success a NEW refresh token is issued and the old ``jti`` is revoked, so a
+    stolen refresh token stops working the moment the legitimate user refreshes
+    (rotation), and logout/``revoke_refresh`` can invalidate a token early.
+    """
+    payload = decode_refresh_token(token_data.refresh_token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -280,23 +304,70 @@ async def refresh_token(token_data: TokenRefresh):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    user_id = payload.get("user_id")
+    jti = payload.get("jti")
+    if not user_id or not jti or not await token_store.is_active(user_id, jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token_claims = {
+        "sub": payload.get("sub"),
+        "user_id": user_id,
+        "tenant_id": payload.get("tenant_id"),
+        "role": payload.get("role"),
+    }
     access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     access_token = create_access_token(
-        data={
-            "sub": payload.get("sub"),
-            "user_id": payload.get("user_id"),
-            "tenant_id": payload.get("tenant_id"),
-            "role": payload.get("role"),
-        },
+        data=token_claims,
         expires_delta=access_token_expires,
+    )
+
+    # Rotate: revoke the consumed jti and issue a fresh one.
+    await token_store.revoke_refresh(user_id, jti)
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
+    new_refresh, new_jti = create_refresh_token(
+        data=token_claims,
+        expires_delta=refresh_token_expires,
+    )
+    await token_store.register_refresh(
+        user_id, new_jti, int(refresh_token_expires.total_seconds())
     )
 
     return TokenResponse(
         access_token=access_token,
-        refresh_token=token_data.refresh_token,
+        refresh_token=new_refresh,
         token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
     )
+
+
+@router.post("/logout")
+async def logout(
+    token_data: TokenRefresh,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Revoke the presented refresh token (audit A5).
+
+    Access tokens are stateless JWTs and cannot be revoked without a blocklist
+    (their short lifetime is the mitigation); this revokes the refresh token so
+    no new access tokens can be minted from it.
+    """
+    payload = decode_refresh_token(token_data.refresh_token)
+    if payload and payload.get("user_id") and payload.get("jti"):
+        await token_store.revoke_refresh(payload["user_id"], payload["jti"])
+    return {"revoked": True}
+
+
+@router.post("/logout-all")
+async def logout_all(
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Revoke every refresh token for the current user (audit A5)."""
+    count = await token_store.revoke_all_refresh(current_user.user_id)
+    return {"revoked": count}
 
 
 # ---------------------------------------------------------------------------

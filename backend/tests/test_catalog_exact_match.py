@@ -86,17 +86,28 @@ def test_c9_import_service_allergy_catalog_uses_exact_match():
     assert "AllergyCatalog.name.ilike(name)" not in src
 
 
-def test_c9_catalog_search_features_still_use_substring_ilike():
-    """Sanity check: catalog SEARCH features (not uniqueness checks) still use
-    substring ilike('%q%'). These are user-driven search, not dedup, and
-    must NOT be changed."""
+def test_c9_catalog_search_uses_hybrid_pipeline():
+    """catalog SEARCH was upgraded from plain substring ilike to a hybrid
+    pipeline (trigram + FTS + Reciprocal Rank Fusion). Verify the hybrid
+    markers are present and the old dedup-hostile raw ilike on the unified
+    search service is gone. (The per-domain allergy_service keeps an ilike
+    fallback for its non-hybrid read path.)"""
     from app.services import catalog_search_service, allergy_service
 
-    # catalog_search_service uses ilike(f"%{q}%") on both catalogs.
+    # catalog_search_service now uses trigram + FTS, fused via RRF.
     cs_src = inspect.getsource(catalog_search_service)
-    assert 'MedicationCatalog.name.ilike(f"%{q}%")' in cs_src
-    assert 'AllergyCatalog.name.ilike(f"%{q}%")' in cs_src
+    assert "websearch_to_tsquery" in cs_src, "hybrid FTS matcher missing"
+    assert "pg_trgm" in cs_src or "similarity" in cs_src, (
+        "hybrid trigram matcher missing"
+    )
+    assert "reciprocal" in cs_src.lower() or "rrf" in cs_src.lower(), (
+        "RRF fusion missing"
+    )
+    # The old raw ilike(f"%{q}%") on Medication/Allergy catalogs is gone from
+    # the unified search service (replaced by the hybrid matchers).
+    assert 'MedicationCatalog.name.ilike(f"%{q}%")' not in cs_src
+    assert 'AllergyCatalog.name.ilike(f"%{q}%")' not in cs_src
 
-    # allergy_service does the same for allergy search.
+    # allergy_service still uses ilike as a fallback on its non-hybrid path.
     as_src = inspect.getsource(allergy_service)
     assert 'AllergyCatalog.name.ilike(f"%{search}%")' in as_src
