@@ -99,6 +99,7 @@ async def assist_user(
             context=request.context,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
+            images=request.images,
         )
 
         return AIAssistanceResponse(
@@ -144,9 +145,22 @@ async def assist_user_stream(
                 tenant_id=current_user.tenant_id,
                 user_id=current_user.user_id,
                 stream=True,
+                images=request.images,
             ):
                 payload = json.dumps({"content": chunk})
                 yield f"data: {payload}\n\n"
+        except ValueError as e:
+            # Includes ImageValidationError (subclass of ValueError) from
+            # attachment validation — surfaces as a localized, user-facing
+            # guard message without leaking provider internals.
+            import logging
+
+            logging.getLogger(__name__).warning(f"Chat stream rejected: {e}")
+            error_type, user_message = _classify_stream_error(e)
+            error_payload = json.dumps(
+                {"error": user_message, "error_type": error_type}
+            )
+            yield f"data: {error_payload}\n\n"
         except Exception as e:
             import logging
 

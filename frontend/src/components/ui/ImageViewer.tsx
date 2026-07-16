@@ -17,11 +17,18 @@ interface ImageViewerProps {
   isEdited?: boolean;
   onSelectImage?: (id: string) => void;
   onRefresh?: () => void;
+  /** Whether to allow the document-editing mode (crop / perspective /
+   *  brightness-contrast "save"). Requires a persisted document + `currentId`
+   *  to save against, so it's only meaningful for the document viewer. Off for
+   *  ephemeral images (chat attachments, file previews) that have no backing
+   *  document — the viewing tools (zoom/pan/brightness/contrast/invert/rotate/
+   *  download) still work. Defaults to ``true`` for backward compatibility. */
+  editable?: boolean;
 }
 
-export const ImageViewer: React.FC<ImageViewerProps> = ({ 
-  url, filename, onClose, category, date, relatedImages, currentId, 
-  parentId, isEdited, onSelectImage, onRefresh 
+export const ImageViewer: React.FC<ImageViewerProps> = ({
+  url, filename, onClose, category, date, relatedImages, currentId,
+  parentId, isEdited, onSelectImage, onRefresh, editable = true
 }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -280,13 +287,15 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </button>
             <div className="w-px h-6 bg-white/20 mx-1"></div>
-            <button 
-              onClick={() => setIsEditingMode(!isEditingMode)} 
-              className={`p-2 rounded-md transition-colors ${isEditingMode ? 'bg-blue-600 text-white' : 'text-white hover:bg-white/20'}`}
-              title="Toggle Edit Mode"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-            </button>
+            {editable && (
+              <button
+                onClick={() => setIsEditingMode(!isEditingMode)}
+                className={`p-2 rounded-md transition-colors ${isEditingMode ? 'bg-blue-600 text-white' : 'text-white hover:bg-white/20'}`}
+                title="Toggle Edit Mode"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              </button>
+            )}
 
             {isEditingMode && (
               <>

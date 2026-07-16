@@ -143,6 +143,11 @@ class Settings(BaseSettings):
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
 
+    # AI Chat — multimodal image attachments (vision models). Limits protect
+    # against oversized payloads (base64 in JSON) and token blowups.
+    AI_CHAT_MAX_IMAGES: int = 4
+    AI_CHAT_MAX_IMAGE_BYTES: int = 8 * 1024 * 1024  # 8 MiB per image (decoded)
+
     # MCP Client integration (see integrations/mcp_client/)
     # Pydantic-read (audit C7) — same rationale as SECRET_KEY above.
     INTEGRATION_SECRET_KEY: Optional[str] = None

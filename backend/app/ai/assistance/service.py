@@ -11,7 +11,7 @@ compatibility with callers and tests.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from langchain_core.messages import HumanMessage
@@ -36,6 +36,10 @@ from app.ai.agents.prompts import (
     build_chat_system_prompt,
     build_general_chat_system_prompt,
     session_title_prompt,
+)
+from app.ai.assistance.attachments import (
+    build_multimodal_content,
+    validate_chat_images,
 )
 from app.ai.assistance.definitions import (
     define_anatomy_graph,
@@ -117,6 +121,7 @@ class AIAssistanceService:
         tenant_id: Optional[UUID] = None,
         user_id: Optional[UUID] = None,
         stream: bool = False,
+        images: Optional[List[str]] = None,
     ):
         """Main entry point for AI assistance.
 
@@ -125,9 +130,15 @@ class AIAssistanceService:
         (logs WARNING, proceeds) — the HITL wall remains the structural
         protection for clinical writes. ``high``-risk input is still processed
         but the signal is available in the logs for audit correlation.
+
+        ``images`` (chat only) are validated for MIME type / size / count at
+        the trust boundary; image bytes bypass the text guard (the HITL wall
+        remains the structural defence for any clinical write they motivate).
         """
         if user_input:
             check_user_input_safety(user_input, context=f"assist:{task_type}")
+
+        validated_images = validate_chat_images(images) if task_type == "chat" else []
 
         llm = await self.ai_provider_service.get_llm(task_type, tenant_id, user_id)
 
@@ -151,9 +162,11 @@ class AIAssistanceService:
             )
         elif task_type == "chat":
             if stream:
-                return self._chat_stream(llm, user_input, context, tenant_id, user_id)
+                return self._chat_stream(
+                    llm, user_input, context, tenant_id, user_id, validated_images
+                )
             return await self._general_chat(
-                llm, user_input, context, tenant_id, user_id
+                llm, user_input, context, tenant_id, user_id, validated_images
             )
         else:
             raise ValueError(f"Unknown task type: {task_type}")
@@ -178,6 +191,7 @@ class AIAssistanceService:
         context: Dict[str, Any],
         tenant_id: UUID,
         user_id: UUID,
+        images: Optional[List[str]] = None,
     ):
         """Stream a chat response (SSE). Body lives in run_reasoning_loop."""
         patient_id = context.get("patient_id")
@@ -195,10 +209,17 @@ class AIAssistanceService:
             session_id = session.id
             yield f"[SESSION_ID] {session_id}"
 
-        # Save user message.
+        # Save user message. Persist image attachments inside the content
+        # JSONB so a reloaded session reconstructs them in the UI AND so the
+        # reasoning loop can re-feed them as vision context on the next turn.
         if session_id:
             await self.chat_session_service.save_message(
-                session_id=session_id, role="user", content={"text": user_input}
+                session_id=session_id,
+                role="user",
+                content={
+                    "text": user_input,
+                    **({"images": images} if images else {}),
+                },
             )
 
         tools = await build_chat_tools(
@@ -218,7 +239,7 @@ class AIAssistanceService:
             user_id,
             tenant_id,
             system_prompt,
-            user_input,
+            build_multimodal_content(user_input, images),
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)
@@ -264,6 +285,7 @@ class AIAssistanceService:
         context: Dict[str, Any],
         tenant_id: UUID,
         user_id: UUID,
+        images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Non-streaming chat with tool support. Collects content events from
         :func:`run_reasoning_loop` (streaming=False) into the response dict."""
@@ -281,10 +303,15 @@ class AIAssistanceService:
             )
             session_id = session.id
 
-        # Save user message.
+        # Save user message (with persisted image attachments).
         if session_id:
             await self.chat_session_service.save_message(
-                session_id=session_id, role="user", content={"text": user_input}
+                session_id=session_id,
+                role="user",
+                content={
+                    "text": user_input,
+                    **({"images": images} if images else {}),
+                },
             )
 
         tools = await build_chat_tools(
@@ -304,7 +331,7 @@ class AIAssistanceService:
             user_id,
             tenant_id,
             system_prompt,
-            user_input,
+            build_multimodal_content(user_input, images),
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)

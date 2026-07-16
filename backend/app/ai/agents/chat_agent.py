@@ -24,7 +24,7 @@ Public surface:
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -35,6 +35,7 @@ from app.ai.agents.hitl import (
     _hitl_llm_feedback,
     _parse_hitl_proposal,
 )
+from app.ai.assistance.attachments import build_multimodal_content, has_images
 from app.ai.tools import get_tools
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ async def reconstruct_history(
     user_id: Optional[UUID],
     tenant_id: Optional[UUID],
     system_prompt: str,
-    driving_input: str,
+    driving_input: Union[str, List[Dict[str, Any]]],
 ) -> List[Any]:
     """Build the in-memory LLM message list for a chat turn.
 
@@ -118,7 +119,23 @@ async def reconstruct_history(
         # avoid duplication; replay the prior 10 turns.
         for msg in past_messages[:-1][-10:]:
             if msg.role == "user":
-                current_history.append(HumanMessage(content=msg.content.get("text")))
+                # Reconstruct multimodal content when the persisted message
+                # carries image attachments (vision input) so the model keeps
+                # visual context across turns. Plain text stays a plain str.
+                content_json = msg.content if isinstance(msg.content, dict) else {}
+                if has_images(content_json):
+                    current_history.append(
+                        HumanMessage(
+                            content=build_multimodal_content(
+                                content_json.get("text", ""),
+                                content_json.get("images"),
+                            )
+                        )
+                    )
+                else:
+                    current_history.append(
+                        HumanMessage(content=content_json.get("text"))
+                    )
             elif msg.role == "assistant":
                 _append_assistant_turn_to_history(msg, current_history)
     current_history.append(HumanMessage(content=driving_input))

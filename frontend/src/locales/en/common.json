@@ -1026,6 +1026,10 @@
       "placeholder": "Describe clinical symptoms or ask for data analysis...",
       "disclaimer": "AI is not a medical advisor and can make mistakes. Always consult your doctor."
     },
+    "attachments": {
+      "add": "Attach images",
+      "drop": "Drop images to attach"
+    },
     "history": {
       "title": "Session History"
     },

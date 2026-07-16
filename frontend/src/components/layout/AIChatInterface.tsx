@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, MessageSquare, Sparkles, BarChart2, Send, Loader2, Bot, User, Database, ChevronRight, History, Plus, Maximize2, Minimize2, Wrench } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,8 +10,10 @@ import { useNavigate } from 'react-router-dom';
 import { CLINICAL_WORKFLOWS, ClinicalAction } from '../../config/clinicalWorkflows';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useChatAttachments } from '../../hooks/useChatAttachments';
+import { toast } from 'react-toastify';
 
-import { ToolCallInfo, Message, TaskInfo } from '../../types/ai';
+import { ToolCallInfo, Message, TaskInfo, PendingChatAttachment } from '../../types/ai';
 import { CitationButton } from '../ai/CitationButton';
 import { ChatInspector } from '../ai/ChatInspector';
 import { ChatHistoryOverlay } from '../ai/ChatHistoryOverlay';
@@ -20,6 +22,8 @@ import { AIToolsModal } from '../ai/AIToolsModal';
 import { HitlTaskCard } from '../ai/hitl/HitlTaskCard';
 import { TERMINAL_HITL_STATUSES } from '../ai/hitl/registry';
 import { AIBadge } from '../ui/AIBadge';
+import { ChatAttachmentPicker, ChatAttachmentPreviewRail } from '../ai/ChatAttachmentPicker';
+import { ChatMessageImages } from '../ai/ChatMessageImages';
 
 interface Props {
   isFullScreen?: boolean;
@@ -94,7 +98,20 @@ export const AIChatInterface: React.FC<Props> = ({
     { role: 'assistant', content: t('ai_chat.welcome_message') }
   ]);
   const [userInput, setUserInput] = useState('');
+  /** Pending image attachments staged in the composer (not yet sent). */
+  const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { addFiles } = useChatAttachments((m: string) => toast.warning(m));
+
+  /** Add picked/dropped/pasted files to the composer (validated + encoded). */
+  const handleFilesAdded = useCallback(
+    async (files: FileList | File[]) => {
+      const next = await addFiles(files, pendingAttachments);
+      setPendingAttachments(next);
+    },
+    [addFiles, pendingAttachments],
+  );
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
   // Tracks assistant message indices we've already auto-resumed, so the
@@ -244,6 +261,7 @@ export const AIChatInterface: React.FC<Props> = ({
       setMessages(data.map(m => ({
         role: m.role,
         content: m.content.text,
+        images: m.content.images,
         toolCalls: m.tool_calls?.map(tc => ({
           name: tc.name,
           args: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args),
@@ -285,14 +303,26 @@ export const AIChatInterface: React.FC<Props> = ({
 
   const handleSendMessage = async (e?: React.FormEvent, overrideContent?: string) => {
     if (e) e.preventDefault();
-    if ((!userInput.trim() && !overrideContent) || loadingRef.current) return;
+    // Allow sending with only images (no text) so a user can ask "what's this?".
+    const hasImages = pendingAttachments.some(a => a.status === 'ready');
+    if ((!userInput.trim() && !overrideContent && !hasImages) || loadingRef.current) return;
 
     const messageContent = overrideContent || userInput.trim();
+    // Collect ready data URLs; anything still encoding is dropped (rare —
+    // encoding is fast; the send button is disabled while encoding).
+    const messageImages = pendingAttachments
+      .filter(a => a.status === 'ready' && a.dataUrl)
+      .map(a => a.dataUrl as string);
     if (!overrideContent) setUserInput('');
+    setPendingAttachments([]);
     setLoading(true);
     loadingRef.current = true;
 
-    const newUserMessage: Message = { role: 'user', content: messageContent };
+    const newUserMessage: Message = {
+      role: 'user',
+      content: messageContent,
+      ...(messageImages.length ? { images: messageImages } : {}),
+    };
     setMessages(prev => [...prev, newUserMessage]);
 
     let accumulatedContent = '';
@@ -308,6 +338,7 @@ export const AIChatInterface: React.FC<Props> = ({
         {
           task_type: 'chat',
           user_input: messageContent,
+          images: messageImages.length ? messageImages : undefined,
           context: {
             patient_id: currentPatient?.id,
             examination_id: currentExaminationId,
@@ -795,6 +826,9 @@ export const AIChatInterface: React.FC<Props> = ({
                                   ? 'bg-white dark:bg-dark-surface text-gray-800 dark:text-dark-text border border-gray-100 dark:border-dark-border rounded-tl-none prose dark:prose-invert max-w-none' 
                                   : 'bg-white dark:bg-dark-bg/50 text-gray-800 dark:text-dark-text border border-gray-100 dark:border-dark-border rounded-tl-none prose dark:prose-invert max-w-none')
                           }`}>
+                            {msg.role === 'user' && msg.images && msg.images.length > 0 && (
+                              <ChatMessageImages images={msg.images} variant="user" />
+                            )}
                             {msg.content ? (
                               <div className="overflow-x-auto custom-scrollbar pb-1">
                                 <ReactMarkdown 
@@ -1060,18 +1094,49 @@ export const AIChatInterface: React.FC<Props> = ({
           {/* Input Bar */}
           {activeTab === 'chat' && (
             <div className={`shrink-0 p-4 md:p-6 lg:p-8 border-t ${isFullScreen ? 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border' : 'bg-white dark:bg-dark-surface border-gray-50 dark:border-dark-border'}`}>
-              <form onSubmit={handleSendMessage} className="relative max-w-4xl mx-auto w-full group">
-                  <div className={`absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] opacity-0 group-focus-within:opacity-30 blur transition-opacity duration-500`} />
-                  
+              <form
+                onSubmit={handleSendMessage}
+                className="relative max-w-4xl mx-auto w-full group"
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files?.length) {
+                    handleFilesAdded(e.dataTransfer.files);
+                  }
+                }}
+              >
+                  <div className={`absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] opacity-0 group-focus-within:opacity-30 blur transition-opacity duration-500 pointer-events-none`} />
+
+                  {/* Preview rail lives OUTSIDE the rounded input box so
+                      thumbnails keep their own corners and aren't clipped by
+                      the box's overflow-hidden + radius. */}
+                  <ChatAttachmentPreviewRail
+                    attachments={pendingAttachments}
+                    onRemove={(id) => setPendingAttachments(prev => prev.filter(a => a.id !== id))}
+                  />
+
                   <div className={`relative flex items-center border rounded-[1.8rem] md:rounded-[2.2rem] transition-all shadow-2xl overflow-hidden ${
+                    isDragging ? 'ring-4 ring-indigo-500/40 border-indigo-400' : ''
+                  } ${
                     isFullScreen 
                       ? 'bg-gray-50 dark:bg-dark-bg border-gray-200 dark:border-dark-border focus-within:ring-4 focus-within:ring-indigo-500/20' 
                       : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border focus-within:ring-4 focus-within:ring-indigo-600/20'
                   }`}>
+                    <div className="shrink-0 pl-3 md:pl-5">
+                      <ChatAttachmentPicker
+                        attachments={pendingAttachments}
+                        onChange={setPendingAttachments}
+                        onToast={(m) => toast.warning(m)}
+                        disabled={loading}
+                      />
+                    </div>
                     <textarea
                       ref={textareaRef}
                       rows={1}
-                      className="flex-1 pl-5 md:pl-8 pr-2 py-4 md:py-5 bg-transparent text-sm font-medium text-gray-900 dark:text-dark-text placeholder-gray-400 dark:placeholder-slate-500 resize-none outline-none border-none focus:ring-0 focus:outline-none focus-visible:ring-0 overflow-y-auto custom-scrollbar leading-relaxed shadow-none"
+                      className="flex-1 pl-2 md:pl-3 pr-2 py-4 md:py-5 bg-transparent text-sm font-medium text-gray-900 dark:text-dark-text placeholder-gray-400 dark:placeholder-slate-500 resize-none outline-none border-none focus:ring-0 focus:outline-none focus-visible:ring-0 overflow-y-auto custom-scrollbar leading-relaxed shadow-none"
                       placeholder={t('ai_chat.input.placeholder')}
                       value={userInput}
                       onChange={e => setUserInput(e.target.value)}
@@ -1079,6 +1144,17 @@ export const AIChatInterface: React.FC<Props> = ({
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           handleSendMessage();
+                        }
+                      }}
+                      onPaste={(e) => {
+                        const files = Array.from(e.clipboardData.items)
+                          .map(item => item.getAsFile())
+                          .filter((f): f is File => !!f && f.type.startsWith('image/'));
+                        if (files.length) {
+                          e.preventDefault();
+                          const dt = new DataTransfer();
+                          files.forEach(f => dt.items.add(f));
+                          handleFilesAdded(dt.files);
                         }
                       }}
                       style={{ 
@@ -1092,13 +1168,20 @@ export const AIChatInterface: React.FC<Props> = ({
                     <div className="pr-2 md:pr-3">
                       <button
                         type="submit"
-                        disabled={loading || !userInput.trim()}
+                        disabled={loading || (!userInput.trim() && pendingAttachments.filter(a => a.status === 'ready').length === 0)}
                         className="p-2.5 md:p-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-full transition-all shadow-lg hover:scale-105 active:scale-95 flex items-center justify-center"
                       >
                         {loading ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Send className="w-4 h-4 md:w-5 md:h-5" />}
                       </button>
                     </div>
                   </div>
+                  {isDragging && (
+                    <div className="absolute inset-0 z-10 bg-indigo-50/90 dark:bg-indigo-900/40 flex items-center justify-center pointer-events-none rounded-[1.8rem] md:rounded-[2.2rem]">
+                      <span className="text-sm font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
+                        {t('ai_chat.attachments.drop', { defaultValue: 'Drop images to attach' })}
+                      </span>
+                    </div>
+                  )}
               </form>
               <p className="text-[8px] md:text-[10px] text-gray-500 dark:text-slate-500 text-center mt-3 md:mt-5 font-black uppercase tracking-[0.2em] opacity-40">{t('ai_chat.input.disclaimer')}</p>
             </div>

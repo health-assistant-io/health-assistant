@@ -18,6 +18,14 @@ class AIAssistanceRequest(BaseModel):
     reference_image: Optional[str] = Field(
         None, description="Optional base64 encoded image for reference (multimodal)"
     )
+    images: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Optional list of image attachments (RFC 2397 data URLs, "
+            "``data:image/...;base64,...``) for multimodal chat. Validated "
+            "and capped by the backend. Only used for the ``chat`` task type."
+        ),
+    )
     context: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
         description="Additional context for the AI (e.g., patient_id, session_id)",

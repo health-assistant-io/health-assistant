@@ -5,6 +5,8 @@ export interface AIAssistanceRequest {
   task_type: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination' | 'suggest_category_icon' | 'generate_category_icon';
   user_input: string;
   reference_image?: string;
+  /** Image attachments (RFC 2397 data URLs) for multimodal chat. */
+  images?: string[];
   context?: Record<string, any>;
 }
 
@@ -30,7 +32,7 @@ export interface ChatSession {
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
-  content: { text: string };
+  content: { text: string; images?: string[] };
   tool_calls?: any[];
   citations?: string[];
   tasks?: TaskInfo[];
