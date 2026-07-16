@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Activity, Network, Plus, Crosshair, Layers, X } from 'lucide-react';
+import { Activity, Network, Plus, Crosshair, Layers, X, BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { anatomyService } from '../../services/anatomyService';
 import type {
   AnatomyStructure,
@@ -223,6 +224,14 @@ export const AnatomyExplorer: React.FC = () => {
             <Plus className="w-3.5 h-3.5" />
             {t('anatomy.add_custom')}
           </button>
+          <Link
+            to="/catalogs?type=anatomy"
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-dark-border transition-colors"
+            title={t('anatomy.open_in_catalog', { defaultValue: 'Open in catalog' })}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            {t('anatomy.open_in_catalog', { defaultValue: 'Catalog' })}
+          </Link>
           {isAdmin && (
             <button
               onClick={() => setIsEditorOpen(true)}

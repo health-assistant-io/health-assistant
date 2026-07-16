@@ -353,13 +353,14 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
               <li
                 key={String(item.id)}
                 data-item-id={String(item.id)}
-                className={`flex items-start gap-3 px-4 py-3.5 ${
+                onClick={() => onSelectItem(String(item.id))}
+                className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer ${
                   active
                     ? 'bg-blue-50 dark:bg-blue-900/30 shadow-[inset_3px_0_0_0_#3b82f6]'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                 }`}
               >
-                <button onClick={() => onSelectItem(String(item.id))} className="flex-1 text-left min-w-0">
+                <div className="flex-1 text-left min-w-0">
                   <span className="font-semibold text-sm block truncate">
                     <Highlight text={itemLabel(item)} term={searchTerm} />
                   </span>
@@ -379,9 +380,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                       )}
                     </span>
                   )}
-                </button>
+                </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <ClassBadge
                       item={item}
                       activeValues={activeClasses}
@@ -402,6 +403,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   {route && (
                     <a
                       href={route}
+                      onClick={(e) => e.stopPropagation()}
                       className="p-1.5 text-gray-400 hover:text-blue-500"
                       title={t('catalogs.open_in_domain', 'Open in domain view')}
                     >
@@ -410,7 +412,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   )}
                   {onTogglePick && (
                     <button
-                      onClick={() => onTogglePick(item)}
+                      onClick={(e) => { e.stopPropagation(); onTogglePick(item); }}
                       className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
                         isPicked
                           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
@@ -448,14 +450,15 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
               <div
                 key={String(item.id)}
                 data-item-id={String(item.id)}
-                className={`rounded-xl border p-4 flex flex-col gap-2 min-h-[7rem] transition-all ${
+                onClick={() => onSelectItem(String(item.id))}
+                className={`rounded-xl border p-4 flex flex-col gap-2 min-h-[7rem] transition-all cursor-pointer ${
                   active
                     ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700'
                     : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:shadow-sm'
                 }`}
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <button onClick={() => onSelectItem(String(item.id))} className="text-left min-w-0 flex-1">
+                  <div className="text-left min-w-0 flex-1">
                     <span className="font-semibold text-sm block break-words">
                       <Highlight text={itemLabel(item)} term={searchTerm} />
                     </span>
@@ -464,8 +467,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                         <Highlight text={String(item.description)} term={searchTerm} />
                       </span>
                     ) : null}
-                  </button>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <ClassBadge
                       item={item}
                       activeValues={activeClasses}
@@ -496,6 +499,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   {route && (
                     <a
                       href={route}
+                      onClick={(e) => e.stopPropagation()}
                       className="p-1.5 text-gray-400 hover:text-blue-500 shrink-0"
                       title={t('catalogs.open_in_domain', 'Open in domain view')}
                     >
@@ -504,7 +508,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   )}
                   {onTogglePick && (
                     <button
-                      onClick={() => onTogglePick(item)}
+                      onClick={(e) => { e.stopPropagation(); onTogglePick(item); }}
                       className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md shrink-0 transition-colors ${
                         isPicked
                           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'

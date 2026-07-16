@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../ui/Modal';
 import { anatomyService } from '../../services/anatomyService';
-import type { AnatomyStructure, AnatomyCategory } from '../../types/anatomy';
-import { CATEGORY_LABELS } from '../../types/anatomy';
+import type { AnatomyStructure } from '../../types/anatomy';
+import type { CatalogItem } from '../../types/catalog';
+import { AnatomyForm } from '../catalog/forms/AnatomyForm';
 
 interface Props {
   isOpen: boolean;
@@ -13,36 +14,31 @@ interface Props {
   structure?: AnatomyStructure | null;
 }
 
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+const emptyDraft = (): CatalogItem => ({
+  name: '',
+  slug: '',
+  class_concept_id: null,
+  standard_system: null,
+  standard_code: null,
+  description: null,
+  is_custom: true,
+});
 
-const CATEGORIES: AnatomyCategory[] = [
-  'SYSTEM',
-  'REGION',
-  'ORGAN',
-  'ORGAN_PART',
-  'TISSUE',
-  'CELL',
-  'SUBSTANCE',
-  'JOINT',
-  'OTHER',
-];
-
-const inputClass =
-  'w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text';
-const labelClass = 'block text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1';
+const toDraft = (s: AnatomyStructure): CatalogItem => ({
+  id: String(s.id),
+  name: s.name,
+  slug: s.slug,
+  class_concept_id: s.class_concept_id ?? null,
+  class_concept_name: s.class_concept_name ?? null,
+  standard_system: s.standard_system ?? null,
+  standard_code: s.standard_code ?? null,
+  description: s.description ?? null,
+  is_custom: s.is_custom,
+});
 
 export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved, structure }) => {
   const { t } = useTranslation();
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [slugTouched, setSlugTouched] = useState(false);
-  const [category, setCategory] = useState<AnatomyCategory>('ORGAN');
-  const [description, setDescription] = useState('');
-  const [standardCode, setStandardCode] = useState('');
+  const [draft, setDraft] = useState<CatalogItem>(emptyDraft());
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,31 +47,12 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
-    if (structure) {
-      setName(structure.name);
-      setSlug(structure.slug);
-      setSlugTouched(true);
-      setCategory(structure.category);
-      setDescription(structure.description ?? '');
-      setStandardCode(structure.standard_code ?? '');
-    } else {
-      setName('');
-      setSlug('');
-      setSlugTouched(false);
-      setCategory('ORGAN');
-      setDescription('');
-      setStandardCode('');
-    }
+    setDraft(structure ? toDraft(structure) : emptyDraft());
   }, [isOpen, structure]);
-
-  const handleNameChange = (value: string) => {
-    setName(value);
-    if (!slugTouched) setSlug(slugify(value));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !slug.trim()) {
+    if (!draft.name?.trim() || !draft.slug?.trim()) {
       setError(t('anatomy.name_label') + ' & slug required');
       return;
     }
@@ -83,13 +60,17 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
     setError(null);
     try {
       const payload = {
-        name: name.trim(),
-        slug: slug.trim(),
-        category,
-        description: description.trim() || null,
-        standard_system: standardCode.trim() ? ('snomed' as const) : null,
-        standard_code: standardCode.trim() || null,
-        is_custom: true,
+        name: draft.name!.trim(),
+        slug: draft.slug!.trim(),
+        class_concept_id: (draft.class_concept_id as string | null) ?? null,
+        standard_system: (draft.standard_system ?? null) as
+          | 'loinc'
+          | 'snomed'
+          | 'custom'
+          | null,
+        standard_code: (draft.standard_code as string | null) ?? null,
+        description: (draft.description as string | null)?.trim() || null,
+        is_custom: Boolean(draft.is_custom ?? true),
       };
       const saved = isEditing
         ? await anatomyService.update(structure!.slug, payload)
@@ -112,63 +93,18 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
       className="max-w-lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className={labelClass}>{t('anatomy.name_label')}</label>
-          <input
-            className={inputClass}
-            value={name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            autoFocus
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>{t('anatomy.slug_label')}</label>
-            <input
-              className={inputClass}
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                setSlugTouched(true);
-              }}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>{t('anatomy.category_label')}</label>
-            <select
-              className={inputClass}
-              value={category}
-              onChange={(e) => setCategory(e.target.value as AnatomyCategory)}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className={labelClass}>{t('anatomy.standard_code_label')}</label>
-          <input
-            className={inputClass}
-            value={standardCode}
-            onChange={(e) => setStandardCode(e.target.value)}
-            placeholder="SNOMED CT code (optional)"
-          />
-        </div>
-
-        <div>
-          <label className={labelClass}>{t('anatomy.description_label')}</label>
-          <textarea
-            className={`${inputClass} resize-none`}
-            rows={3}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+        <AnatomyForm
+          typeMeta={{
+            type: 'anatomy',
+            ui: { label_key: '', icon: '', color: '', admin_route: '' },
+            has_concept_link: true,
+            edge_endpoint_type: 'anatomy',
+            search_columns: [],
+          }}
+          values={draft}
+          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          mode={isEditing ? 'edit' : 'create'}
+        />
 
         {error && (
           <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>

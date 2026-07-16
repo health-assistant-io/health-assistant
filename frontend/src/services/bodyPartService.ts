@@ -1,5 +1,5 @@
 import { anatomyService } from './anatomyService';
-import type { AnatomyStructure, AnatomyCategory } from '../types/anatomy';
+import type { AnatomyStructure } from '../types/anatomy';
 
 /**
  * Backwards-compatible adapter over anatomyService.
@@ -48,7 +48,7 @@ export const createBodyPart = async (data: BodyPartCreate): Promise<BodyPart> =>
   const s = await anatomyService.create({
     name: data.name,
     slug,
-    category: 'OTHER' as AnatomyCategory,
+    class_concept_slug: 'other',
     standard_system: 'snomed',
     standard_code: data.snomed_code ?? null,
     description: data.description ?? null,

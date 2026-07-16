@@ -58,7 +58,9 @@ export const AnatomySearchPopup: React.FC<Props> = ({
         const activeCategory = categoryFilter && categoryFilter.length === 1 ? categoryFilter[0] : undefined;
         const data = await anatomyService.list({
           search: term || undefined,
-          category: activeCategory,
+          class: activeCategory
+            ? activeCategory.toLowerCase().replace('_', '-')
+            : undefined,
           limit: 100,
         });
         setStructures(data.items);

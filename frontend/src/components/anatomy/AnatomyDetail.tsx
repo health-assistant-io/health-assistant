@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Layers,
   Box,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   ChevronDown,
   Network,
+  BookOpen,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AnatomyStructure, AnatomyRelatedResponse } from '../../types/anatomy';
@@ -135,8 +137,8 @@ export const AnatomyDetail: React.FC<Props> = ({
           </div>
         )}
 
-        {/* View relationship graph — opens the modal */}
-        <div className="mt-3">
+        {/* View relationship graph + open in catalog */}
+        <div className="mt-3 flex gap-2">
           <button
             onClick={onViewGraph}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white text-[10px] font-black uppercase tracking-widest transition-all hover:brightness-110 active:scale-[0.98]"
@@ -145,6 +147,14 @@ export const AnatomyDetail: React.FC<Props> = ({
             <Network className="w-3 h-3" />
             {t('anatomy.view_graph')}
           </button>
+          <Link
+            to={`/catalogs?type=anatomy&item=${structure.id}`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all hover:bg-gray-100 dark:hover:bg-dark-bg text-gray-500 dark:text-dark-muted"
+            title={t('anatomy.open_in_catalog', { defaultValue: 'Open in catalog' })}
+          >
+            <BookOpen className="w-3 h-3" />
+            {t('anatomy.open_in_catalog', { defaultValue: 'Catalog' })}
+          </Link>
         </div>
 
         {/* Interactive Parents / Children toggles */}

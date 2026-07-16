@@ -5,7 +5,6 @@ import type {
   AnatomyRelatedResponse,
   AnatomyImportPayload,
   AnatomyListResponse,
-  AnatomyCategory,
   AnatomyDisplay,
   AnatomyFigure,
   AnatomyGraphResponse,
@@ -14,9 +13,7 @@ import type {
 const BASE = '/anatomy';
 
 export interface AnatomyListParams {
-  category?: AnatomyCategory;
-  /** Anatomy-class concept slug(s), e.g. ``organ`` or ``organ,organ-part``.
-   * Replaces the legacy uppercase ``category`` (which the backend ignores). */
+  /** Anatomy-class concept slug(s), e.g. ``organ`` or ``organ,organ-part``. */
   class?: string;
   search?: string;
   limit?: number;
@@ -26,17 +23,22 @@ export interface AnatomyListParams {
 export interface AnatomyStructureInput {
   name: string;
   slug: string;
-  category: AnatomyCategory;
+  class_concept_id?: string | null;
+  /** Anatomy-class concept slug (e.g. ``organ``). Resolved to ``class_concept_id``
+   *  by the service, so callers don't need the UUID. */
+  class_concept_slug?: string | null;
   standard_system?: 'loinc' | 'snomed' | 'custom' | null;
   standard_code?: string | null;
   description?: string | null;
   is_custom?: boolean;
+  display?: AnatomyDisplay | null;
 }
 
 export interface AnatomyStructurePatch {
   name?: string;
   slug?: string;
-  category?: AnatomyCategory;
+  class_concept_id?: string | null;
+  class_concept_slug?: string | null;
   standard_system?: 'loinc' | 'snomed' | 'custom' | null;
   standard_code?: string | null;
   description?: string | null;
@@ -46,10 +48,9 @@ export interface AnatomyStructurePatch {
 
 export const anatomyService = {
   async list(params: AnatomyListParams = {}): Promise<AnatomyListResponse> {
-    const { category, class: cls, search, limit = 500, offset = 0 } = params;
+    const { class: cls, search, limit = 500, offset = 0 } = params;
     const query: Record<string, unknown> = { limit, offset };
     if (cls) query.class = cls;
-    else if (category) query.category = category; // legacy (backend ignores)
     if (search && search.trim()) query.search = search.trim();
     const res = await api.get(BASE, { params: query });
     return res.data;

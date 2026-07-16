@@ -13,6 +13,7 @@
  * layer type = one entry here.
  */
 import type { CatalogItem } from '../../types/catalog';
+import { anatomyService } from '../../services/anatomyService';
 import {
   createConcept,
   updateConcept,
@@ -34,6 +35,16 @@ const conceptTarget: WriteTarget = {
   restore: async (id) => restoreConcept(id) as any,
 };
 
+// Anatomy writes route through the ``/anatomy`` domain endpoint (not
+// ``/catalogs/anatomy``) so the friendly ``class_concept_slug`` is resolved to
+// a ``class_concept_id`` by the anatomy service, and global-item RBAC is
+// enforced by the domain endpoint.
+const anatomyTarget: WriteTarget = {
+  create: async (data) => anatomyService.create(data as any) as any,
+  update: async (id, data) => anatomyService.update(id, data as any) as any,
+  remove: async (id) => anatomyService.remove(id),
+};
+
 /**
  * Resolve the write target for a catalog type. Returns ``null`` for types
  * that write through the generic ``/catalogs/{type}`` endpoints (the default).
@@ -42,6 +53,8 @@ export function getWriteTarget(type: string): WriteTarget | null {
   switch (type) {
     case 'concept':
       return conceptTarget;
+    case 'anatomy':
+      return anatomyTarget;
     default:
       return null;
   }
@@ -78,6 +91,17 @@ export function buildWritePayload(
       if (draft.meta_data !== undefined) payload.meta_data = draft.meta_data;
     }
     return payload;
+  }
+  if (type === 'anatomy') {
+    return {
+      name: draft.name ?? '',
+      slug: draft.slug ?? '',
+      class_concept_id: draft.class_concept_id ?? null,
+      standard_system: draft.standard_system ?? null,
+      standard_code: draft.standard_code ?? null,
+      description: draft.description ?? null,
+      is_custom: draft.is_custom ?? true,
+    };
   }
   // Default: pass the draft as-is (the generic catalog endpoint handles it).
   return { ...draft };
