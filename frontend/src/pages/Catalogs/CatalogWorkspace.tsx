@@ -25,7 +25,7 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { Portal } from '../../components/ui/Portal';
 import { CatalogToolbar } from '../../components/catalog/CatalogToolbar';
 import { CatalogBrowser } from '../../components/catalog/CatalogBrowser';
-import { CatalogItemInfo } from '../../components/catalog/CatalogItemInfo';
+import { CatalogItemInfo } from '../../components/catalog/info/CatalogItemInfo';
 import { CatalogRelationsGraph } from '../../components/catalog/CatalogRelationsGraph';
 import { CatalogRelationsIndex } from '../../components/catalog/CatalogRelationsIndex';
 import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelationsEditor';
@@ -135,6 +135,10 @@ export const CatalogWorkspace: React.FC = () => {
   const catalogFilter = useFilterState<CatalogItem>(facets, {
     initialState: parseFilterState(facets, searchParams.get('f') || ''),
   });
+  // Destructure the memoized methods so effect/useMemo deps reference stable
+  // bare identifiers (satisfies react-hooks/exhaustive-deps without behavior
+  // change — these are useCallback-stable in useFilterState).
+  const { applyFilters, clearAll } = catalogFilter;
 
   // Persist filter state to the ?f= URL param (replace, not push).
   useEffect(() => {
@@ -259,9 +263,9 @@ export const CatalogWorkspace: React.FC = () => {
         return name.includes(q) || desc.includes(q);
       });
     }
-    result = catalogFilter.applyFilters(result);
+    result = applyFilters(result);
     return result;
-  }, [items, isMineScope, pageSearchTerm, currentUserId, catalogFilter.applyFilters]);
+  }, [items, isMineScope, pageSearchTerm, currentUserId, applyFilters]);
 
   /** More pages available on the backend (only meaningful for non-'mine'). */
   const hasMore = !isMineScope && items.length < total;
@@ -269,8 +273,8 @@ export const CatalogWorkspace: React.FC = () => {
   // Reset selection + tab + filters when the catalog type changes.
   useEffect(() => {
     setTab(INFO);
-    catalogFilter.clearAll();
-  }, [activeType, catalogFilter.clearAll]);
+    clearAll();
+  }, [activeType, clearAll]);
 
   // Anatomy-only: fetch the anatomy_class concepts that back the (server-side)
   // class facet options. Concept kind options are static (enum), so no fetch.
@@ -302,20 +306,23 @@ export const CatalogWorkspace: React.FC = () => {
     setSearchParams({ type }, { replace: true });
   };
 
-  const selectItem = (id: string, type?: string | null) => {
-    setSearchParams(
-      (prev) => {
-        // When a cross-catalog node carries its own type (e.g. clicking a
-        // biomarker node from the concept graph), switch the catalog type so
-        // the item resolves under the correct browser.
-        if (type && type !== activeType) prev.set('type', type);
-        if (id) prev.set('item', id);
-        else prev.delete('item');
-        return prev;
-      },
-      { replace: true },
-    );
-  };
+  const selectItem = useCallback(
+    (id: string, type?: string | null) => {
+      setSearchParams(
+        (prev) => {
+          // When a cross-catalog node carries its own type (e.g. clicking a
+          // biomarker node from the concept graph), switch the catalog type so
+          // the item resolves under the correct browser.
+          if (type && type !== activeType) prev.set('type', type);
+          if (id) prev.set('item', id);
+          else prev.delete('item');
+          return prev;
+        },
+        { replace: true },
+      );
+    },
+    [activeType, setSearchParams],
+  );
 
   const domainRoute = (item: CatalogItem): string | null =>
     domainRouteForType(
@@ -467,13 +474,49 @@ export const CatalogWorkspace: React.FC = () => {
     }
   };
 
-  const labelField = (item: CatalogItem): string =>
-    String(item.name || item.slug || item.id || 'Unnamed');
+  const labelField = useCallback(
+    (item: CatalogItem): string =>
+      String(item.name || item.slug || item.id || 'Unnamed'),
+    [],
+  );
 
   const selectedItem = useMemo(
     () => (itemId ? items.find((it) => String(it.id) === itemId) ?? null : null),
     [items, itemId],
   );
+
+  // Keyboard shortcuts when an item is selected: e=edit, r=relations,
+  // h=history, Esc=clear selection. Ignored while typing in a field/editable
+  // so the keys pass through to the input.
+  useEffect(() => {
+    if (!selectedItem) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key.toLowerCase()) {
+        case 'e':
+          setEditing({ ...selectedItem });
+          setIsNew(false);
+          break;
+        case 'r':
+          setTab(RELATIONS);
+          break;
+        case 'h':
+          setHistoryItem({ id: String(selectedItem.id), name: labelField(selectedItem) });
+          break;
+        case 'escape':
+          selectItem('');
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedItem, selectItem, labelField]);
 
   const allTabs = [{ id: INFO, label: t('catalogs.tab_info', 'Info') }, { id: RELATIONS, label: t('catalogs.tab_relations', 'Relations') }, ...customTabs.map((ct) => ({ id: ct.id, label: t(ct.labelKey, ct.labelFallback) }))];
 
@@ -484,6 +527,8 @@ export const CatalogWorkspace: React.FC = () => {
         <CatalogItemInfo
           item={selectedItem}
           total={total}
+          catalogType={active?.type}
+          onJumpRelations={() => setTab(RELATIONS)}
           hideHeader
         />
       );
@@ -824,7 +869,7 @@ export const CatalogWorkspace: React.FC = () => {
                     onClearFilters={() => {
                       setPageSearchTerm('');
                       setScopeFilter('');
-                      catalogFilter.clearAll();
+                      clearAll();
                     }}
                   />
                 </div>

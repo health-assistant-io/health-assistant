@@ -164,6 +164,16 @@ unified **Catalogs workspace** (`CatalogWorkspace`) at `/catalogs?type=concept`:
 - **List | Graph toggle** available for all catalog types — not just concepts.
 - **`CatalogOntologyGraph`** renders the cross-catalog graph with
   type/kind filters, depth-limited BFS traversal, and PNG export.
+- **Info tab (selected-item detail)** is a registry-driven, type-aware layout:
+  each catalog type's fields are grouped into titled sections (Identity /
+  Coding / Clinical / …) and rendered with specialized widgets — code badges
+  with external lookups (LOINC/SNOMED/CVX/ATC/ICD-10/FMA), semantic chips
+  (aliases, side effects, reactions, kinds), the biomarker stratified
+  reference-range table + number-line, the vaccine dose schedule, and concept
+  color/icon previews. Includes an in-preview field filter, a related-summary
+  chip (jumps to Relations), a "needs attention" data-quality badge,
+  Copy-JSON, and `e`/`r`/`h`/`Esc` keyboard shortcuts. Driven by
+  `components/catalog/info/` over reusable `components/ui/` primitives.
 - **"Export seeds" button** in the `CatalogToolbar` (SYSTEM_ADMIN) — calls
   `GET /api/v1/admin/seeds/export.zip` (see Seeds & import below).
 - The legacy routes `/admin/system/taxonomy` and `/examinations/categories`
