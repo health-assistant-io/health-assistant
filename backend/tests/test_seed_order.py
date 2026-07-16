@@ -16,8 +16,15 @@ from app.services.seed_service import SeedService
 
 
 @pytest.mark.asyncio
-async def test_seed_all_resolves_anatomy_class():
+async def test_seed_all_resolves_anatomy_class(tmp_path, monkeypatch):
     """Every seeded anatomy structure must resolve its anatomy_class concept."""
+    # seed_all() includes seed_anatomy_figures, which writes images under
+    # settings.UPLOAD_DIR. The production default (/var/healthassistant/uploads)
+    # is not writable in CI, so point it at a tmp dir for the test.
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+
     # Reset anatomy_structures so the test is deterministic regardless of
     # accumulated state from prior tests (the shared test DB is not cleaned
     # between runs). seed_all re-inserts every row and resolves its

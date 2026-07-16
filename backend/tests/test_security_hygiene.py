@@ -168,7 +168,9 @@ def test_b13_production_accepts_strong_password():
         APP_ENV="production",
         POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
         SECRET_KEY="a-strong-secret-key-for-test-purposes",
-        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+        VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
+        VAPID_PRIVATE_KEY="test-vapid-private-key-do-not-use",
     )
     assert s.POSTGRES_PASSWORD == "a-strong-unique-passphrase-9f3kQ"
 

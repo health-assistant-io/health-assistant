@@ -113,6 +113,13 @@ async def test_seed_all_executes_every_stage_for_real(tmp_path, monkeypatch):
     stats dict). Validates the getattr-based dispatch + that no stage raises
     on an empty/fresh DB. Uses the real SeedService against the real test DB
     (migrations already run by the session conftest)."""
+    # seed_all() includes seed_anatomy_figures, which writes images under
+    # settings.UPLOAD_DIR. The production default (/var/healthassistant/uploads)
+    # is not writable in CI, so point it at a tmp dir for the test.
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+
     svc = SeedService()
     result = await svc.seed_all()
 

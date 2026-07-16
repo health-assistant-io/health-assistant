@@ -54,6 +54,7 @@ def test_all_expected_workflow_keys_present():
         "smart_extraction_upload",
         "magic_fill",
         "clinical_chat",
+        "voice_input",
         "medication_audit",
         "biomarker_definition",
         "medication_definition",

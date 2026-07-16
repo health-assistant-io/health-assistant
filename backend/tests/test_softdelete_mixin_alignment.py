@@ -153,6 +153,30 @@ async def test_crud_delete_sets_deleted_at(module_name, class_name):
 # ---------------------------------------------------------------------------
 
 
+def _find_root_baseline(files):
+    """Return the single root migration file (``down_revision is None``).
+
+    The consolidated baseline is the migration chain's root; incremental
+    migrations may stack on top of it, so we locate the root by its
+    ``down_revision is None`` marker rather than assuming a single file.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    roots = []
+    for f in files:
+        spec = importlib.util.spec_from_file_location("_alembic_mod_" + Path(f).stem, f)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if getattr(mod, "down_revision", "missing") is None:
+            roots.append(f)
+    assert len(roots) == 1, (
+        f"expected exactly one root baseline migration (down_revision is None), "
+        f"found {len(roots)}: {roots}"
+    )
+    return roots[0]
+
+
 def test_initial_schema_has_deleted_at_on_nine_tables():
     """The consolidated baseline must create deleted_at on all nine
     SoftDeleteMixin tables (previously a separate alignment migration)."""
@@ -161,8 +185,8 @@ def test_initial_schema_has_deleted_at_on_nine_tables():
 
     versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
     files = [p for p in glob.glob(str(versions_dir / "*.py")) if not p.endswith("__init__.py")]
-    assert len(files) == 1, f"expected a single baseline migration, found {files}"
-    src = Path(files[0]).read_text()
+    baseline = _find_root_baseline(files)
+    src = Path(baseline).read_text()
 
     expected = {
         "fhir_patients",
@@ -189,8 +213,8 @@ def test_initial_schema_loads_cleanly():
 
     versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
     files = [p for p in glob.glob(str(versions_dir / "*.py")) if not p.endswith("__init__.py")]
-    assert len(files) == 1, f"expected a single baseline migration, found {files}"
-    spec = importlib.util.spec_from_file_location("consolidated_baseline", files[0])
+    baseline = _find_root_baseline(files)
+    spec = importlib.util.spec_from_file_location("consolidated_baseline", baseline)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert mod.down_revision is None, "consolidated baseline must be the root"

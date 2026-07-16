@@ -45,6 +45,7 @@ class TestTaskType:
             "suggest_category_icon",
             "generate_category_icon",
             "chat",
+            "transcription",
         ]
 
     def test_default_is_first(self):
