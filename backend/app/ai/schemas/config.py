@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import datetime
 
 
-from app.models.enums import AIScope
+from app.models.enums import AIScope, AIModelCapability
 
 
 def _mask_api_key_for_response(value: Optional[str]) -> Optional[str]:
@@ -127,6 +127,16 @@ class AIModelCreate(BaseModel):
         ..., min_length=1, max_length=200, description="Actual model name for API"
     )
     description: Optional[str] = Field(None, description="Description")
+    capabilities: List[AIModelCapability] = Field(
+        default_factory=lambda: [AIModelCapability.TEXT],
+        description=(
+            "Modalities this model supports (its features): 'text' (baseline, "
+            "every model), 'vision' (image input — multimodal chat / vision "
+            "OCR), 'audio_input' (speech-to-text — the 'transcription' task). "
+            "Tasks require specific capabilities, so the task-assignment "
+            "picker only offers eligible models."
+        ),
+    )
     is_active: bool = Field(default=True, description="Enable/disable model")
     max_tokens: int = Field(default=65536, ge=1, description="Max tokens for model")
     temperature: float = Field(
@@ -148,6 +158,7 @@ class AIModelUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     model_name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None)
+    capabilities: Optional[List[AIModelCapability]] = Field(None)
     is_active: Optional[bool] = Field(None)
     max_tokens: Optional[int] = Field(None, ge=1)
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
@@ -166,6 +177,9 @@ class AIModelResponse(BaseModel):
     name: str
     model_name: str
     description: Optional[str]
+    capabilities: List[AIModelCapability] = Field(
+        default_factory=lambda: [AIModelCapability.TEXT]
+    )
     is_active: bool
     max_tokens: Optional[int] = 65536
     temperature: Optional[float] = 0.7
@@ -293,6 +307,7 @@ class AIConfigSummary(BaseModel):
     suggest_category_icon: Optional[TaskTypeAssignment]
     generate_category_icon: Optional[TaskTypeAssignment]
     chat: Optional[TaskTypeAssignment]
+    transcription: Optional[TaskTypeAssignment]
     workflows: Optional[Dict[str, List[TaskTypeAssignment]]] = None
     ai_agent_max_iterations: int = 20
 

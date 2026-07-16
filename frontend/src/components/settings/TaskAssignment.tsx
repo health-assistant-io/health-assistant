@@ -1,23 +1,31 @@
 import React, { useState, useMemo } from 'react';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AITaskAssignment, AIProvider, AIModel } from '../../api/aiConfig';
-import { Search, ChevronDown, Check, X, Cpu, Settings as SettingsIcon, Trash2, Globe, Shield, User } from 'lucide-react';
+import { Search, ChevronDown, Check, X, Cpu, Settings as SettingsIcon, Trash2, Globe, Shield, User, AudioLines, type LucideIcon } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 
-const TASK_TYPES = [
-  { value: 'default', label: 'Global Default Fallback' },
-  { value: 'ocr', label: 'Document Parsing (OCR)' },
-  { value: 'nlp', label: 'Text Analysis & Extraction (NLP)' },
-  { value: 'medication_interaction', label: 'Medication Interaction Check' },
-  { value: 'anomaly_detection', label: 'Anomaly Detection' },
-  { value: 'fill_biomarker_form', label: 'Biomarker Form Auto-Fill' },
-  { value: 'fill_medication_form', label: 'Medication Form Auto-Fill' },
-  { value: 'magic_fill_examination', label: 'Magic Fill Examination' },
-  { value: 'define_biomarker', label: 'Define New Biomarker' },
-  { value: 'define_medication', label: 'Define New Medication' },
-  { value: 'suggest_category_icon', label: 'Suggest Category Icon' },
-  { value: 'generate_category_icon', label: 'Generate Custom SVG Icon' },
-  { value: 'chat', label: 'Assistant Chat' },
+interface TaskTypeDef {
+  value: string;
+  label: string;
+  /** Lucide icon for this task (defaults to Cpu). */
+  icon: LucideIcon;
+}
+
+const TASK_TYPES: TaskTypeDef[] = [
+  { value: 'default', label: 'Global Default Fallback', icon: Cpu },
+  { value: 'ocr', label: 'Document Parsing (OCR)', icon: Cpu },
+  { value: 'nlp', label: 'Text Analysis & Extraction (NLP)', icon: Cpu },
+  { value: 'medication_interaction', label: 'Medication Interaction Check', icon: Cpu },
+  { value: 'anomaly_detection', label: 'Anomaly Detection', icon: Cpu },
+  { value: 'fill_biomarker_form', label: 'Biomarker Form Auto-Fill', icon: Cpu },
+  { value: 'fill_medication_form', label: 'Medication Form Auto-Fill', icon: Cpu },
+  { value: 'magic_fill_examination', label: 'Magic Fill Examination', icon: Cpu },
+  { value: 'define_biomarker', label: 'Define New Biomarker', icon: Cpu },
+  { value: 'define_medication', label: 'Define New Medication', icon: Cpu },
+  { value: 'suggest_category_icon', label: 'Suggest Category Icon', icon: Cpu },
+  { value: 'generate_category_icon', label: 'Generate Custom SVG Icon', icon: Cpu },
+  { value: 'chat', label: 'Assistant Chat', icon: Cpu },
+  { value: 'transcription', label: 'Voice Input (Speech-to-Text)', icon: AudioLines },
 ];
 
 interface TaskAssignmentProps {
@@ -211,7 +219,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                         ? 'bg-blue-600 text-white' 
                         : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 group-hover:bg-blue-100'
                   }`}>
-                    <Cpu className="w-5 h-5" />
+                    {(() => { const Icon = taskType.icon; return <Icon className="w-5 h-5" />; })()}
                   </div>
                   <div>
                     <h4 className={`text-md font-bold flex items-center gap-2 ${isGlobalDefault ? 'text-blue-900 dark:text-blue-400' : 'text-gray-900 dark:text-dark-text'}`}>

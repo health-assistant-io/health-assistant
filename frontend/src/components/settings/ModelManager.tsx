@@ -1,12 +1,95 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
-import { AIModel, AIProvider } from '../../api/aiConfig';
-import { Settings, Cpu, X, Check, Trash2, Plus, Search, ChevronDown, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { AIModel, AIProvider, AIModelCapability, ALL_MODEL_CAPABILITIES } from '../../api/aiConfig';
+import { Settings, Cpu, X, Check, Trash2, Plus, Search, ChevronDown, Sparkles, Loader2, AlertCircle, Eye, AudioLines, FileText } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 
 interface ModelManagerProps {
   provider: AIProvider;
 }
+
+/** Display metadata for each capability (icon + label + tone). */
+const CAPABILITY_META: Record<AIModelCapability, { icon: typeof Eye; label: string; tone: string }> = {
+  text: { icon: FileText, label: 'Text', tone: 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' },
+  vision: { icon: Eye, label: 'Vision', tone: 'bg-purple-50 dark:bg-purple-900/30 text-purple-600' },
+  audio_input: { icon: AudioLines, label: 'Audio Input', tone: 'bg-amber-50 dark:bg-amber-900/30 text-amber-600' },
+};
+
+/** Toggle chip group for a model's capabilities. ``text`` is the default
+ *  modality (selected for new models) but is NOT locked — an STT-only model
+ *  like ``whisper-1`` legitimately carries only ``audio_input``. The only
+ *  constraint: at least one capability must remain (you can't empty the set). */
+const CapabilityToggles: React.FC<{
+  value: AIModelCapability[];
+  onChange: (next: AIModelCapability[]) => void;
+}> = ({ value, onChange }) => {
+  const set = new Set(value);
+  const toggle = (cap: AIModelCapability) => {
+    if (set.has(cap)) {
+      // Removing — refuse to remove the last remaining capability.
+      if (value.length <= 1) return;
+      onChange(value.filter((c) => c !== cap));
+    } else {
+      onChange([...value, cap]);
+    }
+  };
+  return (
+    <div className="flex flex-wrap gap-2">
+      {ALL_MODEL_CAPABILITIES.map((cap) => {
+        const meta = CAPABILITY_META[cap];
+        const active = set.has(cap);
+        const Icon = meta.icon;
+        const isLastActive = active && value.length <= 1;
+        return (
+          <button
+            key={cap}
+            type="button"
+            onClick={() => toggle(cap)}
+            disabled={isLastActive}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all ${
+              active
+                ? `${meta.tone} border-current/20 shadow-sm`
+                : 'bg-gray-50 dark:bg-dark-bg text-gray-400 dark:text-dark-muted border-gray-200 dark:border-dark-border hover:border-gray-300'
+            } ${isLastActive ? 'cursor-not-allowed opacity-90' : 'cursor-pointer hover:scale-[1.03]'}`}
+            title={
+              isLastActive
+                ? 'At least one capability is required'
+                : `${meta.label} capability`
+            }
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {meta.label}
+            {active && <Check className="w-3 h-3" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+/** Compact capability badges for the model list row. */
+const CapabilityBadges: React.FC<{ capabilities?: AIModelCapability[] }> = ({ capabilities }) => {
+  const caps = (capabilities && capabilities.length ? capabilities : ['text']) as AIModelCapability[];
+  return (
+    <>
+      {caps.map((cap) => {
+        const meta = CAPABILITY_META[cap];
+        if (!meta) return null;
+        const Icon = meta.icon;
+        return (
+          <span
+            key={cap}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${meta.tone}`}
+            title={`${meta.label} capability`}
+          >
+            <Icon className="w-2.5 h-2.5" />
+            {meta.label}
+          </span>
+        );
+      })}
+    </>
+  );
+};
 
 export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
   const showConfirmation = useUIStore(state => state.showConfirmation);
@@ -27,6 +110,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
     name: '',
     model_name: '',
     description: '',
+    capabilities: ['text'] as AIModelCapability[],
     max_tokens: 65536,
     temperature: 0.7,
     is_active: true,
@@ -131,6 +215,7 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
         name: '',
         model_name: '',
         description: '',
+        capabilities: ['text'],
         max_tokens: 65536,
         temperature: 0.7,
         is_active: true,
@@ -366,7 +451,18 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                 placeholder="What is this model used for?"
               />
             </div>
-            
+
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1 flex items-center justify-between">
+                <span>Model Features / Capabilities</span>
+                <span className="text-gray-300 normal-case font-medium tracking-normal">Select what this model supports</span>
+              </label>
+              <CapabilityToggles
+                value={formData.capabilities}
+                onChange={(next) => setFormData({ ...formData, capabilities: next })}
+              />
+            </div>
+
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1 flex justify-between">
                 <span>Max Tokens</span>
@@ -499,12 +595,14 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] font-mono text-gray-400 flex items-center">
+                    <p className="text-[10px] font-mono text-gray-400 flex items-center flex-wrap gap-y-1">
                       <span className="bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded mr-2 opacity-80">{model.model_name}</span>
                       <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
                       <span className="font-medium">{model.max_tokens?.toLocaleString() || '65,536'} context</span>
                       <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
                       <span className="font-medium">Temp: {model.temperature}</span>
+                      <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
+                      <span className="flex items-center gap-1"><CapabilityBadges capabilities={model.capabilities} /></span>
                       <span className="w-1 h-1 bg-gray-300 rounded-full mx-2" />
                       {model.is_local ? (
                         <span className="px-1.5 py-0.5 bg-green-50 dark:bg-green-900/30 text-green-600 text-[8px] font-black uppercase rounded">Local Override</span>
@@ -656,6 +754,14 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                         <option value="cloud">☁️ Cloud</option>
                         <option value="local">🏠 Local</option>
                       </select>
+                    </div>
+
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-[10px] font-black uppercase text-gray-400 dark:text-dark-muted tracking-widest ml-1">Model Features / Capabilities</label>
+                      <CapabilityToggles
+                        value={(editData.capabilities as AIModelCapability[]) ?? model.capabilities ?? ['text']}
+                        onChange={(next) => handleEditChange('capabilities', next)}
+                      />
                     </div>
                   </div>
                   

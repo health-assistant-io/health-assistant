@@ -148,6 +148,14 @@ class Settings(BaseSettings):
     AI_CHAT_MAX_IMAGES: int = 4
     AI_CHAT_MAX_IMAGE_BYTES: int = 8 * 1024 * 1024  # 8 MiB per image (decoded)
 
+    # AI Chat — speech-to-text (voice input). Audio is transcribed server-side
+    # then discarded (never persisted); these limits guard the upload size +
+    # the transcription call timeout.
+    AI_STT_MAX_AUDIO_BYTES: int = 20 * 1024 * 1024  # 20 MiB compressed audio
+    AI_STT_TIMEOUT_SECONDS: int = 60
+    # Default STT model when no DB assignment exists (OpenAI-compatible API).
+    OPENAI_STT_MODEL: str = "whisper-1"
+
     # MCP Client integration (see integrations/mcp_client/)
     # Pydantic-read (audit C7) — same rationale as SECRET_KEY above.
     INTEGRATION_SECRET_KEY: Optional[str] = None

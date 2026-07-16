@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.ai.assistance.service import AIAssistanceService
+from app.ai.assistance.stt import TranscriptionError, transcribe_audio
 from app.services.chat_session_service import ChatSessionService
 from app.models.enums import HitlTaskStatus
 from app.ai.schemas.assistance import (
@@ -19,10 +20,27 @@ from app.ai.schemas.assistance import (
     HitlResumeRequest,
     AIAssistanceToolSchema,
 )
+from app.core.config import settings
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
+from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
+
+
+# Audio MIME types accepted for STT — Opus/WebM (Chrome default) + the common
+# fallbacks. WAV/PCM is allowed (some browsers lack Opus) but discouraged by the
+# client, which always requests Opus when available.
+_ALLOWED_AUDIO_MIME = {
+    "audio/webm",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/x-m4a",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/flac",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -417,3 +435,75 @@ async def resume_hitl_session(
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/transcribe")
+async def transcribe(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Transcribe a short voice recording to text (speech-to-text).
+
+    Accepts a compressed audio upload (Opus/WebM preferred), validates size +
+    MIME, resolves the ``transcription`` task assignment (a model advertising
+    the ``audio_input`` capability), and returns ``{"text": "..."}``.
+
+    The audio is **ephemeral**: it is streamed to the STT provider and never
+    persisted to the DB or object storage (audio may contain PHI). The
+    resulting text is what the client places in the chat input box; it then
+    flows through the normal chat pipeline (prompt guard + HITL wall) on send.
+    """
+    # MediaRecorder emits a full content type WITH parameters, e.g.
+    # ``audio/webm;codecs=opus``. Normalize to the bare subtype (everything
+    # before the first ``;``) so the allowlist matches.
+    raw_mime = (file.content_type or "").split(";")[0].strip().lower()
+    if raw_mime and raw_mime not in _ALLOWED_AUDIO_MIME:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported audio format. Use WebM/Opus, OGG, MP4, or WAV.",
+        )
+
+    audio = await file.read()
+    if not audio:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty audio recording.",
+        )
+    if len(audio) > settings.AI_STT_MAX_AUDIO_BYTES:
+        limit_mb = settings.AI_STT_MAX_AUDIO_BYTES / (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Audio exceeds the {limit_mb:.0f} MiB limit.",
+        )
+
+    filename = file.filename or "recording.webm"
+    # Prefer the bare mime for the provider payload (some STT APIs reject the
+    # ``;codecs=`` parameter); fall back to the original if normalization
+    # yielded nothing.
+    mime_for_provider = raw_mime or (file.content_type or "audio/webm")
+
+    service = AIAssistanceService(db)
+    try:
+        target = await service.ai_provider_service.get_stt_target(
+            tenant_id=current_user.tenant_id, user_id=current_user.user_id
+        )
+    except TranscriptionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    try:
+        text = await transcribe_audio(
+            audio,
+            filename=filename,
+            mime_type=mime_for_provider,
+            target=target,
+        )
+    except TranscriptionError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    # Run the transcribed text through the prompt-injection guard for audit
+    # correlation (non-blocking) — consistent with every other user input path.
+    if text:
+        check_user_input_safety(text, context="transcription")
+
+    return {"text": text, "success": bool(text)}

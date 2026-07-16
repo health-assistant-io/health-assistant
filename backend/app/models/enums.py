@@ -187,6 +187,40 @@ class AIScope(str, enum.Enum):
     ORGANIZATION = "ORGANIZATION"
 
 
+class AIModelCapability(str, enum.Enum):
+    """The input/output modalities a model supports (its "features").
+
+    A model carries a SET of these (stored as a JSONB array on ``AIModel``).
+    Tasks require specific capabilities — a model is only eligible for a task
+    assignment when it advertises the capability that task needs:
+
+      * ``TEXT``        — text in/out (chat, structured extraction, definitions).
+                          Assumed for every model (the baseline modality).
+      * ``VISION``      — image input (multimodal chat, vision-based OCR).
+      * ``AUDIO_INPUT`` — speech/audio input, i.e. speech-to-text (``whisper-1``).
+
+    This replaces a single coarse ``model_type`` (text|stt): a model can be both
+    a vision and a text model (``gpt-4o``), or audio-only (``whisper-1``).
+    """
+
+    TEXT = "text"
+    VISION = "vision"
+    AUDIO_INPUT = "audio_input"
+
+    @classmethod
+    def all_values(cls) -> list:
+        return [c.value for c in cls]
+
+    @classmethod
+    def from_string(cls, value):
+        if value is None:
+            return None
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
 class ImportFormat(str, enum.Enum):
     CSV = "CSV"
     JSON = "JSON"

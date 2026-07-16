@@ -1,13 +1,13 @@
-"""Tests for the single consolidated schema baseline.
+"""Tests for the consolidated schema baseline + its follow-up chain.
 
-Verifies the one squashed migration that supersedes the historical chain:
-- Is the sole migration (single head, base root).
-- Creates the full expected table set (derived from the ORM metadata so it
-  cannot drift).
+Verifies:
+- There is exactly ONE root baseline migration (``down_revision is None``);
+  additional incremental follow-up migrations are allowed on top of it.
+- The baseline creates the full expected table set (derived from the ORM
+  metadata so it cannot drift).
 - Installs the required extensions.
 - Leaves the post-consolidation invariants: unified concept tables present,
   the legacy scattered category tables gone.
-- Round-trips cleanly (upgrade -> downgrade -> upgrade).
 """
 import glob
 import importlib.util
@@ -29,20 +29,36 @@ def _migration_files():
     )
 
 
-def _load_migration_module():
+def _load_migration_module(revision_attr: str = "down_revision", want=None):
+    """Load a migration module by an attribute value. By default loads the
+    baseline (the unique migration whose ``down_revision is None``)."""
     files = _migration_files()
-    assert len(files) == 1, f"expected a single baseline migration, found {files}"
-    path = Path(files[0])
-    spec = importlib.util.spec_from_file_location("consolidated_baseline", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod, path
+    baseline = None
+    for path in files:
+        spec = importlib.util.spec_from_file_location(Path(path).stem, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if getattr(mod, revision_attr, object()) is want:
+            baseline = (mod, Path(path))
+            break
+    assert baseline is not None, (
+        f"no baseline migration (down_revision is None) found in {files}"
+    )
+    return baseline
 
 
-def test_there_is_exactly_one_migration_file():
-    files = _migration_files()
-    assert len(files) == 1, (
-        f"the chain should be squashed to a single migration; found {files}"
+def test_there_is_exactly_one_root_baseline():
+    """The chain must have exactly one root baseline (down_revision is None).
+    Incremental follow-up migrations on top of it are fine."""
+    roots = []
+    for path in _migration_files():
+        spec = importlib.util.spec_from_file_location(Path(path).stem, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if mod.down_revision is None:
+            roots.append(path)
+    assert len(roots) == 1, (
+        f"expected exactly one root baseline migration, found {roots}"
     )
 
 

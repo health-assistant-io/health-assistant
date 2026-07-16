@@ -95,6 +95,7 @@ class TaskType(str, enum.Enum):
     SUGGEST_CATEGORY_ICON = "suggest_category_icon"
     GENERATE_CATEGORY_ICON = "generate_category_icon"
     CHAT = "chat"
+    TRANSCRIPTION = "transcription"
 
     @classmethod
     def all_values(cls) -> List[str]:

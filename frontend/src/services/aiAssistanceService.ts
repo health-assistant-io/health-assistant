@@ -354,3 +354,48 @@ export const getAvailableTools = async (patientId: string, examinationId?: strin
   const response = await api.get<AIToolInfo[]>(`/ai-assistance/tools?${params.toString()}`);
   return response.data;
 };
+
+export interface TranscriptionResult {
+  text: string;
+  success: boolean;
+}
+
+/**
+ * Transcribe a compressed voice recording to text (speech-to-text).
+ *
+ * Sends the audio as multipart/form-data to ``/ai-assistance/transcribe``.
+ * The audio is ephemeral: the backend discards it after transcription (it may
+ * contain PHI). The returned text is placed into the chat input box for the
+ * user to review/edit before sending — it then flows through the normal chat
+ * pipeline (prompt guard + HITL).
+ */
+export const transcribeAudio = async (
+  blob: Blob,
+  filename: string = 'recording.webm',
+): Promise<TranscriptionResult> => {
+  const token = localStorage.getItem('accessToken');
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+  const form = new FormData();
+  form.append('file', blob, filename);
+
+  const response = await fetch(`${API_BASE_URL}/ai-assistance/transcribe`, {
+    method: 'POST',
+    headers: {
+      // Do NOT set Content-Type — the browser sets the multipart boundary.
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    let detail = `Transcription failed (HTTP ${response.status})`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.detail) detail = errBody.detail;
+    } catch {
+      /* ignore parse error */
+    }
+    throw new Error(detail);
+  }
+  return response.json();
+};

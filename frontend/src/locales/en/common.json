@@ -1030,6 +1030,17 @@
       "add": "Attach images",
       "drop": "Drop images to attach"
     },
+    "voice": {
+      "record": "Hold to talk • tap to toggle",
+      "cancel_hint": "Release to send • slide off to cancel",
+      "recording": "Recording",
+      "transcribing": "Transcribing…",
+      "stop": "Stop & transcribe",
+      "stop_label": "Stop",
+      "cancel": "Cancel recording",
+      "unsupported": "Voice input not supported",
+      "permission_denied": "Microphone access denied."
+    },
     "history": {
       "title": "Session History"
     },

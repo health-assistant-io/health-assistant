@@ -19,6 +19,12 @@ export interface AIProvider {
   updated_at?: string;
 }
 
+/** Modalities a model supports (its "features"). Mirrors the backend
+ *  AIModelCapability enum. ``text`` is the baseline (every model). */
+export type AIModelCapability = 'text' | 'vision' | 'audio_input';
+
+export const ALL_MODEL_CAPABILITIES: AIModelCapability[] = ['text', 'vision', 'audio_input'];
+
 export interface AIModel {
   id: string;
   provider_id: string;
@@ -26,6 +32,8 @@ export interface AIModel {
   name: string;
   model_name: string;
   description?: string;
+  /** Capability set this model advertises (text / vision / audio_input). */
+  capabilities?: AIModelCapability[];
   is_active: boolean;
   max_tokens: number;
   temperature: number;
@@ -68,6 +76,7 @@ export interface AIModelCreate {
   name: string;
   model_name: string;
   description?: string;
+  capabilities?: AIModelCapability[];
   is_active?: boolean;
   max_tokens?: number;
   temperature?: number;
@@ -84,6 +93,14 @@ export interface AITaskAssignmentCreate {
   priority?: number;
   tenant_id?: string;
   user_id?: string;
+}
+
+/** A resolved task-type → provider+model assignment (config summary entry). */
+export interface TaskAssignment {
+  task_type: string;
+  provider?: AIProvider;
+  model?: AIModel;
+  assignment_id?: string;
 }
 
 export interface AIConfigSummary {
@@ -162,18 +179,9 @@ export interface AIConfigSummary {
     model?: AIModel;
     assignment_id?: string;
   };
-  chat?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  workflows?: Record<string, {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  }[]>;
+  chat?: TaskAssignment;
+  transcription?: TaskAssignment;
+  workflows?: Record<string, TaskAssignment[]>;
   ai_agent_max_iterations: number;
 }
 

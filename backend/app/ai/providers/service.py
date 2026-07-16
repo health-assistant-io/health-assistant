@@ -446,6 +446,7 @@ class AIProviderService:
             suggest_category_icon=task_assignments.get("suggest_category_icon"),
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
+            transcription=task_assignments.get("transcription"),
             workflows=workflows,
             ai_agent_max_iterations=max_iterations,
         )
@@ -693,3 +694,47 @@ class AIProviderService:
             "AI Resolution [nlp]: No DB assignment found and no API keys in environment. Falling back to standard SPACY extractor."
         )
         return get_nlp_extractor(provider=ProviderType.SPACY.value)
+
+    async def get_stt_target(
+        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
+    ):
+        """Resolve the speech-to-text target (provider + model) for the
+        ``transcription`` task.
+
+        Returns an :class:`app.ai.assistance.stt.STTTarget` describing the
+        api_key / api_base / model_name to call. Validates the resolved model
+        advertises the ``audio_input`` capability (rejects a misconfigured
+        chat-only assignment early). Falls back to the ``OPENAI_*`` env STT
+        model when no DB assignment exists.
+        """
+        from app.ai.assistance.stt import STTTarget, _resolve_stt_target
+
+        assignment = await self.get_active_assignment_for_task(
+            TaskType.TRANSCRIPTION.value, tenant_id, user_id
+        )
+        provider = None
+        model = None
+        if assignment:
+            if assignment.provider_id:
+                provider = await self.get_provider(assignment.provider_id)
+            if assignment.model_id:
+                model = await self.get_model(assignment.model_id)
+            logger.info(
+                "AI Resolution [transcription]: Using %s configuration. "
+                "Provider: %s, Model: %s",
+                assignment.scope,
+                provider.name if provider else "None",
+                model.model_name if model else "Default",
+            )
+            return _resolve_stt_target(provider, model)
+
+        # Fallback to env (OPENAI_API_KEY + OPENAI_STT_MODEL).
+        logger.warning(
+            "AI Resolution [transcription]: No DB assignment found. "
+            "Falling back to ENV settings."
+        )
+        return STTTarget(
+            api_key=settings.OPENAI_API_KEY,
+            api_base=(settings.OPENAI_API_BASE or "https://api.openai.com/v1"),
+            model_name=settings.OPENAI_STT_MODEL,
+        )

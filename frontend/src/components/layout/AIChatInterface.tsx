@@ -24,6 +24,10 @@ import { TERMINAL_HITL_STATUSES } from '../ai/hitl/registry';
 import { AIBadge } from '../ui/AIBadge';
 import { ChatAttachmentPicker, ChatAttachmentPreviewRail } from '../ai/ChatAttachmentPicker';
 import { ChatMessageImages } from '../ai/ChatMessageImages';
+import { ChatVoiceButton } from '../ai/ChatVoiceButton';
+import { RecordingBanner } from '../ai/RecordingBanner';
+import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
+import { transcribeAudio } from '../../services/aiAssistanceService';
 
 interface Props {
   isFullScreen?: boolean;
@@ -101,8 +105,40 @@ export const AIChatInterface: React.FC<Props> = ({
   /** Pending image attachments staged in the composer (not yet sent). */
   const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { addFiles } = useChatAttachments((m: string) => toast.warning(m));
+  /** Voice recorder owned here so the recording banner can render ABOVE the
+   *  input box (outside its ``overflow-hidden`` rounded container). */
+  const recorder = useVoiceRecorder();
+
+  /** Finish a voice recording: stop → transcribe → drop text into the input
+   *  box for review. Shared by the mic button gesture and the banner's Stop. */
+  const finishRecording = useCallback(async () => {
+    const blob = await recorder.stop();
+    if (!blob || blob.size === 0) return;
+    setIsTranscribing(true);
+    try {
+      const ext = (recorder.mimeType || 'audio/webm').split('/')[1]?.split(';')[0] || 'webm';
+      const result = await transcribeAudio(blob, `recording.${ext}`);
+      if (result.text) {
+        setUserInput((prev) => {
+          const base = prev.trim();
+          return base ? `${base} ${result.text}` : result.text;
+        });
+        setTimeout(() => textareaRef.current?.focus(), 0);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Transcription failed.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [recorder]);
+
+  /** Abort a voice recording: stop and discard the audio (no transcription). */
+  const cancelRecording = useCallback(() => {
+    recorder.cancel();
+  }, [recorder]);
 
   /** Add picked/dropped/pasted files to the composer (validated + encoded). */
   const handleFilesAdded = useCallback(
@@ -1110,27 +1146,40 @@ export const AIChatInterface: React.FC<Props> = ({
               >
                   <div className={`absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] opacity-0 group-focus-within:opacity-30 blur transition-opacity duration-500 pointer-events-none`} />
 
-                  {/* Preview rail lives OUTSIDE the rounded input box so
-                      thumbnails keep their own corners and aren't clipped by
-                      the box's overflow-hidden + radius. */}
+                  {/* Preview rail + recording banner live OUTSIDE the rounded
+                      input box so neither thumbnails nor the banner are clipped
+                      by the box's overflow-hidden + radius. */}
                   <ChatAttachmentPreviewRail
                     attachments={pendingAttachments}
                     onRemove={(id) => setPendingAttachments(prev => prev.filter(a => a.id !== id))}
+                  />
+                  <RecordingBanner
+                    recorder={recorder}
+                    transcribing={isTranscribing}
+                    onStop={finishRecording}
+                    onCancel={cancelRecording}
                   />
 
                   <div className={`relative flex items-center border rounded-[1.8rem] md:rounded-[2.2rem] transition-all shadow-2xl overflow-hidden ${
                     isDragging ? 'ring-4 ring-indigo-500/40 border-indigo-400' : ''
                   } ${
-                    isFullScreen 
-                      ? 'bg-gray-50 dark:bg-dark-bg border-gray-200 dark:border-dark-border focus-within:ring-4 focus-within:ring-indigo-500/20' 
+                    isFullScreen
+                      ? 'bg-gray-50 dark:bg-dark-bg border-gray-200 dark:border-dark-border focus-within:ring-4 focus-within:ring-indigo-500/20'
                       : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border focus-within:ring-4 focus-within:ring-indigo-600/20'
                   }`}>
-                    <div className="shrink-0 pl-3 md:pl-5">
+                    <div className="shrink-0 pl-3 md:pl-5 flex items-center">
                       <ChatAttachmentPicker
                         attachments={pendingAttachments}
                         onChange={setPendingAttachments}
                         onToast={(m) => toast.warning(m)}
                         disabled={loading}
+                      />
+                      <ChatVoiceButton
+                        recorder={recorder}
+                        disabled={loading || isTranscribing}
+                        onFinish={finishRecording}
+                        onCancel={cancelRecording}
+                        onError={(m) => toast.error(m)}
                       />
                     </div>
                     <textarea

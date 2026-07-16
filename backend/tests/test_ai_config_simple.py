@@ -4,8 +4,8 @@ Tests the basic CRUD operations without complex fixtures
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4, UUID
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 from datetime import datetime
 
 from app.main import app
@@ -15,7 +15,6 @@ from app.models.enums import AIScope
 from app.ai.schemas.config import (
     AIProviderResponse,
     AIModelResponse,
-    AITaskAssignmentResponse,
 )
 
 
@@ -230,6 +229,7 @@ async def test_get_config_summary(async_client):
                 "suggest_category_icon": None,
                 "generate_category_icon": None,
                 "chat": None,
+                "transcription": None,
             }
 
         mock_instance.get_config_summary = mock_get_config_summary
@@ -271,11 +271,6 @@ def test_schemas_import():
     """Test that AI schemas can be imported"""
     from app.ai.schemas.config import (
         AIProviderCreate,
-        AIProviderResponse,
-        AIModelCreate,
-        AIModelResponse,
-        AITaskAssignmentCreate,
-        AIConfigSummary,
     )
 
     # Test schema creation
@@ -288,8 +283,8 @@ def test_schemas_import():
 
 def test_processor_import():
     """Test that AI processor functions can be imported"""
-    from app.ai.processors.ocr import get_ocr_processor, get_ocr_processor_from_db
-    from app.ai.processors.nlp import get_nlp_extractor, get_nlp_extractor_from_db
+    from app.ai.processors.ocr import get_ocr_processor
+    from app.ai.processors.nlp import get_nlp_extractor
 
     # Test basic OCR processor creation
     ocr = get_ocr_processor(

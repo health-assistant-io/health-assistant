@@ -121,7 +121,7 @@ export const ChatAttachmentPreviewRail: React.FC<PreviewRailProps> = ({
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 px-1 pb-2">
+      <div className="relative z-10 flex flex-wrap gap-2 px-1 pb-2">
         {attachments.map((att) => (
           <AttachmentThumb
             key={att.id}

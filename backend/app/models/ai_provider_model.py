@@ -19,7 +19,7 @@ from typing import Optional
 from .base import Base, UUIDMixin, TenantMixin, TimestampMixin, UserMixin
 
 
-from app.models.enums import AIScope
+from app.models.enums import AIScope, AIModelCapability
 
 
 class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
@@ -119,6 +119,17 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     name = Column(String(200), nullable=False, index=True)
     model_name = Column(String(200), nullable=False)  # Actual API model name
     description = Column(Text, nullable=True)
+    # Feature flags — which modalities this model supports. A SET of
+    # AIModelCapability values (text / vision / audio_input). Tasks require
+    # specific capabilities (chat→text, ocr→vision, transcription→audio_input)
+    # so the task-assignment picker only offers eligible models. JSONB array;
+    # defaults to ["text"] (the baseline modality every model has).
+    capabilities = Column(
+        JSONB,
+        nullable=False,
+        default=lambda: [AIModelCapability.TEXT.value],
+        server_default=text("'[\"text\"]'"),
+    )
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
     temperature = Column(Float, default=0.7)
@@ -136,6 +147,21 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
         ),
     )
 
+    def get_capabilities(self) -> list:
+        """Return the capability list.
+
+        ``text`` is the DEFAULT (every pre-existing model + new models start
+        with it) but is NOT forced — an STT-only model like ``whisper-1``
+        legitimately carries only ``audio_input``. An empty/null column falls
+        back to ``["text"]`` for backward compatibility with rows predating
+        the capabilities feature.
+        """
+        caps = self.capabilities if isinstance(self.capabilities, list) else []
+        vals = [c for c in caps if isinstance(c, str)]
+        if not vals:
+            vals = [AIModelCapability.TEXT.value]
+        return vals
+
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
@@ -143,6 +169,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
             "name": self.name,
             "model_name": self.model_name,
             "description": self.description,
+            "capabilities": self.get_capabilities(),
             "is_active": self.is_active,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,

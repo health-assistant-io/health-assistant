@@ -31,6 +31,7 @@ def build_workflows(task_assignments: Dict[str, Any]) -> Dict[str, List[Any]]:
             ta for ta in [task_assignments.get("magic_fill_examination")] if ta
         ],
         "clinical_chat": [ta for ta in [task_assignments.get("chat")] if ta],
+        "voice_input": [ta for ta in [task_assignments.get("transcription")] if ta],
         "medication_audit": [
             ta for ta in [task_assignments.get("medication_interaction")] if ta
         ],
