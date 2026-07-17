@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Info, Plus, Activity, Baby, AlertTriangle, Zap, Scissors, Smile, Eye, Sparkles, CheckCircle, Stethoscope, Filter, Calendar as CalendarIcon, Clock, ChevronDown, Save, X, Network
+  Info, Plus, Activity, Baby, AlertTriangle, Zap, Scissors, Smile, Eye, Sparkles, CheckCircle, Stethoscope, Filter, Calendar as CalendarIcon, Clock, ChevronDown, Save, X
 } from 'lucide-react';
 import {
   getEventTypes,
@@ -11,11 +11,10 @@ import {
   ClinicalEvent,
   ClinicalEventStatus,
 } from '../../services/clinicalEventService';
-import { getExaminations } from '../../services/examinationService';
-import { listObservations } from '../../services/observationService';
 import { DynamicMetadataForm } from './DynamicMetadataForm';
-import { ExaminationSelectorModal } from '../examinations/ExaminationSelectorModal';
-import { ObservationSelectorModal } from '../observations/ObservationSelectorModal';
+import { InstanceField } from '../instances/InstanceField';
+import '../../features/instances/adapters'; // registers the instance adapters
+import type { InstanceSelection } from '../instances/types';
 import { CatalogField } from '../catalog/CatalogField';
 import type { CatalogSelection } from '../../types/catalog';
 import { DatePicker } from '../ui/DatePicker';
@@ -118,12 +117,8 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
     const [loading, setLoading] = useState(false);
     const [types, setTypes] = useState<ClinicalEventType[]>([]);
     const [categories, setCategories] = useState<ClinicalEventCategory[]>([]);
-    const [examinations, setExaminations] = useState<any[]>([]);
-    const [patientObservations, setPatientObservations] = useState<any[]>([]);
     const [selectedTypeId, setSelectedTypeId] = useState<string>('');
     const [activeCategoryId, setActiveCategoryId] = useState<string>('All');
-    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-    const [isObsSelectorOpen, setIsObsSelectorOpen] = useState(false);
 
     const [formData, setFormData] = useState(buildInitialFormData);
 
@@ -143,16 +138,12 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
     useEffect(() => {
       const loadInitialData = async () => {
         try {
-          const [typesData, categoriesData, examsData, obsData] = await Promise.all([
+          const [typesData, categoriesData] = await Promise.all([
             getEventTypes(),
             getEventCategories(),
-            getExaminations(patientId),
-            listObservations(undefined, patientId),
           ]);
           setTypes(typesData);
           setCategories(categoriesData);
-          setExaminations(examsData || []);
-          setPatientObservations(obsData?.items || []);
 
           if (event) {
             setFormData({
@@ -252,13 +243,6 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useImperativeHandle(ref, () => ({ submit: () => handleSubmit() }));
 
-    const toggleExamination = (examId: string) => {
-      setFormData({
-        ...formData,
-        examinations: formData.examinations.filter(e => e.examination_id !== examId),
-      });
-    };
-
     const updateExamReason = (examId: string, reason: string) => {
       setFormData({
         ...formData,
@@ -268,19 +252,21 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
       });
     };
 
-    const handleSelectionChange = (newIds: string[]) => {
-      const current = formData.examinations;
-      const updated = newIds.map(id => {
-        const existing = current.find(e => e.examination_id === id);
-        return existing || { examination_id: id, reason: '' };
-      });
-      setFormData({ ...formData, examinations: updated });
-    };
-
-    const toggleObservation = (obsId: string) => {
+    // Selection (InstancePicker) <-> formData.examinations (carries reason).
+    // The picker owns selection; the form owns the per-link reason, preserved
+    // across add/remove via this mapping.
+    const examSelections: InstanceSelection[] = formData.examinations.map(e => ({
+      type: 'examination',
+      id: e.examination_id,
+    }));
+    const onExamSelectionChange = (next: InstanceSelection[]) => {
+      const reasonById = new Map(formData.examinations.map(e => [e.examination_id, e.reason]));
       setFormData({
         ...formData,
-        observations: formData.observations.filter(o => o.observation_id !== obsId),
+        examinations: next.map(sel => ({
+          examination_id: sel.id,
+          reason: reasonById.get(sel.id) || '',
+        })),
       });
     };
 
@@ -293,13 +279,19 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
       });
     };
 
-    const handleObsSelectionChange = (newIds: string[]) => {
-      const current = formData.observations;
-      const updated = newIds.map(id => {
-        const existing = current.find(o => o.observation_id === id);
-        return existing || { observation_id: id, notes: '' };
+    const obsSelections: InstanceSelection[] = formData.observations.map(o => ({
+      type: 'observation',
+      id: o.observation_id,
+    }));
+    const onObsSelectionChange = (next: InstanceSelection[]) => {
+      const notesById = new Map(formData.observations.map(o => [o.observation_id, o.notes]));
+      setFormData({
+        ...formData,
+        observations: next.map(sel => ({
+          observation_id: sel.id,
+          notes: notesById.get(sel.id) || '',
+        })),
       });
-      setFormData({ ...formData, observations: updated });
     };
 
     const getIcon = (slug: string) => {
@@ -519,144 +511,44 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
               </div>
 
               {/* Related Examinations */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-gray-50 dark:border-dark-border pb-2">
-                  <div className="flex items-center space-x-2">
-                    <Stethoscope className="w-4 h-4 text-indigo-500" />
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('events.related_visits')}</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsSelectorOpen(true)}
-                    className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 transition-all text-[10px] font-bold uppercase shadow-sm"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{t('common.manage')}</span>
-                  </button>
-                </div>
-
-                <div className="max-h-[350px] overflow-y-auto pr-4 custom-scrollbar space-y-3">
-                  {formData.examinations.length === 0 ? (
-                    <div className="p-8 text-center bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
-                      <p className="text-xs text-gray-400 italic">{t('events.no_visits_linked')}</p>
-                      <button
-                        type="button"
-                        onClick={() => setIsSelectorOpen(true)}
-                        className="mt-2 text-[10px] font-black text-indigo-600 uppercase hover:underline"
-                      >
-                        {t('events.click_to_link')}
-                      </button>
-                    </div>
-                  ) : (
-                    formData.examinations.map(link => {
-                      const exam = examinations.find(e => e.id === link.examination_id);
-                      if (!exam) return null;
-                      return (
-                        <div
-                          key={exam.id}
-                          className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm animate-in slide-in-from-right-2"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-                              <span className="text-xs font-black text-gray-800 dark:text-dark-text">
-                                {new Date(exam.examination_date).toLocaleDateString()}
-                              </span>
-                              <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 rounded-md uppercase border border-indigo-100/50 dark:border-indigo-800/30">
-                                {exam.category || 'General'}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleExamination(exam.id)}
-                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            placeholder={t('events.reason_for_visit_placeholder')}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[10px] font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
-                            value={link.reason || ''}
-                            onChange={e => updateExamReason(exam.id, e.target.value)}
-                          />
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+              <InstanceField
+                label={t('events.related_visits')}
+                allowedTypes={['examination']}
+                patientId={patientId}
+                mode="multi"
+                displayMode="cards"
+                value={examSelections}
+                onChange={onExamSelectionChange}
+                renderCardFooter={(sel) => (
+                  <input
+                    type="text"
+                    placeholder={t('events.reason_for_visit_placeholder')}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
+                    value={formData.examinations.find(e => e.examination_id === sel.id)?.reason || ''}
+                    onChange={e => updateExamReason(sel.id, e.target.value)}
+                  />
+                )}
+              />
 
               {/* Related Biomarkers */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-gray-50 dark:border-dark-border pb-2">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="w-4 h-4 text-blue-500" />
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('events.related_biomarkers')}</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsObsSelectorOpen(true)}
-                    className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 transition-all text-[10px] font-bold uppercase shadow-sm"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{t('common.manage')}</span>
-                  </button>
-                </div>
-
-                <div className="max-h-[350px] overflow-y-auto pr-4 custom-scrollbar space-y-3">
-                  {formData.observations.length === 0 ? (
-                    <div className="p-8 text-center bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
-                      <p className="text-xs text-gray-400 italic">{t('events.no_biomarkers_linked')}</p>
-                      <button
-                        type="button"
-                        onClick={() => setIsObsSelectorOpen(true)}
-                        className="mt-2 text-[10px] font-black text-blue-600 uppercase hover:underline"
-                      >
-                        {t('events.click_to_link_biomarkers')}
-                      </button>
-                    </div>
-                  ) : (
-                    formData.observations.map(link => {
-                      const obs = patientObservations.find(o => o.id === link.observation_id);
-                      if (!obs) return null;
-                      return (
-                        <div
-                          key={obs.id}
-                          className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 shadow-sm animate-in slide-in-from-right-2"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                              <span className="text-xs font-black text-gray-800 dark:text-dark-text">
-                                {obs.code?.text || obs.code?.coding?.[0]?.display || obs.biomarker_slug || 'Unknown'}
-                              </span>
-                              <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-[9px] font-bold text-blue-600 dark:text-blue-400 rounded-md uppercase border border-blue-100/50 dark:border-blue-800/30">
-                                {obs.raw_value} {obs.normalized_unit}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => toggleObservation(obs.id)}
-                              className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            placeholder={t('events.notes_for_biomarker_placeholder')}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[10px] font-bold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
-                            value={link.notes || ''}
-                            onChange={e => updateObservationNotes(obs.id, e.target.value)}
-                          />
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+              <InstanceField
+                label={t('events.related_biomarkers')}
+                allowedTypes={['observation']}
+                patientId={patientId}
+                mode="multi"
+                displayMode="cards"
+                value={obsSelections}
+                onChange={onObsSelectionChange}
+                renderCardFooter={(sel) => (
+                  <input
+                    type="text"
+                    placeholder={t('events.notes_for_biomarker_placeholder')}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
+                    value={formData.observations.find(o => o.observation_id === sel.id)?.notes || ''}
+                    onChange={e => updateObservationNotes(sel.id, e.target.value)}
+                  />
+                )}
+              />
             </div>
           </div>
 
@@ -1015,22 +907,6 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
             </div>
           </div>
         )}
-
-        <ExaminationSelectorModal
-          isOpen={isSelectorOpen}
-          onClose={() => setIsSelectorOpen(false)}
-          examinations={examinations}
-          selectedIds={formData.examinations.map(e => e.examination_id)}
-          onSelectionChange={handleSelectionChange}
-        />
-
-        <ObservationSelectorModal
-          isOpen={isObsSelectorOpen}
-          onClose={() => setIsObsSelectorOpen(false)}
-          observations={patientObservations}
-          selectedIds={formData.observations.map(o => o.observation_id)}
-          onSelectionChange={handleObsSelectionChange}
-        />
       </div>
     );
   }

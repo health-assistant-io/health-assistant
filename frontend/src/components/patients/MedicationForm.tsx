@@ -4,12 +4,12 @@ import { Search, Plus, Save, Info, Calendar, Pill, Clock, X } from 'lucide-react
 import { AIAssistButton } from '../ui/AIAssistButton';
 import { DatePicker } from '../ui/DatePicker';
 import { TimeList } from '../ui/TimeList';
-import { 
-  searchMedicationCatalog, 
-  MedicationCatalogEntry, 
-  MedicationRecord,
-  MedicationTiming
-} from '../../services/medicationService';
+import { MedicationRecord, MedicationTiming } from '../../services/medicationService';
+import { CatalogItemPicker } from '../catalog/CatalogItemPicker';
+import { searchCatalogs } from '../../services/catalogService';
+import type { CatalogSelection } from '../../types/catalog';
+import { InstanceField } from '../instances/InstanceField';
+import '../../features/instances/adapters'; // registers the instance adapters
 
 export interface MedicationFormPrefill {
   name?: string;
@@ -41,6 +41,8 @@ export interface MedicationFormPayload {
   indications?: string;
   side_effects?: string[];
   is_new_catalog_entry?: boolean;
+  /** Optional examination to link this medication to at create/edit time. */
+  examination_id?: string | null;
 }
 
 export interface MedicationFormHandle {
@@ -85,11 +87,9 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
     ref
   ) {
     const { t } = useTranslation();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [catalogResults, setCatalogResults] = useState<MedicationCatalogEntry[]>([]);
-    const [selectedCatalogItem, setSelectedCatalogItem] = useState<MedicationCatalogEntry | null>(null);
+    const [selection, setSelection] = useState<CatalogSelection[]>([]);
+    const [newMedName, setNewMedName] = useState('');
     const [loading, setLoading] = useState(false);
-    const [searching, setSearching] = useState(false);
     const [isAddingNew, setIsAddingNew] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -100,7 +100,8 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
       start_date: new Date().toISOString().split('T')[0],
       end_date: '',
       reason: '',
-      note: ''
+      note: '',
+      examination_id: '' as string
     });
 
     const [timing, setTiming] = useState<MedicationTiming>({
@@ -123,12 +124,14 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           start_date: medication.start_date ? medication.start_date.split('T')[0] : '',
           end_date: medication.end_date ? medication.end_date.split('T')[0] : '',
           reason: medication.reason || '',
-          note: medication.note || ''
+          note: medication.note || '',
+          examination_id: medication.examination_id || ''
         });
         if (medication.frequency) {
           setTiming(medication.frequency);
         }
-        setSearchTerm(medication.code.text);
+        setSelection([]);
+        setNewMedName('');
         setIsAddingNew(false);
       } else if (prefill) {
         setFormData(prev => ({
@@ -157,22 +160,21 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             });
           }
         }
-        
-        if (prefill.name) setSearchTerm(prefill.name);
-        
+
         if (prefill.matched && prefill.catalog_id) {
-          setSelectedCatalogItem({
+          setSelection([{
+            type: 'medication',
             id: prefill.catalog_id,
-            name: prefill.name || '',
-            indications: prefill.indications || undefined,
-            side_effects: prefill.side_effects || [],
-            contraindications: prefill.contraindications || undefined,
-            dosage_info: prefill.dosage_info || undefined,
-            is_custom: false
-          });
+            label: prefill.name || ''
+          }]);
+          setNewMedName('');
           setIsAddingNew(false);
         } else if (prefill.is_new) {
+          setSelection([]);
+          setNewMedName(prefill.name || '');
           setIsAddingNew(true);
+        } else if (prefill.name) {
+          setNewMedName(prefill.name);
         }
       } else {
         setFormData({
@@ -183,7 +185,8 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           start_date: new Date().toISOString().split('T')[0],
           end_date: '',
           reason: '',
-          note: ''
+          note: '',
+          examination_id: ''
         });
         setTiming({
           type: 'daily',
@@ -194,33 +197,16 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           time_of_day: ['09:00'],
           as_needed: false
         });
-        setSearchTerm('');
-        setSelectedCatalogItem(null);
+        setSelection([]);
+        setNewMedName('');
         setIsAddingNew(false);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [medication, prefill]);
 
-    useEffect(() => {
-      // Don't search if we are editing an existing medication, or if we have a prefill match, or defining new
-      if (searchTerm.length > 2 && !medication && !isAddingNew && (!prefill?.matched || searchTerm !== prefill?.name)) {
-        const delayDebounceFn = setTimeout(() => {
-          setSearching(true);
-          searchMedicationCatalog(searchTerm).then(results => {
-            setCatalogResults(results);
-            setSearching(false);
-          });
-        }, 300);
-        return () => clearTimeout(delayDebounceFn);
-      } else {
-        setCatalogResults([]);
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchTerm, medication, isAddingNew, prefill]);
-
     const handleSubmit = async (e?: React.FormEvent) => {
       if (e) e.preventDefault();
-      if (loading || (!selectedCatalogItem && !searchTerm && !medication)) return;
+      if (loading || (isAddingNew ? !newMedName.trim() : (!medication && selection.length === 0))) return;
       setLoading(true);
 
       try {
@@ -233,12 +219,13 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           reason: formData.reason || null,
           note: formData.note || null,
           code: medication ? medication.code : {
-            text: searchTerm,
-            catalog_id: selectedCatalogItem?.id
+            text: isAddingNew ? newMedName : (selection[0]?.label ?? newMedName),
+            catalog_id: isAddingNew ? undefined : selection[0]?.id
           },
           indications: isAddingNew ? formData.indications : undefined,
           side_effects: isAddingNew ? formData.side_effects : undefined,
-          is_new_catalog_entry: isAddingNew
+          is_new_catalog_entry: isAddingNew,
+          examination_id: formData.examination_id || undefined
         };
 
         await onSubmit(payload);
@@ -301,10 +288,6 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                   taskType="fill_medication_form" 
                   context={{ patientId }} 
                   onSuggestedData={async (data) => {
-                    if (data.medication_name && !searchTerm) {
-                      setSearchTerm(data.medication_name);
-                    }
-                    
                     setFormData(prev => ({
                       ...prev,
                       dosage: data.dosage || prev.dosage,
@@ -327,6 +310,20 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                         setFormData(prev => ({...prev, note: `${prev.note ? prev.note + '\n' : ''}Suggested Frequency: ${data.frequency_label}`}));
                       }
                     }
+                    if (data.medication_name && selection.length === 0 && !isAddingNew) {
+                      try {
+                        const resp = await searchCatalogs(data.medication_name, { types: 'medication', limit: 1 });
+                        if (resp.results.length > 0) {
+                          const hit = resp.results[0];
+                          setSelection([{ type: hit.type, id: hit.id, label: hit.label }]);
+                        } else {
+                          setIsAddingNew(true);
+                          setNewMedName(data.medication_name);
+                        }
+                      } catch {
+                        setNewMedName(data.medication_name);
+                      }
+                    }
                   }}
                 />
               )}
@@ -347,109 +344,79 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                 <Search className="w-3 h-3 mr-2" />
                 {t('medications.modal.select_from_catalog')}
               </label>
-              <div className="relative">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    disabled={isAddingNew}
+
+              {!isAddingNew && (
+                <>
+                  <CatalogItemPicker
+                    mode="single"
+                    allowedTypes={['medication']}
+                    value={selection}
+                    onChange={setSelection}
                     placeholder={t('medications.modal.search_placeholder')}
-                    className="flex-1 px-6 py-4 bg-gray-50 dark:bg-dark-bg border-none rounded-2xl text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all font-medium disabled:opacity-50"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      if (selectedCatalogItem) setSelectedCatalogItem(null);
-                    }}
-                    autoFocus
+                    displayMode="cards"
+                    block
                   />
-                  {isAddingNew && (
-                    <button 
+                  {selection.length === 0 && (
+                    <button
                       type="button"
-                      onClick={() => { setIsAddingNew(false); setSearchTerm(''); }}
-                      className="px-4 bg-gray-100 dark:bg-dark-bg rounded-2xl text-gray-400 hover:text-gray-600 transition-colors"
+                      onClick={() => setIsAddingNew(true)}
+                      className="w-full text-left px-6 py-5 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 rounded-2xl border border-dashed border-blue-200"
                     >
-                      <X className="w-5 h-5" />
+                      <div className="p-2 bg-blue-600 text-white rounded-xl">
+                        <Plus className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold">{t('medications.modal.define_new')}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest">{t('medications.modal.add_custom')}</p>
+                      </div>
                     </button>
                   )}
-                </div>
-                {searching && (
-                  <div className="absolute right-4 top-4">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent" />
-                  </div>
-                )}
-              </div>
-
-              {catalogResults.length > 0 && !selectedCatalogItem && !isAddingNew && (
-                <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-xl overflow-hidden animate-in slide-in-from-top-2">
-                  {catalogResults.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="w-full px-6 py-4 text-left hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-50 dark:border-dark-border last:border-0"
-                      onClick={() => {
-                        setSelectedCatalogItem(item);
-                        setSearchTerm(item.name);
-                        setCatalogResults([]);
-                      }}
-                    >
-                      <p className="font-bold text-gray-900 dark:text-dark-text">{item.name}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{item.indications || item.description}</p>
-                    </button>
-                  ))}
-                  
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNew(true)}
-                    className="w-full text-left px-6 py-5 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 border-t border-gray-50 dark:border-dark-border"
-                  >
-                    <div className="p-2 bg-blue-600 text-white rounded-xl">
-                      <Plus className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold italic">"{searchTerm}" {t('medications.modal.not_in_catalog')}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest">{t('medications.modal.add_custom')}</p>
-                    </div>
-                  </button>
-                </div>
-              )}
-
-              {searchTerm.length > 2 && catalogResults.length === 0 && !searching && !isAddingNew && !selectedCatalogItem && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNew(true)}
-                  className="w-full text-left px-6 py-5 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 rounded-2xl border border-dashed border-blue-200"
-                >
-                  <div className="p-2 bg-blue-600 text-white rounded-xl">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold italic">"{searchTerm}" {t('medications.modal.not_found')}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest">{t('medications.modal.add_custom')}</p>
-                  </div>
-                </button>
+                </>
               )}
 
               {isAddingNew && (
                 <div className="p-6 bg-blue-50/30 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-900/30 space-y-4 animate-in zoom-in-95">
                   <div className="flex items-center justify-between">
                     <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t('medications.modal.define_new')}</h4>
-                    <AIAssistButton 
-                      taskType="define_medication"
-                      context={{}}
-                      placeholder={t('medications.modal.define_new')}
-                      onSuggestedData={(data) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          indications: data.indications || prev.indications,
-                          side_effects: data.side_effects && Array.isArray(data.side_effects) 
-                            ? [...new Set([...prev.side_effects, ...data.side_effects])] 
-                            : prev.side_effects
-                        }));
-                        if (data.name && !searchTerm) setSearchTerm(data.name);
-                      }}
-                    />
+                    <div className="flex items-center gap-2">
+                      <AIAssistButton
+                        taskType="define_medication"
+                        context={{}}
+                        placeholder={t('medications.modal.define_new')}
+                        onSuggestedData={(data) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            indications: data.indications || prev.indications,
+                            side_effects: data.side_effects && Array.isArray(data.side_effects)
+                              ? [...new Set([...prev.side_effects, ...data.side_effects])]
+                              : prev.side_effects
+                          }));
+                          if (data.name && !newMedName) setNewMedName(data.name);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setIsAddingNew(false); setNewMedName(''); }}
+                        className="px-3 py-1.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline"
+                      >
+                        {t('medications.modal.change')}
+                      </button>
+                    </div>
                   </div>
-                  
+
                   <div className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.name_label')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('medications.modal.name_placeholder')}
+                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        value={newMedName}
+                        onChange={e => setNewMedName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.main_indications')}</label>
                       <input
@@ -460,7 +427,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                         onChange={e => setFormData({ ...formData, indications: e.target.value })}
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.side_effects')}</label>
                       <div className="flex gap-2 mb-2">
@@ -489,33 +456,6 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {selectedCatalogItem && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl animate-in zoom-in-95 duration-200">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-blue-900 dark:text-blue-300">{selectedCatalogItem.name}</h4>
-                      <p className="text-xs text-blue-700 dark:text-blue-400/80 mt-1">{selectedCatalogItem.indications}</p>
-                    </div>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedCatalogItem(null)}
-                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline"
-                    >
-                      {t('medications.modal.change')}
-                    </button>
-                  </div>
-                  {selectedCatalogItem.side_effects && selectedCatalogItem.side_effects.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {selectedCatalogItem.side_effects.slice(0, 3).map((se, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-white/50 dark:bg-dark-surface/50 rounded text-[9px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-tighter">
-                          {se}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -664,6 +604,25 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             </div>
 
             <div className="space-y-2">
+              <InstanceField
+                label={t('medications.linked_examination', 'Linked examination')}
+                allowedTypes={['examination']}
+                patientId={patientId}
+                mode="single"
+                displayMode="cards"
+                value={
+                  formData.examination_id
+                    ? [{ type: 'examination', id: formData.examination_id }]
+                    : []
+                }
+                onChange={(sel) =>
+                  setFormData({ ...formData, examination_id: sel[0]?.id ?? '' })
+                }
+                placeholder={t('medications.link_examination', 'Link an examination…')}
+              />
+            </div>
+
+            <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 flex items-center">
                 <Calendar className="w-3 h-3 mr-2" />
                 {t('medications.modal.start_date')}
@@ -727,7 +686,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
               )}
               <button
                 onClick={handleSubmit}
-                disabled={loading || (!selectedCatalogItem && !searchTerm && !medication)}
+                disabled={loading || (isAddingNew ? !newMedName.trim() : (!selection.length && !medication))}
                 className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-2"
               >
                 {loading ? (

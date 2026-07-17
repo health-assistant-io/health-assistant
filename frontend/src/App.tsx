@@ -1,6 +1,17 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+// Register the unified instance adapters once at app entry (side-effect import).
+// Centralizing this here avoids circular imports that arise when a component
+// in an adapter's transitive chain (e.g. ExaminationCard -> AssociatedEvents
+// -> ExaminationEventModal) also imports the adapters barrel.
+import './features/instances/adapters';
+// Register the per-type browse views (reuses purpose-built components). Kept
+// separate from the data adapters so adapter modules stay UI-free (no cycles).
+import './features/instances/views';
+// Register the per-type single-record detail views (reuses each entity's rich
+// preview, e.g. ExaminationPreview) for the InstanceCard "open" overlay.
+import './features/instances/details';
 import Layout from './components/layout/Layout';
 import Login from './pages/Auth/Login';
 import Dashboard from './pages/Dashboard/Dashboard';

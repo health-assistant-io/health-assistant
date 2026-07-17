@@ -987,6 +987,27 @@ patient/examination/document/clinical-event blocks (inline ILIKE) **plus** the
 catalog portion delegated to the registry-driven dispatcher, so anatomy,
 concepts, and allergies appear automatically (not just medications + biomarkers).
 
+#### Unified instance search
+`GET /api/v1/instances/search?q=&types=&patient_id=&limit=` →
+`{results: [{type, id, label, subtitle?, date?}, …]}` — free-text search across
+**patient-scoped record instances** (examinations, medications, observations,
+documents, clinical events, allergies, vaccines) via a registry-driven
+dispatcher (`app/instances/`), the instance-side counterpart of
+`/catalogs/search` (which searches *definitions*). Each per-entity search
+function runs an `ILIKE` over its relevant text columns (exam notes, medication
+`code.text`/`reason`, observation `code.text`, document filename, event
+title/description, allergy `code.text`, vaccine `vaccine_code.text`/`lot_number`).
+`types` is an optional comma-separated subset.
+
+Security is enforced centrally in the endpoint (never in the per-entity
+functions): every query is tenant-scoped; when `patient_id` is provided,
+`check_patient_access` runs first (404 cross-tenant, 403 for a `USER` not linked
+to the patient); a request with **no** `patient_id` (tenant-wide browse) is
+allowed only for `ADMIN`/`SYSTEM_ADMIN` — `USER` gets 403 (the picker always
+binds the current patient context, so this is defense-in-depth against direct
+enumeration). `q` requires ≥ 2 characters (422 otherwise). Powers the frontend
+`InstancePicker` (inline type-ahead + browse modal).
+
 ### Vaccines & Immunizations (Phase 5)
 
 Vaccinations are implemented end-to-end, mirroring the medications pattern:

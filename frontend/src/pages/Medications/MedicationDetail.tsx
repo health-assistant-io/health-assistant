@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   Pill, 
@@ -26,17 +26,21 @@ import {
   Bell,
   Database
 } from 'lucide-react';
-import { 
-  getCatalogMedication, 
-  getMedicationUsage, 
+import {
+  getCatalogMedication,
+  getMedicationUsage,
   updateCatalogMedication,
+  updatePatientMedication,
   reprocessMedication,
   getPatientMedications,
-  MedicationCatalogEntry, 
+  MedicationCatalogEntry,
   MedicationUsage,
   MedicationRecord
 } from '../../services/medicationService';
 import { getExamination } from '../../services/examinationService';
+import { InstanceField } from '../../components/instances/InstanceField';
+import type { InstanceSelection } from '../../components/instances/types';
+import '../../features/instances/adapters'; // registers the instance adapters
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import ReactMarkdown from 'react-markdown';
 
@@ -145,6 +149,30 @@ function MedicationDetail() {
       setFormData(medication || {});
     }
     setIsEditing(!isEditing);
+  };
+
+  // Link / change / clear a single medication record's examination via the
+  // unified picker. Single mode: a new pick replaces; clearing sends null.
+  const linkRecordExam = async (record: MedicationRecord, selection: InstanceSelection[]) => {
+    try {
+      const examId = selection[0]?.id ?? null;
+      await updatePatientMedication(record.id, { examination_id: examId });
+      // Update local record state + the linked-exam label cache.
+      setPatientRecords(prev =>
+        prev.map(r => (r.id === record.id ? { ...r, examination_id: examId ?? undefined } : r)),
+      );
+      if (examId && !linkedExams[examId]) {
+        try {
+          const exam = await getExamination(examId);
+          setLinkedExams(prev => ({ ...prev, [examId]: exam }));
+        } catch {
+          /* label resolves on next load */
+        }
+      }
+    } catch (error) {
+      console.error('Failed to link examination:', error);
+      alert('Failed to link examination');
+    }
   };
 
   const handleSave = async () => {
@@ -471,27 +499,41 @@ function MedicationDetail() {
                         {t('medications.related_examinations')}
                       </h4>
                       <div className="space-y-4">
-                        {patientRecords.map(record => record.examination_id && linkedExams[record.examination_id] && (
-                          <Link 
-                            to={`/examinations/${record.examination_id}`}
+                        {patientRecords.map(record => (
+                          <div
                             key={record.id}
-                            className="flex items-center justify-between p-4 bg-white dark:bg-dark-surface rounded-2xl border border-indigo-100 dark:border-indigo-800/30 hover:border-indigo-400 transition-all group"
+                            className="p-4 bg-white dark:bg-dark-surface rounded-2xl border border-indigo-100 dark:border-indigo-800/30"
                           >
-                            <div className="flex items-center space-x-3">
-                              <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-600">
-                                <ClipboardList className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase">{linkedExams[record.examination_id].category || 'Visit'}</p>
-                                <p className="text-[10px] text-gray-400 font-medium">{new Date(linkedExams[record.examination_id].examination_date).toLocaleDateString()}</p>
-                              </div>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-600 transition-colors" />
-                          </Link>
+                            <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2">
+                              {record.start_date
+                                ? new Date(record.start_date).toLocaleDateString()
+                                : t('medications.this_record', 'This record')}
+                            </p>
+                            <InstanceField
+                              label={t('medications.linked_examination', 'Linked examination')}
+                              allowedTypes={['examination']}
+                              patientId={currentPatient?.id}
+                              mode="single"
+                              displayMode="cards"
+                              value={
+                                record.examination_id
+                                  ? [
+                                      {
+                                        type: 'examination',
+                                        id: record.examination_id,
+                                        label:
+                                          linkedExams[record.examination_id]?.category_concept?.name ||
+                                          linkedExams[record.examination_id]?.category ||
+                                          'Examination',
+                                      },
+                                    ]
+                                  : []
+                              }
+                              onChange={(sel) => linkRecordExam(record, sel)}
+                              placeholder={t('medications.link_examination', 'Link an examination…')}
+                            />
+                          </div>
                         ))}
-                        {patientRecords.every(r => !r.examination_id) && (
-                          <p className="text-xs text-gray-400 italic text-center py-4">{t('medications.no_linked_exams')}</p>
-                        )}
                       </div>
                     </div>
                   </div>

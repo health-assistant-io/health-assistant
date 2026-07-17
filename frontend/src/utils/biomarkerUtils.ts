@@ -1,4 +1,43 @@
 import { BiomarkerObservation } from '../types/biomarker';
+import type { Observation } from '../types/observation';
+import { codeableText } from './textFormat';
+
+/**
+ * The single biomarker-status algorithm. Range-based check first (most
+ * accurate), then interpretation-string fallback. Both {@link getFinalStatus}
+ * (enriched {@link BiomarkerObservation}) and {@link getObservationStatus}
+ * (raw {@link Observation}) delegate here so the status is computed one way
+ * everywhere — browse modal, trends, and listings agree.
+ */
+export function computeStatus(
+  rawVal: unknown,
+  min: number | null | undefined,
+  max: number | null | undefined,
+  interpretation: string | null | undefined,
+): string {
+  const val = typeof rawVal === 'number' ? rawVal : parseFloat(rawVal as any);
+
+  // 1. Range based check (Most accurate)
+  if (val !== null && val !== undefined && !isNaN(val)) {
+    if (min !== null && min !== undefined && val < min) return 'Low';
+    if (max !== null && max !== undefined && val > max) return 'High';
+
+    // If we have at least one valid range boundary and we're between them, it's explicitly Normal
+    if ((min !== null && min !== undefined) || (max !== null && max !== undefined)) {
+      return 'Normal';
+    }
+  }
+
+  // 2. Fallback to existing interpretation
+  const s = (codeableText(interpretation) ?? '').toLowerCase().trim();
+  if (s.includes('high') || s === 'h') return 'High';
+  if (s.includes('low') || s === 'l') return 'Low';
+  if (s.includes('warning')) return 'Warning';
+  if (s.includes('abnormal')) return 'Abnormal';
+  if (s.includes('normal') || s === 'n') return 'Normal';
+
+  return 'Normal';
+}
 
 /**
  * Calculates the final status of a biomarker observation based on its value and reference range,
@@ -6,32 +45,31 @@ import { BiomarkerObservation } from '../types/biomarker';
  */
 export const getFinalStatus = (b: BiomarkerObservation): string => {
   if (!b) return 'Normal';
-  
-  const val = typeof b.value?.raw === 'number' ? b.value.raw : parseFloat(b.value?.raw as any);
-  const min = b.referenceRange?.min;
-  const max = b.referenceRange?.max;
-  
-  // 1. Range based check (Most accurate)
-  if (val !== null && val !== undefined && !isNaN(val)) {
-    if (min !== null && min !== undefined && val < min) return 'Low';
-    if (max !== null && max !== undefined && val > max) return 'High';
-    
-    // If we have at least one valid range boundary and we're between them, it's explicitly Normal
-    if ((min !== null && min !== undefined) || (max !== null && max !== undefined)) {
-      return 'Normal';
-    }
-  }
-  
-  // 2. Fallback to existing interpretation
-  const s = (b.interpretation || '').toLowerCase().trim();
-  if (s.includes('high') || s === 'h') return 'High';
-  if (s.includes('low') || s === 'l') return 'Low';
-  if (s.includes('warning')) return 'Warning';
-  if (s.includes('abnormal')) return 'Abnormal';
-  if (s.includes('normal') || s === 'n') return 'Normal';
-  
-  return 'Normal';
+  return computeStatus(b.value?.raw, b.referenceRange?.min, b.referenceRange?.max, b.interpretation);
 };
+
+/**
+ * Status for a raw {@link Observation} (the ORM-shape from /observations/*),
+ * using the same algorithm as {@link getFinalStatus}. Pulls value + range from
+ * the raw fields the backend serializes (`normalized_value`/`raw_value`,
+ * `lab_reference_range`, `biomarker_reference_range_*`) and coerces the FHIR
+ * CodeableConcept `interpretation` to a string.
+ */
+export const getObservationStatus = (o: Observation | null | undefined): string => {
+  if (!o) return 'Normal';
+  const val = o.normalized_value ?? o.raw_value ?? o.value_quantity?.value;
+  let min: number | null | undefined;
+  let max: number | null | undefined;
+  const range = o.lab_reference_range;
+  if (range && typeof range === 'object') {
+    min = (range as any).min ?? (range as any).low?.value;
+    max = (range as any).max ?? (range as any).high?.value;
+  }
+  if (min == null) min = o.biomarker_reference_range_min;
+  if (max == null) max = o.biomarker_reference_range_max;
+  return computeStatus(val, min, max, codeableText(o.interpretation));
+};
+
 
 /**
  * Checks if a status string represents an abnormal value.

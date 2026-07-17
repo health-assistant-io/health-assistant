@@ -30,6 +30,7 @@ from app.api.v1.endpoints.admin_tenants import router as admin_tenants_router
 from app.api.v1.endpoints.integrations import router as integrations_router
 from app.api.v1.endpoints.admin_integrations import router as admin_integrations_router
 from app.api.v1.endpoints.search import router as search_router
+from app.api.v1.endpoints.instances import router as instances_router
 from app.api.v1.endpoints.concepts import (
     router as concepts_router,
     edge_router as concept_edges_router,
@@ -75,6 +76,7 @@ api_router.include_router(
     admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"]
 )
 api_router.include_router(search_router, prefix="/search", tags=["Search"])
+api_router.include_router(instances_router)
 api_router.include_router(concepts_router)
 api_router.include_router(concept_edges_router)
 api_router.include_router(catalogs_router)

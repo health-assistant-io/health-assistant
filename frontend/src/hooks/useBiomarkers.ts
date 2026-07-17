@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useEffect } from 'react';
 import { BiomarkerObservation, Biomarker } from '../types/biomarker';
 import { getDocumentCategoryLabel } from '../services/conceptService';
 import { getFinalStatus, isAbnormal } from '../utils/biomarkerUtils';
+import { codeableText } from '../utils/textFormat';
 import { matchBiomarker } from '../utils/searchUtils';
 import biomarkerService from '../services/biomarkerService';
 
@@ -251,7 +252,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
             standard: stdRef
           },
           relativeScore: obs.relative_score || null,
-          interpretation: obs.interpretation || 'Normal',
+          interpretation: codeableText(obs.interpretation) || 'Normal',
           source: {
             documentId: obs.document_id || '',
             filename: 'Laboratory Result',

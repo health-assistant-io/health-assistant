@@ -52,3 +52,54 @@ export function detectTextFormat(text: string | null | undefined): TextFormat {
 export function hasTextContent(text: string | null | undefined): boolean {
   return !!text && text.trim().length > 0;
 }
+
+/**
+ * Coerce a FHIR text field to a plain string. Accepts a string directly or a
+ * CodeableConcept-shaped object ({@code {text}}, {@code {coding:[{display}]}}),
+ * which some endpoints/serializers emit (e.g. Observation.interpretation).
+ * Low-level util so adapters, listing pages, and biomarker status all share it.
+ */
+export function codeableText(v: unknown): string | undefined {
+  if (!v) return undefined;
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') {
+    const obj = v as { text?: string; coding?: Array<{ display?: string }> };
+    return obj.text || obj.coding?.[0]?.display || undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Collapse a rich-text value (HTML / Markdown / plain) to a single plain-text
+ * line. HTML is stripped via the DOM (handles entities + nested tags); the
+ * result has all whitespace (incl. block boundaries) collapsed to single
+ * spaces. Markdown markers are left intact (short enough to read). Use this for
+ * compact one-line displays like {@link InstanceRow.subtitle} where block
+ * rendering isn't appropriate — for full rich rendering use `FormattedText`.
+ */
+export function toPlainText(text: string | null | undefined): string {
+  if (!text) return '';
+  let s = String(text);
+  if (detectTextFormat(s) === 'html' && typeof document !== 'undefined') {
+    const el = document.createElement('div');
+    el.innerHTML = s;
+    s = el.textContent || el.innerText || '';
+  }
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A plain-text snippet (via {@link toPlainText}) truncated to `maxLen` chars
+ * with an ellipsis. For short secondary display fields derived from rich-text
+ * sources (e.g. an examination notes preview in a list row / card).
+ */
+export function toSnippet(
+  text: string | null | undefined,
+  maxLen = 120,
+): string | undefined {
+  const plain = toPlainText(text);
+  if (!plain) return undefined;
+  if (plain.length <= maxLen) return plain;
+  return `${plain.slice(0, maxLen).trimEnd()}…`;
+}
+

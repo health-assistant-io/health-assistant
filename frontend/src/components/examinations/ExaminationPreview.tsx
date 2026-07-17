@@ -180,7 +180,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
           </div>
 
           {(selectedExam.diagnoses?.length > 0 || selectedExam.impressions || selectedExam.medications?.length > 0) && (
-            <div className="flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="flex flex-col space-y-4">
               {selectedExam.impressions && (
                 <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm">
                   <div className="flex items-center justify-between mb-4">

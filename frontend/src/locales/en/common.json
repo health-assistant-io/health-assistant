@@ -840,6 +840,8 @@
       "not_found": "not found",
       "add_custom": "Add as new custom medication",
       "define_new": "Define New Medication",
+      "name_label": "Medication Name",
+      "name_placeholder": "e.g. Aspirin, Metformin",
       "main_indications": "Main Indications",
       "indications_q": "What is this drug used for?",
       "side_effects": "Side Effects",

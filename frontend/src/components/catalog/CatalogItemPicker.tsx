@@ -26,6 +26,7 @@ import { Search, X, LayoutGrid } from 'lucide-react';
 import { Portal } from '../ui/Portal';
 import { RelationTypeSelect } from './RelationTypeSelect';
 import { CatalogPickerBrowseModal } from './CatalogPickerBrowseModal';
+import { CatalogItemCard } from './CatalogItemCard';
 import { searchCatalogs } from '../../services/catalogService';
 import {
   DEFAULT_RELATION,
@@ -64,6 +65,26 @@ export interface CatalogItemPickerProps {
   /** When true, a full-width block input is rendered instead of the compact
    *  inline one (useful inside form rows). */
   block?: boolean;
+  /**
+   * How selected items render below the input:
+   *   - `'chips'` (default) — compact label chips (the original behavior).
+   *   - `'cards'` — rich {@link CatalogItemCard} per item (fetches each
+   *     definition via `/catalogs/{type}/{id}` so the type-specific fields show:
+   *     a medication surfaces indications / dosage / side effects, etc.). Use
+   *     when a picked catalog definition should be scannable at a glance instead
+   *     of a bare chip. Mirrors `InstancePicker.displayMode`.
+   */
+  displayMode?: 'chips' | 'cards';
+  /**
+   * Cards-mode only: render extra content inside each selected card's footer
+   * (e.g. a per-link control). Receives the selection + its index so the caller
+   * can bind to its own per-link state. The picker owns selection (add/remove);
+   * the caller owns the per-link extras. Mirrors `InstancePicker`.
+   */
+  renderCardFooter?: (
+    selection: CatalogSelection,
+    idx: number,
+  ) => React.ReactNode;
 }
 
 /** Dedup key — includes relation so the same item can be bound two ways.
@@ -82,6 +103,8 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
   className = '',
   disabled = false,
   block = false,
+  displayMode = 'chips',
+  renderCardFooter,
 }) => {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -302,8 +325,30 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
         )}
       </div>
 
-      {/* Selected chips */}
-      {value.length > 0 && (
+      {/* Selected items */}
+      {value.length > 0 && displayMode === 'cards' && (
+        <div className="flex flex-col gap-2">
+          {value.map((sel, idx) => (
+            <CatalogItemCard
+              key={`${sel.type}:${sel.id}:${sel.relation ?? ''}:${idx}`}
+              selection={sel}
+              onRemove={() => removeAt(idx)}
+              footer={renderCardFooter?.(sel, idx)}
+              actions={
+                relationPicker ? (
+                  <RelationTypeSelect
+                    value={sel.relation ?? defaultRelation}
+                    onChange={(r) => setRelationAt(idx, r)}
+                    options={relationGroups}
+                  />
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {value.length > 0 && displayMode === 'chips' && (
         <ul className="flex flex-wrap gap-1.5">
           {value.map((sel, idx) => (
             <li

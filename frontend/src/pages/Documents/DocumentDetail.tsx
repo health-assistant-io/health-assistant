@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getDocument, downloadDocument, getExtractionStatus, triggerExtraction, deleteDocument, updateDocument, triggerDocumentDownload } from '../../services/documentService';
 import { getPatient } from '../../services/patientService';
+import { getExamination } from '../../services/examinationService';
+import { InstanceField } from '../../components/instances/InstanceField';
+import type { InstanceSelection } from '../../components/instances/types';
+import '../../features/instances/adapters'; // registers the instance adapters
 import { getDocumentCategories } from '../../services/conceptService';
 import { TaskProgressIndicator } from '../../components/ui/TaskProgressIndicator';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
@@ -15,7 +19,7 @@ import { AuthenticatedImageViewer } from '../../components/ui/AuthenticatedImage
 import { AuthenticatedDicomViewer } from '../../components/ui/AuthenticatedDicomViewer';
 import { AuthenticatedPdfViewer } from '../../components/ui/AuthenticatedPdfViewer';
 import { AuthenticatedTextViewer } from '../../components/ui/AuthenticatedTextViewer';
-import { User, Activity, Clock, FileText, Database, Shield, Download, Trash2, RotateCw, Maximize2, MoreVertical, RefreshCw } from 'lucide-react';
+import { User, Clock, FileText, Database, Shield, Download, Trash2, RotateCw, Maximize2, MoreVertical, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
@@ -36,6 +40,8 @@ export default function DocumentDetail() {
   const [textViewerOpen, setTextViewerOpen] = React.useState(false);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [linkedExamLabel, setLinkedExamLabel] = useState<string | null>(null);
+  const [linkingExam, setLinkingExam] = useState(false);
 
   const { biomarkers } = useBiomarkers({ documents: docData ? [docData] : [] });
 
@@ -57,6 +63,21 @@ export default function DocumentDetail() {
           } catch (pErr) {
             console.error("Failed to fetch patient info", pErr);
           }
+        }
+
+        // Resolve a display label for the linked examination (if any) so the
+        // picker chip isn't blank for pre-existing links.
+        if (doc.examination_id) {
+          try {
+            const exam = await getExamination(doc.examination_id);
+            setLinkedExamLabel(
+              exam?.category_concept?.name || exam?.category || 'Examination',
+            );
+          } catch {
+            setLinkedExamLabel('Examination');
+          }
+        } else {
+          setLinkedExamLabel(null);
         }
         
         // Fetch file blob for preview
@@ -202,6 +223,26 @@ export default function DocumentDetail() {
     }
   };
 
+  // Link / change / clear the document's examination via the unified picker.
+  // Single mode: a new pick replaces; clearing the last chip sends null.
+  const linkExamination = async (selection: InstanceSelection[]) => {
+    if (!documentId || !docData) return;
+    setLinkingExam(true);
+    try {
+      const examId = selection[0]?.id ?? null;
+      const updatedDoc = await updateDocument(documentId, {
+        examination_id: examId,
+      });
+      setDocData(updatedDoc);
+      setLinkedExamLabel(selection[0]?.label ?? null);
+    } catch (error) {
+      console.error('Failed to link examination:', error);
+      alert('Failed to link examination');
+    } finally {
+      setLinkingExam(false);
+    }
+  };
+
   if (status === 'loading' && !docData) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
@@ -320,28 +361,24 @@ export default function DocumentDetail() {
 
       {/* Main Action Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Examination */}
-          {docData?.examination_id && (
-            <button 
-              onClick={() => navigate(`/examinations/${docData.examination_id}`)}
-              className="flex items-center justify-between bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border hover:border-purple-200 dark:hover:border-purple-900/50 hover:bg-purple-50/30 dark:hover:bg-purple-900/5 transition-all group text-left shadow-sm"
-            >
-              <div className="flex items-center space-x-4">
-                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform">
-                  <Activity className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-purple-500 dark:text-purple-400 uppercase tracking-widest mb-1">{t('documents_explorer.origin')}</p>
-                  <p className="font-bold text-gray-900 dark:text-dark-text text-lg">{t('documents_explorer.view_examination')}</p>
-                </div>
-              </div>
-              <div className="text-purple-300 dark:text-purple-900 group-hover:text-purple-500 transition-colors">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </button>
-          )}
+          {/* Examination — editable link (add / change / clear) */}
+          <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+            <InstanceField
+              label={t('documents_explorer.origin')}
+              allowedTypes={['examination']}
+              patientId={docData?.patient_id}
+              mode="single"
+              displayMode="cards"
+              value={
+                docData?.examination_id
+                  ? [{ type: 'examination', id: docData.examination_id, label: linkedExamLabel ?? undefined }]
+                  : []
+              }
+              onChange={linkExamination}
+              placeholder={t('documents_explorer.link_examination', 'Link an examination…')}
+              disabled={linkingExam}
+            />
+          </div>
 
           {/* Patient */}
           {docData?.patient_id && (

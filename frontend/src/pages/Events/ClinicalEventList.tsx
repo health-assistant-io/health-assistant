@@ -26,6 +26,7 @@ import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { FacetChip, useFilterState } from '../../components/ui/filters';
 import type { FacetDefinition } from '../../components/ui/filters';
+import { getEventFacets } from '../../features/instances/facets';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
 
 export const ClinicalEventList = () => {
@@ -34,16 +35,12 @@ export const ClinicalEventList = () => {
   const { currentPatient } = usePatientStore();
   const [events, setEvents] = useState<ClinicalEvent[]>([]);
   const [categories, setCategories] = useState<ClinicalEventCategory[]>([]);
-  const categoryFacets = useMemo<FacetDefinition<ClinicalEvent>[]>(() => [{
-    id: 'category',
-    label: t('events.categories'),
-    kind: 'multi',
-    mode: 'client',
-    predicate: (ev, value) => {
-      if (value.kind !== 'multi' || value.values.length === 0) return true;
-      return value.values.includes(ev.type_details?.category_concept_id || '');
-    },
-  }], [t]);
+  // Single source: the category facet (extractor on type_details.category_concept_id)
+  // is shared with the browse modal via the instance facet registry.
+  const categoryFacets = useMemo<FacetDefinition<ClinicalEvent>[]>(
+    () => [getEventFacets()[0] as FacetDefinition<ClinicalEvent>],
+    [],
+  );
   const categoryFilter = useFilterState<ClinicalEvent>(categoryFacets);
   const [loading, setLoading] = useState(true);
   const searchTerm = useUIStore(state => state.pageSearchTerm);

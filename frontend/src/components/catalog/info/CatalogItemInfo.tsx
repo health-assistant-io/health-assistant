@@ -24,9 +24,9 @@ import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
-import { Edit3, GitBranch, History as HistoryIcon, ExternalLink, AlertTriangle, Database, Activity, Pill, ShieldAlert, PersonStanding, Syringe, Network, Search, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Edit3, GitBranch, History as HistoryIcon, ExternalLink, AlertTriangle, Database, Search, X } from 'lucide-react';
 import { ScopeBadge } from '../ScopeBadge';
+import { CATALOG_TYPE_ICONS } from '../catalogTypeIcons';
 import { FormattedText } from '../../ui/FormattedText';
 import { InfoSection } from '../../ui/InfoSection';
 import { KeyValueGrid } from '../../ui/KeyValueGrid';
@@ -99,15 +99,8 @@ function useDescriptorLabel() {
   return (d: FieldDescriptor) => t(d.labelKey, d.labelFallback);
 }
 
-/** Catalog-type → leading icon (matches the backend registrations' ui.icon). */
-const TYPE_ICON: Record<CatalogType, LucideIcon> = {
-  biomarker: Activity,
-  medication: Pill,
-  allergy: ShieldAlert,
-  anatomy: PersonStanding,
-  vaccine: Syringe,
-  concept: Network,
-};
+/** Catalog-type → leading icon lives in the shared {@link CATALOG_TYPE_ICONS}
+ *  module so the picker card and this pane never drift. */
 
 export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
   item,
@@ -150,7 +143,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
   }, [unknowns, q]);
 
   if (!item) {
-    const TypeIcon = catalogType ? TYPE_ICON[catalogType] : Database;
+    const TypeIcon = catalogType ? CATALOG_TYPE_ICONS[catalogType] : Database;
     return (
       <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center">
         <TypeIcon className="w-8 h-8 mx-auto text-gray-300 dark:text-gray-600 mb-2" aria-hidden />

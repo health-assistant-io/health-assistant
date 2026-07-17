@@ -27,6 +27,17 @@ interface ModalProps {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])';
 
+/**
+ * Nested modals are a real scenario here: the picker detail cards live inside
+ * form modals (e.g. `MedicationForm` is rendered in `MedicationModal`), and
+ * opening a record's detail overlay stacks a second `Modal` on the first. To
+ * keep Escape from dismissing the form behind the overlay, only the
+ * **topmost** modal reacts — see the Escape handler in the open effect, which
+ * resolves "topmost" by DOM order (robust against React's child-first effect
+ * timing). The panel carries `data-modal` so the lookup is scoped to Modal
+ * instances only.
+ */
+
 const SIZE_CLASSES: Record<ModalSize, string> = {
   sm: 'sm:max-w-md',
   md: 'sm:max-w-2xl',
@@ -76,6 +87,9 @@ export const Modal: React.FC<ModalProps> = ({
 
   const handleTab = useCallback((e: KeyboardEvent) => {
     if (e.key !== 'Tab' || !panelRef.current) return;
+    // Nested modals: when focus is inside a child modal stacked atop this one,
+    // let that child own the trap — don't redirect focus back to this panel.
+    if (!panelRef.current.contains(document.activeElement)) return;
     const nodes = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
     if (nodes.length === 0) return;
     const first = nodes[0];
@@ -94,7 +108,17 @@ export const Modal: React.FC<ModalProps> = ({
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key !== 'Escape') return;
+      // Only the topmost Modal reacts. "Topmost" = the last `[data-modal]` in
+      // DOM order: each Modal portals its panel to document.body in mount
+      // order, so a modal stacked atop another is appended later → sits above
+      // it visually. Resolving this from the live DOM (rather than a push
+      // order) is robust against React's child-before-parent effect timing.
+      const modals = document.querySelectorAll('[data-modal]');
+      const top = modals[modals.length - 1];
+      if (top && panelRef.current && top === panelRef.current) {
+        onCloseRef.current();
+      }
     };
 
     previousFocus.current = document.activeElement as HTMLElement;
@@ -141,6 +165,7 @@ export const Modal: React.FC<ModalProps> = ({
           aria-modal="true"
           aria-label={title}
           tabIndex={-1}
+          data-modal=""
           className={`
             bg-white dark:bg-dark-surface flex flex-col overflow-hidden focus:outline-none
             w-full h-full safe-top safe-bottom

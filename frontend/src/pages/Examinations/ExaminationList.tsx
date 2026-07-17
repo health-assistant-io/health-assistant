@@ -25,6 +25,7 @@ import { MasterDetailLayout } from '../../components/ui/MasterDetailLayout';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
 import { FacetChip, useFilterState } from '../../components/ui/filters';
 import type { FacetDefinition } from '../../components/ui/filters';
+import { getExaminationFacets } from '../../features/instances/facets';
 import { ExaminationPreview } from '../../components/examinations/ExaminationPreview';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { DatePicker } from '../../components/ui/DatePicker';
@@ -32,16 +33,11 @@ import { DatePicker } from '../../components/ui/DatePicker';
 function ExaminationList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const categoryFacets: FacetDefinition<any>[] = [{
-    id: 'category',
-    label: t('examinations.categories'),
-    kind: 'multi',
-    mode: 'client',
-    predicate: (exam: any, value) => {
-      if (value.kind !== 'multi' || value.values.length === 0) return true;
-      return value.values.includes(getExamCategory(exam));
-    },
-  }];
+  // Single source of truth: the category facet (extractor via getExamCategory)
+  // lives in the shared instance facet registry — same definition the browse
+  // modal / InstancePicker uses. Only category is rendered here; the shared
+  // module also exposes a status facet the browse modal surfaces.
+  const categoryFacets: FacetDefinition<any>[] = [getExaminationFacets()[0]];
   const categoryFilter = useFilterState<any>(categoryFacets);
   const [dateFilter, setDateFilter] = useState('All Time');
   const [customRange, setCustomRange] = useState({ start: '', end: '' });

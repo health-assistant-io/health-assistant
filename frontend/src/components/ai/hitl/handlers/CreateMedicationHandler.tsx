@@ -8,10 +8,8 @@ import {
   MedicationFormPrefill,
   MedicationFormPayload,
 } from '../../../patients/MedicationForm';
-import { 
-  addPatientMedication, 
-  addCustomMedication 
-} from '../../../../services/medicationService';
+import { addPatientMedication } from '../../../../services/medicationService';
+import { createCatalogItem } from '../../../../services/catalogService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
 
 function proposalToPrefill(proposed: Record<string, any> | undefined): MedicationFormPrefill {
@@ -75,14 +73,14 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
       let drugName = payload.code.text;
 
       if (payload.is_new_catalog_entry) {
-        const newEntry = await addCustomMedication({
+        const created = await createCatalogItem('medication', {
           name: payload.code.text,
           indications: payload.indications,
           side_effects: payload.side_effects || [],
-          dosage_info: payload.dosage || undefined
+          dosage_info: payload.dosage || undefined,
         });
-        catalogId = newEntry.id;
-        drugName = newEntry.name;
+        catalogId = String(created.id);
+        drugName = String(created.name ?? created.id);
       }
 
       const commitPayload: any = {

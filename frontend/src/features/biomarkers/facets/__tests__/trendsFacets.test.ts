@@ -3,7 +3,8 @@ import type { FilterValue } from '../../../../components/ui/filters';
 import type { BiomarkerObservation } from '../../../../types/biomarker';
 import {
   biomarkerStatusFacet,
-  biomarkerTelemetryObsFacet,
+  biomarkerSourceTypeFacet,
+  biomarkerSubcategoryFacet,
   biomarkerUnitObsFacet,
   biomarkerSourceFacet,
   biomarkerMappedFacet,
@@ -38,6 +39,8 @@ const observations: BiomarkerObservation[] = [
   obs({ id: 'telemetry', displayName: 'TelemetryOne', isTelemetry: true, unit: { rawSymbol: 'bpm' } }),
   obs({ id: 'lab2', displayName: 'LabTwo', source: { documentId: 'd2', filename: 'g.pdf', date: '2026-01-02', labName: 'BioLab' } }),
   obs({ id: 'unmapped', displayName: 'UnmappedOne', isUnmapped: true, definitionId: null }),
+  obs({ id: 'exam', displayName: 'ExamOne', source: { documentId: 'd3', filename: 'h.pdf', date: '2026-01-03', examinationId: 'ex1' } }),
+  obs({ id: 'labpanel', displayName: 'LabPanel', _rawJson: { techCategory: 'laboratory' } }),
 ];
 
 describe('biomarkerStatusFacet', () => {
@@ -59,10 +62,30 @@ describe('biomarkerStatusFacet', () => {
   });
 });
 
-describe('biomarkerTelemetryObsFacet', () => {
-  it('keeps only telemetry observations when on', () => {
-    expect(biomarkerTelemetryObsFacet.predicate!(observations[3], toggle(true))).toBe(true);
-    expect(biomarkerTelemetryObsFacet.predicate!(observations[0], toggle(true))).toBe(false);
+describe('biomarkerSourceTypeFacet', () => {
+  it('classifies telemetry as system, exam-derived as examination, else technical', () => {
+    expect(biomarkerSourceTypeFacet.predicate!(observations[3], multi(['system']))).toBe(true);
+    expect(biomarkerSourceTypeFacet.predicate!(observations[6], multi(['examination']))).toBe(true);
+    expect(biomarkerSourceTypeFacet.predicate!(observations[0], multi(['technical']))).toBe(true);
+    // telemetry row is NOT also tagged examination even if it had an exam id
+    expect(biomarkerSourceTypeFacet.predicate!(observations[3], multi(['examination']))).toBe(false);
+  });
+
+  it('labels the options as System / Technical / Examination', () => {
+    const labels = biomarkerSourceTypeFacet.getOptions!(observations).map((o) => o.label);
+    expect(labels).toEqual(expect.arrayContaining(['System', 'Technical', 'Examination']));
+  });
+});
+
+describe('biomarkerSubcategoryFacet', () => {
+  it('derives options from _rawJson.techCategory / document_category', () => {
+    const opts = biomarkerSubcategoryFacet.getOptions!([observations[7]]);
+    expect(opts.map((o) => o.value)).toEqual(['laboratory']);
+  });
+
+  it('keeps rows whose subcategory is selected', () => {
+    expect(biomarkerSubcategoryFacet.predicate!(observations[7], multi(['laboratory']))).toBe(true);
+    expect(biomarkerSubcategoryFacet.predicate!(observations[0], multi(['laboratory']))).toBe(false);
   });
 });
 
@@ -105,10 +128,11 @@ describe('biomarkerMappedFacet', () => {
 });
 
 describe('trendsBiomarkerFacets', () => {
-  it('exposes all five facets in display order', () => {
+  it('exposes all six facets in display order', () => {
     expect(trendsBiomarkerFacets.map((f) => f.id)).toEqual([
       'status',
-      'telemetry',
+      'source_type',
+      'subcategory',
       'unit',
       'source',
       'mapped',

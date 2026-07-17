@@ -1,10 +1,6 @@
 import React from 'react';
-import {
-  MedicationRecord,
-  addCustomMedication,
-  addPatientMedication,
-  updatePatientMedication
-} from '../../services/medicationService';
+import { MedicationRecord, addPatientMedication, updatePatientMedication } from '../../services/medicationService';
+import { createCatalogItem } from '../../services/catalogService';
 import { MedicationForm, MedicationFormPayload } from './MedicationForm';
 import { Modal } from '../ui/Modal';
 
@@ -24,14 +20,14 @@ export const MedicationModal: React.FC<Props> = ({ isOpen, onClose, patientId, m
     let drugName = payload.code.text;
 
     if (payload.is_new_catalog_entry) {
-      const newEntry = await addCustomMedication({
+      const created = await createCatalogItem('medication', {
         name: payload.code.text,
         indications: payload.indications,
         side_effects: payload.side_effects || [],
-        dosage_info: payload.dosage || undefined
+        dosage_info: payload.dosage || undefined,
       });
-      catalogId = newEntry.id;
-      drugName = newEntry.name;
+      catalogId = String(created.id);
+      drugName = String(created.name ?? created.id);
     }
 
     const commitPayload: any = {
@@ -42,6 +38,7 @@ export const MedicationModal: React.FC<Props> = ({ isOpen, onClose, patientId, m
       end_date: payload.end_date,
       reason: payload.reason,
       note: payload.note,
+      examination_id: payload.examination_id ?? undefined,
       code: medication ? medication.code : {
         text: drugName,
         catalog_id: catalogId
