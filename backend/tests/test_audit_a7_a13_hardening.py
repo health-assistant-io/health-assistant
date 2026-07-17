@@ -30,6 +30,32 @@ class TestSecurityHeaders:
         assert "strict-origin-when-cross-origin" in r.headers.get("referrer-policy", "")
         assert "max-age" in r.headers.get("strict-transport-security", "")
 
+    @pytest.mark.asyncio
+    async def test_per_route_can_relax_x_frame_options(self, async_client):
+        # The middleware must not clobber an explicit per-route X-Frame-Options.
+        # A header set by the route wins via setdefault; this is what lets the
+        # inline document download be embedded in the same-origin PDF preview
+        # <iframe> while every other response stays DENY.
+        from starlette.responses import PlainTextResponse
+
+        from app.main import app
+
+        @app.get("/__xfo_override_probe__")
+        async def _probe():  # noqa: D401
+            return PlainTextResponse("ok", headers={"X-Frame-Options": "SAMEORIGIN"})
+
+        try:
+            r = await async_client.get("/__xfo_override_probe__")
+            assert r.status_code == 200
+            assert r.headers.get("x-frame-options") == "SAMEORIGIN"
+            # The other baseline headers are still applied by the middleware.
+            assert r.headers.get("x-content-type-options") == "nosniff"
+        finally:
+            app.router.routes = [
+                route for route in app.router.routes
+                if getattr(route, "path", None) != "/__xfo_override_probe__"
+            ]
+
 
 # --------------------------------------------------------------------------- A8
 class TestPromptGuardBlockMode:

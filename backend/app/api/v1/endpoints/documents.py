@@ -355,6 +355,14 @@ async def download_document_endpoint(
 
     serve_inline = should_serve_inline(document.filename)
     headers = {"X-Content-Type-Options": "nosniff"}
+    # Inline files are meant to be previewed in a same-origin <iframe>
+    # (see AuthenticatedPdf / PdfViewer). The default X-Frame-Options: DENY
+    # set by security_headers_middleware would block that, so relax to
+    # SAMEORIGIN only for previewable inline content. Attachments and
+    # active-content types stay DENY (the browser won't render them inline
+    # anyway, and this avoids opening a clickjacking surface).
+    if serve_inline:
+        headers["X-Frame-Options"] = "SAMEORIGIN"
 
     return FileResponse(
         str(document.file_path),
