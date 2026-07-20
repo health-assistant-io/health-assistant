@@ -14,7 +14,7 @@ from .auth import (
     refresh_token,
 )
 from .http import http_request, paginate_bundle
-from .fhir import fhir_search, fhir_observation_to_create, fhir_conditional_update, parse_operation_outcome
+from .fhir import fhir_search, fhir_observation_to_create, fhir_create, fhir_conditional_update, parse_operation_outcome
 from .display import (
     kv_block,
     list_block,
@@ -59,6 +59,7 @@ __all__ = [
     "paginate_bundle",
     "fhir_search",
     "fhir_observation_to_create",
+    "fhir_create",
     "fhir_conditional_update",
     "parse_operation_outcome",
     "kv_block",

@@ -7,6 +7,7 @@ import pytest
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 from integrations.sdk.fhir import (
     fhir_conditional_update,
+    fhir_create,
     fhir_observation_to_create,
     fhir_search,
     parse_operation_outcome,
@@ -274,3 +275,73 @@ async def test_conditional_update_sends_if_match_header():
         )
     assert seen["if_match"] == 'W/"3"'
     assert seen["if_none_match"] == "*"
+
+
+# ---------------------------------------------------------------------------
+# fhir_create (POST /{Resource}) — was previously implemented but not
+# re-exported from integrations.sdk. These tests lock in the public export
+# and the documented behavior.
+# ---------------------------------------------------------------------------
+
+
+def test_fhir_create_is_reexported_from_sdk_package():
+    """``from integrations.sdk import fhir_create`` must succeed.
+
+    Regression for the public-API gap: ``fhir_create`` was defined in
+    ``integrations/sdk/fhir.py:179`` but absent from
+    ``integrations/sdk/__init__.py``'s imports / ``__all__``.
+    """
+    from integrations.sdk import fhir_create as re_exported
+
+    assert callable(re_exported)
+    assert re_exported is fhir_create
+
+
+async def test_fhir_create_returns_201_and_resource():
+    body = {"resourceType": "Observation", "id": "new-1"}
+
+    def handler(request):
+        assert request.url.path == "/fhir/Observation"
+        assert request.headers["content-type"] == "application/fhir+json"
+        return httpx.Response(201, json=body)
+
+    async with _client(handler) as http:
+        status, payload = await fhir_create(
+            http, "https://ehr/fhir", "Observation", body
+        )
+    assert status == 201
+    assert payload == body
+
+
+async def test_fhir_create_401_raises_auth_error():
+    body = {"resourceType": "Observation"}
+
+    def handler(request):
+        return httpx.Response(
+            401,
+            json={
+                "resourceType": "OperationOutcome",
+                "issue": [
+                    {"severity": "error", "code": "login", "diagnostics": "no token"}
+                ],
+            },
+        )
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationAuthError):
+            await fhir_create(http, "https://ehr/fhir", "Observation", body)
+
+
+async def test_fhir_create_with_token_sends_bearer():
+    body = {"resourceType": "Observation"}
+    seen = {}
+
+    def handler(request):
+        seen["auth"] = request.headers.get("authorization")
+        return httpx.Response(201, json=body)
+
+    async with _client(handler) as http:
+        await fhir_create(
+            http, "https://ehr/fhir", "Observation", body, access_token="tok-123"
+        )
+    assert seen["auth"] == "Bearer tok-123"

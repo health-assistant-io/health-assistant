@@ -124,7 +124,7 @@ class NotificationSpec:
     type_id: Optional[str] = None  # links to a NotificationTypeSpec.id
     patient_id: Optional[UUID | str] = None
     payload: dict[str, Any] = field(default_factory=dict)
-    source_ref: dict[str, Any] = field(default_factory=list) if False else field(default_factory=dict)
+    source_ref: dict[str, Any] = field(default_factory=dict)
     actions: list[NotificationAction] = field(default_factory=list)
     display_blocks: list[dict[str, Any]] = field(default_factory=list)
     # If set, overrides the default "integration owner only" target.

@@ -1275,9 +1275,13 @@ async def integration_webhook(
         start_time = datetime.datetime.now(datetime.timezone.utc)
         observations_data = await provider.handle_webhook(integration, payload, request)
         count = 0
+        # Initialized here so the post-sync notification dispatch below has
+        # real per-channel counts regardless of whether the provider returned
+        # any observations.
+        telemetry_records: list = []
+        fhir_records: list = []
         if observations_data:
             from app.models.fhir import Observation
-            from app.models.biomarker_model import BiomarkerDefinition
 
             # Convert to ORM models BEFORE passing to mapping
             observations = []
@@ -1301,86 +1305,23 @@ async def integration_webhook(
 
             await map_observations_to_biomarkers(db, observations)
 
-            # Fetch all definitions used
-            b_ids = list(
-                set([obs.biomarker_id for obs in observations if obs.biomarker_id])
+            # Deduped split: the manual-sync and background-sync paths both
+            # route through ``apply_telemetry_split`` (audit A4); the webhook
+            # path used to inline a copy that had already diverged (subtle
+            # slug-match differences, missing performer.reference, and
+            # post_sync_notifications was always called with
+            # telemetry_persisted=0). Routing through the shared helper keeps
+            # all three entry points identical.
+            from app.services.integration_sync_service import apply_telemetry_split
+
+            telemetry_records, fhir_records = await apply_telemetry_split(
+                db,
+                observations,
+                tenant_id=integration.tenant_id,
+                instance_name=integration.instance_name,
+                provider_name=integration.provider,
+                integration_id=integration.id,
             )
-            b_defs_map = {}
-            if b_ids:
-                stmt = select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id.in_(b_ids)
-                )
-                res = await db.execute(stmt)
-                for b in res.scalars().all():
-                    b_defs_map[b.id] = b
-
-            from app.models.telemetry_model import TelemetryDataModel
-
-            telemetry_records = []
-            fhir_records = []
-
-            for obs in observations:
-                is_telemetry = False
-                if obs.biomarker_id and obs.biomarker_id in b_defs_map:
-                    is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
-
-                if is_telemetry:
-                    # Convert observation to telemetry data point
-                    slug = (
-                        b_defs_map[obs.biomarker_id].slug.lower()
-                        if b_defs_map[obs.biomarker_id].slug
-                        else ""
-                    )
-                    val = (
-                        getattr(obs, "normalized_value", None)
-                        or getattr(obs, "raw_value", None)
-                        or (
-                            obs.value_quantity.get("value")
-                            if obs.value_quantity
-                            else None
-                        )
-                    )
-
-                    hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                    steps = val if slug == "41950-7" or "steps" in slug else None
-                    cal = val if "calories" in slug else None
-
-                    data_payload = {}
-                    if not hr and not steps and not cal:
-                        data_payload[slug] = val
-                        data_payload[f"{slug}_unit"] = (
-                            obs.value_quantity.get("unit", "")
-                            if obs.value_quantity
-                            else ""
-                        )
-
-                    telemetry_records.append(
-                        TelemetryDataModel(
-                            tenant_id=integration.tenant_id,
-                            device_id=integration.instance_name or integration.provider,
-                            timestamp=obs.effective_datetime,
-                            heart_rate=hr,
-                            steps=steps,
-                            calories=cal,
-                            data=data_payload if data_payload else None,
-                        )
-                    )
-                else:
-                    if not obs.performer:
-                        obs.performer = [
-                            {
-                                "type": "Integration",
-                                "display": integration.instance_name
-                                or integration.provider,
-                                "reference": f"Integration/{integration.id}",
-                            }
-                        ]
-                    fhir_records.append(obs)
-
-            if telemetry_records:
-                db.add_all(telemetry_records)
-            if fhir_records:
-                db.add_all(fhir_records)
             count += len(telemetry_records) + len(fhir_records)
 
         integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
@@ -1409,8 +1350,8 @@ async def integration_webhook(
                 provider,
                 integration,
                 pulled=count,
-                fhir_persisted=count,  # webhook handler doesn't split FHIR vs telemetry today
-                telemetry_persisted=0,
+                fhir_persisted=len(fhir_records),
+                telemetry_persisted=len(telemetry_records),
                 status="success",
                 started_at=start_time,
                 completed_at=integration.last_synced_at,

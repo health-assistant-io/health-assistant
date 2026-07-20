@@ -171,9 +171,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             if record.type == "quantitative" and record.value is not None:
                 obs_builder.set_value(record.value, record.unit or "", record.unit or "")
             elif record.type == "categorical" and record.value_string:
-                # The ObservationBuilder doesn't have a direct categorical method exposed simply, 
-                # but we can set it in the underlying data dictionary directly or just use raw_value
-                obs_builder._data["value_string"] = record.value_string
+                obs_builder.set_value_string(record.value_string)
                 
             if record.reference_range:
                 obs_builder.set_reference_range(

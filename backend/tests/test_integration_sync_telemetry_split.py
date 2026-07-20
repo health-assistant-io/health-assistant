@@ -295,3 +295,74 @@ def test_manual_sync_endpoint_uses_run_sync():
     assert "run_sync" in src, (
         "manual sync endpoint should use run_sync for DRY"
     )
+
+
+# ---------------------------------------------------------------------------
+# Webhook-path parity (this cleanup pass): the webhook handler must route
+# through the shared ``apply_telemetry_split`` helper instead of inlining a
+# copy of the routing logic. Three source-level guards catch regressions.
+# ---------------------------------------------------------------------------
+
+
+def _webhook_handler_source() -> str:
+    from app.api.v1.endpoints import integrations
+
+    # The webhook route function is ``integration_webhook``; pull just its
+    # body so the assertions below don't trip on unrelated code elsewhere in
+    # the module.
+    return inspect.getsource(integrations.integration_webhook)
+
+
+def test_webhook_endpoint_uses_apply_telemetry_split():
+    """The webhook handler must call ``apply_telemetry_split`` (the same
+    helper the manual + background paths use).
+
+    Before this cleanup pass the webhook handler inlined its own copy of the
+    telemetry/FHIR routing loop, which had already diverged (subtle slug-match
+    differences, missing performer.reference, and post_sync_notifications was
+    always called with telemetry_persisted=0).
+    """
+    src = _webhook_handler_source()
+    assert "apply_telemetry_split" in src, (
+        "webhook handler must route through apply_telemetry_split — the "
+        "inlined copy was deduped in this pass; re-inlining would "
+        "reintroduce the divergence"
+    )
+
+
+def test_webhook_endpoint_no_longer_inlines_telemetry_loop():
+    """The webhook handler must NOT carry its own copy of the slug-match
+    routing loop (the dedup target). The canonical slug matching lives in
+    ``apply_telemetry_split``.
+
+    Guards against a future revert: if someone re-inlines the loop, the
+    signature ``if \"calories\" in slug`` literal reappears in the handler.
+    """
+    src = _webhook_handler_source()
+    assert '"calories" in slug' not in src, (
+        "webhook handler must not inline the calories-slug branch — that "
+        "routing decision belongs to apply_telemetry_split"
+    )
+    assert "TelemetryDataModel(" not in src, (
+        "webhook handler must not construct TelemetryDataModel directly — "
+        "apply_telemetry_split owns that"
+    )
+
+
+def test_webhook_endpoint_passes_real_per_channel_counts_to_notifications():
+    """post_sync_notifications must receive the real per-channel counts.
+
+    Before the fix the webhook path always passed ``telemetry_persisted=0``
+    (and ``fhir_persisted=count``) because it didn't track the split. Now
+    that it routes through ``apply_telemetry_split``, both counts reflect
+    reality. Source-level guard against a revert.
+    """
+    src = _webhook_handler_source()
+    assert "fhir_persisted=len(fhir_records)" in src, (
+        "webhook notification dispatch must pass the real fhir count, not "
+        "the combined total"
+    )
+    assert "telemetry_persisted=len(telemetry_records)" in src, (
+        "webhook notification dispatch must pass the real telemetry count, "
+        "not the prior hard-coded 0"
+    )
