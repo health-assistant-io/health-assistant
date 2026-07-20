@@ -8,20 +8,11 @@ This document describes the structure of the Health Assistant CI/CD pipeline, th
 
 The pipeline (`.gitea/workflows/deploy.yml`) is split into four highly optimized stages:
 
-```
-  ┌─────────────────┐       ┌──────────────────┐
-  │  test-backend   │       │  test-frontend   │
-  └────────┬────────┘       └────────┬─────────┘
-           │                         │
-           └────────────┬────────────┘
-                        ▼
-            ┌───────────────────────┐
-            │    build-and-push     │
-            └───────────┬───────────┘
-                        ▼
-            ┌───────────────────────┐
-            │        deploy         │
-            └───────────────────────┘
+```mermaid
+flowchart TD
+    A[test-backend] --> C[build-and-push]
+    B[test-frontend] --> C
+    C --> D[deploy]
 ```
 
 1. **`test-backend` (Concurrently):**

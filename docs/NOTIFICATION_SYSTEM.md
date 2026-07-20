@@ -8,24 +8,12 @@ The system was unified in July 2026 (replacing the legacy single-table medicatio
 
 Canonical pattern (GitHub/Slack-style): separate **event** from **inbox state** from **channel delivery**.
 
-```
-                       ┌─────────────────┐
-   emit(source, ...) → │  Notification   │  1 immutable event row
-                       └────────┬────────┘
-                                │ resolve_targets() expands target specs → user_ids
-                                ▼
-              ┌─────────────────┴─────────────────┐
-              ▼                                   ▼
-   ┌────────────────────┐               ┌────────────────────┐
-   │ NotificationRecipient │ N rows,    │ NotificationDelivery │ N rows per
-   │   (inbox state)       │ 1 per user │   (channel log)      │ recipient × channel
-   └────────────────────┘               └────────────────────┘
-              │
-              ▼
-   ┌────────────────────┐
-   │ Redis pub/sub       │ per-user channel: user:{id}:notifications
-   │ + Celery push task  │
-   └────────────────────┘
+```mermaid
+flowchart TD
+    E["emit(source, …)"] --> N["Notification<br/><i>1 immutable event row</i>"]
+    N -- "resolve_targets() expands target specs → user_ids" --> R & D
+    R["NotificationRecipient<br/>N rows, 1 per user (inbox state)"] --> P["Redis pub/sub + Celery push task<br/>per-user channel: user:{id}:notifications"]
+    D["NotificationDelivery<br/>N rows per recipient × channel (channel log)"]
 ```
 
 ### Three tables (`backend/app/models/notification.py`)

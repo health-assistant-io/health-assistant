@@ -34,10 +34,10 @@ migration task must resolve a `Patient` for each row before constructing
 an `Observation` with `subject={"reference": f"Patient/{id}"}`. The
 chain is:
 
-```
-TelemetryDataModel.device_id
-  → UserIntegration (instance_name match) → user_id
-    → Patient.user_id (in the same tenant)
+```mermaid
+flowchart LR
+    A["TelemetryDataModel.device_id"] --> B["UserIntegration<br/>(instance_name match) → user_id"]
+    B --> C["Patient.user_id<br/>(same tenant)"]
 ```
 
 - Rows whose `device_id` resolves to exactly one patient get attributed
