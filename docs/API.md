@@ -963,12 +963,15 @@ See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec
 | `PUT` | `/fhir/R4/{resource_type}/{resource_id}` | any | Update (full replacement). `If-Match` honored → 412 on version mismatch. |
 | `DELETE` | `/fhir/R4/{resource_type}/{resource_id}` | any | Soft-delete → subsequent reads return 410 Gone. Returns `204`. |
 
-**15 registered resource types:** Patient, Observation, Condition (← ClinicalEvent),
-Encounter (← ExaminationModel), AllergyIntolerance, MedicationStatement,
-MedicationRequest (both ← Medication via `intent` discriminator), Medication
-(← MedicationCatalog, read-only), DiagnosticReport, DocumentReference
-(← DocumentModel), Device, Communication, Organization, Practitioner, Provenance
-(immutable).
+**19 registered resource types:** Patient, Observation, Condition (← ClinicalEvent),
+EpisodeOfCare (← ClinicalEvent journey view), Encounter (← ExaminationModel),
+AllergyIntolerance, MedicationStatement, MedicationRequest (both ← Medication
+via `intent` discriminator), Medication (← MedicationCatalog, read-only),
+Immunization (patient dose records; REST CRUD at `/vaccines/*`),
+DiagnosticReport, DocumentReference (← DocumentModel), Device, Communication,
+Organization, Practitioner, Provenance (immutable), plus two **computed**
+terminology resources — CodeSystem and ValueSet — that project disease-kind
+concepts from the `concepts` table without a dedicated backing table.
 
 **Provenance-on-write:** every facade create/update/delete records a `Provenance`
 (best-effort via `provenance_service.record_provenance()`).

@@ -14,6 +14,7 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 | `LangChainOCRProcessor` (`app/ai/processors/ocr/`) | Generic vision processor that converts images/PDFs/DICOMs into Markdown text. |
 | `LangChainStructuredExtractor` (`app/ai/processors/nlp/`) | Generic NLP extractor that maps Markdown text to structured FHIR medical entities. |
 | `AIAssistanceService` (`app/ai/assistance/service.py`) | Orchestrator for the Agentic Chatbot and "Magic Fill" features. Manages session context and routing. |
+| `app/ai/agents/` | The agentic loop + HITL plumbing: `chat_agent.py` (reasoning loop, tool dispatch, streaming), `hitl.py` (resume-continuation contract + `[HITL RESOLUTION FEEDBACK]` formatting), `prompts.py` (system prompt assembly). |
 | `app/ai/tools/` | LangChain tools (DB queries, document retrieval) that the AI assistant can invoke via `get_tools(db, tenant_id, patient_id, examination_id=None)`. |
 | `MedicalProcessingService` (`app/ai/pipeline/service.py`) | Orchestrator for complex clinical logic (unit conversion, ontology matching, persistence). |
 | `app/workers/ai_tasks.py` | Celery worker task definitions that delegate to the above services. |
@@ -43,7 +44,7 @@ Administrators can manage AI settings via the UI at `/settings/ai-config`:
 2. **Add Models:** For each provider, define available models, token limits, and desired temperature (e.g., `0.7` for NLP, `0.0` for structured extraction).
 3. **Assign Tasks:** Map system tasks to the desired model.
 
-### API Key Security (v0.3.0+)
+### API Key Security
 The `api_key` field has special handling that other provider fields do not:
 
 - **At rest:** values are encrypted with Fernet via `INTEGRATION_SECRET_KEY` (the same key used by integrations/MCP secrets). Encrypted values are stored with an `enc::` prefix so legacy plaintext rows continue to work during migration. `INTEGRATION_SECRET_KEY` is required in production — `encrypt_secret` **fails closed** (raises `RuntimeError` rather than storing cleartext) when it is unset outside dev/test (audit A11); dev/test keeps a loud-warning plaintext fallback.
@@ -51,7 +52,7 @@ The `api_key` field has special handling that other provider fields do not:
 - **On write:** `AIProviderService.create_provider` encrypts any provided key. `update_provider` treats the following as "no change" to preserve the existing key: `api_key` absent (via `exclude_unset`), `api_key=None` (explicit clear), `api_key=""` (explicit clear), `api_key="***xxxx"` (the masked form the UI re-sent). Any other string is encrypted and stored.
 - **At use:** the LLM factory reads plaintext via `AIProviderModel.get_api_key_plaintext()` — the only sanctioned accessor. `AIProviderModel.to_dict()` returns the encrypted form so accidental serialization paths (logs, audit trails) never leak it.
 
-**Backfill existing plaintext rows** after deploying v0.3.0:
+**Backfill existing plaintext rows** after enabling API-key encryption:
 ```bash
 cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py --dry-run
 cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
@@ -111,6 +112,7 @@ Beyond the single direct write tool (`update_examination_notes`), the chatbot ca
 | `add_medication` (+ schedule) | `propose_add_medication` | ✅ shipped |
 | `create_biomarker_definition` | `propose_create_biomarker_definition` | ✅ shipped |
 | `create_medication_definition` | `propose_create_medication_definition` | ✅ shipped |
+| `generate_anatomy_graph` | `propose_anatomy_graph_generation` | ✅ shipped (AI-defined anatomy sub-graphs via the anatomy import pipeline; see [SEEDING_AND_DEMOS.md §6.4](SEEDING_AND_DEMOS.md#64-ai-driven-graph-expansion)) |
 | `create_examination` | — | ⏸ deferred (exams are upload-driven; low chat value) |
 
 Task statuses use the `HitlTaskStatus(str, Enum)` enum (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod. The frontend mirrors this via `TERMINAL_HITL_STATUSES` in `registry.tsx`.
@@ -134,7 +136,7 @@ class RadiologySummary(BaseModel):
 ```
 
 ### Step 2: Register a New Task Type
-Add the task type to the `task_types` list in `AIProviderService.get_config_summary` so it appears in the UI.
+Add the value to the `TaskType` enum in `backend/app/ai/providers/enums.py`. `TaskType` is the single source of truth — `AIProviderService.get_config_summary` iterates `TaskType.all_values()` to populate the assignment matrix in the UI (`/settings/ai-config`), so a new enum value automatically appears as an assignable task. Do **not** edit any list inside `get_config_summary` — that pattern was removed.
 
 ### Step 3: Implement the Service Logic
 Add a method to `MedicalProcessingService` (`backend/app/ai/pipeline/service.py`) to handle the specific clinical logic.

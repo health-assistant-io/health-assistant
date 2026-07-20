@@ -1,5 +1,23 @@
 # Health Assistant — Mobile Sync Architecture
 
+> **Status: RFC / design proposal — NOT implemented.** This document describes
+> a hypothetical standalone React Native companion app. **No such application
+> exists in this repository** — there is no `mobile/` source tree, no
+> `wearable_service.py`, no `POST /api/v1/wearable/data` endpoint, and no
+> `WearableSyncPayload` / `WearableDataPoint` schema. The historical
+> `wearable_data` table was renamed to `telemetry_data` and is now part of the
+> frequency-based routing architecture (see
+> [TELEMETRY_AND_AGGREGATION.md](TELEMETRY_AND_AGGREGATION.md)).
+>
+> The **actual** mobile-bridge surface in the codebase is the
+> [`health_assistant_bridge`](../integrations/health_assistant_bridge/)
+> integration, which ships Python + TypeScript SDKs for pushing observations
+> into a self-hosted instance via the standard Integrations Framework (see
+> [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) and
+> [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md)). The proposal below is preserved
+> for design context; anyone wishing to ship a native companion today should
+> build on top of `health_assistant_bridge`, not the API surface sketched here.
+
 ## Executive Summary
 This document outlines the architecture for a "headless" (minimal UI) mobile companion application built with **React Native (Expo)**. Its sole purpose is to securely read on-device health data from native health stores (Android Health Connect or iOS HealthKit) and synchronize it with a self-hosted Health Assistant backend.
 
@@ -53,14 +71,20 @@ The mobile application is intentionally bare-bones. It only requires three core 
 
 The mobile app must read the fragmented native data formats (which vary heavily between Apple and Google schemas) and standardize them before sending them to the backend API.
 
-### Target Endpoint
-`POST /api/v1/wearable/data`
+> **The endpoint and payload schema below are PROPOSED — they do not exist in the
+> backend today.** A native companion app built on top of the shipped
+> `health_assistant_bridge` integration would instead push FHIR `Observation`
+> bundles via the Integrations Framework's standard sync pipeline; the
+> schema sketched here is what a hypothetical dedicated endpoint might accept.
+
+### Proposed target endpoint
+`POST /api/v1/wearable/data` *(not implemented — see banner above)*
 
 ### Authentication
 Requests must include standard Authorization headers (e.g., `Bearer <JWT_TOKEN>`) configured against the user's specific self-hosted tenant.
 
-### Expected JSON Payload Schema (`WearableSyncPayload`)
-The backend expects a highly normalized, time-series array of `WearableDataPoint` objects.
+### Proposed JSON Payload Schema (`WearableSyncPayload`)
+The proposed payload is a highly normalized, time-series array of `WearableDataPoint` objects.
 
 ```json
 {
@@ -95,7 +119,7 @@ The backend expects a highly normalized, time-series array of `WearableDataPoint
 
 *   **Zero Cloud Dependency:** The mobile app communicates *directly* via the local network or internet to the user's self-hosted FastAPI instance. No data passes through Google Fit Cloud or Apple iCloud telemetry.
 *   **Granular Permissions:** The app should only request `READ` permissions for the specific metrics it intends to sync, adhering to the principle of least privilege required by both Google Play and Apple App Store review guidelines.
-*   **Data Integrity:** The backend `wearable_service.py` is configured to handle duplicate timestamps gracefully, ensuring that overlapping background syncs do not corrupt the time-series database.
+*   **Data Integrity:** A production backend integration would need to handle duplicate timestamps gracefully (the shipped `IntegrationSyncService.run_sync` already does this via per-integration dedup). The proposed `wearable_service.py` does not exist in the codebase — see the banner at the top of this document.
 
 ---
 
@@ -108,5 +132,5 @@ Developers wishing to implement or fork this Sync App should follow this sequenc
 3.  Configure `AndroidManifest.xml` and `Info.plist` with the strict health data usage descriptions required by the OS.
 4.  Implement the React Native UI for capturing the server URL and securely saving the JWT.
 5.  Write the data normalization mappers (e.g., converting Google's `StepsRecord` object to the standard `WearableDataPoint` JSON schema).
-6.  Implement the HTTP `POST` logic connecting the frontend payload to the FastAPI `/api/v1/wearable/data` endpoint.
+6.  Implement the HTTP `POST` logic connecting the frontend payload to the FastAPI backend. *(Note: the proposed `/api/v1/wearable/data` endpoint does not exist today — a real implementation should push FHIR `Observation` bundles via the shipped `health_assistant_bridge` integration instead; see [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md).)*
 7.  Implement OS-level Background Tasks (`WorkManager` for Android, `Background Fetch` for iOS) to automatically push data silently throughout the day.

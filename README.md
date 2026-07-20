@@ -127,7 +127,7 @@ It is **Beta** software, built for self-hosters and technical users first.
 Health Assistant is self-hosted and privacy-first. But the foundation is the same one hospitals use, so the same installation can grow into a clinic-grade record — or interoperate with one — without a rewrite. You don't need to care about any of this for everyday use; it's here for when you do.
 
 - **HL7 FHIR R4 storage** — clinical data is stored as FHIR-enhanced relational rows and validated on write, so invalid FHIR never lands in the database.
-- **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **18 resources** (Patient, Observation, Condition, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
+- **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **19 resources** (Patient, Observation, Condition, EpisodeOfCare, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
 - **Unified clinical catalogs** — biomarkers, medications, allergies, vaccines, anatomy, and a taxonomy/knowledge graph (25 relation types) with recursive multi-hop traversal.
 - **Hard multi-tenant isolation** — every query is tenant-scoped; cross-tenant access is impossible.
 - **Role-based access control** — four roles: System Admin, Admin, Manager, User.
@@ -278,8 +278,8 @@ Health Assistant is **Beta** (`0.3.x`). The points below are honest boundaries �
 - **AI features need an external LLM.** OCR, document extraction, and the chat assistant call an OpenAI-compatible endpoint you provide (OpenAI, vLLM, Ollama, etc.). The rest of the app works without one.
 - **Wearable data is one-directional so far.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted, but there is no first-party phone app yet — data arrives via the webhook, bridge SDK, or a FHIR server integration. A headless mobile companion is on the roadmap.
 - **Notification channels.** In-app (WebSocket) and Web Push (VAPID) are fully implemented. Email and SMS are stubbed.
-- **FHIR coverage.** 18 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
-- **Test coverage.** The backend has 830+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
+- **FHIR coverage.** 19 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
+- **Test coverage.** The backend has 1800+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
 ## Status & roadmap

@@ -65,7 +65,7 @@ function buildFrontMatter(viewport, siblingDoc, hasSibling) {
   md.push("");
   md.push(viewport === "desktop" ? "# Health Assistant — Visual Tour" : "# Health Assistant — Visual Tour (Mobile)");
   md.push("");
-  md.push("Welcome to the visual tour of Health Assistant. These reproducible screenshots showcase the main pages and use cases of the application, generated against a comprehensive seeded clinical dataset.");
+  md.push("Welcome to the visual tour of Health Assistant. These reproducible screenshots showcase the main pages and use cases of the application, generated against a deterministic seeded clinical dataset.");
   md.push("");
   if (viewport === "desktop") {
     if (hasSibling) {

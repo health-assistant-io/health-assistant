@@ -304,4 +304,4 @@ ORDER BY created_at DESC;
 
 ## Conclusion
 
-The debugging system provides comprehensive visibility into task processing with security-focused design. Users can monitor, diagnose, and retry stuck tasks through the UI or API, while structured logging enables root cause analysis.
+The debugging system provides structured visibility into task processing with security-focused design. Users can monitor, diagnose, and retry stuck tasks through the UI or API, while structured logging enables root cause analysis.

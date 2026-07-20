@@ -21,7 +21,7 @@ Your integration must include three core files:
 
 For simple integrations, providing a single `README.md` at the integration root is sufficient.
 
-For complex integrations (like SDK bridges or robust APIs), create a `docs/` folder containing a `docs-tree.json` file. This defines a multi-page documentation structure that the frontend can parse to generate sub-navigation menus.
+For complex integrations (like SDK bridges or external APIs), create a `docs/` folder containing a `docs-tree.json` file. This defines a multi-page documentation structure that the frontend can parse to generate sub-navigation menus.
 
 #### Example `docs-tree.json` Format
 
@@ -55,7 +55,7 @@ Defines the metadata of your integration.
 ```json
 {
   "domain": "smartwatch_sync",
-  "name": "Universal Smartwatch Sync",
+  "name": "Acme Smartwatch Sync",
   "version": "1.0.0",
   "integration_type": ["push"], 
   "description": "Receive push notifications directly from compatible smartwatches.",
@@ -135,7 +135,7 @@ class NotifyProvider(BaseHealthProvider):
 ## 2. Handling Data (Pull vs. Push)
 
 ### Option A: Polling (Pull Data)
-For REST APIs that require periodic polling (e.g., Cloud Health API), implement the `pull_data` method. A background Celery worker runs every 15 minutes to call this method.
+For REST APIs that require periodic polling (e.g., Cloud Health API), implement the `pull_data` method. A background Celery beat fires every 60 seconds and calls `sync_active_integrations`; each `UserIntegration` row's own `sync_interval` (default 15 min) gates whether the beat actually invokes `pull_data` for that integration on a given tick.
 
 ```python
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
@@ -212,7 +212,7 @@ Implement the `handle_api_request` method:
 
 ## 3. Advanced SDK Features
 
-### 3.1 Robust HTTP Client & Auto-Retries
+### 3.1 HTTP Client & Auto-Retries
 `BaseHealthProvider` natively provides `self.fetch_json()` which automatically handles:
 - **Connection pooling** to preserve sockets.
 - **Exponential backoff** for 5xx server errors and network timeouts.
@@ -425,7 +425,7 @@ Providers can emit rich, event-driven notifications — threshold alerts, HITL-s
 
 The platform emits two kinds of notifications for every integration:
 
-1. **Baseline** (always on, automatic) — "synced N records" / "sync failed" from `integration_sync_service._notify_sync_outcome`. Universal, no provider code required.
+1. **Baseline** (always on, automatic) — "synced N records" / "sync failed" from `integration_sync_service._notify_sync_outcome`. Default, no provider code required.
 2. **Provider-authored** (opt-in) — domain-specific events from `get_notifications`. The provider inspects the just-synced observations and decides what (if anything) to surface to the user.
 
 #### Hooks

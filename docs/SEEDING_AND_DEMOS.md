@@ -8,15 +8,17 @@ Every application startup runs a single ordered, idempotent seed pipeline agains
 
 | # | Stage | Depends on |
 |---|---|---|
-| 1 | `medications` | — |
-| 2 | `clinical_event_types` (see [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md) for the schema) | — |
-| 3 | `allergies` | — |
-| 4 | `body_parts` (anatomy structures) | — |
-| 5 | `anatomy_figures` | body_parts |
-| 6 | `concepts` (taxonomy) | — |
-| 7 | `concept_edges` (incl. concept→anatomy + anatomy→anatomy) | concepts + body_parts |
-| 8 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
-| 9 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
+| 1 | `concepts` (taxonomy) | **FIRST** — `anatomy_class`/`biomarker_class`/… are referenced by `body_parts` (class_concept_slug→id), `default_catalog` (biomarker_class), `concept_edges`, and `diseases`. Must run before any stage that resolves a concept. |
+| 2 | `diseases` | concepts (disease concepts — kind=disease, ICD-10) |
+| 3 | `medications` | — (standalone) |
+| 4 | `vaccines` | — (standalone, CVX-coded) |
+| 5 | `clinical_event_types` (see [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md) for the schema) | — (standalone) |
+| 6 | `allergies` | — (standalone) |
+| 7 | `body_parts` (anatomy structures) | concepts (resolves `anatomy_class`) |
+| 8 | `anatomy_figures` | body_parts |
+| 9 | `concept_edges` (incl. concept→anatomy + anatomy→anatomy) | concepts + diseases + body_parts + vaccines |
+| 10 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
+| 11 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
 
 **Conventions:**
 - **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; the latter is now **deleted** — anatomy hierarchy edges live in `concept_edges.json` with `src_type=anatomy, dst_type=anatomy`. `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
@@ -52,7 +54,7 @@ Your seed script should generate FHIR resources with absolute dates relative to 
 
 ## 4. The Seed Data Structure
 
-A robust clinical seed should use the internal `ImportService.restore_fhir_bundle` and include:
+A clinical seed should use the internal `ImportService.restore_fhir_bundle` and include:
 1. **Tenant & User**: A dedicated demo tenant and at least one Admin user.
 2. **Patients**: At least one primary patient with a predictable MRN.
 3. **Biomarkers**: `Observation` resources mapped to standard LOINC codes (the system will auto-resolve these).
@@ -205,9 +207,9 @@ generation tools, or the ontology-catalog import — and then **snapshot that
 instance's data back into the shipped seed format**. `SeedExportService`
 (`backend/app/services/seed_export_service.py`) is the strict inverse of
 `SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
-envelope each `seed_*` stage consumes, covering **all eight seed files** —
-concepts, concept edges, anatomy structures, the default catalog,
-biomarker panels, clinical event types, medications, and allergies.
+envelope each `seed_*` stage consumes, covering **all ten seed files** —
+concepts, diseases, medications, vaccines, clinical event types, allergies,
+concept edges, anatomy structures, the default catalog, and biomarker panels.
 
 The output is **deterministic** (sorted by slug/name, fixed field order, only
 meaningful fields, a regenerated `metadata` block), so re-exporting an

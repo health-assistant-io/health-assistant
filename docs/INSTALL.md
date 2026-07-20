@@ -54,7 +54,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    ```
 
    **Clinical Catalogs (auto-seeded on every startup):**
-   The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: medications, clinical event types, allergies, **anatomy graph** (54 body structures + 62 topology edges), the unified **taxonomy** (concepts + concept_edges, including specialty→organ links), and the **default biomarker catalog** (units + standard lab-test definitions). No manual action is required for any of these — they reconcile to the JSON seed files on every start.
+   The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy, first), diseases, medications, vaccines, clinical event types, allergies, **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these — they reconcile to the JSON seed files on every start.
 
    The anatomy graph ships as `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/concept_edges.json` (edges, including anatomy hierarchy edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
 
@@ -115,7 +115,7 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
 After your application is running and your data is seeded, you need to finalize your user setup.
 
 1. **Log In**: Open the application at [http://localhost](http://localhost) (or your domain) and log in with the credentials you provided to the script.
-2. **Auto-Provisioning**: For home users, the system will automatically create a new **Household Tenant** and a **Default Organization** if they don't exist.
+2. **Auto-Provisioning**: On first registration, the system will automatically create a new **Household Tenant** and a **Default Organization** if they don't exist.
 3. **Link Your Profile**: Visit your profile settings in the app to link your User account to a Patient or Doctor record.
 
 For more details on managing multiple users and clinical hierarchies, see the [Tenancy and User Management Guide](./TENANCY_AND_USER_MANAGEMENT.md).
@@ -145,8 +145,13 @@ Once running via the standalone setup (Option A), Nginx exposes the application 
 
 ```bash
 curl http://localhost/health
-# Expected: {"status":"healthy","database":"connected","redis":"connected"}
+# Expected: {"status":"healthy","database":"connected","redis":"not_configured"}
 ```
+
+> The `redis` field always reports `not_configured` in the current health
+> check (the handler at `backend/app/main.py` does not probe Redis — it
+> returns the static string). Redis connectivity is exercised indirectly via
+> the Celery worker (`celery inspect ping`) and the WebSocket paths.
 
 ### Test Frontend
 
@@ -290,7 +295,7 @@ npm run build
 ## Support
 
 For issues and questions:
-- Check [CHANGES.md](CHANGES.md) for recent updates
+- Check [CHANGELOG.md](../CHANGELOG.md) for recent updates
 - View [DEVELOPMENT.md](DEVELOPMENT.md) for development guide
 - Check API docs at http://localhost:8000/docs
 - Review browser console (frontend) and terminal logs (backend)

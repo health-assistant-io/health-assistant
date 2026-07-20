@@ -71,10 +71,28 @@ To solve this, the `AnalyticsService` uses **TimescaleDB OHLC (Open-High-Low-Clo
 **Decoupled Aggregation Resolution:**
 The system decouples the "Temporal Scope" (e.g., viewing the Last 30 Days) from the "Aggregation Bucket" (e.g., grouping by 1-hour averages). Users can dynamically adjust the resolution density directly from the UI dropdowns, and the backend securely handles the dynamic PostgreSQL `INTERVAL` casting (e.g. `1 minute`, `15 minutes`, `1 day`, `1 week`).
 
+## Implemented optimizations (TimescaleDB)
+
+The hypertable is paired with two production-grade TimescaleDB features, both
+registered in the consolidated baseline (`alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`):
+
+- **Continuous aggregates**: two materialized views — `telemetry_hourly` and
+  `telemetry_daily` — pre-compute hourly and daily rollups in the background
+  via `add_continuous_aggregate_policy`. The `AnalyticsService`
+  (`backend/app/services/analytics_service.py`) transparently dispatches to
+  these cagg tables when the requested bucket is `1 hour` or `1 day`, falling
+  back to live `time_bucket_gapfill()` over the raw hypertable for sub-hour
+  buckets. Dashboard queries for long ranges (months/years) hit the caggs
+  instead of replaying every raw row.
+- **Compression policy**: `add_compression_policy('telemetry_data', INTERVAL '7 days')`
+  compresses raw minute-by-minute data older than one week
+  (`compress_segmentby = 'tenant_id, biomarker_id'`,
+  `compress_orderby = 'recorded_at DESC'`). This typically yields 90%+ storage
+  savings on the long tail of historical rows while keeping the most-recent
+  week in uncompressed form for fast inserts and queries.
+
 ## Future Considerations (Roadmap)
 - **Data Lifecycle & Pruning:** Currently, telemetry data is not automatically pruned. For active users with high-frequency tracking (e.g., Apple Watch syncing every minute), the database will grow continuously. System administrators should be aware of this and implement manual cron jobs or TimescaleDB retention policies to prevent disk space exhaustion until automatic pruning is formally supported.
-- **Continuous Aggregates:** As databases reach millions of rows, we should configure TimescaleDB Continuous Aggregates (Materialized Views) to automatically pre-calculate daily and hourly buckets in the background.
-- **Compression Policies:** Implement TimescaleDB native compression policies (e.g., `compress_after => INTERVAL '7 days'`) to achieve 90%+ storage savings on raw minute-by-minute data older than a week.
 - **FHIR Interoperability Boundary:** The split architecture inherently moves high-frequency telemetry data outside of strict FHIR compliance. Currently, when exporting patient records to FHIR, telemetry data is excluded. Future versions will need to dynamically downsample and map TimescaleDB data back into FHIR `Observation` bundles during export.
 
 ## Unified Clinical View (UI & AI Integration)

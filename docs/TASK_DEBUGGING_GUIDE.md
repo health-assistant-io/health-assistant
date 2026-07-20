@@ -40,7 +40,8 @@ Two time thresholds matter:
 | Threshold | Value | What it does |
 |---|---|---|
 | Celery hard `task_time_limit` | **15 minutes** | The worker is killed mid-task. The DB row is left in its current status. |
-| `cleanup_stuck_extractions` beat | **20 minutes** | Marks `processing`/`aggregating`/`analyzing_text` rows as `failed` if `updated_at < now − 20 min`. The 5-minute margin prevents a task killed at exactly 15 min from racing with cleanup. Runs every 5 minutes; the same predicate runs once at app startup (lifespan) so rolling restarts don't kill in-flight exams. |
+| `cleanup_stuck_extractions` beat | **20 minutes** | Beat task (`backend/app/workers/ai_tasks.py`) marks rows whose `updated_at < now − 20 min` as `failed` for these five statuses: `aggregating`, `analyzing_text`, `clinical_analysis`, `defining_ontology`, `persisting_results`. The 5-minute margin prevents a task killed at exactly 15 min from racing with cleanup. Runs every 5 minutes. |
+| App lifespan startup cleanup | once at boot | A one-shot pass at FastAPI startup (`backend/app/main.py`) that marks rows older than 20 min as `failed` for a slightly different list: `processing`, `aggregating`, `analyzing_text`, `defining_ontology`, `persisting_results`. Ensures rolling restarts don't leave post-crash rows stuck. |
 | Task Manager UI "stalled" badge | **10 minutes** | Purely visual — older than 10 min doesn't mean dead, just worth investigating. |
 
 If Celery is not running at all, queued tasks silently accumulate in Redis and
@@ -159,8 +160,7 @@ admin page). See [AI_SYSTEM.md](AI_SYSTEM.md).
 
 Every Celery task logs structured JSON via `TaskLogger`
 (`backend/app/workers/task_logger.py`). Sensitive data is redacted
-(`api_key`/`token`/`secret`/`password`/`credentials` → `[REDACTED]`); long
-strings are truncated to 100 chars.
+(`api_key`/`token`/`secret`/`password`/`credentials` → `[REDACTED]`).
 
 ```bash
 # Tail Celery output, filter to OCR
@@ -178,17 +178,21 @@ curl -s "http://localhost:8000/api/v1/examinations/{exam_id}/logs" \
 
 What to look for:
 
-| Log message | Meaning | Fix |
+| Log signal | Meaning | Fix |
 |---|---|---|
-| `config_check` error | AI provider not configured or inactive | Step 3 |
-| `file_check` error / `FileNotFoundError` | Source file moved/deleted/permissions | Verify `UPLOAD_DIR`; restore file; retry |
-| `dicom_processing` error | pydicom couldn't read the `.dcm` | File corrupt; re-upload |
-| `ocr_start` never followed by `ocr_completed` | Upstream provider hang or 5xx | Check provider status page; verify API key |
-| `nlp_start` never followed by `nlp_completed` | Same, for the extraction LLM | Same |
+| `ocr_start` stage with no completion log | Upstream provider hang or 5xx | Check provider status page; verify API key |
+| `FileNotFoundError` (any stage) | Source file moved/deleted/permissions | Verify `UPLOAD_DIR`; restore file; retry |
+| `pydicom` error / DICOM processing failure | pydicom couldn't read the `.dcm` | File corrupt; re-upload |
+| Upstream `401 Unauthorized` | AI provider API key invalid | Rotate key in `/ai-config/providers/{id}` |
+| Upstream `429 Too Many Requests` | Provider rate limit | Reduce concurrency or upgrade plan |
+| `RuntimeError: Event loop is closed` | Per-task engine reuse bug | Ensure workers run current code (audit A7 fixed) |
 | No log lines at all for the task_id | Worker didn't pick it up | Step 2 (worker alive? beat scheduling?) |
 
-Error categories (`TaskLogger._categorize_error`): `config` / `file` / `api` /
-`validation` / `system` / `timeout`.
+Error categories emitted by `TaskLogger._categorize_error` (`backend/app/workers/task_logger.py`):
+`file` / `validation` / `system` / `api` / `unknown` (fallback). Map roughly
+to: file → `FileNotFoundError`/permissions; validation → schema/pydantic
+failures; api → upstream provider 4xx/5xx; system → DB/network/`RuntimeError`;
+unknown → uncategorized exceptions.
 
 ---
 

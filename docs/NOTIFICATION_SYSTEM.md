@@ -22,7 +22,7 @@ flowchart TD
 |---|---|---|
 | `notifications` | Immutable event row (1 per emit) | `source`, `type`, `category`, `severity`, `title`, `body`, `payload`, `patient_id?`, `tenant_id?`, `trigger_id?`, `communication_id?`, `sender_user_id?` |
 | `notification_recipients` | Inbox state (N rows, 1 per resolved user) | `user_id`, `recipient_kind`, `recipient_ref`, `status` (`unread`/`read`/`dismissed`), `read_at`, `dismissed_at`. Indexed `(user_id, status)` |
-| `notification_deliveries` | Per-channel delivery log (N rows per recipient) | `user_id`, `channel` (`IN_APP`/`PUSH`/`EMAIL`/`SMS`), `status` (`pending`/`sent`/`delivered`/`failed`), `attempted_at`, `delivered_at`, `error`, `subscription_id?` |
+| `notification_deliveries` | Per-channel delivery log (N rows per recipient) | `user_id`, `channel` (`IN_APP`/`PUSH`/`EMAIL`/`SMS` — note: only `IN_APP` and `PUSH` are wired today; `EMAIL`/`SMS` are reserved enum values for future channels), `status` (`pending`/`sent`/`delivered`/`failed`), `attempted_at`, `delivered_at`, `error`, `subscription_id?` |
 
 Two supporting tables:
 - `notification_triggers` — TIME/RECURRING schedule rules (medication reminders, exam reminders). Same as before.
@@ -35,7 +35,7 @@ Two supporting tables:
 |---|---|---|---|
 | `SCHEDULED` | Medication / exam reminder (`NotificationTrigger` fires via Celery beat) | `reminder` | `NotificationManager.fire_notification` → `emit` |
 | `RULE` | Biomarker threshold crossed on observation ingestion | `alert` | `notification_rule_service.evaluate_and_fire` ← `fhir_service.create_observation` |
-| `AGENT` | HITL proposal created by the AI agent | `hitl` | `_notify_hitl_proposal` helper in `ai/tools/hitl/hitl_proposals.py` (called from all 6 propose tools) |
+| `AGENT` | HITL proposal created by the AI agent | `hitl` | `_notify_hitl_proposal` helper in `ai/tools/hitl_proposals.py` (called from all 6 propose tools) |
 | `INTEGRATION` | Wearable/lab sync outcome (baseline) **+ provider-authored rich events** (threshold alerts, HITL prompts, daily summaries, etc.) | `integration` / `alert` / `hitl` / `agent` / `system` | `_notify_sync_outcome` (baseline) + `_emit_provider_notifications` (opt-in via `supports_notifications`) — both called from `integration_sync_service.post_sync_notifications` after `run_sync` AND after webhook processing |
 | `CLINICAL` | Clinical event created | `clinical_event` | `POST /clinical-events` → `emit` to the care team |
 | `SYSTEM` | Admin broadcast (`POST /admin/notifications/broadcast`) | `system` | admin endpoint → `emit` with `TENANT` or `SYSTEM` targets |
@@ -219,7 +219,7 @@ The Pydantic schema (`SubscribeRequest`) is required — older code accepted a b
 Accessible via the **Notification Center → Admin tab** (visible to `ADMIN`/`MANAGER`/`SYSTEM_ADMIN` only). Provides:
 
 - **Stat cards**: total notifications, unique recipients, sources, delivered push count.
-- **Broadcast composer**: `ADMIN`/`MANAGER` broadcast tenant-wide; `SYSTEM_ADMIN` can broadcast system-wide (all tenants). Calls `POST /admin/notifications/broadcast`.
+- **Broadcast composer**: `ADMIN` broadcast tenant-wide; `SYSTEM_ADMIN` can broadcast system-wide (all tenants) or target a specific tenant. (`MANAGER` is **not** permitted to broadcast — the `/admin/notifications/broadcast` endpoint allows `ADMIN` + `SYSTEM_ADMIN` only.) Calls `POST /admin/notifications/broadcast`.
 - **System / tenant feed**: clickable list of every notification. Clicking an item opens a modal showing:
   - Sender (email resolved from `sender_user_id`)
   - Per-recipient inbox status (`unread`/`read`/`dismissed`)
@@ -257,7 +257,7 @@ UI: `NotificationRules` component (searchable biomarker picker with normal-range
 | `GET` | `/notifications/admin` | Tenant-wide feed (`SYSTEM_ADMIN` cross-tenant; pass `tenant_id` to target another). |
 | `GET` | `/notifications/admin/stats` | Counts by source/category/channel-delivery-status + unique recipient total. |
 | `GET` | `/notifications/admin/{notification_id}/delivery` | Per-recipient delivery breakdown for one notification (sender email, inbox status, per-channel status + error). Used by the admin center's click-to-detail modal. |
-| `POST` | `/admin/notifications/broadcast` | `ADMIN`/`MANAGER` tenant-scoped; `SYSTEM_ADMIN` can `scope=system` (all tenants). Query params: `title`, `body`, `severity`, `scope`, `tenant_id`. |
+| `POST` | `/admin/notifications/broadcast` | `ADMIN` tenant-scoped; `SYSTEM_ADMIN` can `scope=system` (all tenants) or target a specific `tenant_id`. **`MANAGER` is not permitted** (endpoint allows `ADMIN` + `SYSTEM_ADMIN` only). Query params: `title`, `body`, `severity`, `scope`, `tenant_id`. |
 
 ### Triggers (scheduled reminders — retained, simplified)
 

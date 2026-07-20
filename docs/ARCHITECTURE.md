@@ -47,7 +47,7 @@ Health Assistant is a self-hosted, open-source platform for centralizing health 
 The project follows the **HL7 FHIR** standard but enhances it with a high-performance **Biomarker Engine**:
 - **Patient**: Demographic and administrative data.
 - **Observation**: The primary model for biomarkers. Linked to a **BiomarkerDefinition** for standardized identity.
-- **Dynamic Ontology**: The application uses a pluggable Clinical Ontology system. Rather than hardcoding LOINC mappings in Python, administrators can import massive custom catalogs (like the official Open Source Community Catalog via JSON). All biomarker definitions specify their exact `CodingSystem` Enum (e.g., `LOINC`, `SNOMED`, `CUSTOM`) allowing precise FHIR JSON serialization that is robust for external interoperability. (See [Ontology Catalog Schema](ONTOLOGY_CATALOG.md))
+- **Dynamic Ontology**: The application uses a pluggable Clinical Ontology system. Rather than hardcoding LOINC mappings in Python, administrators can import massive custom catalogs (like the official Open Source Community Catalog via JSON). All biomarker definitions specify their exact `CodingSystem` Enum (e.g., `LOINC`, `SNOMED`, `CUSTOM`) allowing precise FHIR JSON serialization suited for external interoperability. (See [Ontology Catalog Schema](ONTOLOGY_CATALOG.md))
 - **Normalized Value**: All measurements are automatically converted to a "System Unit" using database-driven multipliers, enabling smooth longitudinal charts across different labs.
 - **Relative Score (0.0 - 1.0)**: Tracks a result's position within its specific lab's reference range, allowing for lab-agnostic trend analysis.
 - **Clinical Grouping**: Biomarkers are organized into **panels** (e.g., Lipid Panel, CBC) via `biomarker_panel` concepts linked through `MEMBER_OF` `concept_edges` — see [TAXONOMY.md](TAXONOMY.md).
@@ -56,7 +56,7 @@ The project follows the **HL7 FHIR** standard but enhances it with a high-perfor
 
 Every clinical catalog (anatomy, taxonomy/concepts, biomarkers, medications, allergies, vaccines) conforms to one **CRUD/scope-tier-access/search/FHIR/edge contract** via a declarative `CatalogRegistry`. Each catalog registers a `CatalogDescriptor` (model, service adapter, search columns, concept-link, edge-endpoint type, resolver, FHIR projector, RBAC policy, UI metadata) and gains unified access through a thin **`/catalogs` meta-layer** — `GET /catalogs` (list types), `GET/POST/PUT/DELETE /catalogs/{type}[/{id}]`, `POST /catalogs/{type}/{id}/promote` (scope transition), `GET /catalogs/{type}/{id}/history` (audit trail), `GET /catalogs/search?q=&types=`, and `GET /catalogs/{type}/{id}/relations`. Access is **ownership-based via scope tiers** (`system`/`tenant`/`user`): any user may create (scope derived from role); every write is audit-logged. This meta-layer **complements** the domain endpoints (`/biomarkers`, `/medications`, `/anatomy`, …); it does not replace them.
 
-The polymorphic **`concept_edges`** table is the single cross-domain link system. Edges reference any entity polymorphically (`src_type`/`src_id`/`dst_type`/`dst_id` — 11 `EdgeEndpointType` values, 25 `ConceptRelationType` values including `AFFECTS`, `TREATS`, `PREVENTS`, `MONITORS`, `MEMBER_OF`). A **recursive-CTE traversal** (`app/services/catalog_graph_service.traverse()`) answers multi-hop queries like "which organ does this biomarker affect → what diseases affect that organ → what medications treat them" — depth-bounded, cycle-safe, tenant-scoped. An **endpoint resolver registry** (`concept_endpoint_resolver.py`, 7/11 types covered) turns `(type, id)` pairs into display payloads `{type, id, label, icon, color, kind}` so the graph UI doesn't need to know every entity table. The legacy `biomarker_relationships` + `biomarker_event_correlations` + `anatomy_relations` tables are dropped — their semantics migrated to `concept_edges`.
+The polymorphic **`concept_edges`** table is the single cross-domain link system. Edges reference any entity polymorphically (`src_type`/`src_id`/`dst_type`/`dst_id` — 11 `EdgeEndpointType` values, 25 `ConceptRelationType` values including `AFFECTS`, `TREATS`, `PREVENTS`, `MONITORS`, `MEMBER_OF`). A **recursive-CTE traversal** (`app/services/catalog_graph_service.traverse()`) answers multi-hop queries like "which organ does this biomarker affect → what diseases affect that organ → what medications treat them" — depth-bounded, cycle-safe, tenant-scoped. An **endpoint resolver registry** (`concept_endpoint_resolver.py`, 8/11 types covered) turns `(type, id)` pairs into display payloads `{type, id, label, icon, color, kind}` so the graph UI doesn't need to know every entity table. The legacy `biomarker_relationships` + `biomarker_event_correlations` + `anatomy_relations` tables are dropped — their semantics migrated to `concept_edges`.
 
 The **patient-scoped counterpart** is the unified instance search (`app/instances/` + `GET /instances/search`), which mirrors `search_catalogs` but searches *record instances* (examinations, medications, observations, documents, clinical events, allergies, vaccines) rather than *definitions*. A registry of per-entity `ILIKE` search functions (tenant + patient scoped) fans a query out across the requested types; security is enforced centrally in the endpoint (`check_patient_access` + a `USER` tenant-wide-browse 403). It backs the frontend `InstancePicker` / `InstanceBrowseModal` — the patient-records analog of the catalog `CatalogItemPicker`.
 
@@ -64,8 +64,7 @@ The **patient-scoped counterpart** is the unified instance search (`app/instance
 
 To maintain absolute data privacy, Health Assistant relies on a "headless" mobile sync architecture rather than querying third-party clouds (like Google Fit or Apple iCloud). 
 High-frequency device data is routed into TimescaleDB using dynamic `is_telemetry` flags on Biomarker definitions. This enables rapid querying of millions of rows while avoiding FHIR observation bloat. **Note:** This represents an architectural tradeoff—telemetry data is stored outside of strict FHIR compliance for performance reasons and is currently excluded from standard FHIR patient exports.
-A custom React Native companion application bridges the on-device health databases (Android Health Connect / iOS HealthKit) directly to the local FastAPI instance.
-For implementation details and API payload schemas, see the [Mobile Sync App Architecture](MOBILE_SYNC_APP.md).
+A custom React Native companion application is the design for bridging on-device health databases (Android Health Connect / iOS HealthKit) directly to the local FastAPI instance — **note this is a design proposal, not a shipped app** (see the banner at the top of [MOBILE_SYNC_APP.md](MOBILE_SYNC_APP.md)). The current mobile-bridge surface is the [`health_assistant_bridge`](../integrations/health_assistant_bridge/) integration, which ships Python + TS SDKs for pushing observations through the standard Integrations Framework.
 
 ### Longitudinal Health Tracking
 
@@ -137,7 +136,7 @@ Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/
 - **`PUT /fhir/R4/{Resource}/{id}`** — full replacement, bumps `VersionedMixin.version`, returns 200 + canonical body.
 - **`DELETE /fhir/R4/{Resource}/{id}`** — soft-delete (`deleted_at = now()`), returns `204 No Content`. Records a final Provenance.
 
-**18 registered resources**: Patient, Observation, Condition, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication (catalog, read-only via facade), Immunization (patient dose records), DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet. The last two are **computed** terminology resources — they project disease-kind concepts from the `concepts` table as a single FHIR resource (no dedicated backing table) via `read_fn`/`search_fn` hooks on `ResourceEntry`.
+**19 registered resources**: Patient, Observation, Condition, EpisodeOfCare (← ClinicalEvent journey view), Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication (catalog, read-only via facade), Immunization (patient dose records), DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet. The last two are **computed** terminology resources — they project disease-kind concepts from the `concepts` table as a single FHIR resource (no dedicated backing table) via `read_fn`/`search_fn` hooks on `ResourceEntry`. Condition and EpisodeOfCare both project from the same `ClinicalEvent` row (Condition = the diagnosis fact, EpisodeOfCare = the longitudinal journey view).
 
 **Hybrid storage (no dual-write)**: existing tables became FHIR-canonical via `to_fhir_dict()` projections. `Condition` ← `clinical_events` (metadata-driven JSONB stays untouched; the projection interprets it per `metadata_schema`). `Encounter` ← `examinations` (model + UI vocabulary unchanged — "Examination" is the user-facing word, "Encounter" is the FHIR name). `DocumentReference` ← `documents` (metadata-only attachment; binary lives in app storage, referenced via `urn:ha-document:<id>`). Three **new tables** hold concepts with no app-table analog: `fhir_provenance` (immutable, multi-target audit), `fhir_devices` (reference table backfilled from `user_integrations`), `fhir_communications` (clinical messaging, distinct from push notifications).
 
@@ -153,7 +152,7 @@ Developer guide: [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 
 ### Centralized Data Extractor (`useBiomarkers`)
 A custom hook serves as the single source of truth for all biomarker rendering:
-- **Universal Parsing**: Handles known, unknown, and legacy biomarker data formats.
+- **Format-Tolerant Parsing**: Handles known, unknown, and legacy biomarker data formats.
 - **Definition Enrichment**: Fetches the biomarker definition catalog once per session and enriches every observation with the canonical definition name + UUID, so `BiomarkerDefinition` is the authority for both identity and display (not the raw observation text). Unmapped observations (no definition) are flagged and show a popup to create or map them.
 - **Multi-Perspective Views**: Provides dynamic grouping logic for three perspectives:
     - **By System**: Clinical panels (e.g., Heart Health, Liver Function).
@@ -162,10 +161,18 @@ A custom hook serves as the single source of truth for all biomarker rendering:
 - **Interpretation Logic**: Standardizes the display of abnormal flags (High/Low) and reference ranges.
 
 ### State Management (Zustand)
+Slices live in `frontend/src/store/slices/` — 14 of them:
 - **authSlice**: Session and identity management.
+- **userSlice**: Profile + preferences for the logged-in user.
 - **patientSlice**: Contextual data for the currently active patient.
+- **tenantSlice** + **tenantSwitchSlice**: Current tenant + cross-tenant context switching (SYSTEM_ADMIN).
 - **dashboardSlice**: Layout and card configurations.
 - **uiSlice**: Global modal and notification management.
+- **aiConfigSlice**: AI provider/model assignments (admin UI mirror).
+- **chartSlice**: Shared chart state (zoom, active series).
+- **documentSlice**: Document upload + preview state.
+- **settingsSlice**: App/user settings mirror.
+- **notificationSlice** + **patientStorage**: notification inbox + patient-context persistence helpers (the remainder are small domain-specific slices).
 
 
 ### Draggable Dashboard

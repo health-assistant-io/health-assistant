@@ -56,7 +56,7 @@ service-layer concern.
 
 | Aspect | Values |
 |---|---|
-| `relation` | `MEMBER_OF`, `HAS_SPECIALTY`, `CLASSIFIED_AS`, `EXAMINES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`, `PART_OF`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`, `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH` |
+| `relation` | `MEMBER_OF`, `HAS_SPECIALTY`, `CLASSIFIED_AS`, `EXAMINES`, `IMAGES`, `PERFORMS`, `ORDERS`, `LOCATED_IN`, `PART_OF`, `TREATS`, `INDICATES`, `PREVENTS`, `CONTRAINDICATES`, `CORRELATES_WITH`, `CAUSED_BY`, `MONITORS`, `RISK_OF`, `SCREENS_FOR`, `BRANCH_OF`, `DRAINS_INTO`, `ARTICULATES_WITH`, `INNERVATED_BY`, `SUPPLIED_BY`, `CONTINUOUS_WITH`, `AFFECTS` |
 | `source` | `seed` / `integration` / `ai` / `manual` (drives curated-wins conflict resolution) |
 | `status` | `approved` / `proposed` / `rejected` — **only `approved` counts for graph queries**; `proposed` rows are HITL-pending (AI suggestions) |
 
@@ -265,7 +265,7 @@ values: `concept`, `anatomy`, `biomarker`, `medication`, `allergy`,
 A registry of per-type resolver functions turns a bag of `(type, id)` pairs
 into uniform display payloads `{type, id, label, icon, color, kind}` — so the
 graph UI and recommendation engine don't each need to know every entity table.
-**7 of 11** endpoint types have dedicated resolvers (concept, anatomy,
+**8 of 11** endpoint types have dedicated resolvers (concept, anatomy,
 biomarker, examination, medication, allergy, clinical_event_type,
 immunization); the rest fall back to a `"{type}:{id-prefix}"` label.
 
@@ -283,7 +283,11 @@ affect that organ? → what treats them?"
 
 The `biomarker_relationships` (biomarker↔biomarker) and
 `biomarker_event_correlations` (biomarker↔clinical_event_type) tables were
-dropped in Phase 3 (migration `c4d5e6f7a8b9`). Their semantics now live in
+dropped during the Phase 3 consolidation (now part of the consolidated
+baseline `alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`; the
+original incremental chain — `60659cdf3e36` created `biomarker_relationships`,
+`9574b2b207f7` created/dropped `biomarker_event_correlations` — is archived).
+Their semantics now live in
 `concept_edges`: biomarker↔biomarker → `CORRELATES_WITH`; biomarker↔event-type
 → `MONITORS` (with `correlation_type`/`description` on the edge's `properties`
 JSONB). The CRUD endpoints (`POST/GET/DELETE /clinical-events/types/{id}/

@@ -7,7 +7,7 @@ The frontend uses domain endpoints (`/patients/*`, `/observations/*`,
 app-specific fields the UI needs. This document explains how to use the facade
 and how to add new resources.
 
-> **Coverage**: 18 FHIR resources registered; standard search params + Bundle
+> **Coverage**: 19 FHIR resources registered; standard search params + Bundle
 > responses + canonical CRUD + soft-delete tombstones + Provenance-on-write.
 > Includes two **computed** terminology resources (`CodeSystem`/`ValueSet`) that
 > project from the `concepts` table without a dedicated backing table.
@@ -47,7 +47,7 @@ Service accounts are bound to their JWT's tenant and cannot override.
 | `GET` | `/fhir/R4/{Resource}` | Search → Bundle (`type=searchset`) with `total` + `link[]`. |
 | `GET` | `/fhir/R4/{Resource}/{id}` | Read one → canonical FHIR JSON + `ETag`/`Last-Modified`. Returns `410 Gone` if soft-deleted. |
 | `POST` | `/fhir/R4/{Resource}` | Create → `201 Created` + `Location` + canonical body. Records a `Provenance`. |
-| `PUT` | `/fhir/R4/{Resource}/{id}` | Update → 200 + canonical body (bumps `VersionedMixin.version`). |
+| `PUT` | `/fhir/R4/{Resource}/{id}` | Update → 200 + canonical body (bumps `VersionedMixin.version`). Honors the `If-Match` request header → **`412 Precondition Failed`** on version mismatch. |
 | `DELETE` | `/fhir/R4/{Resource}/{id}` | Soft-delete (`deleted_at = now()`) → `204 No Content`. Records a final `Provenance`. |
 
 **Standard search params** (every resource):
@@ -82,13 +82,14 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 
 ---
 
-## Registered resources (18)
+## Registered resources (19)
 
 | Resource | Backed by | Notes |
 |----------|-----------|-------|
 | `Patient` | `fhir_patients` | |
 | `Observation` | `fhir_observations` | |
-| `Condition` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_dict()`. Metadata-driven JSONB stays untouched. |
+| `Condition` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_condition_dict()`. Metadata-driven JSONB stays untouched. |
+| `EpisodeOfCare` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_episode_of_care_dict()` from the **same row** as Condition. `Condition` = the diagnosis fact; `EpisodeOfCare` = the longitudinal journey view (status, period, diagnosis list). |
 | `Encounter` | `examinations` | Projected via `ExaminationModel.to_fhir_dict()`. Default status `finished`, class `AMB`. |
 | `AllergyIntolerance` | `fhir_allergy_intolerances` | |
 | `MedicationStatement` | `fhir_medications` | Filter: `intent = statement` (default) |
@@ -260,7 +261,7 @@ which return ORM-shape dicts (snake_case + app fields):
 backend/app/
 ├── facade/                                 # the facade package (outside api/v1 — no circular imports)
 │   ├── __init__.py                         # docstring
-│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (18 resources)
+│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (19 resources)
 │   ├── terminology.py                      # computed CodeSystem/ValueSet projections (Phase 6)
 │   ├── search_params.py                    # FhirSearchParams + parse_search_params + RESOURCE_PARAMS + SORT_COLUMNS
 │   ├── responses.py                        # OperationOutcome + 201/200/204/410/404 helpers
@@ -272,7 +273,7 @@ backend/app/
 │   └── observations.py                     # domain endpoint — Observation CRUD (ORM-shape, frontend-facing)
 ├── models/
 │   ├── base.py                             # SoftDeleteMixin (deleted_at)
-│   ├── clinical_event.py                   # to_fhir_dict() → Condition
+│   ├── clinical_event.py                   # to_fhir_condition_dict() → Condition; to_fhir_episode_of_care_dict() → EpisodeOfCare
 │   ├── examination_model.py                # to_fhir_dict() → Encounter
 │   ├── document_model.py                   # to_fhir_dict() → DocumentReference
 │   ├── fhir/

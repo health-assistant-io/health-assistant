@@ -6,7 +6,7 @@
 
 # Health Assistant — Visual Tour
 
-Welcome to the visual tour of Health Assistant. These reproducible screenshots showcase the main pages and use cases of the application, generated against a comprehensive seeded clinical dataset.
+Welcome to the visual tour of Health Assistant. These reproducible screenshots showcase the main pages and use cases of the application, generated against a deterministic seeded clinical dataset.
 
 > Mobile views: not captured this run — pass `--viewport mobile` to the capture script to generate.
 

@@ -15,7 +15,7 @@ A type declares the contract; an instance fills it in. The type's `metadata_sche
 
 ## 2. Seed JSON — envelope and example
 
-Each type is a row in `backend/data/seeds/clinical_event_types.json`. The file uses the standard `{metadata, items}` envelope consumed by `SeedService.seed_clinical_event_types` (stage 2 of the boot-time pipeline — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)).
+Each type is a row in `backend/data/seeds/clinical_event_types.json`. The file uses the standard `{metadata, items}` envelope consumed by `SeedService.seed_clinical_event_types` (stage 5 of the boot-time pipeline — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)).
 
 ```json
 {
@@ -210,7 +210,7 @@ In addition to the type-driven form fields, certain types (Pain Episode, Flare-u
 - `location` — anatomy link (rendered via `CatalogField` with `allowedTypes={['anatomy']}`)
 - `notes` — free text
 
-Occurrences emit as `kind='point'` events on their dates (in addition to the parent's `state`/`range` rendering). They're stored in the `occurrences` JSONB column on the event row; the form gates the occurrence-tracking section by type slug (`pain-episode` / `flare-up`).
+Occurrences emit as `kind='point'` events on their dates (in addition to the parent's `state`/`range` rendering). They live in the dedicated `clinical_event_occurrences` table (`ClinicalEventOccurrence` at `backend/app/models/clinical_event.py`); `ClinicalEvent._serialize_occurrences()` reads from that table first and only falls back to the legacy `occurrences` JSONB column on the event row when the relationship isn't loaded. The form gates the occurrence-tracking section by type slug (`pain-episode` / `flare-up`).
 
 ## 10. Worked examples — the 9 shipped types
 
@@ -257,7 +257,7 @@ The full REST contract is in [API.md](API.md). The key endpoints:
 ## See also
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — where clinical events fit in the overall data model.
-- [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) — the seed pipeline (clinical_event_types is stage 2).
+- [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) — the seed pipeline (clinical_event_types is stage 5).
 - [TAXONOMY.md](TAXONOMY.md) — the concept + edge system that categories are part of.
 - [API.md](API.md) — the full REST API reference.
 - [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md) — clinical events are exposed as FHIR `Condition` resources.

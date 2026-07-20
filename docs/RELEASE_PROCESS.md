@@ -104,10 +104,12 @@ git tag --list 'vX.Y.Z*'
 #    python3 scripts/version_manager.py release --git --push
 ```
 
-`version_manager.py` updates: `backend/app/core/config.py`,
+`version_manager.py` writes the version string into: `backend/app/core/config.py`,
 `frontend/package.json`, `frontend/package-lock.json`, `docs/INSTALL.md`,
-`README.md` badge, `frontend/src/pages/About/AboutPage.tsx`, `CHANGELOG.md`,
-`docs/RELEASE_PROCESS.md`. With `--git` it commits
+`README.md` badge, `frontend/src/pages/About/AboutPage.tsx`. It also **stages**
+(but does not write) `CHANGELOG.md` and `docs/RELEASE_PROCESS.md` if the
+operator has edited them — those two stay hand-maintained. With `--git` it
+commits
 (`chore(release): bump version to X.Y.Z-rc.N`) and creates an annotated git
 tag `vX.Y.Z-rc.N` **locally**. Adding `--push` pushes the commit + tag to
 **every** configured remote (see [GitHub Release automation](#github-release-automation)

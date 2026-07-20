@@ -324,7 +324,8 @@ python3 scripts/version_manager.py release --git --push
 - `api/v1/endpoints/`: Route handlers.
 - `services/`: Business logic & Database operations.
 - `models/`: SQLAlchemy models (Core + FHIR).
-- `processors/`: AI logic (OCR, NLP).
+- `ai/`: AI/ML pipeline — provider factory (`providers/`), OCR (`processors/ocr/`), structured extraction (`processors/nlp/`), the medical processing service (`pipeline/`), the agentic chat loop (`agents/`), chat tools (`tools/`), and Pydantic schemas (`schemas/`).
+- `processors/`: Legacy NLP helpers and importers (most AI logic now lives under `ai/`).
 - `workers/`: Background tasks.
 
 ### Frontend (`frontend/src/`)
@@ -335,8 +336,7 @@ python3 scripts/version_manager.py release --git --push
 - `services/`: API abstraction layer.
 
 ## Known Issues
-1. **WebSocket**: Real-time document processing notifications are currently handled by polling.
-2. **DICOM**: Local conversion requires `pydicom` and `numpy` in the environment.
+1. **DICOM**: Local conversion requires `pydicom` and `numpy` in the environment.
 
 ## Code Style
 - **Backend**: PEP 8, Type hints, Google-style docstrings.

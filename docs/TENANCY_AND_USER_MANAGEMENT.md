@@ -76,7 +76,7 @@ Linking is **one-to-many**, not one-to-one:
 Because one User may be linked to multiple Patient records (see §3), the system needs a way to decide which patient's data to display. Health Assistant uses a "Smart Context" engine:
 
 1. **Automatic Context**: If a User is linked to *exactly one* Patient record, that patient is automatically selected as the "active context" upon login.
-2. **Single-Patient Default**: In new home installations with only one patient, that patient is selected by default.
+2. **Single-Patient Default**: In single-patient installations, that patient is selected by default.
 3. **Secure Switching**: If a User is linked to two or more patients (or an Admin manages multiple patients), they must manually select the context. The system will never show data from a random patient.
 4. **Session Cleanup**: Logging out explicitly wipes the patient context from the browser to prevent data residue for the next user.
 
@@ -171,8 +171,8 @@ The schema enforces cascading deletes so data cannot be orphaned.
 ### Tenant Deletion
 Deleting a `Tenant` row CASCADEs to **all tenant-owned tables** via
 `tenant_id` foreign keys (`ON DELETE CASCADE`). This includes users,
-patients, observations, medications, examinations, documents, alerts,
-notifications, AI config, chat sessions, etc.
+patients, observations, medications, examinations, documents,
+notification rules, notifications, AI config, chat sessions, etc.
 
 **Exception**: `telemetry_data` is a TimescaleDB hypertable where FK
 constraints aren't reliably supported. The `tenant_id` column has no FK;
@@ -182,7 +182,7 @@ their tenant is deleted.
 ### Patient Deletion
 Deleting a `Patient` CASCADEs to **their entire clinical record**:
 medications, allergies, clinical events, examinations, documents,
-devices, chat sessions, alerts, notifications, layouts, and
+devices, chat sessions, notification rules, notifications, layouts, and
 user integrations. No patient-owned row is orphaned.
 
 ### Soft-Delete (FHIR Facade)
