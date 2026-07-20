@@ -18,8 +18,9 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import create_access_token
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
-from app.models.concept_model import ConceptEdge
+from app.models.concept_model import Concept, ConceptEdge
 from app.models.enums import (
+    ConceptKind,
     ConceptProvenance,
     ConceptRelationType,
     EdgeApprovalStatus,
@@ -46,9 +47,19 @@ async def _tenant_and_headers(role="ADMIN"):
 
 async def _make_event_type_and_biomarker():
     async with AsyncSessionLocal() as db:
+        # Phase 8e: ClinicalEventType.category_concept_id is NOT NULL —
+        # mint a throwaway concept to satisfy the constraint.
+        cat = Concept(
+            slug=f"cat-{uuid.uuid4().hex[:6]}",
+            name=f"Cat {uuid.uuid4().hex[:6]}",
+            primary_kind=ConceptKind.EVENT_CATEGORY,
+        )
+        db.add(cat)
+        await db.flush()  # populate cat.id (DB-side gen_random_uuid)
         etype = ClinicalEventType(
             name=f"Journey {uuid.uuid4().hex[:6]}",
             slug=f"journey-{uuid.uuid4().hex[:6]}",
+            category_concept_id=cat.id,
         )
         bio = BiomarkerDefinition(
             slug=f"bio-{uuid.uuid4().hex[:6]}",

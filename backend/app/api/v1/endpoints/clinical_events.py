@@ -1,3 +1,4 @@
+import datetime as _dt
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -183,18 +184,34 @@ async def list_events(
     patient_id: Optional[UUID] = None,
     examination_id: Optional[UUID] = None,
     status: Optional[ClinicalEventStatus] = None,
+    active_on: Optional[_dt.date] = None,
+    onset_on: Optional[_dt.date] = None,
+    date_range: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List clinical events, tenant-scoped, paginated, soft-deletes excluded."""
+    """List clinical events, tenant-scoped, paginated, soft-deletes excluded.
+
+    Date filters:
+
+    - ``active_on=YYYY-MM-DD`` — events active on that calendar day (state events
+      with no resolved_date match if ``onset_date <= day``). Powers
+      "what was happening to this patient on X?" queries.
+    - ``onset_on=YYYY-MM-DD`` — events whose ``onset_date`` is on that day.
+    - ``date_range=YYYY-MM-DD,YYYY-MM-DD`` — events whose interval overlaps
+      the given range.
+    """
     return await ce_service.list_events(
         db,
         current_user,
         patient_id=patient_id,
         examination_id=examination_id,
         status=status,
+        active_on=active_on,
+        onset_on=onset_on,
+        date_range=date_range,
         limit=limit,
         offset=offset,
     )

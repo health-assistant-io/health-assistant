@@ -1,24 +1,26 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  format, 
-  startOfWeek, 
-  addDays, 
-  startOfMonth, 
-  endOfMonth, 
-  endOfWeek, 
-  isSameMonth, 
-  isSameDay, 
-  addMonths, 
+import {
+  format,
+  startOfWeek,
+  addDays,
+  startOfMonth,
+  endOfMonth,
+  endOfWeek,
+  isSameMonth,
+  isSameDay,
+  addMonths,
   subMonths,
+  addWeeks,
+  subWeeks,
   eachDayOfInterval,
   startOfDay
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Pill, 
-  Clock, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Pill,
+  Clock,
   Calendar as CalendarIcon,
   FileText,
   ShieldAlert,
@@ -33,12 +35,37 @@ import {
   X,
   ChevronDown,
   Layout,
-  Activity
+  Activity,
+  Infinity as InfinityIcon,
 } from 'lucide-react';
 import { CalendarEvent, CalendarConfig, CalendarEventType } from '../../types/calendar';
 import { useCalendarData } from '../../hooks/useCalendarData';
+import { getActiveConditions } from '../../utils/calendarUtils';
 import { Portal } from './Portal';
 import { useNavigate } from 'react-router-dom';
+
+/**
+ * Stable color from a category label — used by the active-conditions strip so
+ * each category gets a consistent dot color across renders. Hash-based so the
+ * mapping is deterministic without a registry.
+ */
+const STRIP_DOT_COLORS = [
+  'bg-purple-500',
+  'bg-amber-500',
+  'bg-rose-500',
+  'bg-emerald-500',
+  'bg-sky-500',
+  'bg-indigo-500',
+  'bg-pink-500',
+  'bg-teal-500',
+];
+function hashStripColor(label: string): string {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  }
+  return STRIP_DOT_COLORS[Math.abs(hash) % STRIP_DOT_COLORS.length];
+}
 
 type ViewType = 'timeline' | 'classic' | 'list' | 'history';
 
@@ -67,11 +94,29 @@ interface Props {
   fitToContainer?: boolean;
   /** When provided, the calendar title becomes clickable and navigates to this in-app route */
   titleTo?: string;
+
+  // --- Controlled/uncontrolled state (for URL-driven mounts like CalendarPage).
+  //     When a controlled prop is provided, the parent owns the state. Internal
+  //     state is kept as the uncontrolled fallback so the dashboard card mount
+  //     (which doesn't pass these) keeps working unchanged.
+
+  /** Controlled view type. */
+  view?: ViewType;
+  /** Called when the user picks a different view tab. */
+  onViewChange?: (v: ViewType) => void;
+  /** Controlled "current date" — the anchor month (classic) or week (timeline). */
+  currentDate?: Date;
+  /** Called when the user navigates to a different month/week. */
+  onCurrentDateChange?: (d: Date) => void;
+  /** Controlled visible-category filter. */
+  selectedCategories?: CalendarEventType[];
+  /** Called when the user toggles a category in the filter dropdown. */
+  onSelectedCategoriesChange?: (c: CalendarEventType[]) => void;
 }
 
-export const UniversalCalendar: React.FC<Props> = ({ 
-  events: staticEvents, 
-  config, 
+export const UniversalCalendar: React.FC<Props> = ({
+  events: staticEvents,
+  config,
   onEventClick,
   title,
   compact = false,
@@ -81,15 +126,24 @@ export const UniversalCalendar: React.FC<Props> = ({
   transparent = false,
   subtitle,
   fitToContainer = false,
-  titleTo
+  titleTo,
+  view: controlledView,
+  onViewChange,
+  currentDate: controlledCurrentDate,
+  onCurrentDateChange,
+  selectedCategories: controlledCategories,
+  onSelectedCategoriesChange,
 }) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   
-  // State
-  const [viewType, setViewType] = useState<ViewType>(defaultView);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // State — each can be controlled (URL-driven) or uncontrolled (internal).
+  // Pattern: internal state as fallback; setter writes through to the parent
+  // callback when the corresponding controlled prop is provided.
+  const [viewState, setViewState] = useState<ViewType>(defaultView);
+  const [currentDateState, setCurrentDateState] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedCategoriesState, setSelectedCategoriesState] = useState<CalendarEventType[]>(['medication', 'examination', 'allergy', 'clinical-event']);
   const [searchTerm, setSearchTerm] = useState('');
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -97,14 +151,32 @@ export const UniversalCalendar: React.FC<Props> = ({
   const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
   const [examCategories, setExamCategories] = useState<any[]>([]);
   const [selectedExamCategories, setSelectedExamCategories] = useState<string[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<CalendarEventType[]>(['medication', 'examination', 'allergy', 'clinical-event']);
+  const [expandedTimelineDay, setExpandedTimelineDay] = useState<string | null>(null);
+
+  const viewType = controlledView ?? viewState;
+  const setViewType = (next: ViewType) => {
+    if (onViewChange) onViewChange(next);
+    if (controlledView === undefined) setViewState(next);
+  };
+  const currentDate = controlledCurrentDate ?? currentDateState;
+  const setCurrentDate = (next: Date) => {
+    if (onCurrentDateChange) onCurrentDateChange(next);
+    if (controlledCurrentDate === undefined) setCurrentDateState(next);
+  };
+  const selectedCategories = controlledCategories ?? selectedCategoriesState;
+  const setSelectedCategories = (next: CalendarEventType[]) => {
+    if (onSelectedCategoriesChange) onSelectedCategoriesChange(next);
+    if (controlledCategories === undefined) setSelectedCategoriesState(next);
+  };
   
-  // Sync with props
+  // Sync defaultView → internal state (uncontrolled mode only). When the
+  // parent passes `view`, the parent is the source of truth and defaultView
+  // is ignored.
   useEffect(() => {
-    if (defaultView !== viewType) {
-      setViewType(defaultView);
+    if (controlledView === undefined && defaultView !== viewState) {
+      setViewState(defaultView);
     }
-  }, [defaultView]);
+  }, [defaultView, controlledView, viewState]);
   const viewDropdownRef = useRef<HTMLDivElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -209,16 +281,42 @@ export const UniversalCalendar: React.FC<Props> = ({
             if (!selectedExamCategories.includes(event.category || '')) return false;
         }
         
-        const matchesRange = viewType === 'classic' ? true : (event.date >= startDate && event.date <= endDate);
+        const matchesRange = (() => {
+          if (viewType === 'classic') return true;
+          // State/range events have date = onset_date, which is usually before
+          // the visible window. They don't render as day cards (no day matches
+          // their onset) but they MUST stay in displayEvents so `activeByDay`
+          // can compute the per-day active-condition pills. Point events still
+          // get range-filtered to avoid pulling in stale historical data.
+          if (event.kind === 'state' || event.kind === 'range') return true;
+          return event.date >= startDate && event.date <= endDate;
+        })();
         
         return matchesSearch && matchesCategory && matchesRange;
     });
   }, [config?.patientId, dynamicEvents, staticEvents, searchTerm, selectedCategories, selectedExamCategories, viewType, startDate, endDate]);
 
+  /**
+   * Per-day active conditions for the classic-view day-cell pills and the
+   * timeline day-card pills. Iterates each visible day once and asks
+   * `getActiveConditions(events, day)` which conditions are active on that day
+   * (state events whose onset <= day; range events whose [onset, endDate]
+   * contains day). Keyed by ISO date string for O(1) lookup.
+   */
+  const activeByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    for (const day of days) {
+      map.set(day.toISOString(), getActiveConditions(displayEvents, day));
+    }
+    return map;
+  }, [displayEvents, startDate, endDate]);
+
   const toggleCategory = (cat: CalendarEventType) => {
-    setSelectedCategories(prev => 
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    );
+    const next = selectedCategories.includes(cat)
+      ? selectedCategories.filter(c => c !== cat)
+      : [...selectedCategories, cat];
+    setSelectedCategories(next);
   };
 
   const toggleExamCategory = (cat: string) => {
@@ -269,7 +367,7 @@ export const UniversalCalendar: React.FC<Props> = ({
 
   const renderDayDetails = () => {
     const selectedEvents = displayEvents.filter(e => isSameDay(e.date, selectedDate));
-    
+    const activeOnDay = activeByDay.get(selectedDate.toISOString()) ?? [];
     return (
         <div className="p-4 bg-blue-50/10 dark:bg-blue-900/5 border-t border-blue-500/10 h-full flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-3 shrink-0">
@@ -281,13 +379,55 @@ export const UniversalCalendar: React.FC<Props> = ({
                     {selectedEvents.length} {t('common.events')}
                 </div>
             </div>
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
-                {selectedEvents.length === 0 ? (
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 space-y-3">
+                {/* Active on this day — the "expand" target for the day-cell pill. */}
+                {activeOnDay.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2 px-1">
+                      <InfinityIcon className="w-3 h-3 text-purple-500" />
+                      <span className="text-[10px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-widest">
+                        {t('patients.active_on_day')} · {activeOnDay.length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {activeOnDay.map(cond => {
+                        const color = hashStripColor(cond.category || cond.title || '');
+                        const isState = cond.kind === 'state';
+                        const rangeLabel = isState
+                          ? `→ ${t('patients.ongoing_indicator')}`
+                          : cond.endDate ? `→ ${format(cond.endDate, 'MMM d')}` : '';
+                        return (
+                          <button
+                            key={cond.id}
+                            type="button"
+                            onClick={() => handleEventClick(cond)}
+                            className="flex items-center gap-2.5 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/40 dark:bg-purple-900/10 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all text-left group/active"
+                          >
+                            <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${color}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-gray-900 dark:text-dark-text truncate group-hover/active:text-purple-600 transition-colors">
+                                {cond.title}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-dark-muted truncate">
+                                {format(cond.date, 'MMM d')} {rangeLabel}
+                                {cond.subtitle ? ` · ${cond.subtitle}` : ''}
+                              </p>
+                            </div>
+                            {isState && (
+                              <InfinityIcon className="w-3 h-3 text-purple-400 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {selectedEvents.length === 0 && activeOnDay.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-6 opacity-40">
                         <Check className="w-8 h-8 mb-2 text-gray-300" />
                         <p className="text-xs text-gray-400 italic font-medium text-center">{t('medications.calendar.no_doses')}</p>
                     </div>
-                ) : (
+                ) : selectedEvents.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {selectedEvents.map((event, idx) => (
                             <div 
@@ -315,11 +455,12 @@ export const UniversalCalendar: React.FC<Props> = ({
                             </div>
                         ))}
                     </div>
-                )}
+                ) : null}
             </div>
         </div>
     );
   };
+
 
   const renderClassic = () => {
     const days = eachDayOfInterval({ start: startDate, end: endDate });
@@ -361,19 +502,40 @@ export const UniversalCalendar: React.FC<Props> = ({
                 } ${isSelected ? "ring-2 ring-inset ring-blue-500/20 bg-blue-50/10" : ""}`}
                 onClick={() => setSelectedDate(day)}
               >
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-1">
                     <span className={`text-xs font-black ${
-                        isToday 
-                        ? "bg-blue-600 text-white w-6 h-6 rounded-lg flex items-center justify-center -mt-1 -ml-1 shadow-md" 
+                        isToday
+                        ? "bg-blue-600 text-white w-6 h-6 rounded-lg flex items-center justify-center -mt-1 -ml-1 shadow-md"
                         : "text-gray-500"
                     }`}>
                         {format(day, "d")}
                     </span>
-                    {dayEvents.length > 0 && (
-                        <span className="text-[10px] font-black text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded-lg border border-blue-100 dark:border-blue-800/30">
-                            {dayEvents.length}
-                        </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {(() => {
+                        const dayActive = activeByDay.get(day.toISOString()) ?? [];
+                        if (dayActive.length === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDate(day);
+                            }}
+                            title={`${dayActive.length} ${t('patients.currently_active').toLowerCase()} — ${t('patients.click_to_view', 'click to view')}`}
+                            aria-label={`${dayActive.length} ${t('patients.currently_active')}`}
+                            className="flex items-center gap-0.5 text-[10px] font-black text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded-lg border border-purple-100 dark:border-purple-800/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                          >
+                            <InfinityIcon className="w-2.5 h-2.5" />
+                            {dayActive.length}
+                          </button>
+                        );
+                      })()}
+                      {dayEvents.length > 0 && (
+                          <span className="text-[10px] font-black text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded-lg border border-blue-100 dark:border-blue-800/30">
+                              {dayEvents.length}
+                          </span>
+                      )}
+                    </div>
                 </div>
                 <div className="mt-2 space-y-1">
                   {dayEvents.slice(0, 3).map((event, idx) => (
@@ -405,12 +567,59 @@ export const UniversalCalendar: React.FC<Props> = ({
     );
   };
 
+  /**
+   * Compact prev/next/Today nav for the timeline view. Shifts `currentDate`
+   * by one week per click; "Today" resets to today. The displayed range is
+   * always `currentDate → currentDate + TIMELINE_WINDOW_DAYS`.
+   */
+  const renderTimelineRangeNav = () => {
+    const rangeStart = startDate;
+    const rangeEnd = endDate;
+    const isOnToday = isSameDay(currentDate, new Date());
+    const label = `${format(rangeStart, 'MMM d')} – ${format(rangeEnd, 'MMM d, yyyy')}`;
+
+    return (
+      <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-gray-100 dark:border-dark-border bg-white/50 dark:bg-dark-surface/50">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCurrentDate(subWeeks(currentDate, 1))}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg transition-colors"
+            aria-label={t('patients.previous', 'Previous')}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentDate(addWeeks(currentDate, 1))}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg transition-colors"
+            aria-label={t('patients.next', 'Next')}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <span className="text-xs font-black text-gray-700 dark:text-dark-text uppercase tracking-wider ml-1">
+            {label}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCurrentDate(new Date())}
+          disabled={isOnToday}
+          className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400"
+        >
+          {t('patients.today')}
+        </button>
+      </div>
+    );
+  };
+
   const renderTimeline = () => {
     const days = eachDayOfInterval({ start: startDate, end: endDate });
 
     return (
       <div className="flex flex-col h-full min-h-0 animate-in slide-in-from-right-4 duration-500 overflow-hidden">
-        <div 
+        {renderTimelineRangeNav()}
+        <div
           ref={timelineRef}
           onMouseDown={handleTimelineMouseDown}
           onMouseMove={handleTimelineMouseMove}
@@ -420,15 +629,77 @@ export const UniversalCalendar: React.FC<Props> = ({
         >
           {days.map(day => {
             const dayEvents = displayEvents.filter(e => isSameDay(e.date, day));
+            const dayActive = activeByDay.get(day.toISOString()) ?? [];
             const isToday = isSameDay(day, new Date());
+            const isoKey = day.toISOString();
+            const isExpanded = expandedTimelineDay === isoKey;
             return (
-              <div key={day.toISOString()} className="w-56 sm:w-64 shrink-0 flex flex-col h-full min-h-0">
-                <div className={`p-4 rounded-2xl mb-4 transition-all shrink-0 ${isToday ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-gray-50 dark:bg-dark-bg text-gray-400 dark:text-dark-muted border border-gray-100 dark:border-dark-border'}`}>
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{format(day, 'EEEE')}</p>
-                  <p className="text-xl font-black">{format(day, 'MMM d')}</p>
+              <div key={isoKey} className="w-56 sm:w-64 shrink-0 flex flex-col h-full min-h-0">
+                <div className={`p-4 rounded-2xl mb-4 transition-all shrink-0 flex items-center justify-between gap-2 ${isToday ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-gray-50 dark:bg-dark-bg text-gray-400 dark:text-dark-muted border border-gray-100 dark:border-dark-border'}`}>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{format(day, 'EEEE')}</p>
+                    <p className="text-xl font-black">{format(day, 'MMM d')}</p>
+                  </div>
+                  {dayActive.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedTimelineDay(isExpanded ? null : isoKey);
+                      }}
+                      title={`${dayActive.length} ${t('patients.currently_active').toLowerCase()} — ${t('patients.click_to_view', 'click to view')}`}
+                      aria-label={`${dayActive.length} ${t('patients.currently_active')}`}
+                      className={`flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-lg border transition-colors ${
+                        isToday
+                          ? 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                          : 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/30 hover:bg-purple-100 dark:hover:bg-purple-900/40'
+                      }`}
+                    >
+                      <InfinityIcon className="w-2.5 h-2.5" />
+                      {dayActive.length}
+                      <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
                 </div>
-                
+
                 <div className="space-y-3 overflow-y-auto flex-1 pr-1 custom-scrollbar min-h-0">
+                  {/* Inline expandable Active section — mirrors the classic-view
+                      day-detail "Active on this day" panel. */}
+                  {isExpanded && dayActive.length > 0 && (
+                    <div className="rounded-2xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/40 dark:bg-purple-900/10 p-2 space-y-1">
+                      <div className="flex items-center gap-1.5 px-1 pb-1">
+                        <InfinityIcon className="w-3 h-3 text-purple-500" />
+                        <span className="text-[9px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-widest">
+                          {t('patients.active_on_day')}
+                        </span>
+                      </div>
+                      {dayActive.map(cond => {
+                        const color = hashStripColor(cond.category || cond.title || '');
+                        const condIsState = cond.kind === 'state';
+                        const rangeLabel = condIsState
+                          ? `→ ${t('patients.ongoing_indicator')}`
+                          : cond.endDate ? `→ ${format(cond.endDate, 'MMM d')}` : '';
+                        return (
+                          <button
+                            key={cond.id}
+                            type="button"
+                            onClick={() => handleEventClick(cond)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-dark-surface transition-colors text-left group/active"
+                          >
+                            <span className={`shrink-0 w-2 h-2 rounded-full ${color}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-bold text-gray-900 dark:text-dark-text truncate group-hover/active:text-purple-600 transition-colors">
+                                {cond.title}
+                              </p>
+                              <p className="text-[9px] text-gray-500 dark:text-dark-muted truncate">
+                                {format(cond.date, 'MMM d')} {rangeLabel}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {dayEvents.length > 0 ? dayEvents.map(event => (
                     <button 
                       key={event.id}

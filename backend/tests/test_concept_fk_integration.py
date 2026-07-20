@@ -190,6 +190,8 @@ async def test_list_clinical_event_types_serializes_category_concept(
             "name": "IT Event Type",
             "slug": type_slug,
             "category_concept_id": cat_id,
+            # Phase 8a: schedule_kind is required on the wire (NOT NULL).
+            "schedule_kind": "state",
         },
         headers=headers,
     )

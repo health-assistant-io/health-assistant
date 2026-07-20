@@ -58,6 +58,12 @@
         "description": "The unified medical taxonomy and knowledge graph in Health Assistant, a self-hosted health records platform. Multi-kind concepts, polymorphic edges, and cross-domain graph traversal."
       },
       {
+        "id": "clinical-events",
+        "file": "CLINICAL_EVENTS.md",
+        "title": "Clinical Events & Journeys",
+        "description": "Longitudinal clinical events in Health Assistant, a self-hosted, open-source health records platform. Seed JSON schema, schedule_kind rendering, metadata_schema field types, categories, and localization for journeys like pregnancies, chronic pain, and surgical recovery."
+      },
+      {
         "id": "notification-system",
         "file": "NOTIFICATION_SYSTEM.md",
         "title": "Notification System",

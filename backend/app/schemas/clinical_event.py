@@ -9,6 +9,7 @@ from app.models.enums import (
     CodingSystem,
     ConceptKind,
     MetadataFieldType,
+    ScheduleKind,
 )
 
 
@@ -134,7 +135,15 @@ class ClinicalEventTypeBase(BaseModel):
     phases: Optional[List[Dict[str, Any]]] = None
     milestones: Optional[List[Dict[str, Any]]] = None
     default_duration_days: Optional[int] = None
-    category_concept_id: Optional[UUID] = None
+    # Phase 8a: required (NOT NULL on the column). The seed loader falls back
+    # to STATE when the seed JSON omits the field; every shipped seed already declares
+    # one. The 422 fires on a missing/invalid value at the create-type endpoint.
+    schedule_kind: ScheduleKind
+    # Phase 8e: required (NOT NULL on the column). Every type must belong to
+    # a category so the frontend's category-first picker can surface every
+    # type. Use the system "general-event" concept for types that don't fit
+    # a more specific specialty.
+    category_concept_id: UUID
 
 
 class ClinicalEventTypeCreate(ClinicalEventTypeBase):
@@ -202,6 +211,10 @@ class ClinicalEventResponse(ClinicalEventBase):
     id: UUID
     tenant_id: UUID
     type_details: Optional[ClinicalEventTypeResponse] = None
+    # Resolved rendering hint — populated by ClinicalEvent.to_dict() from the
+    # type blueprint. Phase 8a: required (NOT NULL on the wire). A missing
+    # value here is a backend bug, not a legacy case.
+    schedule_kind: ScheduleKind
     examinations: List[Dict[str, Any]] = []
     observations: List[Dict[str, Any]] = []
     anatomy_links: List[Dict[str, Any]] = []

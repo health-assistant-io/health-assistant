@@ -342,6 +342,19 @@
       ]
     },
     {
+      "slug": "general-event",
+      "name": "General",
+      "color": "#64748b",
+      "icon": {
+        "type": "lucide",
+        "value": "clipboard-list"
+      },
+      "description": "Catch-all category for clinical events that don't fit a more specific specialty. Always present so every ClinicalEventType has a non-null category_concept_id.",
+      "kinds": [
+        "event_category"
+      ]
+    },
+    {
       "slug": "urine-class",
       "name": "Urine",
       "color": "#facc15",

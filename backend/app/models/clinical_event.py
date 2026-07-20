@@ -10,8 +10,14 @@ from app.models.base import (
     TimestampMixin,
     SoftDeleteMixin,
 )
-from app.models.enums import ClinicalEventStatus, CodingSystem
+from app.models.enums import ClinicalEventStatus, CodingSystem, ScheduleKind
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+
+
+def _enum_values(enum_cls):
+    """Persist the enum ``.value`` (not the member name) — matches the pattern
+    in ``concept_model`` for lowercase-value enums like ``ScheduleKind``."""
+    return [e.value for e in enum_cls]
 
 
 class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
@@ -31,10 +37,31 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
     milestones = Column(JSONB, nullable=True)
     default_duration_days = Column(Integer, nullable=True)
 
+    # Phase 4 calendar-rendering hint. Declares how instances of this type should
+    # be rendered in calendar/schedule surfaces (state/range/recurring/point).
+    # Frontend adapter reads this instead of inferring from status.
+    #
+    # Phase 8a: NOT NULL with a server default of STATE (the safe "never per-day
+    # expansion" behavior). Existing NULL rows were backfilled to STATE by the
+    # Phase 8a migration before the constraint was added.
+    schedule_kind = Column(
+        Enum(ScheduleKind, values_callable=_enum_values),
+        nullable=False,
+        default=ScheduleKind.STATE,
+        server_default=ScheduleKind.STATE.value,
+    )
+
+    # Phase 8e: NOT NULL. `ondelete="RESTRICT"` — you can't delete a
+    # Concept that types still reference (the admin must reassign the types
+    # first). Replaces the previous `SET NULL` which contradicted the NOT
+    # NULL constraint. Mirrors the Phase 8a tightening on `schedule_kind`.
+    #
+    # The Phase 8e migration backfills any NULL rows to the seeded system
+    # "General" concept (slug `general-event`) before adding the constraint.
     category_concept_id = Column(
         PG_UUID(as_uuid=True),
-        ForeignKey("concepts.id", ondelete="SET NULL"),
-        nullable=True,
+        ForeignKey("concepts.id", ondelete="RESTRICT"),
+        nullable=False,
         index=True,
     )
 
@@ -66,6 +93,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
             "phases": self.phases,
             "milestones": self.milestones,
             "default_duration_days": self.default_duration_days,
+            "schedule_kind": self.schedule_kind.value if self.schedule_kind else None,
             "category_concept_id": str(self.category_concept_id)
             if self.category_concept_id
             else None,
@@ -265,6 +293,18 @@ class ClinicalEvent(
             else None,
             "occurrences": self._serialize_occurrences(),
             "event_metadata": self.event_metadata,
+            # Phase 4: explicit rendering hint resolved from the type blueprint.
+            # Phase 8a: required (NOT NULL on the type), so this is always set
+            # for production rows. The defensive `or ScheduleKind.STATE.value`
+            # fallback covers partially-loaded ORM rows where the
+            # `type_entity` relationship didn't eager-load (e.g. test mocks) —
+            # matches the column's `default=STATE` and keeps the response schema
+            # (which now requires schedule_kind) from 500-ing on edge cases.
+            "schedule_kind": (
+                self.type_entity.schedule_kind.value
+                if (self.type_entity and self.type_entity.schedule_kind)
+                else ScheduleKind.STATE.value
+            ),
             "coding_system": self.coding_system.value if self.coding_system else None,
             "code": self.code,
             "examinations": [

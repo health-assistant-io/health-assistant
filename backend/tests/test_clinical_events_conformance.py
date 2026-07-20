@@ -73,6 +73,13 @@ async def _make_patient(tenant_id):
 async def _make_type(
     tenant_id, *, slug, name, category_concept_id=None, **template_fields
 ):
+    # Phase 8e: category is NOT NULL on the column. If the caller didn't pass
+    # one, mint a throwaway concept — most tests don't care which category
+    # the type belongs to. Callers that DO care pass their own concept id.
+    if category_concept_id is None:
+        category_concept_id = await _make_concept(
+            tenant_id, slug=f"cat-for-{slug}", name=f"Cat for {name}"
+        )
     tid = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(
@@ -254,8 +261,13 @@ async def _seed_two_conditions(tenant_id, patient_id):
         name="Pregnancy",
         category_concept_id=cat_id,
     )
+    # Phase 8e: category is NOT NULL — assign pain to a DIFFERENT concept so
+    # the search-by-category tests can still discriminate between the two.
+    other_cat_id = await _make_concept(
+        tenant_id, slug=f"acute-chronic-{suffix}", name="Acute & Chronic"
+    )
     pain_type = await _make_type(
-        tenant_id, slug=f"pain-{suffix}", name="Pain", category_concept_id=None
+        tenant_id, slug=f"pain-{suffix}", name="Pain", category_concept_id=other_cat_id
     )
 
     preg_id = uuid.uuid4()

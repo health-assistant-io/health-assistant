@@ -1,11 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import {
-  Calendar,
-  MapPin,
-  Pill
-} from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { parseISO, isValid } from 'date-fns';
+import { Calendar } from 'lucide-react';
 import { UniversalCalendar } from '../../components/ui/UniversalCalendar';
 import { NoPatientState } from '../../components/ui/NoPatientState';
 import { usePatientStore } from '../../store/slices/patientSlice';
@@ -16,16 +13,92 @@ import { ExaminationPreview } from '../../components/examinations/ExaminationPre
 import { getExaminationDocuments } from '../../services/examinationService';
 import { getEventSummaryProps } from '../../utils/summaryModalUtils';
 
+/** Valid view-type values — anything else falls back to 'timeline'. */
+const VALID_VIEWS = ['timeline', 'classic', 'list', 'history'] as const;
+type RoutableView = typeof VALID_VIEWS[number];
+
+const DEFAULT_CATEGORIES: CalendarEventType[] = ['medication', 'examination', 'allergy', 'clinical-event'];
+
 const CalendarPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { currentPatient } = usePatientStore();
-  const [selectedTypes] = useState<CalendarEventType[]>(['medication', 'examination', 'allergy', 'clinical-event']);
-  
+
   // Modal state
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEventDocs, setSelectedEventDocs] = useState<any[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+
+  // --- URL-driven state: view, date, categories.
+  // All three are mirrored in the query string so the calendar is deep-linkable
+  // and survives refresh/back navigation. Replaces entries (doesn't pollute
+  // history) — matches the CatalogWorkspace pattern.
+
+  const viewParam = searchParams.get('view');
+  const view: RoutableView = (VALID_VIEWS as readonly string[]).includes(viewParam || '')
+    ? (viewParam as RoutableView)
+    : 'timeline';
+
+  const dateParam = searchParams.get('date');
+  const parsedDate = dateParam ? parseISO(dateParam) : null;
+  const currentDate = parsedDate && isValid(parsedDate) ? parsedDate : new Date();
+
+  const catsParam = searchParams.get('categories');
+  const categories: CalendarEventType[] = catsParam
+    ? (catsParam.split(',').filter((c): c is CalendarEventType =>
+        (DEFAULT_CATEGORIES as string[]).includes(c)
+      ))
+    : DEFAULT_CATEGORIES;
+
+  const patchParams = useCallback(
+    (mut: (prev: URLSearchParams) => void) => {
+      setSearchParams(
+        (prev) => {
+          mut(prev);
+          return prev;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const handleViewChange = useCallback(
+    (next: string) => {
+      patchParams((prev) => {
+        if (next === 'timeline') prev.delete('view');
+        else prev.set('view', next);
+      });
+    },
+    [patchParams]
+  );
+
+  const handleCurrentDateChange = useCallback(
+    (next: Date) => {
+      patchParams((prev) => {
+        const iso = next.toISOString().slice(0, 10);
+        const todayIso = new Date().toISOString().slice(0, 10);
+        if (iso === todayIso) prev.delete('date');
+        else prev.set('date', iso);
+      });
+    },
+    [patchParams]
+  );
+
+  const handleCategoriesChange = useCallback(
+    (next: CalendarEventType[]) => {
+      patchParams((prev) => {
+        // Default set = no param (keeps URLs clean).
+        const isDefault =
+          next.length === DEFAULT_CATEGORIES.length &&
+          DEFAULT_CATEGORIES.every((c) => next.includes(c));
+        if (isDefault) prev.delete('categories');
+        else prev.set('categories', next.join(','));
+      });
+    },
+    [patchParams]
+  );
 
   useEffect(() => {
     if (selectedEventId) {
@@ -43,8 +116,10 @@ const CalendarPage: React.FC = () => {
 
   const calendarConfig = useMemo(() => ({
     patientId: currentPatient?.id,
-    types: selectedTypes
-  }), [currentPatient?.id, selectedTypes]);
+    // The fetch types follow the URL-driven filter (so ?categories=medication
+    // actually narrows what gets loaded, not just what gets displayed).
+    types: categories,
+  }), [currentPatient?.id, categories]);
 
   const renderEventModal = (event: CalendarEvent, onClose: () => void) => {
     const props = getEventSummaryProps(event, t);
@@ -121,11 +196,16 @@ const CalendarPage: React.FC = () => {
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        <UniversalCalendar 
-          config={calendarConfig} 
-          defaultView="timeline"
+        <UniversalCalendar
+          config={calendarConfig}
           hideHeader={false}
           renderModal={renderEventModal}
+          view={view}
+          onViewChange={handleViewChange}
+          currentDate={currentDate}
+          onCurrentDateChange={handleCurrentDateChange}
+          selectedCategories={categories}
+          onSelectedCategoriesChange={handleCategoriesChange}
         />
       </div>
     </div>

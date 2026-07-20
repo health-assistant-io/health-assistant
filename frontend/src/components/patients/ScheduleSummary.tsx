@@ -9,10 +9,12 @@ import {
   Activity,
   AlertTriangle,
   RefreshCw,
+  Infinity as InfinityIcon,
 } from 'lucide-react';
-import { format, isValid, isToday, isTomorrow, startOfDay, addMonths } from 'date-fns';
+import { format, isValid, isToday, isTomorrow, startOfDay, addMonths, differenceInDays } from 'date-fns';
 import { useCalendarData } from '../../hooks/useCalendarData';
 import { CalendarEvent } from '../../types/calendar';
+import { getActiveConditions } from '../../utils/calendarUtils';
 import SummaryCardHeader, { TAG_EMERALD } from '../ui/SummaryCardHeader';
 
 interface Props {
@@ -20,6 +22,7 @@ interface Props {
 }
 
 const PREVIEW_COUNT = 4;
+const ACTIVE_PREVIEW_COUNT = 3;
 const UPCOMING_WINDOW_MONTHS = 1;
 
 const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
@@ -44,18 +47,38 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryNonce]);
 
-  const upcoming = useMemo(() => {
+  /**
+   * Split events into two buckets using the shared `getActiveConditions`
+   * helper (also used by the calendar strip — single source of truth):
+   *  - `ongoing` — currently-active state/range events, deduped by source id.
+   *  - `upcoming` — `kind === 'point'` events dated today or later, plus
+   *    future-onset state/range events.
+   */
+  const { ongoing, upcoming, ongoingTotal, upcomingTotal } = useMemo(() => {
     const today = startOfDay(new Date()).getTime();
-    return events
-      .filter(e => e.date instanceof Date && e.date.getTime() >= today)
-      .sort((a, b) => a.date.getTime() - b.date.getTime())
-      .slice(0, PREVIEW_COUNT);
+    const ongoingList = getActiveConditions(events);
+    const ongoingIds = new Set(ongoingList.map(e => e.originalData?.id ?? e.id));
+
+    const upcomingList: CalendarEvent[] = [];
+    for (const e of events) {
+      if (!(e.date instanceof Date)) continue;
+      const ts = e.date.getTime();
+      const sourceId = e.originalData?.id ?? e.id;
+      // Skip any event belonging to an ongoing condition (already shown above).
+      if (ongoingIds.has(sourceId)) continue;
+      if (ts >= today) upcomingList.push(e);
+    }
+    upcomingList.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    return {
+      ongoing: ongoingList.slice(0, ACTIVE_PREVIEW_COUNT),
+      ongoingTotal: ongoingList.length,
+      upcoming: upcomingList.slice(0, PREVIEW_COUNT),
+      upcomingTotal: upcomingList.length,
+    };
   }, [events]);
 
-  const totalCount = useMemo(
-    () => events.filter(e => e.date instanceof Date && e.date.getTime() >= startOfDay(new Date()).getTime()).length,
-    [events]
-  );
+  const isEmpty = ongoing.length === 0 && upcoming.length === 0;
 
   if (loading) {
     return (
@@ -111,13 +134,13 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
           ariaLabel: t('common.info'),
         }}
         tags={[
-          <span key="upcoming" className={TAG_EMERALD}>{totalCount} {t('patients.upcoming')}</span>,
+          <span key="upcoming" className={TAG_EMERALD}>{upcomingTotal} {t('patients.upcoming')}</span>,
         ]}
         titleTo="/calendar"
       />
 
       <div className="p-4 sm:p-6 flex-1 flex flex-col">
-        {upcoming.length === 0 ? (
+        {isEmpty ? (
           <div className="flex flex-col items-center justify-center text-center py-6 flex-1">
             <Calendar className="w-10 h-10 text-gray-200 dark:text-dark-border mb-2" />
             <p className="text-sm text-gray-400 dark:text-dark-muted italic">
@@ -125,15 +148,59 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
             </p>
           </div>
         ) : (
-          <div className="space-y-2 flex-1">
-            {upcoming.map((item, idx) => (
-              <ScheduleRow
-                key={`${item.id}-${idx}`}
-                item={item}
-                t={t}
-                onClick={() => navigateToItem(item, navigate)}
-              />
-            ))}
+          <div className="space-y-4 flex-1">
+            {/* Currently active — ongoing conditions, each shown exactly once */}
+            {ongoing.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-center gap-1.5">
+                    <InfinityIcon className="w-3 h-3 text-purple-500" />
+                    <span className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                      {t('patients.currently_active')}
+                    </span>
+                  </div>
+                  {ongoingTotal > ongoing.length && (
+                    <button
+                      onClick={() => navigate('/calendar')}
+                      className="text-[10px] font-bold text-gray-400 hover:text-blue-500 uppercase tracking-wider transition-colors"
+                    >
+                      +{ongoingTotal - ongoing.length} {t('patients.view_all')}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {ongoing.map((item, idx) => (
+                    <OngoingRow
+                      key={`ongoing-${item.originalData?.id ?? item.id}-${idx}`}
+                      item={item}
+                      t={t}
+                      onClick={() => navigateToItem(item, navigate)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming point events */}
+            <div>
+              {ongoing.length > 0 && upcoming.length > 0 && (
+                <div className="px-1 mb-2">
+                  <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-wider">
+                    {t('patients.upcoming')}
+                  </span>
+                </div>
+              )}
+              <div className="space-y-2">
+                {upcoming.map((item, idx) => (
+                  <ScheduleRow
+                    key={`${item.id}-${idx}`}
+                    item={item}
+                    t={t}
+                    onClick={() => navigateToItem(item, navigate)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -159,6 +226,55 @@ function navigateToItem(item: CalendarEvent, navigate: (path: string) => void) {
       navigate('/calendar');
   }
 }
+
+// ---------- Ongoing row (state / range events — one per source) ----------
+const OngoingRow: React.FC<{ item: CalendarEvent; t: any; onClick: () => void }> = ({ item, t, onClick }) => {
+  const accent = 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400';
+  const today = startOfDay(new Date());
+  const daysSince = differenceInDays(today, item.date);
+  const isRange = item.kind === 'range' && item.endDate;
+  const rangeDays = isRange ? differenceInDays(item.endDate!, today) : null;
+
+  // Right-side label: "since Mar 5" / "42d" / "active 5d left"
+  let durationLabel: string;
+  if (isRange && rangeDays !== null && rangeDays >= 0) {
+    durationLabel = `${rangeDays}d ${t('patients.active_range')}`;
+  } else if (daysSince === 0) {
+    durationLabel = t('patients.today');
+  } else {
+    durationLabel = `${daysSince}d`;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/30 dark:bg-purple-900/5 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all group"
+    >
+      <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${accent}`}>
+        <Activity className="w-4 h-4" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-gray-900 dark:text-dark-text truncate leading-tight flex items-center gap-1.5">
+          <InfinityIcon className="w-3 h-3 text-purple-400 shrink-0" />
+          <span className="truncate">{item.title}</span>
+        </p>
+        <p className="text-[10px] text-gray-400 dark:text-dark-muted truncate mt-0.5">
+          {t('patients.since')} {format(item.date, 'MMM d')}{item.subtitle ? ` · ${item.subtitle}` : ''}
+        </p>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-wider leading-tight">
+          {durationLabel}
+        </p>
+      </div>
+
+      <ChevronRight className="w-3 h-3 text-gray-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+    </button>
+  );
+};
 
 // ---------- Row ----------
 const ScheduleRow: React.FC<{ item: CalendarEvent; t: any; onClick: () => void }> = ({ item, t, onClick }) => {

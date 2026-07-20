@@ -465,6 +465,8 @@ DELETE /api/v1/observations/{id}
 
 ### Clinical Events
 
+> See [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md) for the type-blueprint schema (`schedule_kind`, `metadata_schema`, category system) and how event instances render on the calendar.
+
 #### List Event Types
 ```http
 GET /api/v1/clinical-events/types

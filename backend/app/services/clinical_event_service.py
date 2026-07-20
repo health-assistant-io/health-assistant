@@ -177,6 +177,9 @@ async def list_events(
     patient_id: Optional[UUID] = None,
     examination_id: Optional[UUID] = None,
     status: Optional[ClinicalEventStatus] = None,
+    active_on: Optional[_dt.date] = None,
+    onset_on: Optional[_dt.date] = None,
+    date_range: Optional[str] = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
@@ -184,6 +187,17 @@ async def list_events(
 
     USER role is restricted to their own patients. ``limit`` is clamped to
     ``MAX_LIMIT``; ``offset`` enables pagination.
+
+    Date filters (mutually composable):
+
+    - ``active_on`` — events whose ``[onset_date, resolved_date]`` interval
+      contains the given day. State events (no ``resolved_date``) match if
+      ``onset_date <= day``. Powers "what was happening to this patient on X?"
+      queries.
+    - ``onset_on`` — events whose ``onset_date`` falls on the given calendar day.
+    - ``date_range`` — ``"YYYY-MM-DD,YYYY-MM-DD"``: events whose
+      ``[onset_date, resolved_date]`` interval overlaps the given range. Used
+      for retrospective timeline views.
     """
     limit = max(1, min(limit, MAX_LIMIT))
     offset = max(0, offset)
@@ -217,6 +231,41 @@ async def list_events(
     if status:
         query = query.where(ClinicalEvent.status == status)
 
+    # Date filters ----------------------------------------------------------
+    if active_on is not None:
+        # onset_date <= end_of_day(active_on) AND (resolved_date IS NULL OR resolved_date >= start_of_day)
+        day_start = _dt.datetime.combine(active_on, _dt.time.min, tzinfo=timezone.utc)
+        day_end = _dt.datetime.combine(
+            active_on, _dt.time.max, tzinfo=timezone.utc
+        )
+        query = query.where(
+            ClinicalEvent.onset_date.isnot(None),
+            ClinicalEvent.onset_date <= day_end,
+            (ClinicalEvent.resolved_date.is_(None))
+            | (ClinicalEvent.resolved_date >= day_start),
+        )
+
+    if onset_on is not None:
+        day_start = _dt.datetime.combine(onset_on, _dt.time.min, tzinfo=timezone.utc)
+        day_end = _dt.datetime.combine(onset_on, _dt.time.max, tzinfo=timezone.utc)
+        query = query.where(
+            ClinicalEvent.onset_date.isnot(None),
+            ClinicalEvent.onset_date >= day_start,
+            ClinicalEvent.onset_date <= day_end,
+        )
+
+    if date_range is not None:
+        range_start_dt, range_end_dt = _parse_date_range(date_range)
+        if range_start_dt is not None and range_end_dt is not None:
+            # Overlap: event [onset, resolved] intersects [range_start, range_end].
+            # State events (resolved IS NULL) are treated as open-ended.
+            query = query.where(
+                ClinicalEvent.onset_date.isnot(None),
+                ClinicalEvent.onset_date <= range_end_dt,
+                (ClinicalEvent.resolved_date.is_(None))
+                | (ClinicalEvent.resolved_date >= range_start_dt),
+            )
+
     query = (
         query.order_by(
             ClinicalEvent.onset_date.desc().nulls_last(),
@@ -229,6 +278,27 @@ async def list_events(
     result = await db.execute(query)
     events = result.scalars().unique().all()
     return [e.to_dict() for e in events]
+
+
+def _parse_date_range(
+    value: str,
+) -> tuple[Optional[_dt.datetime], Optional[_dt.datetime]]:
+    """Parse ``"YYYY-MM-DD,YYYY-MM-DD"`` into a (start, end) UTC datetime pair.
+
+    Returns ``(None, None)`` on malformed input; the caller silently skips the
+    filter to avoid 500ing on a bad query string.
+    """
+    if not value or "," not in value:
+        return None, None
+    parts = value.split(",", 1)
+    try:
+        start = _dt.date.fromisoformat(parts[0].strip())
+        end = _dt.date.fromisoformat(parts[1].strip())
+    except ValueError:
+        return None, None
+    start_dt = _dt.datetime.combine(start, _dt.time.min, tzinfo=timezone.utc)
+    end_dt = _dt.datetime.combine(end, _dt.time.max, tzinfo=timezone.utc)
+    return start_dt, end_dt
 
 
 async def get_event(

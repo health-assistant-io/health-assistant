@@ -11,6 +11,7 @@ from app.models.anatomy_model import AnatomyStructure, AnatomyFigure
 from app.models.enums import (
     CodingSystem,
     ConceptKind,
+    ScheduleKind,
 )
 from app.core.database import AsyncSessionLocal
 from app.services.concept_service import (
@@ -97,7 +98,11 @@ class SeedService:
                         stats["errors"] += 1
                         continue
 
-                cat_slug = type_item.get("category_slug")
+                # Phase 8e: category is required (NOT NULL on the column).
+                # Seed entries should always declare a category_slug, but
+                # fall back to the system "General" category if missing so
+                # the seed never produces a row that violates the constraint.
+                cat_slug = type_item.get("category_slug") or "general-event"
                 cat_concept_id = None
                 if cat_slug:
                     if cat_slug not in cat_cache:
@@ -126,6 +131,10 @@ class SeedService:
                     db_type.metadata_schema = type_item.get(
                         "metadata_schema", db_type.metadata_schema
                     )
+                    if "schedule_kind" in type_item:
+                        db_type.schedule_kind = ScheduleKind.from_string(
+                            type_item.get("schedule_kind")
+                        )
                     if cat_concept_id:
                         db_type.category_concept_id = cat_concept_id
                     stats["updated"] += 1
@@ -138,6 +147,13 @@ class SeedService:
                         icon=type_item.get("icon"),
                         color=type_item.get("color"),
                         metadata_schema=type_item.get("metadata_schema"),
+                        # Phase 8a: required (NOT NULL). The seed loader falls
+                        # back to STATE when the JSON omits the field; every
+                        # shipped seed already declares it.
+                        schedule_kind=ScheduleKind.from_string(
+                            type_item.get("schedule_kind")
+                        )
+                        or ScheduleKind.STATE,
                         category_concept_id=cat_concept_id,
                         tenant_id=None,
                         created_at=datetime.now(timezone.utc),

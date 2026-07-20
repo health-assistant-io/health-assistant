@@ -70,7 +70,7 @@ medication class `PART_OF` its parent ATC class.
 |---|---|
 | `specialty` | Cardiology, Neurology |
 | `examination_category` | Blood Laboratory, Imaging & Radiology |
-| `event_category` | Clinical event groupings |
+| `event_category` | Clinical event groupings (see [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md)) |
 | `biomarker_class` | Blood Laboratory, Vital Signs (shared with exam categories) |
 | `biomarker_panel` | Lipid Panel, Complete Blood Count |
 | `anatomy_class` | Anatomy region/organ/tissue groupings |

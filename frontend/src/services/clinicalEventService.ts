@@ -25,8 +25,74 @@ export interface ClinicalEventType {
   phases?: Array<Record<string, any>>;
   milestones?: Array<Record<string, any>>;
   default_duration_days?: number;
-  category_concept_id?: string;
+  /**
+   * Phase 4 calendar-rendering hint declared on the type blueprint.
+   * `state` (default for new types) renders once on onset; `range` carries an
+   * endDate; `recurring` expands per declared `event_metadata.frequency`;
+   * `point` is a single timestamp.
+   *
+   * Phase 8a: required — every type must declare one. The backend resolves
+   * and persists it (NOT NULL since Phase 8a), so this is always present on
+   * rows from the API.
+   */
+  schedule_kind: ScheduleKind;
+  // Phase 8e: required (NOT NULL on the column). Every type belongs to a
+  // category — the system "General" concept is the backfill target for types
+  // that don't fit a more specific specialty.
+  category_concept_id: string;
   category_concept?: ClinicalEventCategory;
+}
+
+/**
+ * How a ClinicalEventType should be rendered in calendar/schedule surfaces.
+ * Mirrors `backend/app/models/enums.py:ScheduleKind`. Lowercase values match
+ * the wire format produced by the Python enum's `.value`.
+ *
+ * Phase 8a: converted from a string-literal type to a TS `enum` so the
+ * compiler catches typos and consumers can iterate via `Object.values()`.
+ */
+export enum ScheduleKind {
+  STATE = 'state',
+  RANGE = 'range',
+  RECURRING = 'recurring',
+  POINT = 'point',
+}
+
+/**
+ * Coding systems supported on a clinical event (LOINC, SNOMED, custom).
+ * Mirrors `backend/app/models/enums.py:CodingSystem` (the same closed set,
+ * scoped to event usage). Phase 8a: promoted from an inlined string union.
+ */
+export enum ClinicalEventCodingSystem {
+  LOINC = 'loinc',
+  SNOMED = 'snomed',
+  CUSTOM = 'custom',
+}
+
+/**
+ * Recurrence cadence for `ScheduleKind.RECURRING` events. Phase 8a: promoted
+ * from inline string literals in the form. Mirrors the values the backend
+ * adapter reads from `event_metadata.frequency`.
+ */
+export enum RecurrenceFrequency {
+  DAILY = 'daily',
+  WEEKLY = 'weekly',
+  MONTHLY = 'monthly',
+}
+
+/**
+ * Days-of-week for the weekly recurrence picker. Lowercase three-letter
+ * codes match the wire format stored in `event_metadata.days_of_week`.
+ * Week starts on Monday (ISO 8601) — values are ordered accordingly.
+ */
+export enum DayOfWeek {
+  MON = 'mon',
+  TUE = 'tue',
+  WED = 'wed',
+  THU = 'thu',
+  FRI = 'fri',
+  SAT = 'sat',
+  SUN = 'sun',
 }
 
 export enum ClinicalEventStatus {
@@ -49,7 +115,15 @@ export interface ClinicalEvent {
   resolved_date?: string;
   occurrences: any[];
   event_metadata: Record<string, any>;
-  coding_system?: 'loinc' | 'snomed' | 'custom';
+  /**
+   * Phase 4: rendering hint resolved by the backend from the type blueprint
+   * (`type_entity.schedule_kind`).
+   *
+   * Phase 8a: required — the backend always sets it (NOT NULL), so a missing
+   * value on the wire is a backend bug, not a legacy case to handle.
+   */
+  schedule_kind: ScheduleKind;
+  coding_system?: ClinicalEventCodingSystem;
   code?: string;
   examinations: any[];
   observations: any[];

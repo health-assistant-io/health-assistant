@@ -290,11 +290,23 @@
     "no_clinician": "No clinician assigned",
     "pending": "Pending",
     "upcoming_schedule": "Upcoming Schedule",
-    "upcoming_schedule_info": "Agenda of upcoming medication doses, scheduled examinations, and recurring clinical events for the next 30 days. Items are derived from active prescriptions and event recurrences.",
+    "upcoming_schedule_info": "Currently active conditions and upcoming medication doses, examinations, and scheduled events. Ongoing conditions are shown once each, not repeated per day.",
     "no_upcoming_schedule": "Nothing scheduled in the next month",
     "open_calendar": "Open Calendar",
     "upcoming": "Upcoming",
     "tomorrow": "Tomorrow",
+    "currently_active": "Currently active",
+    "currently_active_info": "Ongoing conditions and active episodes — shown once, not repeated daily.",
+    "view_all": "View all",
+    "since": "since",
+    "active_range": "active",
+    "ongoing_indicator": "ongoing",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "active_on_day": "Active on this day",
+    "click_to_view": "click to view",
+    "previous": "Previous",
+    "next": "Next",
     "update_profile_title": "Update Patient Profile"
   },
   "examination_detail": {
@@ -858,7 +870,6 @@
       "as_needed_label": "Take only as needed (PRN)",
       "scheduled_times": "Scheduled Times",
       "add_time": "Add Time",
-      "current_status": "Current Status",
       "dosage": "Dosage",
       "dosage_placeholder": "e.g. 500mg or 2 pills",
       "reason_placeholder": "e.g. Hypertension",
@@ -1134,6 +1145,20 @@
     "schedule_recurrence_desc": "Set up a repeating schedule for this clinical event.",
     "enable_recurrence": "Enable Recurrence",
     "recurring_enabled": "Recurring Enabled",
+    "date_single": "Date",
+    "date_start": "Start Date",
+    "date_end": "End Date",
+    "date_onset": "Onset Date",
+    "kind_hint_state": "Ongoing condition — shown once on the calendar, not repeated daily. Mark Resolved to record when it ended and track total duration.",
+    "kind_hint_state_resolved": "Resolved — the End Date records when this condition ended. Total duration is computed from Onset → End.",
+    "kind_hint_range": "Bounded episode with a start and an end date.",
+    "kind_hint_point": "A single-day event (e.g. a visit, an incident).",
+    "kind_hint_recurring": "Repeats on a schedule — fills the calendar with each occurrence. Mark Resolved when the schedule ends.",
+    "kind_hint_recurring_resolved": "Schedule ended on the End Date — no further occurrences will be generated.",
+    "recurrence_for_type": "Recurrence schedule",
+    "duration_active": "Ongoing for {{days}}d",
+    "duration_resolved": "Lasted {{days}}d",
+    "end_date_hint": "Set when this condition or schedule ended.",
     "frequency": "Frequency",
     "repeat_every": "Repeat every",
     "on_days": "On days",
@@ -1224,6 +1249,66 @@
         "description": "e.g. Preventive checkups and overall status monitoring."
       }
     },
+    "category": {
+      "reproductive-health": {
+        "name": "Reproductive Health",
+        "description": "Pregnancy, fertility, and reproductive health milestones."
+      },
+      "acute-chronic": {
+        "name": "Acute & Chronic",
+        "description": "Acute incidents and ongoing chronic conditions like pain and flare-ups."
+      },
+      "specialized-care": {
+        "name": "Specialized Care",
+        "description": "Specialized medical journeys: surgical recovery, dental, vision, aesthetic."
+      },
+      "routine-wellness": {
+        "name": "Routine & Wellness",
+        "description": "Preventive care, routine checkups, and ongoing wellness maintenance."
+      },
+      "general-event": {
+        "name": "General",
+        "description": "Events that don't fit a more specific specialty."
+      }
+    },
+    "type": {
+      "pregnancy": {
+        "name": "Pregnancy",
+        "description": "Monitor pregnancy milestones, LMP, and estimated due date."
+      },
+      "pain-episode": {
+        "name": "Pain Episode",
+        "description": "Track ongoing or chronic pain with intensity and location."
+      },
+      "flare-up": {
+        "name": "Chronic Flare-up",
+        "description": "Manage cyclic flare-ups for chronic conditions like Arthritis or Migraines."
+      },
+      "accident": {
+        "name": "Acute Accident",
+        "description": "Record specific injuries or medical emergencies."
+      },
+      "surgical-recovery": {
+        "name": "Surgical Recovery",
+        "description": "Monitor post-operative healing and milestones."
+      },
+      "dental": {
+        "name": "Dental Journey",
+        "description": "Long-term dental treatments like braces or implants."
+      },
+      "vision": {
+        "name": "Vision & Ophthalmology",
+        "description": "Tracking eye conditions and vision changes."
+      },
+      "aesthetic": {
+        "name": "Aesthetic & Skin",
+        "description": "Cosmetic procedures and skin health."
+      },
+      "maintenance": {
+        "name": "Routine Maintenance",
+        "description": "Regular checkups and wellness cycles."
+      }
+    },
     "emergency_status": "Emergency Status",
     "emergency_visit": "Emergency Visit",
     "procedure_date": "Procedure Date",
@@ -1243,6 +1328,17 @@
     "onset_date": "Onset Date",
     "resolved_date": "Resolved Date",
     "current_status": "Current Status",
+    "status_hint_active": "Ongoing now — the default for new state/range/recurring events.",
+    "status_hint_resolved": "Ended. For ongoing kinds (state/recurring), this records the End Date and locks the total duration. For range kinds, confirm the End Date below.",
+    "status_hint_on_hold": "Paused — not active, not ended. The event stays on the calendar without ongoing semantics.",
+    "status_hint_unknown": "Status not yet determined. Useful when the diagnosis or timeline is unclear.",
+    "filter_by_specialty": "Filter by specialty",
+    "view_all": "View all",
+    "search": "Search",
+    "search_types_placeholder": "Search by name, description or category...",
+    "back_to_categories": "Back to categories",
+    "change_type": "Change",
+    "no_types_match": "No event types match your search.",
     "related_visits": "Related Clinical Visits",
     "related_biomarkers": "Related Biomarkers",
     "select_related_biomarkers": "Select Related Biomarkers",

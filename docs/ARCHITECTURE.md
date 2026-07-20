@@ -23,8 +23,8 @@ Health Assistant is a self-hosted, open-source platform for centralizing health 
 - **users**: Identity & Auth (id, tenant_id, email, role, settings)
 - **fhir_organizations**: Hierarchical grouping (id, tenant_id, name, org_type, part_of_id, created_at, updated_at, deleted_at)
 - **fhir_patients**: Clinical profiles (id, tenant_id, user_id, name, gender, birth_date, mrn)
-- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering; `category_concept_id` FK → `concepts.id`.
-- **clinical_events**: Longitudinal health journeys (patient_id, type_id, status, metadata, occurrences)
+- **clinical_event_types**: Blueprint for specific journeys. Contains `metadata_schema` for dynamic field rendering, `schedule_kind` for calendar rendering, and a NOT NULL `category_concept_id` FK → `concepts.id` (event_category). See [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md) for the seed JSON schema and field reference.
+- **clinical_events**: Longitudinal health journeys (patient_id, type_id, status, metadata, occurrences). See [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md).
 - **event_examination_links**: Many-to-many relationship between events and examinations with clinical reasoning.
 - **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_concept_id` FK → `concepts.id`)
 - **doctors**: Care team profiles (id, tenant_id, user_id, name, `specialty_concept_id` FK → `concepts.id`, license_number, contact_info)
@@ -73,7 +73,7 @@ Health Assistant bridges the gap between discrete clinical visits and long-term 
 - **Journeys**: Events represent a "Health Journey" (e.g., a 9-month pregnancy or a 2-year dental alignment) that spans multiple examinations.
 - **Categorized Experience**: Journeys are grouped into clinical categories (Reproductive, Acute & Chronic, Routine, etc.) with specialized UI tabs for filtering.
 - **Schema-Driven UI**: Instead of hardcoded logic, each journey type uses a flexible **JSONB Metadata Schema**. The frontend dynamically renders the correct inputs (Numeric Metrics, Temporal Fields, Boolean Flags) based on this blueprint.
-- **Episodes/Occurrences**: Allows tracking of specific points in time within a journey (e.g., a specific migraine during a chronic pain journey) with high-precision time and intensity logging.
+- **Episodes/Occurrences**: Allows tracking of specific points in time within a journey (e.g., a specific migraine during a chronic pain journey) with high-precision time and intensity logging. See [CLINICAL_EVENTS.md § Occurrences](CLINICAL_EVENTS.md#9-occurrences-point-in-time-episodes).
 - **Association Mapping**: Examinations are linked to journeys with a `reason` field, providing clinical context for how a particular visit contributed to the overall health goal.
 
 ## Notification Framework

@@ -22,6 +22,37 @@ class ClinicalEventStatus(str, enum.Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class ScheduleKind(str, enum.Enum):
+    """How a ``ClinicalEventType`` should be rendered in calendar/schedule views.
+
+    Set on the type blueprint (the default for all instances of that type).
+    Replaces the frontend's status-based heuristic in ``adaptClinicalEventToEvents``
+    with an explicit, admin-declared intent.
+
+    - ``STATE``    — ongoing condition with no fixed end (Pain, Chronic Illness,
+                     Pregnancy). Calendar renders once on onset; never expanded.
+    - ``RANGE``    — bounded episode with a known end (3-day flu, surgical
+                     recovery, hospital admission). One card with ``endDate``.
+    - ``RECURRING``— repeats on a schedule declared via ``event_metadata.frequency``
+                     (weekly physio, monthly check-in). Expanded per recurrence.
+    - ``POINT``    — single incident (a fall, an injury). One card on the date.
+    """
+
+    STATE = "state"
+    RANGE = "range"
+    RECURRING = "recurring"
+    POINT = "point"
+
+    @classmethod
+    def from_string(cls, value):
+        if value is None:
+            return None
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
 class NotificationType(str, enum.Enum):
     MEDICATION_REMINDER = "MEDICATION_REMINDER"
     EXAMINATION_REMINDER = "EXAMINATION_REMINDER"

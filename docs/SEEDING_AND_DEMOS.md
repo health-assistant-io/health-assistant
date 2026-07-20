@@ -9,7 +9,7 @@ Every application startup runs a single ordered, idempotent seed pipeline agains
 | # | Stage | Depends on |
 |---|---|---|
 | 1 | `medications` | — |
-| 2 | `clinical_event_types` | — |
+| 2 | `clinical_event_types` (see [CLINICAL_EVENTS.md](CLINICAL_EVENTS.md) for the schema) | — |
 | 3 | `allergies` | — |
 | 4 | `body_parts` (anatomy structures) | — |
 | 5 | `anatomy_figures` | body_parts |

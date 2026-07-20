@@ -18,7 +18,7 @@ import {
   startOfDay,
   parseISO
 } from 'date-fns';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Popover } from './Popover';
 
@@ -35,6 +35,16 @@ interface DatePickerProps {
   disabled?: boolean;
   id?: string;
   variant?: 'default' | 'unstyled';
+  /**
+   * Phase 8c: when true, render a clear (X) button inside the trigger when a
+   * date is populated. Clicking it calls `onChange('')` (empty string — the
+   * form's sentinel for "unset") and `onClear?.()`, without opening the
+   * calendar popover. Defaults to `false` to preserve existing behavior on
+   * callers that haven't opted in.
+   */
+  allowClear?: boolean;
+  /** Optional callback fired when the user clicks the clear button. */
+  onClear?: () => void;
 }
 
 export const DatePicker: React.FC<DatePickerProps> = ({
@@ -47,7 +57,9 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   required,
   disabled,
   id,
-  variant = 'default'
+  variant = 'default',
+  allowClear = false,
+  onClear,
 }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -84,6 +96,17 @@ export const DatePicker: React.FC<DatePickerProps> = ({
       return;
     }
     onChange(format(date, 'yyyy-MM-dd'));
+    setIsOpen(false);
+  };
+
+  // Phase 8c: clear the field. Emits the empty-string sentinel (the form's
+  // unset marker — already handled by submit-time coercion) and the optional
+  // onClear callback, then closes the popover if it was open. Does NOT
+  // propagate to the trigger's onClick (which would toggle the popover).
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange('');
+    onClear?.();
     setIsOpen(false);
   };
 
@@ -269,6 +292,16 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         <span className={`flex-1 ${!selectedDate ? (variant === 'default' ? 'text-gray-400' : 'opacity-70') : (variant === 'default' ? 'text-gray-900 dark:text-dark-text' : '')} overflow-hidden text-ellipsis whitespace-nowrap`}>
           {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : placeholder || t('common.select_date', 'Select date')}
         </span>
+        {allowClear && selectedDate && !disabled && (
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label={t('common.clear', 'Clear')}
+            className={`flex-shrink-0 ml-1 p-0.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-dark-hover transition-colors ${variant === 'default' ? '' : 'opacity-60 hover:opacity-100'}`}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       <input 
