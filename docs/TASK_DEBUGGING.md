@@ -1,10 +1,26 @@
-# Task Debugging & Monitoring System
+# Task Debugging & Monitoring System — Implementation Reference
 
-**Date**: March 17, 2026
+> **Scope of this doc:** implementation reference for the TaskLogger /
+> TaskProgressTracker / TaskTimeoutMonitor internals (`backend/app/workers/task_logger.py`),
+> the structured-log JSON schema, the monitoring-metric heuristics, and the security
+> redaction rules. **Internal** (not in `docs-tree.json`).
+>
+> **For the operator-facing troubleshooting workflow** — "I have a stuck document, what
+> do I click / curl?" — read [TASK_DEBUGGING_GUIDE.md](TASK_DEBUGGING_GUIDE.md) instead.
+> That guide is a 6-step reference (UI → worker health → AI config → logs → retry → DB)
+> with a symptom→cause→fix table; this doc complements it by documenting the underlying
+> components.
+>
+> **Status:** historical (dated March 17, 2026). The components and contracts described
+> here are still accurate; the surrounding thresholds (10-min stall badge / 15-min Celery
+> hard limit / 20-min `cleanup_stuck_extractions` beat) are authoritative in
+> [TASK_DEBUGGING_GUIDE.md](TASK_DEBUGGING_GUIDE.md) and the codebase, not here.
 
 ## Overview
 
-Implemented comprehensive debugging and monitoring system for Celery tasks with structured logging, error tracking, task retry functionality, and a monitoring UI - following security best practices.
+The debugging + monitoring system for Celery tasks provides structured logging, error
+tracking, task retry functionality, and a monitoring UI — following security best
+practices.
 
 ## Components Created
 
