@@ -310,20 +310,63 @@ async def get_event(
 
 
 async def create_event(
-    db: AsyncSession, current_user: TokenData, payload: ClinicalEventCreate
+    db: AsyncSession,
+    current_user: TokenData,
+    payload: ClinicalEventCreate,
+    *,
+    source_integration_id: Optional[UUID] = None,
+    external_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create an event + initial exam/observation links, notify, and re-fetch.
 
     Per-link access is checked; links the user can't access are skipped
     (logged) rather than aborting the whole create.
+
+    Integration-sourced dedup (workstream B.1): when **both**
+    ``source_integration_id`` and ``external_id`` are supplied, the service
+    looks up an existing event with that key for the same patient + tenant
+    and returns it as-is rather than creating a duplicate. Mirrors the
+    pattern on ``examinations``. UI callers leave both as ``None`` and get
+    the original create-always behavior.
     """
     await check_patient_access(payload.patient_id, current_user, db)
 
-    event_data = payload.model_dump(exclude={"examinations", "observations"})
+    # The engine passes ``external_id`` as a kwarg; UI callers leave it
+    # ``None``. Either way, fall back to ``payload.external_id`` so the
+    # dedup key set by the provider on the payload is honored even when the
+    # engine forgets to forward it explicitly.
+    effective_external_id = external_id or payload.external_id
+
+    if source_integration_id is not None and effective_external_id is not None:
+        existing = await _find_integration_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=payload.patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "create_event: returning existing event %s (dedup hit on "
+                "source_integration_id=%s external_id=%r)",
+                existing.id, source_integration_id, effective_external_id,
+            )
+            return await _refetch_with_relations(db, existing.id)
+
+    # ``external_id`` is part of the schema (so providers can set it on the
+    # ``ClinicalEventCreate`` payload they return from ``pull_clinical_events``)
+    # but we exclude it from the dump to avoid passing it twice to the ORM
+    # constructor (once via event_data spread, once via the explicit kwarg
+    # below that mirrors the source_integration_id pattern).
+    event_data = payload.model_dump(
+        exclude={"examinations", "observations", "external_id"}
+    )
     new_event = ClinicalEvent(
         **event_data,
         tenant_id=current_user.tenant_id,
         created_by=current_user.user_id,
+        source_integration_id=source_integration_id,
+        external_id=effective_external_id,
     )
     db.add(new_event)
     await db.flush()  # assign id
@@ -338,6 +381,33 @@ async def create_event(
     await db.commit()
     await emit_event_notification(new_event, "created", current_user)
     return await _refetch_with_relations(db, new_event.id)
+
+
+async def _find_integration_event(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    source_integration_id: UUID,
+    external_id: str,
+) -> Optional[ClinicalEvent]:
+    """Look up an existing integration-sourced event by dedup key.
+
+    The partial unique index ``uq_clinical_event_integration_dedup`` makes
+    this lookup fast; in the race window between the SELECT and the
+    subsequent INSERT, the index also catches duplicates at the DB layer
+    (raising ``IntegrityError``), so concurrent sync attempts can't double-
+    insert. Callers that need to handle that race should catch
+    ``IntegrityError`` and re-query.
+    """
+    stmt = select(ClinicalEvent).where(
+        ClinicalEvent.tenant_id == tenant_id,
+        ClinicalEvent.patient_id == patient_id,
+        ClinicalEvent.source_integration_id == source_integration_id,
+        ClinicalEvent.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 async def update_event(

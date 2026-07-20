@@ -345,3 +345,88 @@ async def test_fhir_create_with_token_sends_bearer():
             http, "https://ehr/fhir", "Observation", body, access_token="tok-123"
         )
     assert seen["auth"] == "Bearer tok-123"
+
+
+# ---------------------------------------------------------------------------
+# Shared retry helper (this stack): fhir_create + fhir_conditional_update
+# route through http._retry_request — the same primitive http_request uses.
+# Guards against a future revert that re-inlines per-helper retry loops
+# (which had already diverged pre-refactor: different backoff bases, no
+# jitter, no shared Retry-After honoring).
+# ---------------------------------------------------------------------------
+
+
+def test_fhir_helpers_route_through_shared_retry_request():
+    """Source-level guard: ``fhir_create`` and ``fhir_conditional_update``
+    must delegate retry/backoff/jitter to ``http._retry_request``.
+
+    Before this refactor each helper inlined its own retry loop; the two
+    copies had already diverged subtly (``fhir_create`` had no logger
+    warnings, ``fhir_conditional_update`` did) and neither had jitter. If
+    a future edit re-inlines either helper, the literal ``_retry_request``
+    reference disappears from its source and this test fails.
+    """
+    import inspect
+
+    from integrations.sdk import fhir as fhir_mod
+
+    create_src = inspect.getsource(fhir_mod.fhir_create)
+    update_src = inspect.getsource(fhir_mod.fhir_conditional_update)
+
+    assert "_retry_request" in create_src, (
+        "fhir_create must call _retry_request — re-inlining the retry loop "
+        "would reintroduce the divergence / no-jitter bug"
+    )
+    assert "_retry_request" in update_src, (
+        "fhir_conditional_update must call _retry_request — re-inlining the "
+        "retry loop would reintroduce the divergence / no-jitter bug"
+    )
+
+
+@pytest.mark.asyncio
+async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
+    """5xx must trigger retries via the shared helper (was: independently
+    inlined retry loop without jitter). Squat the sleeps so the test is fast."""
+    async def _no_sleep(_):
+        return None
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(503, text="down")
+
+    body = {"resourceType": "Observation"}
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationDataError):
+            await fhir_create(http, "https://ehr/fhir", "Observation", body, max_retries=3)
+    assert calls["n"] == 3, (
+        f"fhir_create should have made 3 attempts (max_retries=3); got {calls['n']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_fhir_conditional_update_412_still_returns_tuple():
+    """412 (precondition not met) must remain a non-error tuple return after
+    the _retry_request refactor — the helper returns the response and the
+    caller decides. Guards against accidentally raising on 412."""
+    body = {"resourceType": "Observation"}
+
+    def handler(request):
+        return httpx.Response(
+            412,
+            json={
+                "resourceType": "OperationOutcome",
+                "issue": [{"severity": "error", "code": "conflict"}],
+            },
+        )
+
+    async with _client(handler) as http:
+        status, payload = await fhir_conditional_update(
+            http, "https://ehr/fhir", "Observation", body,
+            search_params={"identifier": "urn:x|abc"},
+        )
+    assert status == 412
+    assert payload is not None
+    assert payload["resourceType"] == "OperationOutcome"

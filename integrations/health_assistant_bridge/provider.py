@@ -252,12 +252,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.models.fhir import Observation
         from app.models.biomarker_model import BiomarkerDefinition
         from app.models.telemetry_model import TelemetryDataModel
-        from app.models.examination_model import ExaminationModel
-        from app.models.examination_category import ExaminationCategory
         from app.models.fhir.organization import OrganizationModel
         from app.models.user_integration import IntegrationSyncLog
+        from app.schemas.examination import ExaminationCreate
+        from app.services.examination_service import create_examination
         from app.services.fhir_service import map_observations_to_biomarkers
-        import uuid
+        from app.services.integration_actor import resolve_integration_actor
 
         count = 0
         start_time = datetime.datetime.now(datetime.timezone.utc)
@@ -266,36 +266,28 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             try:
                 observations_data = []
 
-                # 1. Process Examinations
+                # 1. Process Examinations via the canonical service (E.2).
+                # Previously the bridge inlined ~80 LOC of dedup + direct
+                # ORM construction here, including a stale category field
+                # name that doesn't exist on the live model (the column
+                # was renamed when categories moved into the unified
+                # taxonomy) — so the bridge silently dropped the category
+                # on every exam it created. Routing through
+                # ``examination_service.create_examination`` fixes that
+                # and gets dedup + category resolution + audit provenance
+                # for free. The integration actor (workstream D) gives
+                # the service a TokenData to write under.
                 if sync_payload.examinations:
+                    actor = await resolve_integration_actor(db, integration)
                     for client_exam in sync_payload.examinations:
-                        # Deduplication check
-                        if client_exam.id:
-                            stmt = select(ExaminationModel).where(
-                                ExaminationModel.tenant_id == integration.tenant_id,
-                                ExaminationModel.patient_id == integration.patient_id,
-                                ExaminationModel.external_id == client_exam.id,
-                                ExaminationModel.source_integration_id == integration.id
-                            )
-                            existing_exam = (await db.execute(stmt)).scalar_one_or_none()
-                            if existing_exam:
-                                # Skip existing examination to ensure idempotency for now
-                                continue
-
-                        exam_id = uuid.uuid4()
-                        exam_date = None
-                        if client_exam.date:
-                            try:
-                                exam_date = datetime.datetime.fromisoformat(client_exam.date.replace('Z', '+00:00')).date()
-                            except ValueError:
-                                pass
-                        
+                        # Org resolution stays provider-side — the service
+                        # handles patient / category / dedup / doctors, not
+                        # organization management.
                         org_id = None
                         if client_exam.lab_name:
-                            # Fuzzy matching or exact match. For simplicity, match exactly or create.
                             org_stmt = select(OrganizationModel).where(
                                 OrganizationModel.tenant_id == integration.tenant_id,
-                                OrganizationModel.name == client_exam.lab_name
+                                OrganizationModel.name == client_exam.lab_name,
                             )
                             org = (await db.execute(org_stmt)).scalar_one_or_none()
                             if not org:
@@ -307,51 +299,51 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                                 await db.flush()
                             org_id = org.id
 
-                        cat_id = None
-                        if client_exam.category:
-                            cat_stmt = select(ExaminationCategory).where(
-                                ExaminationCategory.name == client_exam.category
-                            )
-                            cat = (await db.execute(cat_stmt)).scalar_one_or_none()
-                            if not cat:
-                                import re
-                                import uuid
-                                base_slug = re.sub(r'[^a-z0-9]+', '-', client_exam.category.lower()).strip('-')
-                                slug = f"{base_slug}-{str(uuid.uuid4())[:8]}"
-                                cat = ExaminationCategory(
-                                    tenant_id=integration.tenant_id,
-                                    name=client_exam.category,
-                                    slug=slug,
-                                    color="#6366f1"
-                                )
-                                db.add(cat)
-                                await db.flush()
-                            cat_id = cat.id
+                        # Parse the upstream date string.
+                        exam_date = None
+                        if client_exam.date:
+                            try:
+                                exam_date = datetime.datetime.fromisoformat(
+                                    client_exam.date.replace("Z", "+00:00")
+                                ).date()
+                            except ValueError:
+                                pass
 
-                        exam = ExaminationModel(
-                            id=exam_id,
-                            tenant_id=integration.tenant_id,
+                        # The service handles category resolution (text →
+                        # concept_id via MedicalProcessingService), dedup on
+                        # (tenant, patient, source_integration_id,
+                        # external_id), patient validation, and audit
+                        # provenance. We just build the payload and pass
+                        # source_integration_id + external_id explicitly.
+                        payload = ExaminationCreate(
                             patient_id=integration.patient_id,
                             examination_date=exam_date,
                             notes=client_exam.notes,
                             patient_notes=client_exam.patient_notes,
-                            category_id=cat_id,
+                            category=client_exam.category,
                             organization_id=org_id,
-                            source_integration_id=integration.id,
-                            external_id=client_exam.id,
                             diagnoses=client_exam.diagnoses or [],
                             impressions=client_exam.impressions,
-                            extraction_status="completed"
+                            # Bridge already has structured records —
+                            # disable the LLM extraction pipeline.
+                            auto_extract_metadata=False,
+                            extraction_status="completed",
                         )
-                        db.add(exam)
-                        
+                        exam = await create_examination(
+                            db,
+                            actor,
+                            payload,
+                            source_integration_id=integration.id,
+                            external_id=client_exam.id,
+                        )
+
                         if client_exam.records:
                             exam_obs = self._parse_records(
-                                client_exam.records, 
-                                builder, 
-                                str(integration.id), 
-                                integration.instance_name, 
-                                examination_id=str(exam_id)
+                                client_exam.records,
+                                builder,
+                                str(integration.id),
+                                integration.instance_name,
+                                examination_id=str(exam.id)
                             )
                             observations_data.extend(exam_obs)
 

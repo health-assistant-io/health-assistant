@@ -39,6 +39,29 @@ logger = logging.getLogger(__name__)
 _SYNC_LOCK_TTL = 600  # seconds — matches the worker's original Redis lock expiry
 
 
+def _opt_in(provider: Any, hook_name: str) -> bool:
+    """Generic capability probe for opt-in provider hooks.
+
+    Returns the boolean result of calling ``provider.<hook_name>()`` if the
+    method exists; ``False`` otherwise. Centralizes the ``getattr`` /
+    callable-check dance so the engine can grow new opt-in hooks
+    (``supports_clinical_events``, future ``supports_examinations``,
+    ``supports_documents`` ...) without each call site re-implementing it.
+    """
+    fn = getattr(provider, hook_name, None)
+    if not callable(fn):
+        return False
+    try:
+        return bool(fn())
+    except Exception:
+        logger.warning(
+            "provider %s.%s raised; treating as not-supported",
+            type(provider).__name__, hook_name,
+            exc_info=True,
+        )
+        return False
+
+
 def _obs_value(obs: Observation) -> Optional[float]:
     """Best-effort numeric extraction for telemetry column mapping."""
     val = getattr(obs, "normalized_value", None)
@@ -385,6 +408,125 @@ async def run_sync(
             telemetry_count = len(telemetry_records)
             fhir_count = len(fhir_records)
 
+        # ---- clinical events (opt-in hook, workstream B.2) ----
+        # Providers that declare ``supports_clinical_events`` can pull
+        # longitudinal events (hospital admissions, chronic conditions,
+        # pregnancies, ...) alongside observations. The engine resolves a
+        # service-context actor from the integration's owning user and
+        # writes each event via ``clinical_event_service.create_event``,
+        # which dedups on (tenant, patient, source_integration_id,
+        # external_id) when the provider sets ``external_id`` on the
+        # payload. Failures are logged and don't abort the sync (mirrors
+        # the push hook's resilience).
+        events_pulled = 0
+        events_written = 0
+        supports_events = _opt_in(provider, "supports_clinical_events")
+        if supports_events:
+            try:
+                events_data = await provider.pull_clinical_events(integration)
+                events_data = events_data or []
+                events_pulled = len(events_data)
+                if events_data:
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.clinical_event_service import create_event
+
+                    actor = await resolve_integration_actor(db, integration)
+                    for ev in events_data:
+                        try:
+                            await create_event(
+                                db,
+                                actor,
+                                ev,
+                                source_integration_id=integration.id,
+                                external_id=getattr(ev, "external_id", None),
+                            )
+                            events_written += 1
+                        except Exception as ev_err:
+                            logger.warning(
+                                "create_event failed for integration %s event "
+                                "%r: %s",
+                                integration.id,
+                                getattr(ev, "external_id", None),
+                                ev_err,
+                            )
+            except Exception as ev_pull_err:
+                logger.warning(
+                    "pull_clinical_events failed for %s: %s",
+                    integration.provider, ev_pull_err,
+                )
+            else:
+                if events_pulled and events_written < events_pulled:
+                    logger.info(
+                        "clinical-events sync: provider %s pulled %d, wrote "
+                        "%d (%d failed create_event)",
+                        integration.provider, events_pulled,
+                        events_written, events_pulled - events_written,
+                    )
+
+        # ---- examinations (opt-in hook, workstream E.3) ----
+        # Same shape as the clinical-events hook above. Providers that
+        # declare ``supports_examinations`` can pull FHIR Encounters (lab
+        # visits, hospital appointments, imaging sessions). The engine
+        # resolves the actor once (re-uses the one from the events step if
+        # that ran) and writes each exam via
+        # ``examination_service.create_examination``, which dedups on
+        # (tenant, patient, source_integration_id, external_id) when the
+        # provider sets ``external_id`` on the payload. The service also
+        # runs the category-text → concept-id resolution and patient
+        # validation; we don't duplicate that here.
+        exams_pulled = 0
+        exams_written = 0
+        supports_exams = _opt_in(provider, "supports_examinations")
+        if supports_exams:
+            try:
+                exams_data = await provider.pull_examinations(integration)
+                exams_data = exams_data or []
+                exams_pulled = len(exams_data)
+                if exams_data:
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.examination_service import (
+                        create_examination,
+                    )
+
+                    actor = await resolve_integration_actor(db, integration)
+                    for exam_payload in exams_data:
+                        try:
+                            await create_examination(
+                                db,
+                                actor,
+                                exam_payload,
+                                source_integration_id=integration.id,
+                                external_id=getattr(
+                                    exam_payload, "external_id", None
+                                ),
+                            )
+                            exams_written += 1
+                        except Exception as exam_err:
+                            logger.warning(
+                                "create_examination failed for integration "
+                                "%s exam %r: %s",
+                                integration.id,
+                                getattr(exam_payload, "external_id", None),
+                                exam_err,
+                            )
+            except Exception as exam_pull_err:
+                logger.warning(
+                    "pull_examinations failed for %s: %s",
+                    integration.provider, exam_pull_err,
+                )
+            else:
+                if exams_pulled and exams_written < exams_pulled:
+                    logger.info(
+                        "examinations sync: provider %s pulled %d, wrote %d "
+                        "(%d failed create_examination)",
+                        integration.provider, exams_pulled,
+                        exams_written, exams_pulled - exams_written,
+                    )
+
         # ---- push ----
         push_result: Optional[Dict[str, Any]] = None
         try:
@@ -409,7 +551,9 @@ async def run_sync(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
             status=sync_status,
-            records_synced=telemetry_count + fhir_count,
+            records_synced=(
+                telemetry_count + fhir_count + events_written + exams_written
+            ),
             started_at=started,
             completed_at=completed,
             error_message=error_msg,

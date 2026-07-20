@@ -252,6 +252,20 @@ class ClinicalEvent(
     coding_system = Column(Enum(CodingSystem), nullable=True)
     code = Column(String(100), nullable=True)
 
+    # Integration provenance / dedup (workstream B.1). When both fields are
+    # set, a partial unique index (``uq_clinical_event_integration_dedup``)
+    # enforces ``(tenant_id, patient_id, source_integration_id, external_id)``
+    # uniqueness so re-pulling the same upstream event across syncs doesn't
+    # create duplicates. UI-created events leave both NULL and bypass the
+    # index. Mirrors ``examinations.source_integration_id`` + ``external_id``.
+    source_integration_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String, nullable=True, index=True)
+
     # Relationships
     patient = relationship("Patient", backref="clinical_events")
     type_entity = relationship("ClinicalEventType", back_populates="events")
@@ -307,6 +321,11 @@ class ClinicalEvent(
             ),
             "coding_system": self.coding_system.value if self.coding_system else None,
             "code": self.code,
+            # Workstream B.1: integration provenance / dedup fields.
+            "source_integration_id": (
+                str(self.source_integration_id) if self.source_integration_id else None
+            ),
+            "external_id": self.external_id,
             "examinations": [
                 {
                     "id": str(link.examination.id),

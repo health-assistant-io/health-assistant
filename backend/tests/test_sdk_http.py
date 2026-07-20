@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError, IntegrationRateLimitError
-from integrations.sdk.http import http_request, paginate_bundle
+from integrations.sdk.http import DEFAULT_MAX_PAGES, _backoff_delay, http_request, paginate_bundle
 
 
 def _client(handler):
@@ -135,3 +135,166 @@ async def test_paginate_bundle_non_bundle_raises_data_error():
     async with _client(lambda r: httpx.Response(200, json={"resourceType": "Patient"})) as http:
         with pytest.raises(IntegrationDataError):
             _ = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")]
+
+
+# ---------------------------------------------------------------------------
+# Full-jitter backoff (this stack)
+# ---------------------------------------------------------------------------
+
+
+def test_backoff_delay_returns_uniform_random_in_expected_range():
+    """``_backoff_delay(attempt, base)`` must return a value in
+    ``[0, base * 2**attempt]`` (full-jitter). Cap at 60s for high attempts."""
+    # Sample many times to verify the bounds empirically.
+    for attempt in range(8):
+        cap = min(1.0 * (2 ** attempt), 60.0)
+        for _ in range(50):
+            delay = _backoff_delay(attempt)
+            assert 0.0 <= delay <= cap, (
+                f"attempt={attempt} produced delay={delay} outside [0, {cap}]"
+            )
+
+
+def test_backoff_delay_caps_at_ceiling():
+    """At high attempt counts the cap kicks in (60s ceiling)."""
+    # 2 ** 7 = 128 → would be the uncapped max; ceiling is 60.
+    for _ in range(20):
+        assert _backoff_delay(7) <= 60.0
+
+
+def test_backoff_delay_base_scales_range():
+    """``base`` scales the range — useful for callers that want a different
+    starting spread (e.g. OAuth token-refresh waits can be tighter)."""
+    delay = _backoff_delay(0, base=0.5)
+    assert 0.0 <= delay <= 0.5
+
+
+@pytest.mark.asyncio
+async def test_http_request_applies_jitter_on_5xx_retry(monkeypatch):
+    """The sleep before a 5xx retry must be a jittered value in
+    ``[0, base * 2**attempt]`` (full-jitter) rather than the previous
+    fixed-exponential ``base * 2**attempt``.
+
+    Lockstep retries (every client retrying on the same tick) are a known
+    cause of thundering-herd load on recovering servers; jitter is the
+    standard fix. Test captures every ``asyncio.sleep`` call and asserts
+    each falls in the expected per-attempt range.
+    """
+    sleeps: list[float] = []
+
+    async def _capture_sleep(d):
+        sleeps.append(d)
+
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _capture_sleep)
+
+    def handler(request):
+        return httpx.Response(503, text="down")
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationDataError):
+            await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=4)
+
+    # max_retries=4 → initial attempt + 3 retries → 3 sleeps at attempts 1, 2, 3.
+    assert len(sleeps) == 3, f"expected 3 retry sleeps, got {sleeps}"
+    for index, delay in enumerate(sleeps, start=1):
+        cap = min(1.0 * (2 ** index), 60.0)
+        assert 0.0 <= delay <= cap, (
+            f"retry #{index} slept {delay}s, expected full-jitter range [0, {cap}]"
+        )
+
+
+@pytest.mark.asyncio
+async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch):
+    """When the server sends ``Retry-After``, it overrides the jittered
+    backoff (the server knows its own load)."""
+    sleeps: list[float] = []
+
+    async def _capture_sleep(d):
+        sleeps.append(d)
+
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _capture_sleep)
+
+    def handler(request):
+        # Server says "wait exactly 7 seconds"; we must honor it verbatim.
+        return httpx.Response(429, headers={"Retry-After": "7"})
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationRateLimitError):
+            await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=3)
+
+    assert sleeps == [7.0, 7.0], (
+        f"Retry-After=7 must override jitter on every retry; got {sleeps}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Default max_pages cap (this stack)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_paginate_bundle_default_max_pages_caps_iteration():
+    """Without an explicit ``max_pages``, pagination must stop at
+    :data:`DEFAULT_MAX_PAGES` (100) — not iterate forever.
+
+    Guards against the prior ``max_pages=None`` default that let an
+    integration forget the argument and walk a multi-million-entry Bundle.
+    """
+    # Each response links to itself, so without the cap this would loop forever.
+    self_linking_url = "https://ehr/Observation?scroll=1"
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json=_bundle([{"id": "x"}], next_url=self_linking_url),
+        )
+
+    async with _client(handler) as http:
+        out = [
+            r
+            async for r in paginate_bundle(
+                http, "https://ehr/Observation", access_token="T"
+            )
+        ]
+    # Capped at DEFAULT_MAX_PAGES pages, one resource per page.
+    assert len(out) == DEFAULT_MAX_PAGES, (
+        f"default max_pages cap not enforced — got {len(out)} resources, "
+        f"expected exactly DEFAULT_MAX_PAGES={DEFAULT_MAX_PAGES}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_paginate_bundle_max_pages_none_opt_out_of_cap():
+    """``max_pages=None`` must still mean truly unbounded (explicit opt-out).
+
+    Without this escape hatch, a caller that genuinely needs to walk a huge
+    Bundle would have no way to do it. The default cap is a safety net, not
+    a hard limit.
+    """
+    # Build a finite 5-page chain so the test terminates without the cap.
+    def handler(request):
+        url = str(request.url)
+        page_num = int(url.rsplit("page=", 1)[-1]) if "page=" in url else 1
+        if page_num >= 5:
+            return httpx.Response(200, json=_bundle([{"id": f"p{page_num}"}]))
+        return httpx.Response(
+            200,
+            json=_bundle(
+                [{"id": f"p{page_num}"}],
+                next_url=f"https://ehr/Observation?page={page_num + 1}",
+            ),
+        )
+
+    async with _client(handler) as http:
+        out = [
+            r
+            async for r in paginate_bundle(
+                http,
+                "https://ehr/Observation?page=1",
+                access_token="T",
+                max_pages=None,
+            )
+        ]
+    assert [r["id"] for r in out] == ["p1", "p2", "p3", "p4", "p5"], (
+        f"max_pages=None should walk all 5 pages; got {out}"
+    )

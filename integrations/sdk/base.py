@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import logging
 import httpx
-import asyncio
 import json
 
 from integrations.base import (
@@ -12,7 +11,6 @@ from integrations.base import (
 from app.schemas.fhir.observation import ObservationCreate
 from app.models.user_integration import UserIntegration
 from .observation_builder import ObservationBuilder
-from .exceptions import IntegrationAuthError, IntegrationRateLimitError
 from .secrets import encrypt_fields, decrypt_fields, mask_fields
 
 logger = logging.getLogger(__name__)
@@ -185,6 +183,86 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
             f"Notification action '{action_id}' not implemented by {self.domain}."
         )
 
+    # --- Clinical Events (opt-in) -----------------------------------------
+    # Workstream B.2 of the integrations follow-ups pass. A provider that
+    # can pull longitudinal clinical events (hospital admissions, chronic
+    # conditions, pregnancies, etc.) from an upstream system overrides
+    # ``supports_clinical_events`` to return True and implements
+    # ``pull_clinical_events``. The platform's ``run_sync`` pipeline calls
+    # the hook after ``apply_telemetry_split``, resolves a service-context
+    # actor via ``integration_actor.resolve_integration_actor``, and writes
+    # each event via ``clinical_event_service.create_event`` (which dedups
+    # on ``(tenant, patient, source_integration_id, external_id)`` when the
+    # provider sets ``external_id`` on the payload).
+
+    def supports_clinical_events(self) -> bool:
+        """Return True if this provider pulls clinical events from upstream.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_clinical_events`.
+        """
+        return False
+
+    async def pull_clinical_events(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull clinical events for this integration instance.
+
+        Returns a list of ``ClinicalEventCreate`` (re-exported from
+        :mod:`integrations.sdk`). Set ``external_id`` on each payload to
+        the upstream system's stable encounter/episode id so the engine
+        dedups across syncs — without it, every sync creates fresh
+        duplicates. ``source_integration_id`` is supplied automatically by
+        the engine (the integration's own id); providers can't fake it.
+
+        Default: ``[]`` (no events). Override on providers that opt in via
+        :meth:`supports_clinical_events`. Swallow per-instance errors and
+        return ``[]`` on failure so one bad integration doesn't break the
+        whole sync turn.
+        """
+        return []
+
+    # --- Examinations (opt-in) -------------------------------------------
+    # Workstream E.3 of the integrations follow-ups pass. Mirrors the
+    # clinical-events opt-in shape (workstream B.2) — providers that can
+    # pull exams (lab encounters, hospital visits, imaging appointments)
+    # from an upstream system override ``supports_examinations`` to return
+    # True and implement ``pull_examinations``. The platform's ``run_sync``
+    # pipeline calls the hook after the clinical-events step, resolves a
+    # service-context actor via ``integration_actor.resolve_integration_actor``,
+    # and writes each exam via ``examination_service.create_examination``
+    # (workstream E.1 + E.2 give us the dedup-aware write path + the
+    # bridge-provider migration). Dedup contract: provider sets
+    # ``external_id`` on the payload to the upstream's stable encounter id;
+    # the engine stamps ``source_integration_id`` automatically.
+
+    def supports_examinations(self) -> bool:
+        """Return True if this provider pulls examinations from upstream.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_examinations`.
+        """
+        return False
+
+    async def pull_examinations(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull examinations (FHIR Encounters) for this integration instance.
+
+        Returns a list of ``ExaminationCreate`` (re-exported from
+        :mod:`integrations.sdk`). Set ``external_id`` on each payload to
+        the upstream system's stable encounter/visit id so the engine
+        dedups across syncs — without it, every sync creates fresh
+        duplicates. ``source_integration_id`` is supplied automatically by
+        the engine (the integration's own id); providers can't fake it.
+
+        Default: ``[]`` (no exams). Override on providers that opt in via
+        :meth:`supports_examinations`. Swallow per-instance errors and
+        return ``[]`` on failure so one bad integration doesn't break the
+        whole sync turn.
+        """
+        return []
+
     # --- Debugging ---
     
     async def log_debug_payload(self, integration: UserIntegration, title: str, payload: Any, level: str = "info"):
@@ -280,62 +358,13 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """
         raise NotImplementedError(f"{self.domain} does not implement OAuth.")
 
-    async def fetch_json(
-        self, 
-        integration: UserIntegration,
-        url: str, 
-        headers: Optional[Dict[str, str]] = None, 
-        params: Optional[Dict[str, Any]] = None,
-        max_retries: int = 3
-    ) -> Any:
-        """Robust HTTP GET with exponential backoff, rate limit handling, and auto-debugging."""
-        attempt = 0
-        backoff_factor = 2
-
-        while attempt < max_retries:
-            try:
-                response = await self._http_client.get(url, headers=headers, params=params)
-                
-                # Handle rate limits specifically
-                if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", backoff_factor ** attempt))
-                    self.logger.warning(f"Rate limited by {url}. Waiting {retry_after}s.")
-                    await asyncio.sleep(retry_after)
-                    attempt += 1
-                    continue
-                    
-                # Handle Auth Errors
-                if response.status_code in (401, 403):
-                    raise IntegrationAuthError(f"Authentication failed for {url}. Token may be expired.")
-                    
-                response.raise_for_status()
-                data = response.json()
-                
-                # Zero-config auto-debugging!
-                await self.log_debug_payload(integration, f"HTTP GET {url}", data)
-                
-                return data
-
-                
-            except httpx.HTTPStatusError as e:
-                # Don't retry on client errors (4xx) except 429 and Auth errors which are handled above
-                if 400 <= e.response.status_code < 500:
-                    self.logger.error(f"Client error {e.response.status_code} fetching {url}: {e.response.text}")
-                    raise
-                
-                # Retry on server errors (5xx)
-                self.logger.warning(f"Server error fetching {url} (Attempt {attempt+1}/{max_retries}): {e}")
-                
-            except (httpx.RequestError, httpx.TimeoutException) as e:
-                self.logger.warning(f"Network error fetching {url} (Attempt {attempt+1}/{max_retries}): {e}")
-            
-            attempt += 1
-            if attempt < max_retries:
-                sleep_time = backoff_factor ** attempt
-                await asyncio.sleep(sleep_time)
-
-        self.logger.error(f"Failed to fetch data from {url} after {max_retries} attempts.")
-        raise IntegrationRateLimitError(f"Failed to fetch from {url} after multiple retries.")
+    # NOTE: ``fetch_json`` (a pre-``http_request`` GET helper with its own
+    # inline retry loop) lived here. It was removed in workstream A.3 of the
+    # follow-ups pass — every retry/backoff/jitter concern now lives in
+    # ``integrations.sdk.http._retry_request``, and providers that need a
+    # robust GET call ``await http_request(self._http_client, "GET", url,
+    # ...)`` instead. Zero provider overrides or call sites existed at
+    # removal time (verified via grep across integrations/ and backend/).
 
 class BaseConfigFlow(CoreBaseConfigFlow, ABC):
     """Enhanced base class for integration configuration flows.

@@ -49,83 +49,23 @@ async def create_examination(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Validate patient exists before attempting to create examination
-    from app.models.fhir.patient import Patient
+    """Create an examination, or return the existing one if a duplicate is
+    detected (heuristic UI dedup or integration-key dedup).
 
-    if examination_in.patient_id:
-        patient_check = await db.execute(
-            select(Patient).where(Patient.id == examination_in.patient_id)
-        )
-        patient = patient_check.scalar_one_or_none()
-        if not patient:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Patient with ID {examination_in.patient_id} not found. Please create the patient first or use a valid patient ID.",
-            )
+    Write logic lives in :func:`examination_service.create_examination`
+    (workstream E.1) so the same path serves interactive callers, the
+    future ``supports_examinations`` SDK hook (E.3), and the bridge
+    provider (E.2 will migrate the bridge off its stale direct-ORM write).
+    The endpoint is a thin HTTP adapter that maps the service's
+    :class:`~app.core.errors.NotFoundError` to a 404.
+    """
+    from app.core.errors import NotFoundError
+    from app.services.examination_service import create_examination as _create
 
-    # Resolve category if provided
-    category_concept_id = examination_in.category_concept_id
-    if not category_concept_id and examination_in.category:
-        processing_service = MedicalProcessingService(db)
-        category_entity = await processing_service.resolve_category(
-            examination_in.category, current_user.tenant_id
-        )
-        category_concept_id = category_entity.id
-
-    # Check for potential duplicates (same patient, date, and category/notes)
-    existing_query = select(ExaminationModel).where(
-        ExaminationModel.tenant_id == current_user.tenant_id,
-        ExaminationModel.patient_id == examination_in.patient_id,
-        ExaminationModel.examination_date == examination_in.examination_date,
-        ExaminationModel.category_concept_id == category_concept_id,
-        ExaminationModel.notes == examination_in.notes,
-    )
-    existing_result = await db.execute(existing_query)
-    existing_exam = existing_result.scalars().first()
-
-    if existing_exam and not examination_in.auto_extract_metadata:
-        # If it already exists, just return the existing one instead of creating a duplicate
-        # We skip this for auto_extract_metadata because multiple placeholder exams might be created in bulk
-        logger.info(
-            f"Duplicate examination detected for patient {examination_in.patient_id}, returning existing record."
-        )
-        return existing_exam
-
-    examination = ExaminationModel(
-        patient_id=examination_in.patient_id,
-        examination_date=examination_in.examination_date,
-        notes=examination_in.notes,
-        patient_notes=examination_in.patient_notes,
-        category_concept_id=category_concept_id,
-        organization_id=examination_in.organization_id,
-        auto_extract_metadata=examination_in.auto_extract_metadata,
-        tenant_id=current_user.tenant_id,
-        created_by=current_user.user_id,
-    )
-
-    if examination_in.doctor_ids:
-        result = await db.execute(
-            select(DoctorModel).where(
-                DoctorModel.id.in_(examination_in.doctor_ids),
-                DoctorModel.tenant_id == current_user.tenant_id,
-            )
-        )
-        examination.doctors = list(result.scalars().all())
-
-    db.add(examination)
-    await db.commit()
-
-    # Reload with relationships
-    result = await db.execute(
-        select(ExaminationModel)
-        .where(ExaminationModel.id == examination.id)
-        .options(
-            selectinload(ExaminationModel.doctors),
-            selectinload(ExaminationModel.organization),
-            selectinload(ExaminationModel.category_concept),
-        )
-    )
-    return result.scalar_one()
+    try:
+        return await _create(db, current_user, examination_in)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 @router.put("/{examination_id}", response_model=ExaminationResponse)

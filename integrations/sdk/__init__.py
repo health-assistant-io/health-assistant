@@ -15,6 +15,14 @@ from .auth import (
 )
 from .http import http_request, paginate_bundle
 from .fhir import fhir_search, fhir_observation_to_create, fhir_create, fhir_conditional_update, parse_operation_outcome
+# ``ClinicalEventCreate`` is re-exported so integration providers can build
+# event payloads in ``pull_clinical_events`` without reaching into
+# ``app.schemas``. The platform engine resolves the ``source_integration_id``
+# (workstream B.2) — providers only set ``external_id`` on the payload.
+from app.schemas.clinical_event import ClinicalEventCreate
+# ``ExaminationCreate`` similarly re-exported for ``pull_examinations``
+# (workstream E.3).
+from app.schemas.examination import ExaminationCreate
 from .display import (
     kv_block,
     list_block,
@@ -62,6 +70,8 @@ __all__ = [
     "fhir_create",
     "fhir_conditional_update",
     "parse_operation_outcome",
+    "ClinicalEventCreate",
+    "ExaminationCreate",
     "kv_block",
     "list_block",
     "table_block",

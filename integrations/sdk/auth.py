@@ -38,7 +38,8 @@ from urllib.parse import urlencode
 import httpx
 
 from app.models.user_integration import UserIntegration
-from .exceptions import IntegrationAuthError, IntegrationDataError, IntegrationRateLimitError
+from .exceptions import IntegrationAuthError, IntegrationDataError
+from .http import _retry_request
 from .secrets import SecretCipher
 
 logger = logging.getLogger(__name__)
@@ -82,25 +83,36 @@ async def _request_json(
     headers: Optional[Dict[str, str]] = None,
     data: Optional[Dict[str, Any]] = None,
     json_body: Optional[Dict[str, Any]] = None,
+    max_retries: int = 3,
 ) -> Dict[str, Any]:
-    try:
-        response = await http.request(method, url, headers=headers, data=data, json=json_body)
-    except httpx.RequestError as e:
-        raise IntegrationDataError(f"Network error contacting {url}: {e}") from e
+    """OAuth / DCR / token-exchange HTTP helper.
 
-    if response.status_code in (401, 403):
-        raise IntegrationAuthError(f"Auth endpoint {url} returned {response.status_code}.")
-    if response.status_code == 429:
-        raise IntegrationRateLimitError(f"Rate limited by {url}.")
+    Delegates retry / backoff / jitter / status-mapping to
+    :func:`integrations.sdk.http._retry_request` — the same retry contract
+    every other SDK HTTP call uses (no more single-shot OAuth requests that
+    fail loudly on a transient 429/5xx). 401/403 →
+    :class:`IntegrationAuthError`, 429-after-retries →
+    :class:`IntegrationRateLimitError`, other 4xx / non-JSON →
+    :class:`IntegrationDataError`.
+    """
+    response = await _retry_request(
+        lambda: http.request(method, url, headers=headers, data=data, json=json_body),
+        url=url,
+        method=method,
+        max_retries=max_retries,
+    )
     if response.status_code >= 400:
+        # 401/403 already raised by _retry_request; remaining 4xx are
+        # non-retryable OAuth / DCR errors.
         raise IntegrationDataError(
             f"{method} {url} -> {response.status_code}: {response.text[:300]}"
         )
-
     try:
         return response.json()
     except ValueError as e:
-        raise IntegrationDataError(f"Non-JSON response from {url}: {response.text[:300]}") from e
+        raise IntegrationDataError(
+            f"Non-JSON response from {url}: {response.text[:300]}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------

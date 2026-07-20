@@ -105,3 +105,133 @@ def test_core_base_does_not_import_warnings_module():
     )
     # Sanity: the module is still importable
     assert importlib.reload(core_base) is core_base
+
+
+# ---------------------------------------------------------------------------
+# SDK base: vestigial fetch_json removed (workstream A.3)
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_base_no_longer_declares_fetch_json():
+    """``BaseHealthProvider.fetch_json`` was a pre-``http_request`` GET helper
+    that inlined its own retry loop. It had zero provider overrides or call
+    sites at removal time, and every retry/backoff/jitter concern now lives
+    in ``integrations.sdk.http._retry_request``. Providers that need a
+    robust GET call ``await http_request(self._http_client, "GET", url,
+    ...)`` instead. Source-level guard against a revert.
+    """
+    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+
+    assert not hasattr(SDKBaseProvider, "fetch_json"), (
+        "SDK BaseHealthProvider.fetch_json should be removed — the shared "
+        "_retry_request helper (integrations.sdk.http) replaced it. "
+        "Re-adding it would re-introduce a divergent retry implementation."
+    )
+
+
+def test_sdk_base_no_longer_imports_asyncio_or_legacy_exceptions():
+    """After ``fetch_json`` removal, ``asyncio`` and the auth/rate-limit
+    exception imports it used should be gone from ``sdk/base.py`` — guards
+    against a partial revert that leaves dangling imports (which ruff would
+    also catch, but this test makes the intent explicit)."""
+    import inspect
+
+    from integrations.sdk import base as sdk_base
+
+    src = inspect.getsource(sdk_base)
+    assert "import asyncio" not in src, (
+        "sdk/base.py should not import asyncio — fetch_json (the only user) "
+        "has been removed"
+    )
+    assert "IntegrationAuthError" not in src, (
+        "sdk/base.py should not reference IntegrationAuthError — fetch_json "
+        "(the only user) has been removed; the shared _retry_request helper "
+        "raises it on 401/403"
+    )
+    assert "IntegrationRateLimitError" not in src, (
+        "sdk/base.py should not reference IntegrationRateLimitError — "
+        "fetch_json (the only user) has been removed; the shared "
+        "_retry_request helper raises it on 429-after-retries"
+    )
+
+
+# ---------------------------------------------------------------------------
+# SDK base: clinical-events opt-in hook (workstream B.2)
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_base_declares_clinical_events_opt_in_hook_with_safe_defaults():
+    """``BaseHealthProvider`` must declare ``supports_clinical_events`` and
+    ``pull_clinical_events`` with safe defaults so existing providers that
+    don't opt in are unaffected. Source-level guard for the contract."""
+    import inspect
+    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+
+    # Defaults — False / [] so the engine's ``_opt_in`` probe skips
+    # providers that haven't opted in.
+    assert hasattr(SDKBaseProvider, "supports_clinical_events")
+    assert hasattr(SDKBaseProvider, "pull_clinical_events")
+
+    # Pull the default method off the class (unbound) and confirm the body
+    # shape guards against a future revert that flips the default.
+    supports_src = inspect.getsource(SDKBaseProvider.supports_clinical_events)
+    assert "return False" in supports_src, (
+        "supports_clinical_events must default to False — flipping it to "
+        "True would opt every existing integration into the clinical-events "
+        "pull path"
+    )
+
+    pull_src = inspect.getsource(SDKBaseProvider.pull_clinical_events)
+    assert "return []" in pull_src, (
+        "pull_clinical_events must default to [] — providers that haven't "
+        "implemented it must return an empty list, not raise"
+    )
+
+
+def test_clinical_event_create_is_reexported_from_sdk():
+    """``from integrations.sdk import ClinicalEventCreate`` must work — the
+    SDK re-exports the schema so providers can build event payloads in
+    ``pull_clinical_events`` without reaching into ``app.schemas``."""
+    from integrations.sdk import ClinicalEventCreate
+    from app.schemas.clinical_event import ClinicalEventCreate as SchemaSource
+
+    assert ClinicalEventCreate is SchemaSource, (
+        "SDK re-export must alias the schema, not duplicate it"
+    )
+
+
+def test_sdk_base_declares_examinations_opt_in_hook_with_safe_defaults():
+    """``BaseHealthProvider`` must declare ``supports_examinations`` and
+    ``pull_examinations`` with safe defaults (False / []) so existing
+    providers that don't opt in are unaffected. Mirrors the clinical-events
+    contract test above."""
+    import inspect
+    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+
+    assert hasattr(SDKBaseProvider, "supports_examinations")
+    assert hasattr(SDKBaseProvider, "pull_examinations")
+
+    supports_src = inspect.getsource(SDKBaseProvider.supports_examinations)
+    assert "return False" in supports_src, (
+        "supports_examinations must default to False — flipping it to True "
+        "would opt every existing integration into the examinations pull "
+        "path"
+    )
+
+    pull_src = inspect.getsource(SDKBaseProvider.pull_examinations)
+    assert "return []" in pull_src, (
+        "pull_examinations must default to [] — providers that haven't "
+        "implemented it must return an empty list, not raise"
+    )
+
+
+def test_examination_create_is_reexported_from_sdk():
+    """``from integrations.sdk import ExaminationCreate`` must work — the
+    SDK re-exports the schema so providers can build exam payloads in
+    ``pull_examinations`` without reaching into ``app.schemas``."""
+    from integrations.sdk import ExaminationCreate
+    from app.schemas.examination import ExaminationCreate as SchemaSource
+
+    assert ExaminationCreate is SchemaSource, (
+        "SDK re-export must alias the schema, not duplicate it"
+    )

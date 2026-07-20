@@ -141,10 +141,12 @@ For REST APIs that require periodic polling (e.g., Cloud Health API), implement 
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
         last_sync = self.get_sync_cursor(integration, "last_date", default="2024-01-01")
         
-        # Use the built-in HTTP client
-        data = await self.fetch_json(
-            integration, 
-            f"https://api.example.com/data?since={last_sync}"
+        # Use the shared SDK HTTP helper (token-aware, full-jitter retry/backoff).
+        from integrations.sdk import http_request
+        data = await http_request(
+            self._http_client,
+            "GET",
+            f"https://api.example.com/data?since={last_sync}",
         )
         
         observations = []
@@ -213,10 +215,18 @@ Implement the `handle_api_request` method:
 ## 3. Advanced SDK Features
 
 ### 3.1 HTTP Client & Auto-Retries
-`BaseHealthProvider` natively provides `self.fetch_json()` which automatically handles:
+Providers share a pooled `httpx.AsyncClient` (`self._http_client`). For robust HTTP, call the SDK's shared helpers from `integrations.sdk.http` (`http_request`) or `integrations.sdk.fhir` (`fhir_search`, `fhir_create`, `fhir_conditional_update`). All of them delegate to a single `_retry_request` primitive that handles:
 - **Connection pooling** to preserve sockets.
-- **Exponential backoff** for 5xx server errors and network timeouts.
-- **Rate Limit awareness**, explicitly pausing if a `429 Too Many Requests` is hit (respecting `Retry-After` headers).
+- **Full-jitter exponential backoff** (AWS-recommended) for 5xx server errors and network timeouts — every client picks an independent random wait, so retry waves spread out instead of stampeding the server on each tick.
+- **Rate Limit awareness**, explicitly pausing if a `429 Too Many Requests` is hit (respecting `Retry-After` headers when present, otherwise full-jitter backoff).
+
+```python
+from integrations.sdk import http_request
+
+data = await http_request(
+    self._http_client, "GET", url, access_token=token,
+)
+```
 
 ### 3.2 Cursor / State Management (Delta Syncs)
 Save your position (cursor) between syncs to avoid pulling duplicate data.
@@ -230,7 +240,7 @@ self.set_sync_cursor(integration, "last_timestamp", new_timestamp)
 
 ### 3.3 Managed Exceptions & UI Feedback
 Throw specific exceptions from `integrations.sdk.exceptions` to instruct the core engine.
-- `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by `fetch_json()` on 401/403 responses.
+- `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by the SDK HTTP helpers (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, `_request_json`) on 401/403 responses.
 - `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted.
 
 ### 3.4 Payload Debugging
@@ -635,6 +645,80 @@ The dev dummy provider overrides `supports_notifications() → True`, declares *
 
 ---
 
+### 3.10 Clinical Events & Examinations (Opt-in Write Hooks)
+
+Providers that sync longitudinal data — hospital admissions, chronic conditions, pregnancies (clinical events) or lab encounters, imaging appointments, hospital visits (examinations) — can pull those records alongside observations via two opt-in hooks. The platform engine resolves a service-context actor from the integration's owning user, validates and writes each record through the canonical service (`clinical_event_service.create_event` / `examination_service.create_examination`), and dedups across syncs when the provider sets the upstream stable id.
+
+The pattern mirrors `supports_tools` (§3.6) and `supports_notifications` (§3.9): safe defaults, no per-domain code anywhere in the engine, providers opt in by overriding.
+
+#### The two hooks
+
+```python
+class MyProvider(BaseHealthProvider):
+    domain = "my_ehr"
+
+    # --- Clinical events (FHIR Condition / EpisodeOfCare) ---
+    def supports_clinical_events(self) -> bool:
+        return True
+
+    async def pull_clinical_events(
+        self, integration: UserIntegration
+    ) -> List[ClinicalEventCreate]:
+        # Fetch from upstream, build payloads, return.
+        # Set external_id on each payload to the upstream's stable
+        # encounter/episode id so the engine dedups across syncs.
+        ...
+
+    # --- Examinations (FHIR Encounter) ---
+    def supports_examinations(self) -> bool:
+        return True
+
+    async def pull_examinations(
+        self, integration: UserIntegration
+    ) -> List[ExaminationCreate]:
+        # Set external_id on each payload to the upstream's stable
+        # visit id so the engine dedups across syncs.
+        ...
+```
+
+Both `ClinicalEventCreate` and `ExaminationCreate` are re-exported from `integrations.sdk` — build payloads without reaching into `app.schemas`.
+
+#### Dedup contract (set `external_id`)
+
+Without a dedup key, every sync creates fresh duplicates. With one, the engine looks up an existing record by `(tenant_id, patient_id, source_integration_id, external_id)` and returns it as-is if found — no duplicate insert, no notification re-fire. A **partial unique index** at the DB layer catches the race window between the SELECT and INSERT so concurrent sync attempts can't double-insert.
+
+- `external_id` — set by the provider on the payload. Use the upstream system's stable id (the hospital's encounter id, the wearable's session id, ...). Optional but strongly recommended.
+- `source_integration_id` — **not** on the payload schema. The engine always supplies it (= the integration's own id) so providers can't fake their provenance.
+
+For examinations, the service also runs a **heuristic UI dedup** (date + category + notes) when called by an interactive user — but that path is bypassed entirely for integration-sourced writes (any caller that sets `source_integration_id`), so an integration-sourced exam can't accidentally match an unrelated UI row.
+
+#### What the engine does for you
+
+For each pulled record the engine:
+1. Resolves a service-context `TokenData` from the integration's owning user via `resolve_integration_actor` (`app/services/integration_actor.py`). The integration inherits its owner's tenant, role, and user_id — same RBAC, same audit provenance, same tenant scoping as an interactive UI request. No service-account-style "integration user" is created.
+2. Calls the canonical write service (`create_event` / `create_examination`), which performs patient validation, category-text → concept resolution, the dedup check above, ORM construction with `source_integration_id` + `external_id` populated, doctor/category linking, audit columns stamped, and commit.
+3. Logs per-record failures but does not abort the sync — mirrors the push hook's resilience.
+
+Per-record failures are logged but don't break the sync turn; `records_synced` in the resulting `IntegrationSyncLog` includes both observations and pulled events/exams.
+
+#### When to use which
+
+| Use case | Hook |
+|---|---|
+| Lab integration grouping biomarker results under a single lab panel | `supports_examinations` |
+| Hospital EHR syncing admission / discharge / visit records | `supports_examinations` |
+| Chronic-condition tracking (ongoing pregnancy, long-term pain) | `supports_clinical_events` |
+| Hospital EHR syncing problem list (Conditions) | `supports_clinical_events` |
+| Wearable pulling heart-rate / steps telemetry | neither — return `ObservationCreate` from `pull_data`, the engine's telemetry/FHIR split handles it |
+
+The two hooks are independent: a provider can implement one, both, or neither. Each fires only when its `supports_*` probe returns `True`.
+
+#### Reference implementation
+
+The bridge provider (`integrations/health_assistant_bridge/provider.py`) is the reference for examination creation via the canonical service — its `_process_and_save_sync_data` builds `ExaminationCreate` payloads from upstream client records and calls `examination_service.create_examination` directly from its two-way API handler. The same call shape applies inside `run_sync` when a provider opts into `supports_examinations`.
+
+---
+
 ## 4. Building FHIR Observations
 Use the `ObservationBuilder` to map raw third-party data into FHIR compliant schemas easily.
 
@@ -672,6 +756,22 @@ obs_custom = (
     .build()
 )
 ```
+
+### Categorical / string values (`set_value_string`)
+
+Some observations don't have a numeric value — lab PCR results (`"POSITIVE"` / `"NEGATIVE"`), sleep stages (`"REM"` / `"DEEP"`), subjective pain scores, questionnaire answers. FHIR R4 §3.1.1 allows exactly one `value[x]` per observation, so `set_value` (numeric → `valueQuantity`) and `set_value_string` (categorical → `valueString`) are **mutually exclusive**: the last setter wins, the other slot is cleared.
+
+```python
+obs_categorical = (
+    builder
+    .set_biomarker("94500-6", "SARS-CoV-2 PCR", coding_system=CodingSystem.LOINC)
+    .set_value_string("POSITIVE")    # emits valueString, omits valueQuantity
+    .set_effective_date(timestamp_obj)
+    .build()
+)
+```
+
+The builder leaves `raw_value` / `normalized_value` / `relative_score` unset for categorical observations — they're numeric concepts and downstream analytics must not try to plot a string on a numeric axis.
 
 ---
 

@@ -453,10 +453,17 @@ The clinical-visit container. Holds documents, observations, medications, doctor
 category concept, organization, and event links. Patient-access is enforced via
 `check_examination_access` (chains through `check_patient_access`).
 
+The `POST /examinations` write path delegates to `examination_service.create_examination`
+— the canonical write chokepoint also used by integrations that opt into
+`supports_examinations` (see [INTEGRATIONS_SDK.md §3.10](INTEGRATIONS_SDK.md#310-clinical-events--examinations-opt-in-write-hooks)).
+Responses include two optional integration-provenance fields
+(`source_integration_id`, `external_id`) populated only on rows written by an
+integration sync.
+
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/examinations` | any | `patient_id?`, `limit=50`, `offset=0` | `List[ExaminationSummaryResponse]` | `USER` without explicit `patient_id` is restricted to their own patients. |
-| `POST` | `/examinations` | `get_current_user` | `ExaminationCreate` | `ExaminationResponse` | Dedupes on `(patient, date, category, notes)` unless `auto_extract_metadata` is set. |
+| `POST` | `/examinations` | `get_current_user` | `ExaminationCreate` | `ExaminationResponse` | Dedupes on `(patient, date, category, notes)` for UI callers unless `auto_extract_metadata` is set; integration callers dedup on `(tenant, patient, source_integration_id, external_id)` when both provenance fields are supplied. |
 | `GET` | `/examinations/{examination_id}` | `check_examination_access` | — | `ExaminationResponse` | Detail with relationships (doctors, documents, medications, observations, category, organization, event_links). |
 | `PUT` | `/examinations/{examination_id}` | `check_examination_access` | `ExaminationUpdate` | `ExaminationResponse` | Date change cascades to linked Observations (`effective_datetime`) and Medications (`start_date`). |
 | `DELETE` | `/examinations/{examination_id}` | `check_examination_access` | — | `{message}` | Delete + all related clinical data + document files. |
@@ -503,10 +510,17 @@ category concept, organization, and event links. Patient-access is enforced via
 
 **Event instances** (the journey):
 
+The `POST /clinical-events` write path delegates to `clinical_event_service.create_event`
+— the canonical write chokepoint also used by integrations that opt into
+`supports_clinical_events` (see [INTEGRATIONS_SDK.md §3.10](INTEGRATIONS_SDK.md#310-clinical-events--examinations-opt-in-write-hooks)).
+Responses include two optional integration-provenance fields
+(`source_integration_id`, `external_id`) populated only on rows written by an
+integration sync.
+
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/clinical-events` | any | `patient_id?`, `examination_id?`, `status?`, `active_on?`, `onset_on?`, `date_range?`, `limit?`, `offset?` | `List[ClinicalEventResponse]` | Tenant-scoped, paginated, soft-deletes excluded. |
-| `POST` | `/clinical-events` | `get_current_user` | `ClinicalEventCreate` | `ClinicalEventResponse` | Create an instance. |
+| `POST` | `/clinical-events` | `get_current_user` | `ClinicalEventCreate` | `ClinicalEventResponse` | Create an instance. UI callers get create-always behavior; integration callers dedup on `(tenant, patient, source_integration_id, external_id)` when both provenance fields are supplied. |
 | `GET` | `/clinical-events/{event_id}` | tenant-scoped | — | `ClinicalEventResponse` |  |
 | `PUT` | `/clinical-events/{event_id}` | `get_current_user` | `ClinicalEventUpdate` | `ClinicalEventResponse` |  |
 | `DELETE` | `/clinical-events/{event_id}` | `get_current_user` | — | `{message}` | Soft-delete (tombstone) + deletion notification. |

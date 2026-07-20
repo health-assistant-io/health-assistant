@@ -190,6 +190,14 @@ class ClinicalEventBase(BaseModel):
 class ClinicalEventCreate(ClinicalEventBase):
     examinations: Optional[List[EventExaminationLinkBase]] = Field(default_factory=list)
     observations: Optional[List[EventObservationLinkBase]] = Field(default_factory=list)
+    # Integration dedup key (workstream B.2). The POST /clinical-events
+    # endpoint ignores this on the wire — it's set by integration providers
+    # on the objects they return from ``pull_clinical_events``, and the
+    # integration-sync engine reads it off the payload when calling
+    # ``clinical_event_service.create_event(..., source_integration_id=...)``.
+    # ``source_integration_id`` is *not* on the schema — the engine always
+    # supplies it (= the integration's own id), providers can't fake it.
+    external_id: Optional[str] = None
 
 
 class ClinicalEventUpdate(BaseModel):

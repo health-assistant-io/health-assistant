@@ -210,3 +210,62 @@ async def test_handle_map_request_internal(mock_provider, provider, integration_
             assert mock_ai_service_instance.get_nlp_extractor.called
             assert mock_nlp_extractor.map_external_metrics.called
             assert result["mappings"][0]["new_biomarker_name"] == "Test Metric"
+
+
+# ---------------------------------------------------------------------------
+# Workstream E.2 (this stack): bridge routes examinations through the
+# canonical service instead of inlining dedup + direct ORM construction.
+# Source-level guards against a revert that re-introduces the stale
+# ``category_id`` field (the live model has ``category_concept_id``).
+# ---------------------------------------------------------------------------
+
+
+def test_bridge_routes_examinations_through_canonical_service():
+    """The bridge's ``_process_and_save_sync_data`` must delegate exam
+    creation to ``examination_service.create_examination`` instead of
+    constructing ``ExaminationModel`` rows directly.
+
+    Before E.2 the bridge inlined ~80 LOC of dedup + ORM construction
+    that had already gone stale: it set ``category_id=`` (a column that
+    no longer exists on the live model — categories moved into the
+    unified taxonomy as ``category_concept_id``), referenced the
+    deleted ``ExaminationCategory`` model, and pre-generated UUIDs
+    instead of using the ``gen_random_uuid()`` server default. Routing
+    through the service fixes all three and gets dedup + audit
+    provenance for free.
+    """
+    import re
+    import inspect
+    from integrations.health_assistant_bridge import provider as bridge_mod
+
+    src = inspect.getsource(bridge_mod.HealthAssistantBridgeProvider._process_and_save_sync_data)
+
+    # Positive: must delegate to the service.
+    assert "create_examination" in src, (
+        "bridge must call examination_service.create_examination for exam "
+        "writes (workstream E.2 migration)"
+    )
+    assert "resolve_integration_actor" in src, (
+        "bridge must resolve a service-context actor via workstream D "
+        "before calling create_examination"
+    )
+
+    # Negative: must not construct ExaminationModel directly, must not
+    # reference the deleted ExaminationCategory model, must not set the
+    # stale category_id field.
+    assert "ExaminationModel(" not in src, (
+        "bridge must not construct ExaminationModel directly — that's the "
+        "service's job after E.2"
+    )
+    assert "ExaminationCategory" not in src, (
+        "bridge must not import ExaminationCategory — the model was deleted "
+        "when categories moved into the unified taxonomy"
+    )
+    # Use a negative lookbehind so ``category_concept_id=`` (the live
+    # field name) doesn't trip the check for the stale ``category_id=``.
+    stale_category_id = re.search(r"(?<!concept_)category_id=", src)
+    assert stale_category_id is None, (
+        "bridge must not set category_id — the live column is "
+        "category_concept_id; the old bridge silently dropped the category "
+        f"on every exam it created (found at offset {stale_category_id.start()})"
+    )

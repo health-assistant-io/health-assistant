@@ -7,7 +7,6 @@ later, by the Stage 3 FHIR facade. Pure FHIR — no SMART/auth coupling:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -17,12 +16,8 @@ import httpx
 
 from app.schemas.fhir.observation import ObservationCreate
 from app.services.fhir_helpers import _as_list, _flatten_interpretation
-from integrations.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationRateLimitError,
-)
-from integrations.sdk.http import paginate_bundle
+from integrations.sdk.exceptions import IntegrationDataError
+from integrations.sdk.http import DEFAULT_MAX_PAGES, _retry_request, paginate_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +29,7 @@ async def fhir_search(
     params: Dict[str, Any],
     *,
     access_token: Optional[str] = None,
-    max_pages: Optional[int] = None,
+    max_pages: Optional[int] = DEFAULT_MAX_PAGES,
 ) -> List[Dict[str, Any]]:
     """FHIR search returning a flat list of resource dicts.
 
@@ -43,6 +38,9 @@ async def fhir_search(
     lifecycle (acquire / refresh-on-401) belongs to the caller (the provider's
     ``_authorized_search`` for SMART; nothing for tokenless). ``params`` apply
     only to the first request; Bundle pagination follows ``link[rel=next]``.
+
+    The default ``max_pages`` is :data:`DEFAULT_MAX_PAGES` (100) — pass
+    ``max_pages=None`` explicitly for truly unbounded iteration.
     """
     base = base_url.rstrip("/")
     url = f"{base}/{resource_type}"
@@ -188,7 +186,9 @@ async def fhir_create(
     """FHIR create: ``POST /{Resource}`` with a body.
 
     Used by H3 (remote Provenance POST after a push). Same retry/error
-    contract as :func:`fhir_conditional_update`. Returns
+    contract as :func:`fhir_conditional_update` (delegated to
+    :func:`integrations.sdk.http._retry_request` — full-jitter exponential
+    backoff on 429/5xx/network errors, immediate raise on 401/403). Returns
     ``(status_code, response_dict_or_None)``.
     """
     base = base_url.rstrip("/")
@@ -200,43 +200,18 @@ async def fhir_create(
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
 
-    attempt = 0
-    backoff = 1.0
-    while True:
-        try:
-            response = await http_client.request(
-                "POST", url, headers=headers, json=body
-            )
-        except (httpx.RequestError, httpx.TimeoutException) as e:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationDataError(f"Network error contacting {url}: {e}") from e
-            await asyncio.sleep(backoff)
-            backoff *= 2
-            continue
-
-        status = response.status_code
-        if status in (401, 403):
-            raise IntegrationAuthError(f"{url} returned {status}: {_enrich_error(response)}")
-        if status == 429:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationRateLimitError(f"Rate limited by {url} after {max_retries} attempts.")
-            retry_after = response.headers.get("Retry-After")
-            wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
-            await asyncio.sleep(wait)
-            backoff *= 2
-            continue
-        if status >= 500:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
-            await asyncio.sleep(backoff)
-            backoff *= 2
-            continue
-        if status >= 400:
-            raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
-        return status, _safe_json(response)
+    response = await _retry_request(
+        lambda: http_client.request("POST", url, headers=headers, json=body),
+        url=url,
+        method="POST",
+        max_retries=max_retries,
+    )
+    status = response.status_code
+    if status >= 400:
+        # 401/403 already raised by _retry_request; the only remaining 4xx
+        # are non-retryable client errors (400/404/409/422/...).
+        raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
+    return status, _safe_json(response)
 
 
 async def fhir_conditional_update(
@@ -258,6 +233,10 @@ async def fhir_conditional_update(
     sent as a Bearer header; pass ``None`` for tokenless servers. Token
     lifecycle (acquire / refresh-on-401) belongs to the caller.
 
+    Retry / error semantics are delegated to
+    :func:`integrations.sdk.http._retry_request` (full-jitter exponential
+    backoff on 429/5xx/network errors; immediate raise on 401/403).
+
     Returns ``(status_code, response_dict_or_None)`` so the caller can apply its
     own policy:
 
@@ -267,8 +246,9 @@ async def fhir_conditional_update(
       ``OperationOutcome``) is returned for inspection — NOT raised.
 
     Auth failures (401/403) raise :class:`IntegrationAuthError`, rate-limiting
-    (429) raises :class:`IntegrationRateLimitError`, other 4xx and unrecoverable
-    5xx/network errors raise :class:`IntegrationDataError` — same hierarchy as
+    (429 after retries exhausted) raises :class:`IntegrationRateLimitError`,
+    other 4xx and unrecoverable 5xx/network errors raise
+    :class:`IntegrationDataError` — same hierarchy as
     :func:`integrations.sdk.http.http_request`.
     """
     base = base_url.rstrip("/")
@@ -284,50 +264,24 @@ async def fhir_conditional_update(
     if if_match is not None:
         headers["If-Match"] = if_match
 
-    attempt = 0
-    backoff = 1.0
-    while True:
-        try:
-            response = await http_client.request(
-                "PUT", url, headers=headers, params=search_params, json=body
-            )
-        except (httpx.RequestError, httpx.TimeoutException) as e:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationDataError(f"Network error contacting {url}: {e}") from e
-            logger.warning("Network error PUT %s (attempt %d/%d): %s", url, attempt, max_retries, e)
-            await asyncio.sleep(backoff)
-            backoff *= 2
-            continue
-
-        status = response.status_code
-        if status in (401, 403):
-            raise IntegrationAuthError(f"{url} returned {status}: {_enrich_error(response)}")
-        if status == 429:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationRateLimitError(f"Rate limited by {url} after {max_retries} attempts.")
-            retry_after = response.headers.get("Retry-After")
-            wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
-            logger.warning("Rate limited by %s. Waiting %ss.", url, wait)
-            await asyncio.sleep(wait)
-            backoff *= 2
-            continue
-        if status >= 500:
-            attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
-            logger.warning("Server error PUT %s -> %d (attempt %d/%d)", url, status, attempt, max_retries)
-            await asyncio.sleep(backoff)
-            backoff *= 2
-            continue
-        # 412 is the expected "precondition not met" outcome — return, don't raise.
-        if status == 412:
-            return 412, _safe_json(response)
-        if status >= 400:
-            raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
-        # 200/201 (and any other 2xx) — success.
-        return status, _safe_json(response)
+    response = await _retry_request(
+        lambda: http_client.request(
+            "PUT", url, headers=headers, params=search_params, json=body
+        ),
+        url=url,
+        method="PUT",
+        max_retries=max_retries,
+    )
+    status = response.status_code
+    # 412 is the expected "precondition not met" outcome — return, don't raise.
+    if status == 412:
+        return 412, _safe_json(response)
+    if status >= 400:
+        # 401/403 already raised by _retry_request; remaining 4xx are
+        # non-retryable client errors.
+        raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
+    # 200/201 (and any other 2xx) — success.
+    return status, _safe_json(response)
 
 
 def _safe_json(response: httpx.Response) -> Optional[Dict[str, Any]]:

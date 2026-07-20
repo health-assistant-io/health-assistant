@@ -135,6 +135,56 @@ async def test_discover_smart_404_raises_data_error():
             await discover_smart("https://ehr/fhir", http)
 
 
+@pytest.mark.asyncio
+async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
+    """OAuth/DCR/token HTTP calls used to be single-shot — a transient 5xx
+    on a hospital IdP's load balancer would surface as
+    ``IntegrationDataError`` immediately. After routing ``_request_json``
+    through ``http._retry_request``, the same call retries with the same
+    full-jitter backoff every other SDK HTTP call uses.
+
+    This test calls ``discover_smart`` (the simplest OAuth endpoint) against
+    a server that always returns 503, and asserts the handler is hit
+    multiple times before the eventual raise.
+    """
+    # Squat the jittered sleeps so the test doesn't actually wait.
+    async def _no_sleep(_):
+        return None
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(503, text="IdP down")
+
+    async with _mock_client(handler) as http:
+        with pytest.raises(IntegrationDataError):
+            await discover_smart("https://ehr/fhir", http)
+
+    assert calls["n"] > 1, (
+        f"discover_smart should have retried the 503 (was single-shot pre-refactor); "
+        f"handler was only hit {calls['n']} time(s)."
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_smart_429_retries_then_raises_rate_limit(monkeypatch):
+    """A 429 from the OAuth server must surface as
+    :class:`IntegrationRateLimitError` after retries exhaust — the prior
+    single-shot implementation raised it on the first 429 without retrying.
+    """
+    async def _no_sleep(_):
+        return None
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    from integrations.sdk.exceptions import IntegrationRateLimitError
+
+    async with _mock_client(lambda r: httpx.Response(429)) as http:
+        with pytest.raises(IntegrationRateLimitError):
+            await discover_smart("https://ehr/fhir", http)
+
+
 # ---------- DCR ----------
 
 @pytest.mark.asyncio

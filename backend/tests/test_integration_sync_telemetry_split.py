@@ -366,3 +366,95 @@ def test_webhook_endpoint_passes_real_per_channel_counts_to_notifications():
         "webhook notification dispatch must pass the real telemetry count, "
         "not the prior hard-coded 0"
     )
+
+
+# ---------------------------------------------------------------------------
+# Workstream B.2 (this stack): run_sync calls the clinical-events opt-in
+# hook and routes writes through clinical_event_service.create_event with
+# source_integration_id. Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_run_sync_wires_clinical_events_opt_in_hook():
+    """``run_sync`` must call ``provider.pull_clinical_events`` gated on
+    ``provider.supports_clinical_events()``, then route each returned
+    event through ``clinical_event_service.create_event`` with
+    ``source_integration_id=integration.id``. Source-level guard."""
+    from app.services import integration_sync_service as svc
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "supports_clinical_events" in src, (
+        "run_sync must probe supports_clinical_events — the opt-in gate "
+        "for the clinical-events pull hook"
+    )
+    assert "pull_clinical_events" in src, (
+        "run_sync must call pull_clinical_events on providers that opt in"
+    )
+    assert "create_event" in src, (
+        "run_sync must route pulled events through clinical_event_service."
+        "create_event (the dedup-aware write path)"
+    )
+    assert "source_integration_id=integration.id" in src, (
+        "run_sync must stamp source_integration_id with the integration's "
+        "own id — providers can't fake it"
+    )
+
+
+def test_opt_in_helper_handles_missing_method():
+    """The ``_opt_in`` helper must return False (not raise) when the method
+    is absent — that's the default for any provider that hasn't opted in."""
+    from app.services.integration_sync_service import _opt_in
+
+    class _Bare:
+        pass
+
+    assert _opt_in(_Bare(), "supports_clinical_events") is False
+
+    class _OptIn:
+        def supports_clinical_events(self):
+            return True
+
+    assert _opt_in(_OptIn(), "supports_clinical_events") is True
+
+
+def test_opt_in_helper_swallows_exceptions_from_capability_probe():
+    """A buggy provider that raises out of ``supports_*`` must not break the
+    whole sync turn — the helper logs and treats it as not-supported."""
+    from app.services.integration_sync_service import _opt_in
+
+    class _Broken:
+        def supports_clinical_events(self):
+            raise RuntimeError("boom")
+
+    assert _opt_in(_Broken(), "supports_clinical_events") is False
+
+
+# ---------------------------------------------------------------------------
+# Workstream E.3 (this stack): run_sync calls the examinations opt-in hook
+# and routes writes through examination_service.create_examination with
+# source_integration_id. Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_run_sync_wires_examinations_opt_in_hook():
+    """``run_sync`` must call ``provider.pull_examinations`` gated on
+    ``provider.supports_examinations()``, then route each returned exam
+    through ``examination_service.create_examination`` with
+    ``source_integration_id=integration.id``. Mirrors the clinical-events
+    guard above. Source-level guard."""
+    from app.services import integration_sync_service as svc
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "supports_examinations" in src, (
+        "run_sync must probe supports_examinations — the opt-in gate "
+        "for the examinations pull hook"
+    )
+    assert "pull_examinations" in src, (
+        "run_sync must call pull_examinations on providers that opt in"
+    )
+    assert "create_examination" in src, (
+        "run_sync must route pulled exams through examination_service."
+        "create_examination (the dedup-aware write path)"
+    )
