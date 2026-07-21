@@ -8,6 +8,8 @@ import { Syringe } from 'lucide-react';
 import type { CatalogItemFormProps } from './catalogForms';
 import { Field, TextInput } from './FormFields';
 import { RichTextField } from './RichTextField';
+import { LinksSection } from '../../ai/hitl/LinksSection';
+import type { CatalogSelection } from '../../../types/catalog';
 import { RepeatableItems } from '../../ui/RepeatableItems';
 
 interface DoseSchedule {
@@ -185,6 +187,15 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
           placeholder="Fever, Sore arm"
         />
       </Field>
+
+      {/* LinksSection uses 'immunization' (the EdgeEndpointType for vaccine).
+          The LinksSection internally normalises vaccine↔immunization. */}
+      <LinksSection
+        srcType="immunization"
+        value={Array.isArray(values.links) ? (values.links as CatalogSelection[]) : []}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };

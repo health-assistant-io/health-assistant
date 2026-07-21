@@ -29,6 +29,11 @@ import { CatalogItemInfo } from '../../components/catalog/info/CatalogItemInfo';
 import { CatalogRelationsGraph } from '../../components/catalog/CatalogRelationsGraph';
 import { CatalogRelationsIndex } from '../../components/catalog/CatalogRelationsIndex';
 import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelationsEditor';
+import {
+  createLinksFor,
+  selectionsToLinkInputs,
+} from '../../services/conceptEdges';
+import type { CatalogSelection } from '../../types/catalog';
 import { CatalogAuditHistoryModal } from '../../components/catalog/CatalogAuditHistoryModal';
 import { FormModal } from '../../components/ui/FormModal';
 import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
@@ -374,6 +379,18 @@ export const CatalogWorkspace: React.FC = () => {
             desiredRanges as BiomarkerReferenceRange[],
           );
         }
+      }
+      // Persist deferred graph links (create-mode only — edit mode uses
+      // CatalogRelationsEditor which persists immediately). Best-effort; per-
+      // link failures don't abort the save. The srcType comes from the active
+      // catalog descriptor's edge_endpoint_type.
+      const pendingLinks = (editing as any).links as CatalogSelection[] | undefined;
+      if (isNew && savedId && active?.edge_endpoint_type && pendingLinks && pendingLinks.length > 0) {
+        await createLinksFor(
+          active.edge_endpoint_type,
+          savedId,
+          selectionsToLinkInputs(pendingLinks),
+        );
       }
       toast.success(t('common.save_success', 'Saved'));
       setEditing(null);
@@ -929,11 +946,11 @@ export const CatalogWorkspace: React.FC = () => {
                 <CatalogRelationsEditor typeMeta={active} itemId={editingId} />
               </div>
             )}
-            {isNew && (
-              <p className="text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
-                {t('catalogs.relations_save_first', 'Save the item first, then you can add relations.')}
-              </p>
-            )}
+            {/* Create-mode LinksSection is rendered INSIDE each catalog form
+                (catalog/forms/*.tsx) so the workspace and the HITL handler
+                share one source of truth. The form reads `values.links` and
+                emits `onChange({links: next})`; performSave persists them via
+                createLinksFor after the primary create returns savedId. */}
           </FormModal>
         );
       })()}

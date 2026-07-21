@@ -717,6 +717,7 @@ USER→user). Update/delete: `system`→SYSTEM_ADMIN, `tenant`→ADMIN/MANAGER,
 | `POST` | `/concepts/{concept_id}/restore` | `get_current_user` | — | `ConceptResponse` | Reverses a retire/soft-delete. |
 | `GET` | `/concepts/{concept_id}/neighbors` | any | `relation?`, `include_proposed?` | `List[NeighborResponse]` | One-hop neighbors. |
 | `GET` | `/concept-edges` | any | `src_type?`, `src_id?`, `dst_type?`, `dst_id?`, `relation?`, `include_proposed?`, `limit?` | `List[ConceptEdgeResponse]` |  |
+| `GET` | `/concept-edges/schema` | any | `src_type?`, `dst_type?` | matrix slice (see below) | Pure-metadata link-schema discovery — no DB hit. Powers the LLM `get_link_schema` tool + the frontend `<LinksSection>` dropdown filter. Shapes: with both args → `{relations: [...]}`; with `src_type` only → `{<dst_type>: [...]}`; with neither → `[{src_type, dst_type, relations}]`. |
 | `POST` | `/concept-edges` | `get_current_user` (`SYSTEM_ADMIN` for global) | `ConceptEdgeCreate` | `ConceptEdgeResponse` (`201`) | Validates concept endpoints exist. |
 | `DELETE` | `/concept-edges/{edge_id}` | `get_current_user` | — | `204` |  |
 

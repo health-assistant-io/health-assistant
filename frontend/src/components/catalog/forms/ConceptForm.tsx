@@ -17,6 +17,8 @@ import { RichTextField } from './RichTextField';
 import { KindChips } from './KindChips';
 import { IconPicker } from '../../ui/IconPicker';
 import { CatalogItemPicker } from '../CatalogItemPicker';
+import { LinksSection } from '../../ai/hitl/LinksSection';
+import type { CatalogSelection } from '../../../types/catalog';
 import type { ConceptKind, IconConfig } from '../../../types/concept';
 
 const CODING_SYSTEMS = [
@@ -197,6 +199,14 @@ export const ConceptForm: React.FC<CatalogItemFormProps> = ({
           </select>
         </Field>
       )}
+
+      {/* Concept→concept semantic relations (MEMBER_OF, TREATS, AFFECTS, etc.). */}
+      <LinksSection
+        srcType="concept"
+        value={Array.isArray(values.links) ? (values.links as CatalogSelection[]) : []}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };

@@ -59,6 +59,16 @@ export interface CatalogItemPickerProps {
     /** Relation applied to new picks; default 'AFFECTS'. */
     defaultRelation?: string;
   };
+  /** Optional: per-catalog-type relation filtering. When provided, each chip's
+   *  relation dropdown shows only the relations valid for THAT chip's type
+   *  (e.g. medication→concept shows TREATS/CONTRAINDICATES, medication→biomarker
+   *  shows MONITORS/CORRELATES_WITH). Falls back to `relationPicker.options`
+   *  / the global default when not provided or when the callback returns
+   *  undefined. Powers the schema-driven `<LinksSection>` for HITL link
+   *  proposals; existing callers are unchanged. */
+  getRelationsForType?: (
+    catalogType: string,
+  ) => RelationOptionGroup[] | undefined;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -99,6 +109,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
   allowedTypes,
   conceptKind,
   relationPicker,
+  getRelationsForType,
   placeholder,
   className = '',
   disabled = false,
@@ -328,57 +339,65 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
       {/* Selected items */}
       {value.length > 0 && displayMode === 'cards' && (
         <div className="flex flex-col gap-2">
-          {value.map((sel, idx) => (
-            <CatalogItemCard
-              key={`${sel.type}:${sel.id}:${sel.relation ?? ''}:${idx}`}
-              selection={sel}
-              onRemove={() => removeAt(idx)}
-              footer={renderCardFooter?.(sel, idx)}
-              actions={
-                relationPicker ? (
-                  <RelationTypeSelect
-                    value={sel.relation ?? defaultRelation}
-                    onChange={(r) => setRelationAt(idx, r)}
-                    options={relationGroups}
-                  />
-                ) : undefined
-              }
-            />
-          ))}
+          {value.map((sel, idx) => {
+            const chipGroups =
+              getRelationsForType?.(sel.type) ?? relationGroups;
+            return (
+              <CatalogItemCard
+                key={`${sel.type}:${sel.id}:${sel.relation ?? ''}:${idx}`}
+                selection={sel}
+                onRemove={() => removeAt(idx)}
+                footer={renderCardFooter?.(sel, idx)}
+                actions={
+                  relationPicker ? (
+                    <RelationTypeSelect
+                      value={sel.relation ?? defaultRelation}
+                      onChange={(r) => setRelationAt(idx, r)}
+                      options={chipGroups}
+                    />
+                  ) : undefined
+                }
+              />
+            );
+          })}
         </div>
       )}
 
       {value.length > 0 && displayMode === 'chips' && (
         <ul className="flex flex-wrap gap-1.5">
-          {value.map((sel, idx) => (
-            <li
-              key={`${sel.type}:${sel.id}:${sel.relation ?? ''}:${idx}`}
-              className="group flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-2.5 pr-1 py-1 text-xs"
-            >
-              {relationPicker ? (
-                <RelationTypeSelect
-                  value={sel.relation ?? defaultRelation}
-                  onChange={(r) => setRelationAt(idx, r)}
-                  options={relationGroups}
-                />
-              ) : (
-                <span className="text-[10px] font-bold uppercase tracking-wide text-blue-500 shrink-0">
-                  {sel.type}
-                </span>
-              )}
-              <span className="text-gray-700 dark:text-gray-200 truncate max-w-[14rem]">
-                {sel.label}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeAt(idx)}
-                className="ml-0.5 p-0.5 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
-                title={t('common.remove', 'Remove')}
+          {value.map((sel, idx) => {
+            const chipGroups =
+              getRelationsForType?.(sel.type) ?? relationGroups;
+            return (
+              <li
+                key={`${sel.type}:${sel.id}:${sel.relation ?? ''}:${idx}`}
+                className="group flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-2.5 pr-1 py-1 text-xs"
               >
-                <X className="w-3 h-3" />
-              </button>
-            </li>
-          ))}
+                {relationPicker ? (
+                  <RelationTypeSelect
+                    value={sel.relation ?? defaultRelation}
+                    onChange={(r) => setRelationAt(idx, r)}
+                    options={chipGroups}
+                  />
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-blue-500 shrink-0">
+                    {sel.type}
+                  </span>
+                )}
+                <span className="text-gray-700 dark:text-gray-200 truncate max-w-[14rem]">
+                  {sel.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeAt(idx)}
+                  className="ml-0.5 p-0.5 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
+                  title={t('common.remove', 'Remove')}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 

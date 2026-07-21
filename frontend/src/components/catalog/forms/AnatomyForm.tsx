@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
 import { Field, TextInput, TextArea } from './FormFields';
 import { CatalogItemPicker } from '../CatalogItemPicker';
+import { LinksSection } from '../../ai/hitl/LinksSection';
 import type { CatalogSelection } from '../../../types/catalog';
 
 const slugify = (name: string) =>
@@ -139,6 +140,14 @@ export const AnatomyForm: React.FC<CatalogItemFormProps> = ({
           onChange={(e) => onChange({ description: e.target.value || null })}
         />
       </Field>
+
+      {/* Anatomy→anatomy hierarchy (BRANCH_OF, PART_OF, etc.). */}
+      <LinksSection
+        srcType="anatomy"
+        value={Array.isArray(values.links) ? (values.links as CatalogSelection[]) : []}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };

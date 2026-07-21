@@ -18,7 +18,10 @@ import { ConceptForm } from './ConceptForm';
 import { AnatomyForm } from './AnatomyForm';
 
 export interface CatalogItemFormProps {
-  typeMeta: CatalogTypeMeta;
+  /** Catalog type metadata. Optional — most forms derive everything they need
+   *  from `values` + `onChange`. Kept in the interface for forms that need to
+   *  read the descriptor (e.g. for the edge endpoint type). */
+  typeMeta?: CatalogTypeMeta;
   /** The current draft values (the item being created/edited). */
   values: CatalogItem;
   /** Push a partial update into the draft. */

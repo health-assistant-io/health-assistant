@@ -978,6 +978,14 @@
       "create_medication": {
         "confirm": "Confirm & Create Definition"
       },
+      "links": {
+        "section_title": "Related items",
+        "placeholder": "Search catalog items to link…",
+        "none": "No related items.",
+        "no_destinations": "No link destinations available.",
+        "error": "Could not load link schema.",
+        "exists_badge": "Link exists"
+      },
       "status": {
         "proposed": "Awaiting review",
         "confirmed": "Confirmed",

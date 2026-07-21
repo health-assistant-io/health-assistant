@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
 import { Field, TextInput } from './FormFields';
 import { RichTextField } from './RichTextField';
+import { LinksSection } from '../../ai/hitl/LinksSection';
+import type { CatalogSelection } from '../../../types/catalog';
 
 const ALLERGY_CATEGORIES = ['FOOD', 'MEDICATION', 'ENVIRONMENT', 'BIOLOGIC', 'OTHER'];
 
@@ -63,6 +65,13 @@ export const AllergyForm: React.FC<CatalogItemFormProps> = ({
           placeholder="Hives, Itching"
         />
       </Field>
+
+      <LinksSection
+        srcType="allergy"
+        value={Array.isArray(values.links) ? (values.links as CatalogSelection[]) : []}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };

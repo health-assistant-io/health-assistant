@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { DataMiniPage } from './DataMiniPage';
 import { ToolCallInfo } from '../../types/ai';
 import { getObservation } from '../../services/observationService';
-import { getMedication } from '../../services/medicationService';
+import { getMedication, getCatalogMedication } from '../../services/medicationService';
 import { getExamination } from '../../services/examinationService';
 import { getEvent } from '../../services/clinicalEventService';
 import { getDocument } from '../../services/documentService';
@@ -20,6 +20,10 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
   const [showPopup, setShowPopup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchedData, setFetchedData] = useState<any>(null);
+  /** For dual-nature citations (medication today): tracks whether the fetched
+   *  row was a patient-instance prescription or a catalog definition so
+   *  `handleOpenOriginal` routes to the right page. null until fetched. */
+  const [citationKind, setCitationKind] = useState<'instance' | 'catalog' | null>(null);
   const [popupPosition, setPopupPosition] = useState<{ top: number, left: number, placement: 'top' | 'bottom' }>({ top: 0, left: 0, placement: 'top' });
   const buttonRef = useRef<HTMLSpanElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -133,7 +137,24 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
         } else if (type === 'biomarker') {
           data = await biomarkerService.getBiomarkerById(finalUuid);
         } else if (type === 'medication') {
-          data = await getMedication(finalUuid);
+          // Medication citations are dual-nature: the UUID may be a
+          // patient-instance prescription (fhir_medications) OR a catalog
+          // definition (medication_catalog). The AI's `search_medications` /
+          // `get_medication_catalog_details` tools emit catalog IDs; the
+          // patient-prescription tools emit instance IDs. Try the instance
+          // endpoint first, fall back to the catalog endpoint on 404.
+          try {
+            data = await getMedication(finalUuid);
+            setCitationKind('instance');
+          } catch (instanceErr: any) {
+            const status = instanceErr?.response?.status;
+            if (status === 404) {
+              data = await getCatalogMedication(finalUuid);
+              setCitationKind('catalog');
+            } else {
+              throw instanceErr;
+            }
+          }
         } else if (type === 'examination') {
           data = await getExamination(finalUuid);
         } else if (type === 'event') {
@@ -187,7 +208,13 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
       } else if (type === 'biomarker') {
         navigate(`/biomarkers/details/${finalUuid}`);
       } else if (type === 'medication') {
-        navigate(`/medications/details/${finalUuid}`);
+        // Dual-nature citation: route to the catalog workspace if the fetched
+        // row was a catalog definition; otherwise the patient-prescription page.
+        if (citationKind === 'catalog') {
+          navigate(`/catalogs?type=medication&item=${finalUuid}`);
+        } else {
+          navigate(`/medications/details/${finalUuid}`);
+        }
       } else if (type === 'event') {
         navigate(`/events/${finalUuid}`);
       } else if (type === 'document') {
@@ -252,7 +279,11 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
         return `/biomarkers`;
       }
       if (type === 'biomarker') return `/biomarkers/details/${finalUuid}`;
-      if (type === 'medication') return `/medications/details/${finalUuid}`;
+      if (type === 'medication') {
+        return citationKind === 'catalog'
+          ? `/catalogs?type=medication&item=${finalUuid}`
+          : `/medications/details/${finalUuid}`;
+      }
       if (type === 'event') return `/events/${finalUuid}`;
       if (type === 'document') return `/documents/${finalUuid}`;
     } else if (toolCall) {

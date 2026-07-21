@@ -10,6 +10,7 @@ import { searchCatalogs } from '../../services/catalogService';
 import type { CatalogSelection } from '../../types/catalog';
 import { InstanceField } from '../instances/InstanceField';
 import '../../features/instances/adapters'; // registers the instance adapters
+import { LinksSection } from '../ai/hitl/LinksSection';
 
 export interface MedicationFormPrefill {
   name?: string;
@@ -27,6 +28,10 @@ export interface MedicationFormPrefill {
   start_date?: string;
   end_date?: string;
   status?: string;
+  /** AI-proposed graph links (attached to the catalog entry, NOT the
+   *  prescription). Persisted by the caller via createLinksFor('medication',
+   *  catalog_id, links) after the prescription is committed. */
+  links?: CatalogSelection[];
 }
 
 export interface MedicationFormPayload {
@@ -43,6 +48,10 @@ export interface MedicationFormPayload {
   is_new_catalog_entry?: boolean;
   /** Optional examination to link this medication to at create/edit time. */
   examination_id?: string | null;
+  /** User-edited graph links — attached to the medication catalog entry.
+   *  The caller's onSubmit persists them via createLinksFor('medication',
+   *  catalog_id, links) AFTER the prescription is committed. */
+  links: CatalogSelection[];
 }
 
 export interface MedicationFormHandle {
@@ -91,6 +100,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
     const [newMedName, setNewMedName] = useState('');
     const [loading, setLoading] = useState(false);
     const [isAddingNew, setIsAddingNew] = useState(false);
+    const [links, setLinks] = useState<CatalogSelection[]>([]);
 
     const [formData, setFormData] = useState({
       status: 'active' as 'active' | 'completed' | 'entered-in-error' | 'intended' | 'stopped' | 'on-hold' | 'unknown',
@@ -133,6 +143,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
         setSelection([]);
         setNewMedName('');
         setIsAddingNew(false);
+        setLinks([]);
       } else if (prefill) {
         setFormData(prev => ({
           ...prev,
@@ -145,6 +156,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           reason: prefill.reason || '',
           note: prefill.note || ''
         }));
+        setLinks(Array.isArray(prefill.links) ? prefill.links : []);
         
         if (prefill.frequency_label) {
           const preset = PRESETS.find(p => t(`medications.modal.presets.${p.key}`).toLowerCase() === prefill.frequency_label?.toLowerCase());
@@ -225,7 +237,8 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           indications: isAddingNew ? formData.indications : undefined,
           side_effects: isAddingNew ? formData.side_effects : undefined,
           is_new_catalog_entry: isAddingNew,
-          examination_id: formData.examination_id || undefined
+          examination_id: formData.examination_id || undefined,
+          links,
         };
 
         await onSubmit(payload);
@@ -658,6 +671,15 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
               onChange={e => setFormData({...formData, note: e.target.value})}
             />
           </div>
+
+          {/* AI-proposed graph links attached to the catalog entry.
+              Shown only when the matrix offers destinations for medications. */}
+          <LinksSection
+            srcType="medication"
+            value={links}
+            onChange={setLinks}
+            hideWhenEmpty
+          />
         </form>
 
         {/* Footer */}

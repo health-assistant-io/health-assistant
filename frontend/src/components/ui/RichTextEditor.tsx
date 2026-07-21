@@ -52,7 +52,7 @@ const fullFormats = [
 const compactFormats = [
   'header',
   'bold', 'italic', 'underline',
-  'list', 'bullet',
+  'list',
   'link',
 ];
 

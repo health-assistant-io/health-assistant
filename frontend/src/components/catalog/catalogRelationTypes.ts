@@ -36,3 +36,20 @@ export const RELATION_VALUES: string[] = RELATION_OPTION_GROUPS.flatMap(
 
 /** Sensible default when a caller doesn't pick a specific relation. */
 export const DEFAULT_RELATION = 'AFFECTS';
+
+/** Filter the full option-group list to a subset of relation values.
+ *  Used by per-destination-type filtering (e.g. a medication→concept link
+ *  shows only TREATS / CONTRAINDICATES / INDICATES / RISK_OF, not the full
+ *  list). Empty groups are dropped so the dropdown stays compact. */
+export function filterRelationGroups(
+  groups: RelationOptionGroup[],
+  allowed: readonly string[],
+): RelationOptionGroup[] {
+  const allow = new Set(allowed);
+  return groups
+    .map((g) => ({
+      group: g.group,
+      values: g.values.filter((v) => allow.has(v)),
+    }))
+    .filter((g) => g.values.length > 0);
+}

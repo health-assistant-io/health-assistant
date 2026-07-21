@@ -1,12 +1,22 @@
 /**
  * Medication create/edit form — name, description, indications, dosage,
  * side effects (list), contraindications. Mirrors `MedicationCatalogCreate`.
+ *
+ * Single source of truth for medication-catalog creation/editing. Used by:
+ *  - The Catalog workspace (`/catalogs?type=medication` → New/Edit)
+ *  - The HITL `propose_define_medication` handler (AI-proposed definitions)
+ *
+ * The form is fully controlled (no internal state). The parent owns the draft
+ * and persists links via `createLinksFor('medication', id, links)` AFTER the
+ * primary create returns the new id.
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogItemFormProps } from './catalogForms';
 import { Field, TextInput } from './FormFields';
 import { RichTextField } from './RichTextField';
+import { LinksSection } from '../../ai/hitl/LinksSection';
+import type { CatalogSelection } from '../../../types/catalog';
 
 export const MedicationForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -15,6 +25,9 @@ export const MedicationForm: React.FC<CatalogItemFormProps> = ({
   const { t } = useTranslation();
   const sideEffects = Array.isArray(values.side_effects)
     ? (values.side_effects as string[])
+    : [];
+  const links = Array.isArray(values.links)
+    ? (values.links as CatalogSelection[])
     : [];
 
   return (
@@ -66,6 +79,15 @@ export const MedicationForm: React.FC<CatalogItemFormProps> = ({
           placeholder="Nausea, Headache"
         />
       </Field>
+
+      {/* AI-proposed graph links (TREATS / CONTRAINDICATES / etc.).
+          Hidden when the matrix offers no destinations for medications. */}
+      <LinksSection
+        srcType="medication"
+        value={links}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };

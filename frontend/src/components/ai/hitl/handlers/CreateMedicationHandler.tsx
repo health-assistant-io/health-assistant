@@ -11,6 +11,32 @@ import {
 import { addPatientMedication } from '../../../../services/medicationService';
 import { createCatalogItem } from '../../../../services/catalogService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
+import {
+  createLinksFor,
+  selectionsToLinkInputs,
+  type LinkCreateResult,
+} from '../../../../services/conceptEdges';
+import { LinksSection } from '../LinksSection';
+import type { CatalogSelection } from '../../../../types/catalog';
+
+/** Convert the backend's link-snapshot shape to CatalogSelection[]. */
+function proposalLinksToSelections(raw: unknown): CatalogSelection[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CatalogSelection[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const dst = (entry as any).dst;
+    const relation = (entry as any).relation;
+    if (!dst || !dst.type || !dst.id) continue;
+    out.push({
+      type: String(dst.type),
+      id: String(dst.id),
+      label: String(dst.label ?? ''),
+      ...(relation ? { relation: String(relation) } : {}),
+    });
+  }
+  return out;
+}
 
 function proposalToPrefill(proposed: Record<string, any> | undefined): MedicationFormPrefill {
   if (!proposed) return {};
@@ -30,6 +56,7 @@ function proposalToPrefill(proposed: Record<string, any> | undefined): Medicatio
     start_date: proposed.start_date,
     end_date: proposed.end_date,
     status: proposed.status,
+    links: proposalLinksToSelections(proposed.links),
   };
 }
 
@@ -42,17 +69,27 @@ export function renderMedicationSummary(task: TaskInfo): React.ReactNode {
   if (p.frequency_label) chips.push({ icon: Calendar, label: p.frequency_label });
 
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {chips.length === 0 ? null : (
-        chips.map((c, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-[10px] font-bold text-gray-600 dark:text-dark-text"
-          >
-            <c.icon className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400" />
-            <span className="truncate max-w-[160px]">{c.label}</span>
-          </span>
-        ))
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {chips.length === 0 ? null : (
+          chips.map((c, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-[10px] font-bold text-gray-600 dark:text-dark-text"
+            >
+              <c.icon className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400" />
+              <span className="truncate max-w-[160px]">{c.label}</span>
+            </span>
+          ))
+        )}
+      </div>
+      {Array.isArray(p.links) && p.links.length > 0 && (
+        <LinksSection
+          srcType="medication"
+          value={proposalLinksToSelections(p.links)}
+          onChange={() => {}}
+          mode="summary"
+        />
       )}
     </div>
   );
@@ -99,12 +136,30 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
 
       const created = await addPatientMedication(patientId!, commitPayload);
 
+      // Persist graph links to the medication CATALOG entry (best-effort).
+      // The links describe the drug (e.g. TREATS disease) — they belong on the
+      // catalog row, not the patient prescription.
+      let linkResults: LinkCreateResult[] = [];
+      if (payload.links.length > 0 && catalogId) {
+        linkResults = await createLinksFor(
+          'medication',
+          catalogId,
+          selectionsToLinkInputs(payload.links),
+        );
+      }
+      const failedLinks = linkResults.filter(r => !r.ok).length;
+
       if (sessionId) {
         try {
           await resolveHitlTask(sessionId, task.proposal_id, {
             status: 'confirmed',
             final_payload: commitPayload as unknown as Record<string, any>,
-            result: { id: created.id },
+            result: {
+              id: created.id,
+              catalog_id: catalogId,
+              links: linkResults,
+              links_failed: failedLinks,
+            },
           });
         } catch (resolveErr) {
           console.error('HITL resolve recording failed (write already committed)', resolveErr);
@@ -116,7 +171,12 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
         status: 'confirmed',
         resolved: {
           final_payload: commitPayload as unknown as Record<string, any>,
-          result: { id: created.id },
+          result: {
+            id: created.id,
+            catalog_id: catalogId,
+            links: linkResults,
+            links_failed: failedLinks,
+          },
           at: new Date().toISOString(),
         },
       });

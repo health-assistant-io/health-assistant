@@ -4,6 +4,11 @@
  * backend `BiomarkerCreate` schema. Editing now lives here (the detail page is
  * read-only), so this form owns the `is_telemetry` flag whose flip triggers the
  * FHIR↔TimescaleDB data migration on save.
+ *
+ * Single source of truth for biomarker-catalog creation/editing. Used by:
+ *  - The Catalog workspace (`/catalogs?type=biomarker` → New/Edit)
+ *  - The HITL `propose_define_biomarker` handler (AI-proposed definitions)
+ *  - The legacy `CreateBiomarkerModal` (manual create from the examinations page)
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,8 +18,10 @@ import { Field, TextInput } from './FormFields';
 import { ChipInput } from '../../ui/ChipInput';
 import { RichTextEditor } from '../../ui/RichTextEditor';
 import { ReferenceRangesEditor } from './ReferenceRangesEditor';
+import { LinksSection } from '../../ai/hitl/LinksSection';
 import biomarkerService from '../../../services/biomarkerService';
 import type { Unit, BiomarkerReferenceRange } from '../../../types/biomarker';
+import type { CatalogSelection } from '../../../types/catalog';
 
 export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -171,6 +178,15 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
           )}
         />
       </Field>
+
+      {/* AI-proposed graph links (MEMBER_OF panel / AFFECTS organ / etc.).
+          Hidden when the matrix offers no destinations for biomarkers. */}
+      <LinksSection
+        srcType="biomarker"
+        value={Array.isArray(values.links) ? (values.links as CatalogSelection[]) : []}
+        onChange={(next) => onChange({ links: next })}
+        hideWhenEmpty
+      />
     </div>
   );
 };
