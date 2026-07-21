@@ -88,7 +88,7 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
 
   return (
     <>
-      <div className={`hitl-card mt-4 w-full min-w-0 rounded-2xl border ${accent.ring} bg-white dark:bg-dark-surface shadow-lg overflow-hidden transition-shadow hover:shadow-xl`}>
+      <div className={`hitl-card mt-4 w-full min-w-[280px] rounded-2xl border ${accent.ring} bg-white dark:bg-dark-surface shadow-lg overflow-hidden transition-shadow hover:shadow-xl`}>
         {/* Header — base layout is a column (title full-width, status below)
             so the title is never squeezed by the status pill; a container
             query restores the inline row when the card is wide enough. */}
