@@ -18,17 +18,13 @@ import { Field, TextInput, TextArea } from './FormFields';
 import { CatalogItemPicker } from '../CatalogItemPicker';
 import { LinksSection } from '../../ai/hitl/LinksSection';
 import type { CatalogSelection } from '../../../types/catalog';
+import { CodingSystemSelect } from '../../ui/CodingSystemSelect';
 
 const slugify = (name: string) =>
   name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-
-const CODING_SYSTEMS = ['loinc', 'snomed', 'custom'];
-
-const selectClass =
-  'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none';
 
 export const AnatomyForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -107,20 +103,12 @@ export const AnatomyForm: React.FC<CatalogItemFormProps> = ({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('catalogs.field_coding_system', 'Coding system')}>
-          <select
+          <CodingSystemSelect
+            domain="anatomy"
+            includeEmpty
             value={String(values.standard_system ?? '')}
-            onChange={(e) =>
-              onChange({ standard_system: e.target.value || null })
-            }
-            className={selectClass}
-          >
-            <option value="">—</option>
-            {CODING_SYSTEMS.map((s) => (
-              <option key={s} value={s}>
-                {s.toUpperCase()}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onChange({ standard_system: v || null })}
+          />
         </Field>
         <Field label={t('catalogs.field_code', 'Code')}>
           <TextInput

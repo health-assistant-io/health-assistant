@@ -62,6 +62,7 @@ class VaccineCatalogResponse(VaccineCatalogBase):
 
 class PatientImmunizationBase(BaseModel):
     vaccine_catalog_id: Optional[UUID] = None
+    examination_id: Optional[UUID] = None
     status: ImmunizationStatus = ImmunizationStatus.COMPLETED
     vaccine_code: VaccineCodeableConcept
     administered_at: Optional[datetime] = None
@@ -79,6 +80,7 @@ class PatientImmunizationCreate(PatientImmunizationBase):
 
 
 class PatientImmunizationUpdate(BaseModel):
+    examination_id: Optional[UUID] = None
     status: Optional[ImmunizationStatus] = None
     vaccine_code: Optional[VaccineCodeableConcept] = None
     administered_at: Optional[datetime] = None

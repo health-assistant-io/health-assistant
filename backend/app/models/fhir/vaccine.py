@@ -153,6 +153,12 @@ class PatientImmunization(
         nullable=True,
         index=True,
     )
+    examination_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("examinations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     status = Column(
         Enum(
@@ -186,6 +192,9 @@ class PatientImmunization(
             "vaccine_catalog_id": str(self.vaccine_catalog_id)
             if self.vaccine_catalog_id
             else None,
+            "examination_id": str(self.examination_id)
+            if self.examination_id
+            else None,
             "status": _enum_value(self.status, "completed"),
             "vaccine_code": self.vaccine_code,
             "administered_at": self.administered_at.isoformat()
@@ -213,6 +222,9 @@ class PatientImmunization(
             "vaccineCode": vaccine_code,
             "patient": {"reference": f"Patient/{self.patient_id}"}
             if self.patient_id
+            else None,
+            "encounter": {"reference": f"Encounter/{self.examination_id}"}
+            if self.examination_id
             else None,
             "occurrenceDateTime": fhir_isoformat(self.administered_at),
             "lotNumber": self.lot_number,

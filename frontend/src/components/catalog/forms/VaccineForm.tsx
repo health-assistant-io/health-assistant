@@ -11,6 +11,7 @@ import { RichTextField } from './RichTextField';
 import { LinksSection } from '../../ai/hitl/LinksSection';
 import type { CatalogSelection } from '../../../types/catalog';
 import { RepeatableItems } from '../../ui/RepeatableItems';
+import { CodingSystemSelect } from '../../ui/CodingSystemSelect';
 
 interface DoseSchedule {
   doses: number | null;
@@ -98,9 +99,10 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
           />
         </Field>
         <Field label={t('catalogs.field_coding_system', 'Coding system')}>
-          <TextInput
+          <CodingSystemSelect
+            domain="vaccine"
             value={String(values.coding_system ?? 'cvx')}
-            onChange={(e) => onChange({ coding_system: e.target.value })}
+            onChange={(v) => onChange({ coding_system: v })}
           />
         </Field>
       </div>

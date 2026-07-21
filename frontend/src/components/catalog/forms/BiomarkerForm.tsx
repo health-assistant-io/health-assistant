@@ -22,6 +22,7 @@ import { LinksSection } from '../../ai/hitl/LinksSection';
 import biomarkerService from '../../../services/biomarkerService';
 import type { Unit, BiomarkerReferenceRange } from '../../../types/biomarker';
 import type { CatalogSelection } from '../../../types/catalog';
+import { CodingSystemSelect } from '../../ui/CodingSystemSelect';
 
 export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -57,15 +58,11 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Coding system">
-          <select
+          <CodingSystemSelect
+            domain="biomarker"
             value={codingSystem}
-            onChange={(e) => onChange({ coding_system: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
-          >
-            <option value="loinc">LOINC</option>
-            <option value="snomed">SNOMED</option>
-            <option value="custom">Custom</option>
-          </select>
+            onChange={(v) => onChange({ coding_system: v })}
+          />
         </Field>
         <Field label="Code">
           <TextInput

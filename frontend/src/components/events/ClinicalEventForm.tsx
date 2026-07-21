@@ -28,6 +28,7 @@ import type { CatalogSelection } from '../../types/catalog';
 import { DatePicker } from '../ui/DatePicker';
 import { TimePicker } from '../ui/TimePicker';
 import { ScaleSlider } from '../ui/ScaleSlider';
+import { CodingSystemSelect } from '../ui/CodingSystemSelect';
 
 export interface ClinicalEventFormPayload {
   title: string;
@@ -1254,15 +1255,17 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Coding System</label>
                 <div className="relative">
-                  <select
+                  <CodingSystemSelect
+                    domain="clinical_event"
                     className="w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-none appearance-none font-bold transition-all"
                     value={formData.coding_system}
-                    onChange={e => setFormData(prev => ({ ...prev, coding_system: e.target.value as ClinicalEventCodingSystem }))}
-                  >
-                    <option value={ClinicalEventCodingSystem.LOINC}>LOINC</option>
-                    <option value={ClinicalEventCodingSystem.SNOMED}>SNOMED</option>
-                    <option value={ClinicalEventCodingSystem.CUSTOM}>Custom</option>
-                  </select>
+                    onChange={(v) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        coding_system: v as ClinicalEventCodingSystem,
+                      }))
+                    }
+                  />
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
                     <ChevronDown className="w-4 h-4 text-gray-400" />
                   </div>

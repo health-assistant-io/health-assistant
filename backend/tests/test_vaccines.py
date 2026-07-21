@@ -48,6 +48,17 @@ async def _make_patient(tenant_id):
     return p.id
 
 
+async def _make_examination(tenant_id):
+    from app.models.examination_model import ExaminationModel
+
+    async with AsyncSessionLocal() as db:
+        exam = ExaminationModel(tenant_id=tenant_id)
+        db.add(exam)
+        await db.commit()
+        await db.refresh(exam)
+    return exam.id
+
+
 # ---------------------------------------------------------------------------
 # FHIR projections (model-level)
 # ---------------------------------------------------------------------------
@@ -81,6 +92,24 @@ def test_patient_immunization_to_fhir_validates():
     assert fhir["occurrenceDateTime"].endswith("Z")
     assert fhir["lotNumber"] == "L123"
     assert fhir["protocolApplied"][0]["doseNumberPositiveInt"] == 1
+    # No examination link → no encounter reference emitted.
+    assert "encounter" not in fhir
+
+
+def test_patient_immunization_to_fhir_encounter_when_linked():
+    """An immunization linked to an examination projects the FHIR R4
+    ``encounter`` reference (FHIR Immunization.encounter)."""
+    pid = uuid.uuid4()
+    eid = uuid.uuid4()
+    imm = PatientImmunization(
+        patient_id=pid,
+        examination_id=eid,
+        vaccine_code={"text": "Flu"},
+        administered_at=datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc),
+        status="completed",
+    )
+    fhir = assert_valid_fhir(imm)
+    assert fhir["encounter"]["reference"] == f"Encounter/{eid}"
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +221,51 @@ async def test_patient_immunization_cross_patient_denied(async_client):
         f"/api/v1/vaccines/patient/{other_pid}", headers=headers
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patient_immunization_examination_link_roundtrip(async_client):
+    """examination_id flows create → read → update (clear) and projects to the
+    FHIR R4 Immunization.encounter reference."""
+    tenant_id, headers = await _tenant_and_headers("ADMIN")
+    pid = await _make_patient(tenant_id)
+    eid = await _make_examination(tenant_id)
+
+    create = await async_client.post(
+        f"/api/v1/vaccines/patient/{pid}",
+        json={
+            "vaccine_code": {"text": "Flu"},
+            "examination_id": str(eid),
+            "administered_at": "2026-02-01T09:00:00Z",
+        },
+        headers=headers,
+    )
+    assert create.status_code == 200, create.text
+    iid = create.json()["id"]
+    assert create.json()["examination_id"] == str(eid)
+
+    # FHIR facade surfaces the encounter reference.
+    fhir = await async_client.get(
+        f"/api/v1/fhir/R4/Immunization?patient={pid}", headers=headers
+    )
+    entry = next(
+        e["resource"]
+        for e in fhir.json()["entry"]
+        if e["resource"]["id"] == iid
+    )
+    assert entry["encounter"]["reference"] == f"Encounter/{eid}"
+
+    # Update clears the link.
+    put = await async_client.put(
+        f"/api/v1/vaccines/{iid}",
+        json={"examination_id": None},
+        headers=headers,
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["examination_id"] is None
+
+    delete = await async_client.delete(f"/api/v1/vaccines/{iid}", headers=headers)
+    assert delete.status_code == 200
 
 
 # ---------------------------------------------------------------------------

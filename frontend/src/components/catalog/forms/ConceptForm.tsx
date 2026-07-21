@@ -20,17 +20,7 @@ import { CatalogItemPicker } from '../CatalogItemPicker';
 import { LinksSection } from '../../ai/hitl/LinksSection';
 import type { CatalogSelection } from '../../../types/catalog';
 import type { ConceptKind, IconConfig } from '../../../types/concept';
-
-const CODING_SYSTEMS = [
-  'loinc',
-  'snomed',
-  'atc',
-  'icd10',
-  'cvx',
-  'mesh',
-  'fma',
-  'custom',
-];
+import { CodingSystemSelect } from '../../ui/CodingSystemSelect';
 
 export const ConceptForm: React.FC<CatalogItemFormProps> = ({
   values,
@@ -118,18 +108,12 @@ export const ConceptForm: React.FC<CatalogItemFormProps> = ({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('catalogs.field_coding_system', 'Coding system')}>
-          <select
+          <CodingSystemSelect
+            domain="concept"
+            includeEmpty
             value={String(values.coding_system ?? '')}
-            onChange={(e) => onChange({ coding_system: e.target.value || null })}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          >
-            <option value="">—</option>
-            {CODING_SYSTEMS.map((s) => (
-              <option key={s} value={s}>
-                {s.toUpperCase()}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onChange({ coding_system: v || null })}
+          />
         </Field>
         <Field label={t('catalogs.field_code', 'Code')}>
           <TextInput

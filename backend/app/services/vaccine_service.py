@@ -151,6 +151,7 @@ async def add_patient_immunization(
         patient_id=patient_id,
         tenant_id=tenant_id,
         vaccine_catalog_id=data.vaccine_catalog_id,
+        examination_id=data.examination_id,
         status=data.status,
         vaccine_code=data.vaccine_code.model_dump(mode="json"),
         administered_at=data.administered_at,

@@ -30,6 +30,7 @@ export interface PatientImmunization {
   id: string;
   patient_id: string;
   vaccine_catalog_id?: string | null;
+  examination_id?: string | null;
   status: ImmunizationStatus;
   vaccine_code: VaccineCodeableConcept;
   administered_at?: string | null;
@@ -44,6 +45,7 @@ export interface PatientImmunization {
 
 export interface PatientImmunizationCreate {
   vaccine_catalog_id?: string | null;
+  examination_id?: string | null;
   status?: ImmunizationStatus;
   vaccine_code: VaccineCodeableConcept;
   administered_at?: string | null;
@@ -55,6 +57,7 @@ export interface PatientImmunizationCreate {
 }
 
 export interface PatientImmunizationUpdate {
+  examination_id?: string | null;
   status?: ImmunizationStatus;
   vaccine_code?: VaccineCodeableConcept;
   administered_at?: string | null;
