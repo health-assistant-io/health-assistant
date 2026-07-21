@@ -8,6 +8,8 @@
  * receives HTML, and the presentation layer renders whichever format is stored.
  */
 
+import { marked } from 'marked';
+
 export type TextFormat = 'html' | 'markdown' | 'plain';
 
 /** Matches an HTML tag (open or close) — e.g. ``<p>``, ``</div>``, ``<br/>``. */
@@ -71,15 +73,25 @@ export function codeableText(v: unknown): string | undefined {
 
 /**
  * Collapse a rich-text value (HTML / Markdown / plain) to a single plain-text
- * line. HTML is stripped via the DOM (handles entities + nested tags); the
- * result has all whitespace (incl. block boundaries) collapsed to single
- * spaces. Markdown markers are left intact (short enough to read). Use this for
- * compact one-line displays like {@link InstanceRow.subtitle} where block
- * rendering isn't appropriate — for full rich rendering use `FormattedText`.
+ * line. Markdown is parsed to HTML via {@link marked}, then HTML is stripped
+ * via the DOM (handles entities + nested tags); the result has all whitespace
+ * (incl. block boundaries) collapsed to single spaces. Use this for compact
+ * one-line displays like list rows / subtitles where block rendering isn't
+ * appropriate — for full rich rendering use {@link FormattedText}.
  */
-export function toPlainText(text: string | null | undefined): string {
+export function toPlainText(text: unknown): string {
   if (!text) return '';
   let s = String(text);
+  // Normalise Markdown → HTML first so a single DOM strip handles both.
+  // `marked` is synchronous by default and gracefully passes through text that
+  // isn't really markdown, so this never throws for odd input.
+  if (detectTextFormat(s) === 'markdown') {
+    try {
+      s = marked.parse(s) as string;
+    } catch {
+      // keep the original string on parse failure
+    }
+  }
   if (detectTextFormat(s) === 'html' && typeof document !== 'undefined') {
     const el = document.createElement('div');
     el.innerHTML = s;

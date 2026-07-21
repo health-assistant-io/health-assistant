@@ -16,6 +16,7 @@ import type { Locale } from 'date-fns';
 import type { CatalogItem } from '../../types/catalog';
 import { ScopeBadge } from './ScopeBadge';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { toPlainText } from '../../utils/textFormat';
 import { CLASS_COLOR } from '../../types/anatomy';
 import { CONCEPT_KIND_LABELS, KIND_COLORS } from '../../types/concept';
 
@@ -349,6 +350,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
+            // Strip any HTML/Markdown in the description to a single plain-text
+            // line for the compact row — never formatted prose in the list.
+            const desc = toPlainText(item.description);
             return (
               <li
                 key={String(item.id)}
@@ -364,9 +368,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                   <span className="font-semibold text-sm block truncate">
                     <Highlight text={itemLabel(item)} term={searchTerm} />
                   </span>
-                  {item.description ? (
+                  {desc ? (
                     <span className="block text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-snug mt-1">
-                      <Highlight text={String(item.description)} term={searchTerm} />
+                      <Highlight text={desc} term={searchTerm} />
                     </span>
                   ) : null}
                   {(updated || relCount !== null) && (
@@ -446,6 +450,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
+            // Strip any HTML/Markdown in the description to a single plain-text
+            // line for the compact tile — never formatted prose in the grid.
+            const desc = toPlainText(item.description);
             return (
               <div
                 key={String(item.id)}
@@ -462,9 +469,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                     <span className="font-semibold text-sm block break-words">
                       <Highlight text={itemLabel(item)} term={searchTerm} />
                     </span>
-                    {item.description ? (
+                    {desc ? (
                       <span className="block text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
-                        <Highlight text={String(item.description)} term={searchTerm} />
+                        <Highlight text={desc} term={searchTerm} />
                       </span>
                     ) : null}
                   </div>
