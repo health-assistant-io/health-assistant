@@ -6,6 +6,7 @@ that carried ``tool_calls`` MUST be followed by one ``ToolMessage`` per
 ``tool_call_id`` in the reconstructed history — otherwise the next ``astream``
 call sends a malformed conversation and the provider rejects it.
 """
+
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -36,10 +37,18 @@ class TestAppendAssistantTurnToHistory:
         # The core contract: one ToolMessage per tool_call_id, no gaps.
         history = []
         tc = [
-            {"id": "call_a", "name": "get_patient_summary", "args": {},
-             "result": '{"name": "Alice"}'},
-            {"id": "call_b", "name": "get_recent_biomarkers", "args": {"limit": 3},
-             "result": '[{"slug": "glucose"}]'},
+            {
+                "id": "call_a",
+                "name": "get_patient_summary",
+                "args": {},
+                "result": '{"name": "Alice"}',
+            },
+            {
+                "id": "call_b",
+                "name": "get_recent_biomarkers",
+                "args": {"limit": 3},
+                "result": '[{"slug": "glucose"}]',
+            },
         ]
         _append_assistant_turn_to_history(_msg(tool_calls=tc), history)
 
@@ -89,10 +98,18 @@ class TestAppendAssistantTurnToHistory:
 
         history = []
         tc = [
-            {"id": "call_data", "name": "get_recent_biomarkers", "args": {},
-             "result": "[]"},
-            {"id": "call_propose", "name": "propose_add_medication", "args": {},
-             "result": "Proposal prepared. Awaiting user review."},
+            {
+                "id": "call_data",
+                "name": "get_recent_biomarkers",
+                "args": {},
+                "result": "[]",
+            },
+            {
+                "id": "call_propose",
+                "name": "propose_prescribe_medication",
+                "args": {},
+                "result": "Proposal prepared. Awaiting user review.",
+            },
         ]
         tasks = [
             {
@@ -102,9 +119,7 @@ class TestAppendAssistantTurnToHistory:
                 "resolved": {"result": {"id": "abc12345"}},
             }
         ]
-        _append_assistant_turn_to_history(
-            _msg(tool_calls=tc, tasks=tasks), history
-        )
+        _append_assistant_turn_to_history(_msg(tool_calls=tc, tasks=tasks), history)
 
         tool_responses = history[1:]
         assert len(tool_responses) == 2

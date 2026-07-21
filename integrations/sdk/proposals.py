@@ -40,7 +40,11 @@ from pydantic import BaseModel, ConfigDict, Field
 #: (``create_*_definition``) so a future unified review UI can render both
 #: sources identically. Patient-record types (``create_event``,
 #: ``create_examination``, ``add_medication``, ``add_biomarker_to_examination``)
-#: are deferred — the resolver raises ``NotImplementedError`` for them.
+#: are deferred — the resolver raises ``NotImplementedError`` for them. Note:
+#: the chat-side tool *function* names were renamed to ``propose_define_*`` /
+#: ``propose_prescribe_*`` / ``propose_record_*`` for clarity, but the
+#: ``task_type`` and ``proposal_type`` strings stay stable to preserve SDK
+#: alignment.
 IntegrationProposalType = Literal[
     "create_biomarker_definition",
     "create_medication_definition",

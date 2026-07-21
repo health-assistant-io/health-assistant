@@ -108,12 +108,18 @@ Beyond the single direct write tool (`update_examination_notes`), the chatbot ca
 | Task type | Tool | Status |
 |---|---|---|
 | `create_clinical_event` | `propose_create_clinical_event` | ✅ shipped |
-| `add_biomarker_to_examination` | `propose_add_biomarker_to_examination` | ✅ shipped |
-| `add_medication` (+ schedule) | `propose_add_medication` | ✅ shipped |
-| `create_biomarker_definition` | `propose_create_biomarker_definition` | ✅ shipped |
-| `create_medication_definition` | `propose_create_medication_definition` | ✅ shipped |
+| `add_biomarker_to_examination` | `propose_record_biomarker_result` | ✅ shipped |
+| `add_medication` (+ schedule) | `propose_prescribe_medication` | ✅ shipped |
+| `create_biomarker_definition` | `propose_define_biomarker` | ✅ shipped |
+| `create_medication_definition` | `propose_define_medication` | ✅ shipped |
 | `generate_anatomy_graph` | `propose_anatomy_graph_generation` | ✅ shipped (AI-defined anatomy sub-graphs via the anatomy import pipeline; see [SEEDING_AND_DEMOS.md §6.4](SEEDING_AND_DEMOS.md#64-ai-driven-graph-expansion)) |
 | `create_examination` | — | ⏸ deferred (exams are upload-driven; low chat value) |
+
+> **Naming note:** the tool *function* names use scope-explicit verbs
+> (`define_*` for catalog definitions, `prescribe_*`/`record_*` for
+> patient-instance writes) so the LLM picks the right one. The `task_type`
+> routing strings (left column) stay stable for alignment with the integration
+> SDK's `proposal_type` discriminator.
 
 Task statuses use the `HitlTaskStatus(str, Enum)` enum (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod. The frontend mirrors this via `TERMINAL_HITL_STATUSES` in `registry.tsx`.
 

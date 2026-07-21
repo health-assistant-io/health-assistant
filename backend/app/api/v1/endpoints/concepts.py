@@ -298,6 +298,48 @@ async def get_neighbors(
 edge_router = APIRouter(prefix="/concept-edges", tags=["Concept Edges"])
 
 
+@edge_router.get("/schema")
+async def get_link_schema(
+    src_type: Optional[str] = Query(
+        None,
+        description="Filter to relations FROM this EdgeEndpointType",
+    ),
+    dst_type: Optional[str] = Query(
+        None,
+        description="Filter to relations TO this EdgeEndpointType (requires src_type)",
+    ),
+):
+    """Return the link-schema matrix that decides which ``(src_type, dst_type)``
+    pairs the knowledge-graph accepts and which ``relation`` values are valid
+    for each.
+
+    Pure metadata — no DB hit, no tenancy. Used by the frontend
+    ``<LinksSection>`` to filter destination + relation dropdowns on each
+    create form, and by the LLM via the ``get_link_schema`` tool.
+
+    * With ``src_type`` and ``dst_type``: ``{"relations": ["TREATS", ...]}``
+    * With ``src_type`` only: ``{"<dst_type>": ["TREATS", ...], ...}``
+    * With neither: ``[{"src_type", "dst_type", "relations"}, ...]``
+    """
+    from app.ai.tools.propose_link import (
+        relations_for,
+        relations_for_source,
+        serialize_full_schema,
+    )
+
+    try:
+        src = EdgeEndpointType(src_type) if src_type else None
+        dst = EdgeEndpointType(dst_type) if dst_type else None
+    except ValueError as exc:
+        raise HTTPException(400, f"Invalid endpoint type: {exc}")
+
+    if src and dst:
+        return {"relations": relations_for(src, dst)}
+    if src:
+        return relations_for_source(src)
+    return serialize_full_schema()
+
+
 @edge_router.get("", response_model=List[ConceptEdgeResponse])
 async def list_edges(
     src_type: Optional[str] = Query(None),

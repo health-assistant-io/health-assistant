@@ -60,7 +60,7 @@ class CatalogProposal(BaseModel):
     UI can render both sources identically):
 
     ``kind="biomarker"`` — fields mirror ``BiomarkerCreate`` /
-    ``propose_create_biomarker_definition``::
+    ``propose_define_biomarker``::
 
         {
             "name": "Sleep Quality Score",
@@ -77,7 +77,7 @@ class CatalogProposal(BaseModel):
         }
 
     ``kind="medication"`` — fields mirror ``MedicationCatalogCreate`` /
-    ``propose_create_medication_definition``::
+    ``propose_define_medication``::
 
         {
             "name": "Melatonin",
@@ -176,7 +176,7 @@ def biomarker_proposal(
 ) -> CatalogProposal:
     """Build a ``kind="biomarker"`` proposal without hand-writing the payload dict.
 
-    The payload fields mirror :func:`propose_create_biomarker_definition`
+    The payload fields mirror :func:`propose_define_biomarker`
     (chat HITL) field-for-field.
     """
     payload: Dict[str, Any] = {"name": name}

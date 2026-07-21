@@ -8,7 +8,7 @@ before anything is saved.
 
 import json
 from datetime import datetime, timezone
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -85,6 +85,7 @@ def build(ctx: ToolContext) -> List[Any]:
         description: Optional[str] = None,
         status: str = "ACTIVE",
         reason: Optional[str] = None,
+        links: Optional[List[dict]] = None,
     ) -> str:
         """Propose creating a new clinical event (a longitudinal health journey such as
         a pregnancy, chronic pain cycle, surgical recovery, or allergy episode).
@@ -102,6 +103,12 @@ def build(ctx: ToolContext) -> List[Any]:
             description: Optional narrative description.
             status: One of ACTIVE, RESOLVED, ON_HOLD, UNKNOWN (default ACTIVE).
             reason: Optional clinical rationale for the proposal.
+            links: Optional list of related-items links to create alongside, once
+                this event exists. Each item: ``{dst_type, dst_id, relation, properties?}``.
+                The destination must already exist (catalog or instance). Valid
+                combinations are returned by ``get_link_schema(src_type="clinical_event_type")``.
+                Invalid combinations are silently dropped (kept vs dropped count is
+                reported in the tool result).
         """
         # Resolve the type by slug (tenant-scoped or global)
         type_result = await ctx.db.execute(
@@ -117,6 +124,19 @@ def build(ctx: ToolContext) -> List[Any]:
 
         type_id = str(event_type.id) if event_type else None
         type_name = event_type.name if event_type else type_slug
+
+        # Validate + snapshot any proposed links (clinical_event_type is the src).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                links,
+            )
 
         task = {
             "schema_version": 1,
@@ -137,6 +157,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "occurrences": [],
                 "coding_system": "custom",
                 "code": "",
+                "links": link_specs["kept"],
             },
             "context": {
                 "patient_id": str(ctx.patient_id),
@@ -146,10 +167,17 @@ def build(ctx: ToolContext) -> List[Any]:
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
-        return json.dumps({"__hitl__": True, "task": task})
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
 
     @tool
-    async def propose_add_biomarker_to_examination(
+    async def propose_record_biomarker_result(
         biomarker_name: str,
         value: float,
         unit: Optional[str] = None,
@@ -158,7 +186,11 @@ def build(ctx: ToolContext) -> List[Any]:
         examination_id: Optional[str] = None,
         reason: Optional[str] = None,
     ) -> str:
-        """Propose adding a biomarker measurement (a lab result) to an examination.
+        """Propose recording a biomarker measurement (a lab result) on an examination —
+        a PATIENT-INSTANCE data point.
+
+        Use `propose_define_biomarker` INSTEAD when the user wants to add a NEW
+        biomarker to the catalog itself (a reference definition, not a measurement).
 
         This does NOT save anything. It renders a human-in-the-loop review card
         prefilled with your suggestion; the user edits and explicitly confirms
@@ -291,15 +323,22 @@ def build(ctx: ToolContext) -> List[Any]:
         return json.dumps({"__hitl__": True, "task": task})
 
     @tool
-    async def propose_add_medication(
+    async def propose_prescribe_medication(
         medication_name: str,
         dosage: Optional[str] = None,
         frequency_label: Optional[str] = None,
         reason: Optional[str] = None,
         note: Optional[str] = None,
         start_date: Optional[str] = None,
+        links: Optional[List[dict]] = None,
     ) -> str:
-        """Propose adding a new medication to the patient's record.
+        """Propose prescribing a medication to the patient — a PATIENT-INSTANCE
+        prescription (the patient takes this drug).
+
+        Use `propose_define_medication` INSTEAD when the user wants to add a NEW
+        drug to the catalog itself (a reference definition, not a prescription).
+        Typical trigger: "add a new medication called X to the catalog" or
+        "X isn't in the system yet" — use define, not prescribe.
 
         This does NOT save anything. It renders a human-in-the-loop review card
         prefilled with your suggestion; the user edits and explicitly confirms
@@ -320,6 +359,14 @@ def build(ctx: ToolContext) -> List[Any]:
             reason: Optional indication / why it's being taken (e.g. "Type 2 diabetes").
             note: Optional free-text note.
             start_date: Optional ISO date (YYYY-MM-DD) when the medication started.
+            links: Optional list of related-items links to attach to the medication
+                catalog entry once it's resolved (e.g. ``{dst_type:"concept",
+                dst_id:"<disease-uuid>", relation:"TREATS"}``). The destination
+                must already exist. Valid combinations are returned by
+                ``get_link_schema(src_type="medication")``. Invalid combinations
+                are silently dropped (kept vs dropped count is reported in the
+                tool result). Links are committed to the medication **catalog**
+                entry, not the patient prescription row.
         """
         from app.services.catalog_search_service import search_medications as _search
 
@@ -334,6 +381,26 @@ def build(ctx: ToolContext) -> List[Any]:
         side_effects = list(best.side_effects or []) if best else []
         contraindications = best.contraindications if best else None
         dosage_info = best.dosage_info if best else None
+
+        # Validate + snapshot any proposed links (medication catalog entry is src).
+        # When the catalog entry already exists, pass primary_existing_id so dedup
+        # surfaces "Link exists" badges in the form. When it's a new custom entry,
+        # dedup is skipped (there can't be a pre-existing edge to a not-yet-row).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from uuid import UUID
+
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            primary_existing_id = UUID(catalog_id) if catalog_id else None
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.MEDICATION,
+                links,
+                primary_existing_id=primary_existing_id,
+            )
 
         task = {
             "schema_version": 1,
@@ -360,6 +427,8 @@ def build(ctx: ToolContext) -> List[Any]:
                 "start_date": start_date or "",
                 "end_date": "",
                 "status": "active",
+                # Related-items links (validated + snapshotted server-side)
+                "links": link_specs["kept"],
             },
             "context": {
                 "patient_id": str(ctx.patient_id),
@@ -368,10 +437,17 @@ def build(ctx: ToolContext) -> List[Any]:
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
-        return json.dumps({"__hitl__": True, "task": task})
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
 
     @tool
-    async def propose_create_biomarker_definition(
+    async def propose_define_biomarker(
         name: str,
         category: Optional[str] = None,
         unit_symbol: Optional[str] = None,
@@ -382,8 +458,14 @@ def build(ctx: ToolContext) -> List[Any]:
         aliases: Optional[List[str]] = None,
         info: Optional[str] = None,
         is_telemetry: Optional[bool] = False,
+        links: Optional[List[dict]] = None,
     ) -> str:
-        """Propose creating a NEW biomarker definition in the tenant catalog.
+        """Propose defining a NEW biomarker in the tenant catalog — a reference
+        definition (the metric itself, not a measurement).
+
+        Use `propose_record_biomarker_result` INSTEAD when the user wants to
+        record an actual measurement for an EXISTING biomarker on an examination
+        (a lab result).
 
         This does NOT save anything. It renders a human-in-the-loop review card
         prefilled with your suggestion; the user edits and explicitly confirms
@@ -394,7 +476,7 @@ def build(ctx: ToolContext) -> List[Any]:
         in the catalog (e.g., a novel lab value, a custom wearable metric, or
         any biomarker not returned by `search_available_biomarkers`). Do NOT
         use it to record a value for an existing biomarker (use
-        `propose_add_biomarker_to_examination` for that).
+        `propose_record_biomarker_result` for that).
 
         Tenant-uniqueness: pass a clear `name`; the slug is derived from it.
         The user can edit the slug in the review form if needed.
@@ -412,9 +494,30 @@ def build(ctx: ToolContext) -> List[Any]:
             info: Optional clinical context / significance (markdown ok).
             is_telemetry: True if this is a high-frequency IoT/wearable metric
                 (heart rate, steps, SpO2). False for standard discrete labs.
+            links: Optional list of related-items links to create alongside, once
+                this definition exists (e.g. panel membership via ``relation:"MEMBER_OF"``
+                or organ affected via ``relation:"AFFECTS"``). Each item:
+                ``{dst_type, dst_id, relation, properties?}``. The destination
+                must already exist. Valid combinations are returned by
+                ``get_link_schema(src_type="biomarker")``. Invalid combinations
+                are silently dropped (kept vs dropped count is reported in the
+                tool result).
         """
         slug = name.lower().replace(" ", "-").replace("/", "-")
         slug = "".join(c for c in slug if c.isalnum() or c == "-").strip("-")
+
+        # Validate + snapshot any proposed links (biomarker is the src).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.BIOMARKER,
+                links,
+            )
 
         task = {
             "schema_version": 1,
@@ -434,6 +537,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "aliases": list(aliases or []),
                 "info": info or "",
                 "is_telemetry": bool(is_telemetry),
+                "links": link_specs["kept"],
             },
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
@@ -442,18 +546,32 @@ def build(ctx: ToolContext) -> List[Any]:
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
-        return json.dumps({"__hitl__": True, "task": task})
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
 
     @tool
-    async def propose_create_medication_definition(
+    async def propose_define_medication(
         name: str,
         description: Optional[str] = None,
         indications: Optional[str] = None,
         dosage_info: Optional[str] = None,
         contraindications: Optional[str] = None,
         side_effects: Optional[List[str]] = None,
+        links: Optional[List[dict]] = None,
     ) -> str:
-        """Propose creating a NEW medication definition in the tenant catalog.
+        """Propose defining a NEW medication in the tenant catalog — a reference
+        definition (the drug itself, not a prescription).
+
+        Use `propose_prescribe_medication` INSTEAD when the user wants the
+        patient to actually take the drug (a prescription — a patient-instance
+        record). Typical trigger: "add Metformin to my medications" / "I'm taking
+        X" / "prescribe X" — use prescribe, not define.
 
         This does NOT save anything. It renders a human-in-the-loop review card
         prefilled with your suggestion; the user edits and explicitly confirms
@@ -463,7 +581,7 @@ def build(ctx: ToolContext) -> List[Any]:
         Use this when the user asks to add a drug to the catalog that
         `search_medications` cannot find (e.g. a new or rarely-prescribed drug).
         Do NOT use it to prescribe an existing catalog drug to a patient (use
-        `propose_add_medication` for that).
+        `propose_prescribe_medication` for that).
 
         Args:
             name: Canonical drug name (e.g. "Amoxicillin").
@@ -472,7 +590,27 @@ def build(ctx: ToolContext) -> List[Any]:
             dosage_info: Optional typical dosage guidance (free text).
             contraindications: Optional contraindications / warnings.
             side_effects: Optional list of common side effects.
+            links: Optional list of related-items links to create alongside, once
+                this definition exists (e.g. ``{dst_type:"concept", dst_id:"<disease>",
+                relation:"TREATS"}``). The destination must already exist. Valid
+                combinations are returned by
+                ``get_link_schema(src_type="medication")``. Invalid combinations
+                are silently dropped (kept vs dropped count is reported in the
+                tool result).
         """
+        # Validate + snapshot any proposed links (medication is the src).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.MEDICATION,
+                links,
+            )
+
         task = {
             "schema_version": 1,
             "proposal_id": str(uuid4()),
@@ -486,6 +624,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "dosage_info": dosage_info or "",
                 "contraindications": contraindications or "",
                 "side_effects": list(side_effects or []),
+                "links": link_specs["kept"],
             },
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
@@ -494,7 +633,14 @@ def build(ctx: ToolContext) -> List[Any]:
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
-        return json.dumps({"__hitl__": True, "task": task})
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
 
     @tool
     async def propose_anatomy_graph_generation(target_structure: str) -> str:
@@ -527,9 +673,9 @@ def build(ctx: ToolContext) -> List[Any]:
 
     return [
         propose_create_clinical_event,
-        propose_add_biomarker_to_examination,
-        propose_add_medication,
-        propose_create_biomarker_definition,
-        propose_create_medication_definition,
+        propose_record_biomarker_result,
+        propose_prescribe_medication,
+        propose_define_biomarker,
+        propose_define_medication,
         propose_anatomy_graph_generation,
     ]

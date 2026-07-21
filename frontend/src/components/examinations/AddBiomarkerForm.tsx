@@ -10,8 +10,9 @@ import { useTranslation } from 'react-i18next';
 import { filterBiomarkers, matchBiomarker } from '../../utils/searchUtils';
 
 /**
- * Prefill shape. Keys mirror the backend `propose_add_biomarker_to_examination`
- * proposed_payload 1:1 (the HITL contract).
+ * Prefill shape. Keys mirror the backend `propose_record_biomarker_result`
+ * proposed_payload 1:1 (the HITL contract). (task_type is still
+ * `add_biomarker_to_examination` — kept stable for SDK alignment.)
  */
 export interface AddBiomarkerFormPrefill {
   biomarker_id?: string | null;

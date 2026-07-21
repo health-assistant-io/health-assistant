@@ -87,10 +87,14 @@ def build(ctx: ToolContext):
             return json.dumps([])
         # Bulk-fetch concept rows in rank order for the rich payload.
         rows = (
-            await ctx.db.execute(
-                select(Concept).where(Concept.id.in_([h.row_id for h in hits]))
+            (
+                await ctx.db.execute(
+                    select(Concept).where(Concept.id.in_([h.row_id for h in hits]))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         by_id = {r.id: r for r in rows}
         out = []
         for h in hits:
@@ -217,4 +221,57 @@ def build(ctx: ToolContext):
             ]
         )
 
-    return [search_concepts, get_concept_neighborhood, get_entity_concepts]
+    @tool
+    async def get_link_schema(
+        src_type: Optional[str] = None,
+        dst_type: Optional[str] = None,
+    ) -> str:
+        """Discover which link relations the knowledge-graph supports.
+
+        Use this BEFORE calling any ``propose_*`` tool with a ``links`` argument
+        so you only propose relations the form will accept. Invalid combos are
+        silently dropped by the propose tool, but using this upfront avoids the
+        round-trip.
+
+        Args:
+            src_type: Optional EdgeEndpointType ('biomarker', 'medication',
+                'allergy', 'vaccine', 'clinical_event_type', 'anatomy',
+                'concept', 'doctor', 'examination', 'observation', 'document').
+                When given, only relations FROM that type are returned.
+            dst_type: Optional EdgeEndpointType. When given together with
+                ``src_type``, returns the flat list of valid relations for
+                that specific pair.
+
+        Returns JSON:
+            - With ``src_type`` and ``dst_type``: ``{"relations": ["TREATS", ...]}``
+            - With ``src_type`` only: ``{"concept": ["TREATS", ...], "biomarker": [...]}``
+            - With neither: ``[{"src_type": ..., "dst_type": ..., "relations": [...]}, ...]``
+        """
+        from app.ai.tools.propose_link import (
+            relations_for,
+            relations_for_source,
+            serialize_full_schema,
+        )
+        from app.models.enums import EdgeEndpointType
+
+        if src_type and dst_type:
+            try:
+                s = EdgeEndpointType(src_type)
+                d = EdgeEndpointType(dst_type)
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid endpoint type: {exc}"})
+            return json.dumps({"relations": relations_for(s, d)})
+        if src_type:
+            try:
+                s = EdgeEndpointType(src_type)
+            except ValueError as exc:
+                return json.dumps({"error": f"Invalid endpoint type: {exc}"})
+            return json.dumps(relations_for_source(s))
+        return json.dumps(serialize_full_schema())
+
+    return [
+        search_concepts,
+        get_concept_neighborhood,
+        get_entity_concepts,
+        get_link_schema,
+    ]

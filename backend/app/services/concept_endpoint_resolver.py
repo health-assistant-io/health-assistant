@@ -28,10 +28,13 @@ from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept
+from app.models.doctor_model import DoctorModel
+from app.models.document_model import DocumentModel
 from app.models.enums import EdgeEndpointType
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
+from app.models.fhir.patient import Observation
 from app.models.fhir.vaccine import VaccineCatalog
 
 
@@ -316,6 +319,112 @@ async def _resolve_vaccines(
     return out
 
 
+async def _resolve_doctors(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve doctors; label = doctor name, kind = specialty concept name."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (await db.execute(select(DoctorModel).where(DoctorModel.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    concept_ids = {r.specialty_concept_id for r in rows if r.specialty_concept_id}
+    spec_map: Dict[UUID, Concept] = {}
+    if concept_ids:
+        spec_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
+            .scalars()
+            .all()
+        )
+        spec_map = {c.id: c for c in spec_rows}
+    for r in rows:
+        spec = spec_map.get(r.specialty_concept_id) if r.specialty_concept_id else None
+        out[r.id] = _payload(
+            EdgeEndpointType.DOCTOR,
+            r.id,
+            r.name or "Unknown doctor",
+            icon=spec.icon if spec else None,
+            color=spec.color if spec else None,
+            kind=spec.name if spec else None,
+        )
+    return out
+
+
+async def _resolve_observations(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve FHIR observations. Label is the observation's code text plus
+    its value (so a card can show "Glucose = 142 mg/dL" without a refetch).
+    """
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (await db.execute(select(Observation).where(Observation.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    for r in rows:
+        # code is FHIR JSONB: {"coding": [...], "text": "..."}
+        code = r.code if isinstance(r.code, dict) else {}
+        label_parts: List[str] = []
+        text = code.get("text")
+        if text:
+            label_parts.append(str(text))
+        else:
+            coding = code.get("coding") or []
+            if coding and isinstance(coding[0], dict):
+                c0 = coding[0].get("code") or coding[0].get("display")
+                if c0:
+                    label_parts.append(str(c0))
+        # value_quantity: {"value": 142, "unit": "mg/dL"}
+        vq = r.value_quantity if isinstance(r.value_quantity, dict) else None
+        if vq and vq.get("value") is not None:
+            label_parts.append(f"= {vq['value']}")
+            if vq.get("unit"):
+                label_parts.append(str(vq["unit"]))
+        label = " ".join(label_parts) or f"observation:{str(r.id)[:8]}"
+        out[r.id] = _payload(
+            EdgeEndpointType.OBSERVATION,
+            r.id,
+            label,
+        )
+    return out
+
+
+async def _resolve_documents(
+    db: AsyncSession, ids: List[UUID]
+) -> Dict[UUID, Dict[str, Any]]:
+    """Resolve documents; label = filename + date."""
+    out: Dict[UUID, Dict[str, Any]] = {}
+    rows = (
+        (await db.execute(select(DocumentModel).where(DocumentModel.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
+    cat_map: Dict[UUID, Concept] = {}
+    if cat_ids:
+        cat_rows = (
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
+            .scalars()
+            .all()
+        )
+        cat_map = {c.id: c for c in cat_rows}
+    for r in rows:
+        cat = cat_map.get(r.category_concept_id) if r.category_concept_id else None
+        date_str = r.created_at.date().isoformat() if r.created_at else "no date"
+        label = f"{r.filename or 'Untitled document'} ({date_str})"
+        out[r.id] = _payload(
+            EdgeEndpointType.DOCUMENT,
+            r.id,
+            label,
+            icon=cat.icon if cat else None,
+            color=cat.color if cat else None,
+            kind=cat.name if cat else None,
+        )
+    return out
+
+
 # Registry — add a new endpoint type by appending one entry.
 _RESOLVERS = {
     EdgeEndpointType.CONCEPT: _resolve_concepts,
@@ -326,6 +435,9 @@ _RESOLVERS = {
     EdgeEndpointType.ALLERGY: _resolve_allergies,
     EdgeEndpointType.CLINICAL_EVENT_TYPE: _resolve_clinical_event_types,
     EdgeEndpointType.IMMUNIZATION: _resolve_vaccines,
+    EdgeEndpointType.DOCTOR: _resolve_doctors,
+    EdgeEndpointType.OBSERVATION: _resolve_observations,
+    EdgeEndpointType.DOCUMENT: _resolve_documents,
 }
 
 

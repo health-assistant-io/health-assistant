@@ -9,9 +9,10 @@ import { Unit } from '../../types/biomarker';
 import { RichTextEditor } from '../ui/RichTextEditor';
 
 /**
- * Prefill shape. Keys mirror the backend `propose_create_biomarker_definition`
- * proposed_payload 1:1 (the HITL contract). Also accepts the shape used by the
- * legacy `CreateBiomarkerModal` `initialName` flow.
+ * Prefill shape. Keys mirror the backend `propose_define_biomarker`
+ * proposed_payload 1:1 (the HITL contract). (task_type is still
+ * `create_biomarker_definition` — kept stable for SDK alignment.) Also accepts
+ * the shape used by the legacy `CreateBiomarkerModal` `initialName` flow.
  */
 export interface BiomarkerDefinitionFormPrefill {
   name?: string;

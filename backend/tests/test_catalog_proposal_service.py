@@ -159,7 +159,7 @@ async def test_apply_biomarker_proposal_idempotent_on_slug(tenant_and_actor):
 async def test_apply_biomarker_proposal_derives_slug_from_name(tenant_and_actor):
     """When the payload omits ``slug``, the service derives one from the
     name (lowercase, ASCII-safe) — matching the chat HITL
-    ``propose_create_biomarker_definition`` behavior. Uses a UUID-prefixed
+    ``propose_define_biomarker`` behavior. Uses a UUID-prefixed
     name so the derived slug is unique across runs."""
     tenant_id, actor, p = tenant_and_actor
     proposal = biomarker_proposal(name=f"{p} Steps Count Daily")

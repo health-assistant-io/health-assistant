@@ -4,8 +4,9 @@ import { Save, Pill, Info, X } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
 
 /**
- * Prefill shape. Keys mirror the backend `propose_create_medication_definition`
- * proposed_payload 1:1 (the HITL contract).
+ * Prefill shape. Keys mirror the backend `propose_define_medication`
+ * proposed_payload 1:1 (the HITL contract). (task_type is still
+ * `create_medication_definition` — kept stable for SDK alignment.)
  */
 export interface MedicationDefinitionFormPrefill {
   name?: string;
