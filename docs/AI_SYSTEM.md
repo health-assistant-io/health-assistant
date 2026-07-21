@@ -131,6 +131,39 @@ Adding a task type touches **none** of the protocol, DB, or endpoints — only o
 
 **Security model:** AI proposes, human discharges; untrusted prefill is re-validated client- *and* server-side; `/resolve` is idempotent (409 on re-resolve) and verifies session ownership; `/resume` reads outcomes from the DB (never trusts the client) and verifies ownership; the full proposed-vs-committed diff is audited in the `ChatMessage.tasks` JSONB column; resume summaries trim large payloads to short identifying fields only (no PHI leakage).
 
+### 4.2 Asking Clarifying Questions (`ask_user`)
+
+The HITL proposal cards in §4.1 are write-action drafts. When the LLM needs **information** from the user before it can proceed — picking the right biomarker to link, choosing which of several missing catalog items to create, or clarifying a free-text detail — it calls `ask_user`, a sibling HITL task type that renders an **inline question card** in the chat scrollback. The user answers, submits, and the agent receives the structured answers on the next turn via the standard `[HITL RESOLUTION FEEDBACK]`.
+
+**Question kinds (closed set):**
+
+| Kind | UI primitive | Answer shape |
+|---|---|---|
+| `freetext` | textarea / input | `string` |
+| `single_choice` | radio list | `string` (chosen `value`) |
+| `multi_choice` | checkbox list (with min/max) | `string[]` |
+| `catalog_ref` | catalog picker (reuses `CatalogItemPicker`) | `{id, name, slug, type}` or `null` (array if `multi`) |
+| `instance_ref` | patient-scoped instance picker (reuses `InstancePicker`) | `{id, ...}` or `null` (array if `multi`) |
+
+**Hard caps** keep the LLM's payload + the resume prompt within sane token budgets: ≤8 questions per `ask_user` call, ≤12 options per choice question, ≤6 candidates per ref question, freetext answers trimmed to 200 chars in the resume summary.
+
+**Server-side candidate snapshot.** For `catalog_ref` / `instance_ref` questions, the tool pre-resolves the top candidates server-side and embeds them under `question.candidates`. The frontend pickers render them on the initial query (zero round-trip on open); the user can re-query via debounced live search.
+
+**Read-only and notification-free.** Unlike `propose_*`, an `ask_user` resolution performs no REST write — the answers go to the LLM only (the "AI never writes" model is preserved). It also skips the inbox notification — questions are conversational, not work-to-clear.
+
+**Inline rendering with shared pickers.** The `ask_user` handler is registered with `inline: true` in the frontend HITL registry — the form renders directly in the card body (no modal, no "Review & Edit" button). The form owns its full footer (Submit / Skip). The `catalog_ref` / `instance_ref` question kinds render via the **existing** `CatalogItemPicker` and `InstancePicker` (the same components used elsewhere in the app) so the popover portals above the card and the UX stays consistent. `clinical_event_type` is mapped to `concept` + `conceptKind='event_category'` on the frontend; `instance_ref.entity_type='clinical_event'` is mapped to the frontend `InstanceType='event'`.
+
+**Composition with `propose_*`.** `ask_user` and `propose_*` tasks may co-exist in the same turn (the reasoning loop already accumulates tasks in `all_tasks`). This enables the multi-step creation pattern below.
+
+**Multi-step creation (primary entity + related links):** when the user wants to create a primary entity that should link to related concepts/biomarkers (e.g. a medication that TREATS a disease, AFFECTS a biomarker), the LLM uses a 4-turn pattern powered by the `discover_missing_related` discovery tool:
+
+1. **DISCOVER** — `discover_missing_related(primary_type, primary_name, related=[{type, name, suggested_relation}, ...])` returns which items exist and which are missing, in one round-trip.
+2. **ASK** — if any related items are missing, emit ONE `ask_user` with a `multi_choice` question listing them (label=name, detail=type + suggested_relation). The user picks the subset.
+3. **DEFINE** — on the resume turn (with the picks), emit parallel `propose_define_*` calls for the chosen missing items. STOP.
+4. **LINK** — on the second resume turn (with all defines confirmed and their ids), emit the primary `propose_define_*` with `links[]` populated from the confirmed ids + the `suggested_relation` values.
+
+Adding `ask_user` touched **none** of the protocol — same `__hitl__` marker, same `[HITL_TASK]` sentinel, same `tasks` JSONB, same `/resolve` + `/resume`. The only new code is one tool (`backend/app/ai/tools/ask_user.py`), one frontend handler (`frontend/src/components/ai/hitl/handlers/AskUserHandler.tsx`), and the `inline` flag on the registry's `HitlTaskHandler`. No new picker component — the existing `CatalogItemPicker` and `InstancePicker` are reused so popovers portal correctly and the UX matches the rest of the app.
+
 ---
 
 ## 5. How to Create New AI Functionalities

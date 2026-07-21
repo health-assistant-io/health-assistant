@@ -1,9 +1,32 @@
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, desc, and_, update, func
+from sqlalchemy import select, delete, desc, and_, update, func, case, literal
 from sqlalchemy.orm.attributes import flag_modified
 from app.models.chat_model import ChatSession, ChatMessage
+
+
+def _has_tasks_filter():
+    """SQL fragment that matches ChatMessage rows whose ``tasks`` JSONB column
+    is a NON-EMPTY ARRAY.
+
+    A naive ``tasks IS NOT NULL`` matches too much: it includes JSON ``'null'``
+    (which SQLAlchemy emits on some code paths for Python ``None``) and JSON
+    ``'[]'``. Both then deserialize to Python ``None`` / empty list, which is
+    falsy — silently breaking the resume continuation turn (the agent would
+    see the graceful-fallback message instead of the structured HITL feedback).
+
+    ``jsonb_array_length`` RAISES ``cannot get array length of a scalar`` on
+    JSON ``'null'``, and Postgres does not short-circuit ``AND``, so we wrap
+    it in a ``CASE`` so the function only runs when ``jsonb_typeof = 'array'``.
+    """
+    return case(
+        (
+            func.jsonb_typeof(ChatMessage.tasks) == "array",
+            func.jsonb_array_length(ChatMessage.tasks) > 0,
+        ),
+        else_=literal(False),
+    )
 
 
 class ChatSessionService:
@@ -134,12 +157,15 @@ class ChatSessionService:
         if not session_result.scalars().first():
             return None
 
+        # See ``_has_tasks_filter`` for why we use a CASE expression instead
+        # of the naive ``tasks IS NOT NULL`` (TL;DR: it excludes JSON 'null'
+        # AND empty arrays without erroring on non-array scalars).
         result = await self.db.execute(
             select(ChatMessage)
             .where(
                 and_(
                     ChatMessage.session_id == session_id,
-                    ChatMessage.tasks.isnot(None),
+                    _has_tasks_filter(),
                 )
             )
             .order_by(desc(ChatMessage.created_at))
@@ -173,13 +199,16 @@ class ChatSessionService:
         if not session_result.scalars().first():
             return None
 
+        # See find_message_by_proposal for why we use the CASE expression.
+        has_tasks = _has_tasks_filter()
+
         if message_id:
             result = await self.db.execute(
                 select(ChatMessage).where(
                     and_(
                         ChatMessage.id == message_id,
                         ChatMessage.session_id == session_id,
-                        ChatMessage.tasks.isnot(None),
+                        has_tasks,
                     )
                 )
             )
@@ -190,7 +219,7 @@ class ChatSessionService:
             .where(
                 and_(
                     ChatMessage.session_id == session_id,
-                    ChatMessage.tasks.isnot(None),
+                    has_tasks,
                 )
             )
             .order_by(desc(ChatMessage.created_at))

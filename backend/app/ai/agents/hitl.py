@@ -76,6 +76,10 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
       - still PROPOSED: the user chose to continue WITHOUT answering (partial
         resume via the Continue button). Clearly labeled so the LLM knows the
         user hasn't acted on it yet.
+
+    For ``task_type == "ask_user"`` confirmed tasks, the per-question answers
+    are formatted as ``q_id: value`` pairs (with freetext trimmed to 200 chars)
+    so the agent receives structured input rather than free-form prose.
     """
     lines = []
     confirmed = 0
@@ -95,19 +99,26 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
         if status_raw == HitlTaskStatus.CONFIRMED:
             confirmed += 1
             parts = ["CONFIRMED"]
-            final = resolved.get("final_payload")
-            if isinstance(final, dict) and final:
-                # Trim large payloads — surface only short identifying fields.
-                keys = ("name", "title", "slug", "coding_system", "code")
-                trimmed = {k: final[k] for k in keys if k in final}
-                if trimmed:
-                    parts.append(f"draft={json.dumps(trimmed, ensure_ascii=False)}")
-            result = resolved.get("result")
-            if isinstance(result, dict) and result:
-                keys = ("id", "biomarker_id", "catalog_id", "event_id", "slug")
-                trimmed = {k: result[k] for k in keys if k in result}
-                if trimmed:
-                    parts.append(f"result={json.dumps(trimmed, ensure_ascii=False)}")
+
+            # ask_user: surface structured answers keyed by question id.
+            if task_type == "ask_user":
+                answers_blob = _format_ask_user_answers(resolved)
+                if answers_blob:
+                    parts.append(answers_blob)
+            else:
+                final = resolved.get("final_payload")
+                if isinstance(final, dict) and final:
+                    # Trim large payloads — surface only short identifying fields.
+                    keys = ("name", "title", "slug", "coding_system", "code")
+                    trimmed = {k: final[k] for k in keys if k in final}
+                    if trimmed:
+                        parts.append(f"draft={json.dumps(trimmed, ensure_ascii=False)}")
+                result = resolved.get("result")
+                if isinstance(result, dict) and result:
+                    keys = ("id", "biomarker_id", "catalog_id", "event_id", "slug")
+                    trimmed = {k: result[k] for k in keys if k in result}
+                    if trimmed:
+                        parts.append(f"result={json.dumps(trimmed, ensure_ascii=False)}")
             err = resolved.get("error")
             if err:
                 parts.append(f"error={err}")
@@ -170,6 +181,120 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
             "actions. Do not repeat the payload details back to the user verbatim."
         )
     return f"{header}\n" + "\n".join(lines) + f"\n{guidance}"
+
+
+def _format_ask_user_answers(resolved: Dict[str, Any]) -> Optional[str]:
+    """Format the answers of a confirmed ``ask_user`` task for the LLM.
+
+    Emits ONE BULLET PER QUESTION on its own line, with the answer as a flat
+    JSON object/value — not nested inside an outer ``answers={"questions":[...]}``
+    blob. Earlier revisions wrapped the answers in triple-nested JSON which
+    the LLM struggled to parse (it would ack the confirmation but ignore the
+    actual values). Flat + per-line = trivial extraction.
+
+    Shapes (see ``app/ai/tools/ask_user.py``):
+      - freetext       → ``q_id: "text"``
+      - single_choice  → ``q_id: "value"``
+      - multi_choice   → ``q_id: ["v1","v2"]``
+      - catalog_ref /
+        instance_ref   → ``q_id: {id, name, type, ...rich fields}``
+                         (or list when ``multi``).
+      - skipped        → ``q_id: <no answer>``
+    """
+    from app.ai.tools.ask_user import FREETEXT_ANSWER_TRIM_CHARS
+
+    final = resolved.get("final_payload")
+    if not isinstance(final, dict):
+        return None
+    answers = final.get("answers")
+    if not isinstance(answers, dict) or not answers:
+        return None
+
+    lines: List[str] = []
+    for q_id, raw in answers.items():
+        lines.append(f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}")
+    return "answers:\n" + "\n".join(lines)
+
+
+def _stringify_answer(value: Any, freetext_cap: int) -> str:
+    """Compact, single-line stringification of one ask_user answer value.
+
+    For ``catalog_ref`` / ``instance_ref`` answers (dict or list-of-dict),
+    ALL fields the candidate carries are surfaced so the LLM can act on the
+    picked item WITHOUT a follow-up ``get_*_details`` call. Field values are
+    individually capped (see ``_CANDIDATE_FIELD_CAPS``) to keep the resume
+    prompt within a sane token budget; the order is identity-first for
+    readability.
+    """
+    if value is None:
+        return "<no answer>"
+    if isinstance(value, str):
+        v = value.strip()
+        if len(v) > freetext_cap:
+            v = v[:freetext_cap].rstrip() + "…"
+        return v
+    if isinstance(value, list):
+        # Multi-choice answer (list of values) OR multi-ref (list of dicts).
+        if all(isinstance(x, str) for x in value):
+            return ", ".join(value) if value else "<no answer>"
+        # list of dicts (ref multi): keep the per-dict rich fields.
+        compact = [_compact_candidate(x) for x in value if isinstance(x, dict)]
+        return json.dumps(compact, ensure_ascii=False) if compact else "<no answer>"
+    if isinstance(value, dict):
+        compact = _compact_candidate(value)
+        return json.dumps(compact, ensure_ascii=False) if compact else "<no answer>"
+    return str(value)
+
+
+#: Order in which candidate fields surface in the LLM-facing summary, with
+#: per-field length caps. Identity first (id/name/type), then coding, then
+#: classification, then instance-specific, then the long description last so
+#: it truncates first if the budget is tight. Mirrors the rich CandidateRef
+#: schema in ``app/ai/tools/ask_user.py``.
+_CANDIDATE_FIELD_ORDER: tuple = (
+    "id",
+    "name",
+    "type",
+    "slug",
+    "code",
+    "coding_system",
+    "category",
+    "kind",
+    "is_telemetry",
+    "unit",
+    "status",
+    "date",
+    "description",
+)
+_CANDIDATE_FIELD_CAPS: dict = {
+    "id": 48,        # uuids are 36 chars; leave headroom
+    "name": 120,
+    "type": 40,
+    "slug": 80,
+    "code": 40,
+    "coding_system": 40,
+    "category": 80,
+    "kind": 40,
+    "unit": 40,
+    "status": 40,
+    "date": 40,
+    "description": 160,
+}
+
+
+def _compact_candidate(value: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop None + unknown keys, apply per-field length caps, return an
+    identity-ordered dict. Returns ``{}`` for an all-empty input."""
+    out: Dict[str, Any] = {}
+    for k in _CANDIDATE_FIELD_ORDER:
+        v = value.get(k)
+        if v is None or v == "":
+            continue
+        cap = _CANDIDATE_FIELD_CAPS.get(k)
+        if cap and isinstance(v, str) and len(v) > cap:
+            v = v[:cap].rstrip() + "…"
+        out[k] = v
+    return out
 
 
 def _hitl_resolved_brief(tasks: List[Dict[str, Any]]) -> Optional[str]:

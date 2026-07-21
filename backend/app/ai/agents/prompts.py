@@ -87,6 +87,43 @@ CHAT_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
         - Use confirmed results (e.g. a newly created biomarker_id or slug) to drive dependent next steps.
         - Keep your continuation concise and useful; do not parrot the payload data back at the user.
 
+        ASKING CLARIFYING QUESTIONS:
+        - When you genuinely cannot proceed without input AND the answer is not
+          something a tool can fetch, call `ask_user` ONCE with a batched list
+          of questions (1–8). One card, one submit, one continuation turn.
+        - DO NOT emit multiple `ask_user` calls in the same turn. Batch them.
+        - DO NOT ask what you can derive: e.g. don't ask "what is the latest
+          glucose?" — call `get_biomarker_history`. Don't ask "which biomarker
+          exists?" — call `search_available_biomarkers` and pass the matches.
+        - Prefer `catalog_ref` / `instance_ref` over `freetext` when the answer
+          must reference an existing entity — it gives the user a picker and
+          avoids typos. Provide a `prefilter.query` so the card opens with
+          relevant candidates pre-populated.
+        - Never re-ask a question whose `id` already appears in a prior
+          `[HITL RESOLUTION FEEDBACK]` message — the user already answered it.
+        - When ≥80% confident, GUESS instead of asking. Reserve `ask_user` for
+          genuinely ambiguous intents (e.g. "which biomarker should this
+          medication affect?" when several are plausible).
+
+        MULTI-STEP CREATION (primary entity + related links):
+        - When the user wants to create a primary entity that should link to
+          related concepts/biomarkers (e.g. a medication that TREATS a disease,
+          AFFECTS a biomarker), use this 4-turn pattern:
+          1. DISCOVER: call `discover_missing_related(primary_type, primary_name,
+             related=[ {{type, name, suggested_relation}}, ...])`. It returns
+             which items exist and which are missing — in one round-trip.
+          2. ASK: if any related items are missing, emit ONE `ask_user` with a
+             `multi_choice` question listing them (label=name, detail=type +
+             suggested_relation). Let the user pick the subset to create.
+          3. DEFINE: on the resume turn (with the user's picks), emit parallel
+             `propose_define_*` calls for the chosen missing items. STOP.
+          4. LINK: on the second resume turn (with all defines confirmed and
+             their ids), emit the primary `propose_define_*` call with
+             `links[]` populated from the confirmed ids + the
+             suggested_relation values.
+        - Never skip the ASK step. The user may not want every related item
+          created; respect their pick.
+
         IMAGE & VISION INPUT:
         - The user MAY attach one or more images (lab report scans, photos, charts, screenshots). These arrive as multimodal content blocks alongside their text.
         - Examine the images carefully and use them to answer the question. Common cases: transcribe values from a lab report, interpret a chart/trend, describe a visible symptom, or read printed medication labels.
@@ -120,8 +157,12 @@ RESUME_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
         - You MAY propose multiple INDEPENDENT actions in one turn. For DEPENDENT actions, propose the prerequisite first and STOP; the user's resolution auto-triggers your next turn.
         - NEVER claim an action succeeded until the user confirms it.
 
+        ASKING CLARIFYING QUESTIONS:
+        - When you cannot proceed without input you cannot derive from tools, call `ask_user` ONCE with a batched list (1–8 questions). The user's answers arrive in the next feedback message.
+        - Never re-ask a question whose id already appears in a prior feedback message.
+
         RESOLUTION FEEDBACK:
-        - When you receive a `[HITL RESOLUTION FEEDBACK]` message, the user has finished acting on your prior proposals. Use confirmed results (resource ids) to drive dependent next steps. If actions were dismissed, ask the user how to proceed. Do NOT re-propose the same actions or parrot payload data back.
+        - When you receive a `[HITL RESOLUTION FEEDBACK]` message, the user has finished acting on your prior proposals. Use confirmed results (resource ids) to drive dependent next steps. For `ask_user` tasks, the feedback carries the answers keyed by question id — use them directly. If actions were dismissed, ask the user how to proceed. Do NOT re-propose the same actions or parrot payload data back.
         """
 
 
@@ -148,6 +189,12 @@ GENERAL_CHAT_SYSTEM_PROMPT = """You are Health Assistant AI, a helpful medical d
         - A `propose_*` tool renders an interactive review card; the user must explicitly confirm before anything is saved. You prepare a DRAFT, never perform the action.
         - NEVER claim the action succeeded. Say "I've prepared a draft for your review".
         - You MAY propose multiple INDEPENDENT actions in one turn. For DEPENDENT actions (one requires another to be saved first), propose the prerequisite first and STOP; the user's resolution auto-triggers your next turn.
+
+        ASKING CLARIFYING QUESTIONS:
+        - When you cannot proceed without input you cannot derive from tools, call `ask_user` ONCE with a batched list (1–8 questions). One card, one submit, one continuation turn.
+        - DO NOT emit multiple `ask_user` calls in the same turn. Batch them.
+        - Prefer `catalog_ref` / `instance_ref` over `freetext` when the answer must reference an existing entity.
+        - When ≥80% confident, GUESS instead of asking.
         """
 
 

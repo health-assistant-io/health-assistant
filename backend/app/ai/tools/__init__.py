@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Importing the domain modules registers their factories as a side effect.
 # Kept as explicit re-imports (no re-exports) — callers use ``get_tools``.
 from app.ai.tools import (  # noqa: F401
+    ask_user,
     biomarkers,
     catalogs,
     clinical_events,

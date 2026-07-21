@@ -20,7 +20,8 @@ import {
   CreateMedicationDefinitionHandler,
   renderCreateMedicationSummary,
 } from './handlers/CreateMedicationDefinitionHandler';
-import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker } from 'lucide-react';
+import { AskUserHandler, renderAskUserSummary } from './handlers/AskUserHandler';
+import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, HelpCircle } from 'lucide-react';
 
 export type HitlTaskStatus = TaskInfo['status'];
 
@@ -62,6 +63,11 @@ export interface HitlTaskHandler {
   /** The full interactive form, rendered INSIDE the modal popup. Owns its own
    * actions (confirm/dismiss) via onResolved. */
   FormComponent: React.FC<HitlHandlerProps>;
+  /** When true, the form renders INLINE in the card body (no modal, no
+   *  "Review & Edit" button). Use for read-only / no-write proposals where
+   *  the user fills the form directly in the chat scrollback — e.g.
+   *  ``ask_user`` questions. The form owns its full footer (Cancel/Submit). */
+  inline?: boolean;
 }
 
 /** Registry of all known HITL task handlers. To add a new task type, register
@@ -101,6 +107,14 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     accent: 'indigo',
     renderSummary: renderCreateMedicationSummary,
     FormComponent: CreateMedicationDefinitionHandler,
+  },
+  ask_user: {
+    taskType: 'ask_user',
+    icon: HelpCircle,
+    accent: 'indigo',
+    renderSummary: renderAskUserSummary,
+    FormComponent: AskUserHandler,
+    inline: true,
   },
 };
 

@@ -358,13 +358,24 @@ async def resolve_hitl_task(
 
     # Agent awareness: append a concise assistant note so the next chat turn
     # knows the proposed action was carried out (or dismissed) by the user.
+    #
+    # ``ask_user`` tasks are read-only (no REST write happens) and the user's
+    # answers are surfaced in full on the immediately-following resume turn
+    # via the [HITL RESOLUTION FEEDBACK] message. Repeating them here would
+    # be redundant AND would say "saved" (misleading — nothing was saved),
+    # so the audit note for ask_user explicitly says "answered" instead.
+    task_type = task.get("task_type")
     if resolution.status == HitlTaskStatus.CONFIRMED:
         payload = task.get("proposed_payload") or {}
         label = payload.get("title") or task.get("title") or task.get("task_type")
+        if task_type == "ask_user":
+            note_text = f"✓ The user answered: {label}."
+        else:
+            note_text = f"✓ Confirmed and saved: {label}."
         await chat_service.save_message(
             session_id=session_id,
             role="assistant",
-            content={"text": f"✓ Confirmed and saved: {label}."},
+            content={"text": note_text},
         )
     elif resolution.status == HitlTaskStatus.DISMISSED:
         await chat_service.save_message(

@@ -986,6 +986,21 @@
         "error": "Could not load link schema.",
         "exists_badge": "Link exists"
       },
+      "ask_user": {
+        "submit_one": "Submit answer",
+        "submit_other": "Submit answers",
+        "skip": "Skip questions",
+        "empty": "The assistant did not include any questions.",
+        "unsupported_kind": "Unsupported question type: {{kind}}",
+        "entity_picker": {
+          "placeholder": "Search…"
+        },
+        "error": {
+          "required": "This field is required.",
+          "min_select": "Pick at least the minimum number of options.",
+          "max_select": "Pick at most the maximum number of options."
+        }
+      },
       "status": {
         "proposed": "Awaiting review",
         "confirmed": "Confirmed",

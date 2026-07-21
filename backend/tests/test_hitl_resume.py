@@ -319,3 +319,104 @@ async def test_resume_endpoint_passes_message_id_selector(async_client):
         assert resp.status_code == 200
         assert captured.get("message_id") == msg_id
         assert captured.get("session_id") == session_id
+
+
+# ---------------------------------------------------------------------------
+# /resolve audit-note differentiation (ask_user vs propose_*)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_audit_note_ask_user_says_answered_not_saved(async_client):
+    """The audit note appended after /resolve must NOT say 'saved' for an
+    ask_user task — those tasks perform no REST write; the user only
+    answered questions. Saying 'saved' confused the LLM into thinking the
+    card title WAS the saved item (it ignored the structured feedback).
+    See dev/plans/ai-ask-user-questions-2026-07-21.md."""
+    from app.api.v1.endpoints import ai_assistance as ep
+
+    captured_messages: list = []
+
+    fake_message = MagicMock()
+    fake_message.tasks = [
+        {
+            "proposal_id": "p1",
+            "task_type": "ask_user",
+            "title": "Select biomarker to add to examination",
+            "status": "proposed",
+            "proposed_payload": {"summary": "Pick one", "questions": []},
+            "resolved": None,
+        }
+    ]
+
+    async def _no_op_update_tasks(msg, tasks):
+        return None
+
+    async def _capture_save(**kwargs):
+        captured_messages.append(kwargs)
+
+    with patch.object(ep, "ChatSessionService") as mock_cls:
+        inst = mock_cls.return_value
+        inst.find_message_by_proposal = AsyncMock(return_value=fake_message)
+        inst.update_message_tasks = AsyncMock(side_effect=_no_op_update_tasks)
+        inst.save_message = AsyncMock(side_effect=_capture_save)
+
+        session_id = uuid4()
+        resp = await async_client.post(
+            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/p1/resolve",
+            json={"status": "confirmed", "final_payload": {"answers": {"q": "x"}}},
+        )
+
+    assert resp.status_code == 200, resp.text
+    # Exactly one audit-note assistant message saved after the resolve.
+    assert len(captured_messages) == 1
+    text = captured_messages[0]["content"]["text"]
+    assert "answered" in text.lower()
+    assert "saved" not in text.lower(), (
+        "ask_user audit note must not say 'saved' — nothing was written; the "
+        "word 'saved' previously misled the LLM into thinking the card title "
+        f"was the saved item. Got: {text!r}"
+    )
+    assert "Select biomarker to add to examination" in text
+
+
+@pytest.mark.asyncio
+async def test_resolve_audit_note_propose_says_saved(async_client):
+    """For propose_* tasks (write actions), the audit note must KEEP the
+    'Confirmed and saved' wording — those tasks really do save via the
+    canonical REST endpoint."""
+    from app.api.v1.endpoints import ai_assistance as ep
+
+    captured_messages: list = []
+
+    fake_message = MagicMock()
+    fake_message.tasks = [
+        {
+            "proposal_id": "p1",
+            "task_type": "create_clinical_event",
+            "title": "Create Clinical Event: Pregnancy",
+            "status": "proposed",
+            "proposed_payload": {"title": "Pregnancy"},
+            "resolved": None,
+        }
+    ]
+
+    with patch.object(ep, "ChatSessionService") as mock_cls:
+        inst = mock_cls.return_value
+        inst.find_message_by_proposal = AsyncMock(return_value=fake_message)
+        inst.update_message_tasks = AsyncMock(return_value=None)
+        inst.save_message = AsyncMock(
+            side_effect=lambda **kw: captured_messages.append(kw)
+        )
+
+        session_id = uuid4()
+        resp = await async_client.post(
+            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/p1/resolve",
+            json={"status": "confirmed"},
+        )
+
+    assert resp.status_code == 200
+    assert len(captured_messages) == 1
+    text = captured_messages[0]["content"]["text"]
+    assert "Confirmed and saved" in text
+    assert "Pregnancy" in text

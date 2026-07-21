@@ -28,6 +28,7 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
   const handler = getHitlHandler(task.task_type);
   const statusMeta = HITL_STATUS_META[task.status] ?? HITL_STATUS_META.proposed;
   const isProposed = task.status === 'proposed';
+  const isInline = handler?.inline === true;
 
   // Unknown task type — render a minimal fallback so an older/unknown proposal
   // never breaks the chat surface.
@@ -54,6 +55,9 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
   const statusTone = TONE_CLASSES[statusMeta.tone] ?? TONE_CLASSES.amber;
   const StatusIcon = statusMeta.icon;
   const HandlerIcon = handler.icon;
+  // Extract the form component to a local that does not collide with the
+  // `FormComponent` registry field name (kept for parity with the modal path).
+  const FormComponentInternal = handler.FormComponent;
 
   // Resolved cards collapse to a compact summary.
   if (!isProposed) {
@@ -108,42 +112,61 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
 
         {/* Body: compact summary + actions */}
         <div className="px-4 py-3 space-y-3 min-w-0">
-          <div className="hitl-hint text-[11px] text-gray-500 dark:text-dark-muted leading-relaxed">
-            {t('ai_chat.hitl.review_hint', {
-              defaultValue: 'Review the AI-prepared draft and edit before saving.',
-            })}
-          </div>
-          <div className="min-w-0">{handler.renderSummary(task)}</div>
+          {/* Inline handlers render their form directly in the card body — no
+              modal, no "Review & Edit" button. The form owns its full footer
+              (Submit/Skip). The hint is hidden because the form's own labels
+              carry the prompts. */}
+          {isInline ? (
+            <div className="min-w-0">
+              <FormComponentInternal
+                task={task}
+                sessionId={sessionId}
+                onResolved={onResolved}
+                onCancel={() => setIsModalOpen(false)}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="hitl-hint text-[11px] text-gray-500 dark:text-dark-muted leading-relaxed">
+                {t('ai_chat.hitl.review_hint', {
+                  defaultValue: 'Review the AI-prepared draft and edit before saving.',
+                })}
+              </div>
+              <div className="min-w-0">{handler.renderSummary(task)}</div>
 
-          <div className="hitl-actions flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleReject}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>{t('ai_chat.hitl.reject', 'Reject')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              <span>{t('ai_chat.hitl.review_and_edit', 'Review & Edit')}</span>
-            </button>
-          </div>
+              <div className="hitl-actions flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>{t('ai_chat.hitl.reject', 'Reject')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>{t('ai_chat.hitl.review_and_edit', 'Review & Edit')}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      <HitlTaskModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        task={task}
-        sessionId={sessionId}
-        handler={handler}
-        onResolved={onResolved}
-      />
+      {!isInline && (
+        <HitlTaskModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          task={task}
+          sessionId={sessionId}
+          handler={handler}
+          onResolved={onResolved}
+        />
+      )}
     </>
   );
 };
