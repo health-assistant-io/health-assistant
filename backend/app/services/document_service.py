@@ -141,64 +141,146 @@ async def upload_document(
     examination_id: Optional[str] = None,
     include_in_extraction: bool = False,
 ) -> DocumentModel:
-    """Upload a document and save to database"""
+    """Upload a document (Starlette ``UploadFile``) and save to database.
 
-    # Generate unique filename
+    Thin wrapper around :func:`ingest_document_bytes` — reads the upload
+    in capped chunks (audit A4: prevents RAM exhaustion from oversized
+    bodies) and delegates the storage + DB write + best-effort OCR
+    dispatch to the bytes-shaped canonical entrypoint. The bytes-shaped
+    entrypoint exists so Celery / webhook / api-proxy contexts without an
+    ``UploadFile`` can use the same ingestion path (workstream C of the
+    integrations follow-ups pass).
+    """
+    max_bytes = settings.MAX_UPLOAD_SIZE * 1024 * 1024
+    content = await _read_capped(file, max_bytes)
+    return await ingest_document_bytes(
+        filename=file.filename or "unknown",
+        content=content,
+        content_type=file.content_type,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        owner_id=owner_id,
+        db=db,
+        examination_id=examination_id,
+        include_in_extraction=include_in_extraction,
+    )
+
+
+async def ingest_document_bytes(
+    *,
+    filename: str,
+    content: bytes,
+    content_type: Optional[str],
+    tenant_id: str | UUID,
+    patient_id: Optional[str | UUID],
+    owner_id: str | UUID,
+    db: AsyncSession,
+    examination_id: Optional[str | UUID] = None,
+    include_in_extraction: bool = True,
+    category_concept_id: Optional[str | UUID] = None,
+) -> DocumentModel:
+    """Persist a document from raw bytes — the canonical ingestion path.
+
+    Workstream C.1 of the integrations follow-ups pass. Extracted from
+    the body of the previous ``upload_document`` so the same storage +
+    DB-write logic serves both the UI ``UploadFile`` path and the
+    integration ``pull_documents`` engine path. Also embeds the OCR
+    dispatch (best-effort) so callers don't have to duplicate it.
+
+    Args:
+        filename: Original filename (used for extension validation +
+            displayed in the UI). The on-disk name is a UUID-derived
+            safe filename.
+        content: Raw bytes — the caller (wrapper or engine) is
+            responsible for any size capping before this point.
+        content_type: Best-effort MIME (currently informational; the
+            extension gate is what actually matters).
+        tenant_id: Owning tenant (FK constraint enforced).
+        patient_id: Optional patient scope. Required for FHIR
+            ``DocumentReference.subject`` round-trip.
+        owner_id: The uploading user (becomes ``DocumentModel.owner_id``
+            + ``AuditMixin.created_by`` downstream).
+        db: Active session. Caller commits via this function.
+        examination_id: Optional exam link (FK with CASCADE).
+        include_in_extraction: When True, dispatch the ``ocr_document``
+            Celery task after the DB write succeeds. Best-effort —
+            broker-down failures are logged + swallowed. The caller can
+            re-trigger via :func:`trigger_extraction` later.
+        category_concept_id: Optional catalog concept link (e.g.
+            "Lab Report", "Imaging"). The engine resolves this from
+            ``DocumentPull.category_concept_slug`` before calling.
+
+    Returns:
+        The persisted :class:`DocumentModel` (refreshed + ready to
+        serialize).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     doc_id = uuid4()
-    filename = file.filename or "unknown"
     file_extension = _validate_upload_extension(filename)
     safe_filename = f"{doc_id}{file_extension}"
 
     tenant_dir = UPLOAD_DIR / str(tenant_id)
     tenant_dir.mkdir(parents=True, exist_ok=True)
-
     file_path = tenant_dir / safe_filename
 
-    # Save file to disk — cap the size to prevent RAM exhaustion (audit A4)
-    max_bytes = settings.MAX_UPLOAD_SIZE * 1024 * 1024
     try:
-        content = await _read_capped(file, max_bytes)
         with open(file_path, "wb") as buffer:
             buffer.write(content)
     except HTTPException:
         raise
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).error(f"Failed to save file: {e}")
+        logger.error(f"Failed to save file: {e}")
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
-    # Create database record
     document = DocumentModel(
         id=doc_id,
-        filename=file.filename or "unknown",
+        filename=filename,
         file_path=str(file_path),
         owner_id=owner_id,
         tenant_id=tenant_id,
-        patient_id=UUID(patient_id) if patient_id else None,
-        examination_id=UUID(examination_id) if examination_id else None,
+        patient_id=UUID(str(patient_id)) if patient_id else None,
+        examination_id=UUID(str(examination_id)) if examination_id else None,
+        category_concept_id=(UUID(str(category_concept_id)) if category_concept_id else None),
         include_in_extraction=include_in_extraction,
         status="uploaded",
         progress=0,
         updated_at=datetime.now(),
     )
 
-    # F11: resolve the owner→Practitioner id so DocumentReference.author can
-    # emit a real `Practitioner/<id>` reference (resolvable by external FHIR
-    # clients). If the owner has no DoctorModel row (admin/manager uploads),
-    # practitioner_id stays NULL and `author` is omitted by to_fhir_dict().
     practitioner_id = await _resolve_practitioner_id(db, owner_id, tenant_id)
     if practitioner_id is not None:
         document.practitioner_id = practitioner_id
 
-    # FHIR validation gate (audit: write-time gate coverage). DocumentModel
-    # projects to DocumentReference; the gate catches invalid shapes (e.g.
-    # missing filename) before persisting. Raises FhirSerializationError →
-    # mapped to HTTP 400 by the global handler.
     assert_valid_fhir(document)
     db.add(document)
     await db.commit()
     await db.refresh(document)
+
+    if include_in_extraction:
+        try:
+            from app.workers.ai_tasks import ocr_document
+
+            cast(Any, ocr_document).apply_async(
+                args=[
+                    str(document.id),
+                    str(document.file_path),
+                    str(document.tenant_id),
+                    str(document.owner_id),
+                ]
+            )
+        except Exception as e:
+            # Broker-down: the document is safely persisted; the user can
+            # re-trigger extraction from the UI via trigger_extraction.
+            # (The previous endpoint-layer fallback to BackgroundTasks
+            # was UI-only and doesn't translate to the engine path; the
+            # UX regression is intentional + documented.)
+            logger.warning(
+                "Could not dispatch ocr_document for %s: %s",
+                document.id, e,
+            )
 
     return document
 

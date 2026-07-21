@@ -458,3 +458,137 @@ def test_run_sync_wires_examinations_opt_in_hook():
         "run_sync must route pulled exams through examination_service."
         "create_examination (the dedup-aware write path)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Workstream F.3 (this stack): run_sync calls the catalog-proposals opt-in
+# hook and routes writes through catalog_proposal_service.apply_proposal.
+# Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_run_sync_wires_catalog_proposals_opt_in_hook():
+    """``run_sync`` must call ``provider.pull_catalog_proposals`` gated on
+    ``provider.supports_catalog_proposals()``, then route each returned
+    proposal through ``catalog_proposal_service.apply_proposal``. Mirrors
+    the clinical-events + examinations guards above. Source-level guard."""
+    from app.services import integration_sync_service as svc
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "supports_catalog_proposals" in src, (
+        "run_sync must probe supports_catalog_proposals — the opt-in gate "
+        "for the catalog-proposals pull hook"
+    )
+    assert "pull_catalog_proposals" in src, (
+        "run_sync must call pull_catalog_proposals on providers that opt in"
+    )
+    assert "apply_proposal" in src, (
+        "run_sync must route pulled proposals through "
+        "catalog_proposal_service.apply_proposal (the kind-aware write path)"
+    )
+
+
+def test_run_sync_enforces_proposals_per_sync_cap():
+    """``run_sync`` must honor ``INTEGRATION_MAX_PROPOSALS_PER_SYNC`` so a
+    runaway provider can't spam the catalog. Source-level guard."""
+    from app.services import integration_sync_service as svc
+
+    assert svc.INTEGRATION_MAX_PROPOSALS_PER_SYNC > 0, (
+        "Cap must be a positive integer — a zero / negative value would "
+        "drop every proposal (or break the loop entirely)"
+    )
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "INTEGRATION_MAX_PROPOSALS_PER_SYNC" in src, (
+        "run_sync must reference the cap constant — providers can return "
+        "unbounded lists and the engine needs to gate them"
+    )
+
+
+def test_sync_result_carries_proposal_counts():
+    """``SyncResult`` must surface ``proposals_pulled`` /
+    ``proposals_applied`` so the worker / endpoint can report them."""
+    from app.services.integration_sync_service import SyncResult
+
+    result = SyncResult()
+    assert hasattr(result, "proposals_pulled"), (
+        "SyncResult must expose proposals_pulled for sync-log reporting"
+    )
+    assert hasattr(result, "proposals_applied"), (
+        "SyncResult must expose proposals_applied for sync-log reporting"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workstream G.4 (this stack): run_sync calls the HITL-proposals opt-in
+# hook and persists each spec via ``integration_proposal_service.create_proposal``.
+# Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_run_sync_wires_hitl_proposals_opt_in_hook():
+    """``run_sync`` must call ``provider.pull_hitl_proposals`` gated on
+    ``provider.supports_hitl_proposals()``, then route each returned spec
+    through ``integration_proposal_service.create_proposal`` (the dedup-
+    aware insert). Mirrors the catalog-proposals guard above."""
+    from app.services import integration_sync_service as svc
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "supports_hitl_proposals" in src, (
+        "run_sync must probe supports_hitl_proposals — the opt-in gate "
+        "for the HITL-proposals pull hook"
+    )
+    assert "pull_hitl_proposals" in src, (
+        "run_sync must call pull_hitl_proposals on providers that opt in"
+    )
+    assert "create_proposal" in src, (
+        "run_sync must route pulled specs through "
+        "integration_proposal_service.create_proposal (the dedup-aware "
+        "insert path)"
+    )
+
+
+def test_run_sync_enforces_hitl_proposals_per_sync_cap():
+    """``run_sync`` must honor ``INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC``
+    so a runaway provider can't spam the inbox."""
+    from app.services import integration_sync_service as svc
+
+    assert svc.INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC > 0, (
+        "HITL cap must be a positive integer — zero / negative would "
+        "drop every proposal (or break the loop entirely)"
+    )
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC" in src, (
+        "run_sync must reference the cap constant — providers can return "
+        "unbounded lists and the engine needs to gate them"
+    )
+
+
+def test_run_sync_emits_hitl_proposal_notification_on_insert():
+    """``run_sync`` must call ``_emit_hitl_proposal_notification`` after
+    inserting a new HITL proposal so the user gets a notification. The
+    helper is best-effort and won't break the sync on failure, but the
+    wiring must be present so the helper actually gets called."""
+    from app.services import integration_sync_service as svc
+    import inspect
+
+    src = inspect.getsource(svc.run_sync)
+    assert "_emit_hitl_proposal_notification" in src, (
+        "run_sync must call _emit_hitl_proposal_notification for each "
+        "newly-inserted HITL proposal so the user gets an inbox row"
+    )
+
+
+def test_sync_result_carries_hitl_proposal_counts():
+    """``SyncResult`` must surface ``hitl_proposals_pulled`` /
+    ``hitl_proposals_inserted`` for sync-log reporting."""
+    from app.services.integration_sync_service import SyncResult
+
+    result = SyncResult()
+    assert hasattr(result, "hitl_proposals_pulled")
+    assert hasattr(result, "hitl_proposals_inserted")

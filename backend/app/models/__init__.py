@@ -72,6 +72,7 @@ from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
 from .export_import_job import ExportJobModel, ImportJobModel
 from .catalog_audit_model import CatalogAuditLog
+from .integration_proposal import IntegrationProposal
 
 __all__ = [
     "Base",
@@ -151,4 +152,5 @@ __all__ = [
     "ExportJobModel",
     "ImportJobModel",
     "CatalogAuditLog",
+    "IntegrationProposal",
 ]

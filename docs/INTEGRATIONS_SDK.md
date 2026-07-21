@@ -719,6 +719,308 @@ The bridge provider (`integrations/health_assistant_bridge/provider.py`) is the 
 
 ---
 
+### 3.11 Catalog Proposals (Opt-in Catalog Contributions)
+
+Providers that discover new catalog entries upstream — a wearable integration that adds a "Sleep Quality Score" metric the local catalog doesn't have, a hospital integration that knows about a disease↔biomarker mapping the local ontology is missing, a medication database the integration can subscribe to — can contribute them via the catalog-proposals hook. The platform engine **auto-applies** each proposal through the canonical catalog write path. For the human-in-the-loop variant (queue for review instead of auto-apply), see §3.12.
+
+The pattern mirrors §3.10: safe defaults, no per-domain code anywhere in the engine, providers opt in by overriding.
+
+#### The two hooks
+
+```python
+from integrations.sdk import (
+    BaseHealthProvider, CatalogProposal,
+    biomarker_proposal, medication_proposal,
+    concept_proposal, edge_proposal,
+)
+
+class MyProvider(BaseHealthProvider):
+    domain = "wearable_sync"
+
+    def supports_catalog_proposals(self) -> bool:
+        return True
+
+    async def pull_catalog_proposals(
+        self, integration: UserIntegration
+    ) -> List[CatalogProposal]:
+        # Inspect what was just pulled (or re-derive from your own state),
+        # return one CatalogProposal per catalog entry to contribute.
+        return [
+            biomarker_proposal(
+                name="Sleep Quality Score",
+                slug="sleep-quality-score",
+                category="Sleep",
+                coding_system="custom",
+                code="HKSleepQualityScore",
+                is_telemetry=False,
+                reference_range_min=0.0,
+                reference_range_max=100.0,
+                confidence=0.8,
+                rationale="Observed recurring HKSleepQuality codes upstream",
+            ),
+        ]
+```
+
+`CatalogProposal` is a Pydantic spec with a `kind` discriminator (`"biomarker"` / `"medication"` / `"concept"` / `"edge"`) + a `payload` dict whose shape depends on `kind`. Four typed convenience constructors (`biomarker_proposal`, `medication_proposal`, `concept_proposal`, `edge_proposal`) build the spec without hand-writing the dict.
+
+Payload shapes per kind (mirrors the chat-side `propose_create_*` HITL tools):
+
+| `kind` | Payload fields |
+|---|---|
+| `biomarker` | `name`, `slug` (optional — derived from name), `category`, `coding_system`, `code`, `preferred_unit_symbol`, `reference_range_min/max`, `aliases`, `info`, `is_telemetry` |
+| `medication` | `name`, `description`, `indications`, `dosage_info`, `contraindications`, `side_effects` |
+| `concept` | `slug`, `name`, `kind` (a `ConceptKind` value like `"disease"` / `"body_system"`), `description`, `coding_system`, `code`, `aliases` |
+| `edge` | `src_type`/`src_id`/`dst_type`/`dst_id`/`relation` (enum values), optional `properties` + `evidence` |
+
+#### What the engine does for you
+
+For each proposal the engine:
+1. Resolves a service-context actor from the integration's owning user via `resolve_integration_actor` (same pattern as §3.10).
+2. Calls `catalog_proposal_service.apply_proposal(db, actor, integration, proposal)`, which routes by `kind` to the matching service-layer write: `BiomarkerDefinition` for biomarkers, `MedicationCatalog` for medications, `ConceptService.create_concept` for concepts, `ConceptService.create_edge` for edges.
+3. Stamps provenance:
+   - `AuditMixin.created_by` = the integration's owning user (recorded via the actor).
+   - `scope` / `tenant_id` derived from the actor's role via `CatalogWritePolicy.assign_create_scope` (USER → USER scope, ADMIN → TENANT scope, SYSTEM_ADMIN → SYSTEM scope).
+   - `ConceptProvenance.INTEGRATION` on `ConceptEdge.source` (the only model with a dedicated provenance column today).
+   - `BiomarkerDefinition.meta_data["_provenance"] = "integration"` tag (the model has no dedicated column).
+4. Returns an `ApplyResult(created: bool, entity_id: UUID, ...)` so the engine knows whether a new row was actually inserted.
+
+Per-proposal failures are logged and don't abort the sync (mirrors §3.10 + §3.9 resilience). `records_synced` in the resulting `IntegrationSyncLog` includes applied proposals alongside observations/events/exams.
+
+#### Idempotency
+
+Re-applying the same proposal on consecutive syncs is a no-op:
+
+- `biomarker` — idempotent on `slug` (globally unique).
+- `medication` — idempotent on `(tenant_id, name)`.
+- `concept` — idempotent on `slug`.
+- `edge` — idempotent on `(src_type, src_id, dst_type, dst_id, relation)`.
+
+The provider doesn't need to track what it's already contributed — just keep emitting the same proposals; the engine dedups.
+
+#### Per-sync cap
+
+`INTEGRATION_MAX_PROPOSALS_PER_SYNC = 50` (in `app/services/integration_sync_service.py`). Excess proposals are dropped with a warning. The cap is module-level today; env-var-ification is on the roadmap.
+
+#### Ordering matters for edges
+
+`ConceptService.create_edge` validates that the source + destination concepts exist. If a provider proposes an edge to a concept it just proposed in the same batch, the concept proposal **must come first** in the returned list. The engine processes proposals in the order the provider returns them.
+
+#### Role limitation for concept / edge writes
+
+`ConceptService.create_concept` and `create_edge` require role `ADMIN` or higher (raises `PermissionError` for `USER`). A USER-role integration owner can still contribute biomarkers and medications (the catalog policy allows it for TENANT scope), but concept / edge proposals fail with `PermissionError` — the engine logs and skips. Document this for your users, or have an ADMIN co-own the integration.
+
+---
+
+### 3.12 HITL Proposals (Human-in-the-Loop Catalog Review)
+
+The HITL layer is the **human-in-the-loop counterpart** to §3.11. Same payload shapes, same write path — but instead of auto-applying each proposal, the platform **queues it for human review**. The integration owner (or a tenant admin) approves / rejects / cancels each proposal through a dedicated endpoint, and only on approve does the canonical write fire.
+
+Use §3.11 (`supports_catalog_proposals`) for entries the integration is confident about (low-risk, idempotent — e.g. declaring a known LOINC code the local catalog is missing). Use this section (`supports_hitl_proposals`) for entries that need a human's judgement (e.g. mapping a novel upstream biomarker to an existing catalog class, contributing a typed concept edge inferred from upstream data).
+
+A single provider can opt into both — the engine treats them independently.
+
+#### The three hooks
+
+```python
+from integrations.sdk import (
+    BaseHealthProvider,
+    biomarker_hitl_proposal, medication_hitl_proposal,
+    concept_hitl_proposal, edge_hitl_proposal,
+    ProposalOutcome,
+)
+
+class MyProvider(BaseHealthProvider):
+    domain = "hospital_ehr"
+
+    def supports_hitl_proposals(self) -> bool:
+        return True
+
+    async def pull_hitl_proposals(
+        self, integration: UserIntegration
+    ) -> List[IntegrationProposalSpec]:
+        # Inspect upstream, propose mappings the user should review.
+        return [
+            biomarker_hitl_proposal(
+                title="Define Biomarker: Apo-B",
+                name="Apolipoprotein B",
+                slug="apo-b",
+                category="Lipids",
+                confidence=0.7,
+                rationale="Upstream lab reports Apo-B but local catalog lacks it",
+            ),
+        ]
+
+    async def handle_proposal_resolution(
+        self,
+        integration: UserIntegration,
+        proposal_id: UUID,
+        outcome: ProposalOutcome,
+    ) -> None:
+        # Optional: react when the user resolves a proposal. Advance a
+        # cursor so you don't re-propose, log audit, suppress duplicates, ...
+        # Default is a no-op; safe to leave unimplemented.
+        if outcome.error is None:
+            self.set_sync_cursor(
+                integration, "last_approved_proposal", str(proposal_id)
+            )
+```
+
+The SDK spec `IntegrationProposalSpec` uses a `proposal_type` discriminator with values `create_biomarker_definition` / `create_medication_definition` / `create_concept` / `create_edge` — names mirror the chat-side AI HITL `task_type` strings so a future unified review UI can render both sources identically. Four typed constructors wrap the same payload shape as §3.11's constructors but tag each for human review.
+
+#### Persistence + state machine
+
+The engine persists each spec as an `IntegrationProposal` row in the `integration_proposals` table with status `PROPOSED`. The state machine:
+
+```
+                ┌────────────┐
+                │  PROPOSED  │
+                └─────┬──────┘
+        ┌─────────────┼─────────────┐
+    approve        reject        cancel
+        │             │             │
+        ▼             ▼             ▼
+  ┌──────────┐  ┌──────────┐  ┌──────────┐
+  │CONFIRMED │  │DISMISSED │  │DISMISSED │
+  └──────────┘  └──────────┘  └──────────┘
+        │ apply error
+        ▼
+  ┌──────────┐
+  │  FAILED  │
+  └──────────┘
+```
+
+The resolver endpoint performs the transition:
+- `approve` → routes the (possibly user-edited) payload through `catalog_proposal_service.apply_proposal` — **the same write path §3.11 uses**. `CONFIRMED` on success, `FAILED` on apply error (the row stays around for retry / re-review).
+- `reject` → `DISMISSED`, no apply. User reviewed and declined.
+- `cancel` → `DISMISSED`, no apply. User dismissed without considering (e.g. closed the modal). Distinguishable from `reject` in audit by the `note`.
+
+Re-resolve from a terminal state returns **409** (idempotent contract).
+
+#### Dedup contract
+
+The engine computes a `dedup_key = sha256(canonical_json({"type": proposal_type, "payload": proposed_payload}))` per spec. A partial unique index on `(integration_id, dedup_key) WHERE dedup_key IS NOT NULL` enforces idempotency at the DB layer:
+
+- Re-emitting the same spec on the next sync is a no-op (returns the existing PROPOSED row, no new notification).
+- Re-emitting after the user has decided (CONFIRMED / DISMISSED / FAILED) is also a no-op — the engine doesn't re-spam the inbox. **Providers wanting stronger "don't re-propose after decision" semantics should advance their own cursor in `handle_proposal_resolution`.**
+
+#### Resolver endpoints (3 new)
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /api/v1/integrations/instance/{id}/proposals?status=&limit=&offset=` | user (owner) | List proposals, optionally filtered by status |
+| `GET /api/v1/integrations/instance/{id}/proposals/{proposal_id}` | user (owner) | Fetch one |
+| `POST /api/v1/integrations/instance/{id}/proposals/{proposal_id}/resolve` | ADMIN+ for `approve`; USER can `reject`/`cancel` | Resolve |
+
+The resolve body is `{action: "approve"\|"reject"\|"cancel", payload?: Dict, note?: str}` — the optional `payload` overrides `proposed_payload` on approve (user edits in the review modal). The response includes `status`, `resolved_payload`, `applied_entity_id` (on successful approve), and `error` (on FAILED).
+
+**USER role can list + view but not approve** catalog proposals (catalog writes require ADMIN+ under the catalog policy) — the endpoint returns 403 so the UI can hide the buttons.
+
+#### Per-sync cap + notification
+
+`INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC = 20`. Excess dropped with a warning. For each **newly-inserted** row (not existing-and-returned ones, to avoid inbox spam on re-sync), the engine fires a notification via `notification_service.emit` with:
+
+- `source = NotificationSource.INTEGRATION`
+- `type = NotificationType.HITL_TASK`
+- `category = NotificationCategory.HITL`
+- `severity = NotificationSeverity.WARNING`
+- Action button linking to the integration's proposals view
+
+The notification shape matches the chat-side AI HITL (`source = AGENT`), keyed on the integration source so the frontend can render them separately if desired.
+
+#### Relationship to the chat-side HITL
+
+This is the **integration-side** HITL, distinct from the existing AI-side HITL documented in `NOTIFICATION_SYSTEM.md`:
+
+| | Chat-side HITL | Integration-side HITL (this section) |
+|---|---|---|
+| Source | `NotificationSource.AGENT` | `NotificationSource.INTEGRATION` |
+| Triggered by | AI agent's `propose_*` chat tools | Provider's `pull_hitl_proposals` SDK hook |
+| Persistence | `ChatMessage.tasks` JSONB | `integration_proposals` table (this section) |
+| Resolver | `/ai-assistance/sessions/{id}/tasks/{id}/resolve` (records outcome; the frontend commits the write separately via canonical REST) | `/integrations/instance/{id}/proposals/{id}/resolve` (performs the write server-side via `apply_proposal`) |
+
+A future workstream may consolidate the two onto a single persistence layer (flagged in the parent plan); for now they coexist.
+
+#### Frontend status
+
+The review card + modal UI (parallel to `HitlTaskCard`) is on the roadmap. Until then, proposals are visible in the notification inbox and resolvable via the REST endpoints above.
+
+---
+
+### 3.13 Document Pull (Opt-in Document Ingestion)
+
+Providers that can deliver document bytes from upstream — a hospital integration that pulls scanned lab reports, a fax-to-email gateway that forwards PDFs, a wearable companion app that syncs ECG printouts — can hand them to the platform's OCR + LLM extraction pipeline via the documents hook.
+
+#### The two hooks
+
+```python
+from integrations.sdk import BaseHealthProvider, DocumentPull
+
+class MyProvider(BaseHealthProvider):
+    domain = "hospital_portal"
+
+    def supports_documents(self) -> bool:
+        return True
+
+    async def pull_documents(
+        self, integration: UserIntegration
+    ) -> List[DocumentPull]:
+        # Fetch the bytes yourself (HTTP download, base64 decode, ...).
+        # The platform ingests whatever bytes you return.
+        reports = await self._fetch_recent_reports(integration)
+        return [
+            DocumentPull(
+                filename=report.filename,
+                content=report.pdf_bytes,
+                content_type="application/pdf",
+                examination_external_id=report.encounter_id,
+                category_concept_slug="lab-report",
+                include_in_extraction=True,
+            )
+            for report in reports
+        ]
+```
+
+`DocumentPull` is a Pydantic spec with `filename` (gated by the medical-types allowlist — PDF, images, DICOM, plain text), `content` (raw bytes), `content_type` (informational), `examination_external_id` (links to a pulled exam — see below), `category_concept_slug` (resolves to a catalog concept), and `include_in_extraction` (default `True` — fires the OCR + LLM extraction Celery task).
+
+#### What the engine does for you
+
+For each spec the engine:
+1. **Cap check** — rejects if adding the document would exceed `INTEGRATION_MAX_DOCS_PER_SYNC = 20` (item count) or `INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 MiB` (running byte total) for this sync. Dropped items log a warning.
+2. **Examination link** — if `examination_external_id` is set, resolves it via a `{external_id: exam_id}` map built during the examinations step (§3.10) — i.e. against the exam that was just pulled in the same sync. Misses are non-fatal (document created unlinked).
+3. **Category link** — if `category_concept_slug` is set, resolves it via `resolve_concept_by_slug`. Misses are non-fatal.
+4. **Writes** via `document_service.ingest_document_bytes` — the **same canonical ingestion path the UI upload endpoint uses**. Writes the file under `UPLOAD_DIR/<tenant_id>/`, creates the `DocumentModel` row with `owner_id` = the integration's owning user, fires the OCR task best-effort when `include_in_extraction=True`.
+
+Per-document failures are logged and don't abort the sync.
+
+#### Idempotency
+
+There are **no document-level dedup columns** on `DocumentModel` today (no `source_integration_id` / `external_id`). Re-pulling the same upstream file on the next sync creates a fresh row. **Providers are responsible for advancing their own cursor** via `set_sync_cursor` so they don't re-pull:
+
+```python
+async def pull_documents(self, integration):
+    last_pull = self.get_sync_cursor(integration, "last_doc_pulled_at")
+    new_docs = await self._fetch_docs_since(last_pull)
+    if new_docs:
+        self.set_sync_cursor(
+            integration, "last_doc_pulled_at", new_docs[-1].fetched_at.isoformat()
+        )
+    return new_docs
+```
+
+A future workstream may add document-level dedup columns if providers prove unable to manage their own cursors.
+
+#### Storage + size considerations
+
+- **Local disk only** — the storage path is `UPLOAD_DIR` (env-configurable, defaults to `/var/healthassistant/uploads`). Self-hosted deployments can mount a persistent volume. S3 / object-store abstraction is on the roadmap.
+- **Memory pressure** — a provider returning 100 MB of PDFs in one batch holds them all in memory. The 50 MiB per-sync byte cap mitigates the worst case; providers with very large documents should chunk across syncs.
+- **Extension allowlist** — only medical-document types are accepted: PDF (`.pdf`), PNG/JPG/BMP/WebP/TIFF/GIF, DICOM (`.dcm`), plain text (`.txt`, `.md`). Others raise `HTTPException(400)` at the extension gate.
+
+#### Relationship to the UI upload path
+
+The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `ingest_document_bytes` function this hook uses. Both write to the same `UPLOAD_DIR`, both stamp the same `DocumentModel` columns, both dispatch the same OCR task. A document pulled by an integration is indistinguishable in the UI from one uploaded by the user — the `owner_id` is the integration's owning user, same as if they'd uploaded it themselves.
+
+---
+
 ## 4. Building FHIR Observations
 Use the `ObservationBuilder` to map raw third-party data into FHIR compliant schemas easily.
 
@@ -784,3 +1086,15 @@ INSERT INTO system_integrations (domain, is_enabled)
 VALUES ('notify', true)
 ON CONFLICT (domain) DO UPDATE SET is_enabled = true;
 ```
+
+---
+
+## See also
+
+- [Integrations Framework](INTEGRATIONS_FRAMEWORK.md) — high-level architecture, lifecycle, and highlight bullets for every opt-in capability.
+- [REST API Reference](API.md) — the `/api/v1/integrations/*` endpoints (config-flow, sync, webhook, two-way API, HITL proposals resolve).
+- [Notification System](NOTIFICATION_SYSTEM.md) — the chat-side AI HITL flow that the integration-side HITL (§3.12) parallels.
+- [FHIR R4 Facade](FHIR_R4_FACADE.md) — 19 conformance resources, CapabilityStatement, search Bundles.
+- `integrations/dev_dummy/` — reference provider demonstrating custom actions, notifications, cursors, and error simulation.
+- `integrations/health_assistant_bridge/` — reference two-way API provider; its `provider.py` is the canonical example of examination creation via the service layer (§3.10).
+- `integrations/fhir_server/` — reference SMART-on-FHIR + tokenless-FHIR pull/push integration (§3.8).

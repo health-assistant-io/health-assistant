@@ -5,11 +5,10 @@ from fastapi import (
     Request,
     UploadFile,
     File,
-    BackgroundTasks,
     Form,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any, Optional, cast
+from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.services.document_service import (
@@ -20,7 +19,15 @@ from app.services.document_service import (
     delete_document,
     update_document,
 )
-from app.workers.ai_tasks import process_document_sync
+# Top-level workers import keeps the load order stable: documents.py is
+# imported before examinations.py by the v1 router, and importing the
+# workers module here forces ``app.workers.ai_tasks`` to load before
+# ``app.ai.pipeline.service`` finishes initializing (otherwise a circular
+# import fires). ``ocr_document`` is the task the service layer dispatches
+# inside ``ingest_document_bytes`` — keeping the symbol at module scope
+# documents the dependency even though the dispatch itself lives in the
+# service.
+from app.workers.ai_tasks import ocr_document  # noqa: F401
 import logging
 from uuid import UUID
 
@@ -34,7 +41,6 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 @router.post("")
 async def upload_document_endpoint(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     patient_id: str = Form(None),
     examination_id: str = Form(None),
@@ -75,7 +81,14 @@ async def upload_document_endpoint(
     if isinstance(include_in_extraction, str):
         include_in_extraction = include_in_extraction.lower() == "true"
 
-    # Create document
+    # Create document. ``upload_document`` reads the UploadFile in capped
+    # chunks (audit A4), delegates to ``ingest_document_bytes`` (workstream
+    # C.1) which writes the file + DB row + dispatches the OCR Celery task
+    # best-effort. The previous inline OCR dispatch + broker-down fallback
+    # to ``BackgroundTasks.process_document_sync`` moved into the service
+    # layer so engine/webhook paths get OCR for free without duplicating
+    # the dispatch logic. UX regression: broker-down no longer triggers
+    # sync background processing; user can re-trigger from the UI.
     document = await upload_document(
         file,
         patient_id,
@@ -89,33 +102,6 @@ async def upload_document_endpoint(
     logger.info(
         f"Document created: {document.id}, include_in_extraction: {include_in_extraction} (type: {type(include_in_extraction)})"
     )
-
-    # Trigger async processing (OCR) only if requested or if it's a new upload that needs basic indexing
-    # If the user specifically said NOT to include in extraction, we can skip OCR for now to save resources
-    # and avoid "processing" status confusion.
-    if include_in_extraction:
-        try:
-            from app.workers.ai_tasks import ocr_document
-
-            logger.info(f"Triggering OCR task for document {document.id}")
-            task = cast(Any, ocr_document).apply_async(
-                args=[str(document.id), str(document.file_path), str(tenant_uuid)]
-            )
-            logger.info(f"OCR task triggered: {task.id}")
-        except Exception as e:
-            logger.warning(f"Celery task not started (Redis unavailable): {e}")
-            logger.info("Falling back to synchronous background processing.")
-            if background_tasks:
-                background_tasks.add_task(
-                    process_document_sync,
-                    str(document.id),
-                    document.file_path,
-                    str(tenant_uuid),
-                )
-    else:
-        logger.info(
-            f"Skipping OCR task for document {document.id} as include_in_extraction is False"
-        )
 
     return document.to_dict()
 

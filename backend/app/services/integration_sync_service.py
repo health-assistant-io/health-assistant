@@ -38,6 +38,21 @@ logger = logging.getLogger(__name__)
 
 _SYNC_LOCK_TTL = 600  # seconds — matches the worker's original Redis lock expiry
 
+# Cap on how many catalog proposals a single sync will apply. Excess items
+# are dropped with a warning so a runaway provider can't spam the catalog.
+# Cross-cutting env-var-ification is deferred (see parent plan §D.3).
+INTEGRATION_MAX_PROPOSALS_PER_SYNC = 50
+
+# Cap on how many HITL proposals a single sync will queue. Excess items
+# are dropped with a warning so a runaway provider can't spam the inbox.
+INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC = 20
+
+# Caps on integration-pulled documents (workstream C). Item count protects
+# the catalog from a runaway provider; byte cap protects RAM. Both are
+# enforced in run_sync before ingest_document_bytes is called.
+INTEGRATION_MAX_DOCS_PER_SYNC = 20
+INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 * 1024 * 1024  # 50 MiB
+
 
 def _opt_in(provider: Any, hook_name: str) -> bool:
     """Generic capability probe for opt-in provider hooks.
@@ -193,6 +208,12 @@ class SyncResult:
     error_type: Optional[str] = None  # "auth" | "rate_limit" | "data" | None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    proposals_pulled: int = 0
+    proposals_applied: int = 0
+    hitl_proposals_pulled: int = 0
+    hitl_proposals_inserted: int = 0
+    documents_pulled: int = 0
+    documents_written: int = 0
 
 
 async def _try_acquire_lock(integration_id: UUID) -> Tuple[bool, str]:
@@ -384,14 +405,18 @@ async def run_sync(
         for _obs in observations:
             _obs.patient_id = coerce_patient_id(_obs.patient_id, _obs.subject)
 
-            from app.services.fhir_service import map_observations_to_biomarkers
+        # Map once for the whole batch (was previously indented inside the
+        # per-observation loop above and ran N times — wasted work, since
+        # each call is idempotent on the biomarker definitions, but a real
+        # regression risk if the call ever grew side effects).
+        from app.services.fhir_service import map_observations_to_biomarkers
 
-            map_result = await map_observations_to_biomarkers(db, observations)
-            dropped_invalid = (
-                map_result.get("dropped_invalid", 0)
-                if isinstance(map_result, dict)
-                else 0
-            )
+        map_result = await map_observations_to_biomarkers(db, observations)
+        dropped_invalid = (
+            map_result.get("dropped_invalid", 0)
+            if isinstance(map_result, dict)
+            else 0
+        )
 
         # ---- telemetry / FHIR split ----
         telemetry_count = 0
@@ -478,6 +503,12 @@ async def run_sync(
         # validation; we don't duplicate that here.
         exams_pulled = 0
         exams_written = 0
+        # Hoisted map so the documents block (workstream C) can resolve a
+        # ``DocumentPull.examination_external_id`` against the exam that was
+        # just pulled+persisted above. Keyed by the upstream external_id
+        # the provider set on ``ExaminationCreate``; value is the resulting
+        # exam's UUID. Empty when the provider doesn't opt into exams.
+        exam_by_external_id: Dict[str, UUID] = {}
         supports_exams = _opt_in(provider, "supports_examinations")
         if supports_exams:
             try:
@@ -495,7 +526,7 @@ async def run_sync(
                     actor = await resolve_integration_actor(db, integration)
                     for exam_payload in exams_data:
                         try:
-                            await create_examination(
+                            created_exam = await create_examination(
                                 db,
                                 actor,
                                 exam_payload,
@@ -505,6 +536,11 @@ async def run_sync(
                                 ),
                             )
                             exams_written += 1
+                            ext_id = getattr(exam_payload, "external_id", None)
+                            if ext_id and created_exam is not None:
+                                exam_by_external_id[str(ext_id)] = (
+                                    created_exam.id
+                                )
                         except Exception as exam_err:
                             logger.warning(
                                 "create_examination failed for integration "
@@ -525,6 +561,315 @@ async def run_sync(
                         "(%d failed create_examination)",
                         integration.provider, exams_pulled,
                         exams_written, exams_pulled - exams_written,
+                    )
+
+        # ---- catalog proposals (opt-in hook, workstream F) ----
+        # Providers that declare ``supports_catalog_proposals`` can
+        # contribute catalog entries (biomarker classes, medications,
+        # concepts, typed concept edges) sourced from upstream — closing
+        # the gap left by ``ConceptProvenance.INTEGRATION`` (declared in
+        # the enum but unwritten before F). Each returned proposal is
+        # applied through ``catalog_proposal_service.apply_proposal``,
+        # which routes by ``kind`` to the matching service-layer write
+        # path and is idempotent on the natural key per kind — re-syncs
+        # don't duplicate. Capped at ``INTEGRATION_MAX_PROPOSALS_PER_SYNC``
+        # items; excess dropped with a warning. Failures are logged and
+        # don't abort the sync (mirrors the events / exams hooks).
+        proposals_pulled = 0
+        proposals_applied = 0
+        supports_proposals = _opt_in(provider, "supports_catalog_proposals")
+        if supports_proposals:
+            try:
+                proposals_data = await provider.pull_catalog_proposals(
+                    integration
+                )
+                proposals_data = proposals_data or []
+                proposals_pulled = len(proposals_data)
+                if proposals_data:
+                    from app.services.catalog_proposal_service import (
+                        apply_proposal,
+                    )
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+
+                    actor = await resolve_integration_actor(
+                        db, integration
+                    )
+                    dropped_by_cap = 0
+                    for idx, proposal in enumerate(proposals_data):
+                        if idx >= INTEGRATION_MAX_PROPOSALS_PER_SYNC:
+                            dropped_by_cap = proposals_pulled - idx
+                            logger.warning(
+                                "catalog-proposals sync: provider %s returned "
+                                "%d proposals — cap is %d; dropping the last "
+                                "%d.",
+                                integration.provider, proposals_pulled,
+                                INTEGRATION_MAX_PROPOSALS_PER_SYNC,
+                                dropped_by_cap,
+                            )
+                            break
+                        try:
+                            result = await apply_proposal(
+                                db, actor, integration, proposal
+                            )
+                            if result.created:
+                                proposals_applied += 1
+                        except Exception as proposal_err:
+                            logger.warning(
+                                "apply_proposal failed for integration %s "
+                                "proposal #%d (kind=%s): %s",
+                                integration.id, idx,
+                                getattr(proposal, "kind", "?"), proposal_err,
+                            )
+            except Exception as proposals_pull_err:
+                logger.warning(
+                    "pull_catalog_proposals failed for %s: %s",
+                    integration.provider, proposals_pull_err,
+                )
+            else:
+                if proposals_pulled and proposals_applied < proposals_pulled:
+                    logger.info(
+                        "catalog-proposals sync: provider %s pulled %d, "
+                        "applied %d new (%d already existed or failed)",
+                        integration.provider, proposals_pulled,
+                        proposals_applied, proposals_pulled - proposals_applied,
+                    )
+
+        # ---- HITL proposals (opt-in hook, workstream G) ----
+        # The HITL layer is the human-in-the-loop counterpart to the
+        # catalog-proposals block above. Same payload shapes, but the
+        # integration asks the platform to queue each proposal for human
+        # review instead of auto-applying. The engine persists each spec
+        # as a PROPOSED ``IntegrationProposal`` row + fires an HITL
+        # notification. Re-emitting the same spec on the next sync is a
+        # no-op (deduped via ``create_proposal``'s dedup_key check). The
+        # user resolves via the
+        # ``/api/v1/integrations/instance/{id}/proposals/.../resolve``
+        # endpoint, which routes the (possibly-edited) payload through
+        # ``catalog_proposal_service.apply_proposal`` — the same write
+        # path the catalog-proposals block above uses. Capped at
+        # ``INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC`` items; excess
+        # dropped with a warning. Failures are logged and don't abort
+        # the sync (mirrors the events / exams / catalog-proposals hooks).
+        hitl_pulled = 0
+        hitl_inserted = 0
+        supports_hitl = _opt_in(provider, "supports_hitl_proposals")
+        if supports_hitl:
+            try:
+                hitl_specs = await provider.pull_hitl_proposals(integration)
+                hitl_specs = hitl_specs or []
+                hitl_pulled = len(hitl_specs)
+                if hitl_specs:
+                    from app.services.integration_proposal_service import (
+                        create_proposal as _create_hitl_proposal,
+                    )
+
+                    hitl_dropped_by_cap = 0
+                    for idx, spec in enumerate(hitl_specs):
+                        if idx >= INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC:
+                            hitl_dropped_by_cap = hitl_pulled - idx
+                            logger.warning(
+                                "hitl-proposals sync: provider %s returned "
+                                "%d proposals — cap is %d; dropping the "
+                                "last %d.",
+                                integration.provider, hitl_pulled,
+                                INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC,
+                                hitl_dropped_by_cap,
+                            )
+                            break
+                        try:
+                            proposal_type = getattr(
+                                spec, "proposal_type", None
+                            )
+                            if not proposal_type:
+                                logger.warning(
+                                    "hitl-proposals sync: provider %s spec "
+                                    "#%d missing proposal_type — skipping",
+                                    integration.provider, idx,
+                                )
+                                continue
+                            _, created = await _create_hitl_proposal(
+                                db,
+                                integration_id=integration.id,
+                                tenant_id=integration.tenant_id,
+                                patient_id=getattr(spec, "patient_id", None),
+                                proposal_type=proposal_type,
+                                title=getattr(spec, "title", "(untitled)"),
+                                proposed_payload=getattr(
+                                    spec, "proposed_payload", {}
+                                ),
+                                context=getattr(spec, "context", {}) or {},
+                                created_by=integration.user_id,
+                            )
+                            if created:
+                                hitl_inserted += 1
+                                # Fire the HITL notification only for newly-
+                                # inserted rows so re-syncs don't spam the
+                                # inbox. Best-effort; failures logged.
+                                await _emit_hitl_proposal_notification(
+                                    integration, spec
+                                )
+                        except Exception as spec_err:
+                            logger.warning(
+                                "create_proposal failed for integration %s "
+                                "HITL spec #%d (type=%s): %s",
+                                integration.id, idx,
+                                getattr(spec, "proposal_type", "?"),
+                                spec_err,
+                            )
+            except Exception as hitl_pull_err:
+                logger.warning(
+                    "pull_hitl_proposals failed for %s: %s",
+                    integration.provider, hitl_pull_err,
+                )
+            else:
+                if hitl_pulled and hitl_inserted < hitl_pulled:
+                    logger.info(
+                        "hitl-proposals sync: provider %s pulled %d, "
+                        "inserted %d new (%d already existed or failed)",
+                        integration.provider, hitl_pulled,
+                        hitl_inserted, hitl_pulled - hitl_inserted,
+                    )
+
+        # ---- documents (opt-in hook, workstream C) ----
+        # Providers that declare ``supports_documents`` can deliver
+        # pre-fetched document bytes (a hospital integration pulling
+        # scanned lab reports, a fax-to-email gateway, a wearable
+        # companion app syncing ECG printouts). The engine resolves a
+        # service-context actor + writes each document via
+        # ``document_service.ingest_document_bytes`` — the same path the
+        # UI upload endpoint uses. The OCR + LLM extraction Celery task
+        # fires automatically when ``include_in_extraction=True`` on the
+        # spec (best-effort: broker-down failures are swallowed inside
+        # the service). Per-document failures are logged and don't abort
+        # the sync.
+        #
+        # Two caps protect against runaway providers:
+        #   - ``INTEGRATION_MAX_DOCS_PER_SYNC`` (item count, default 20)
+        #   - ``INTEGRATION_MAX_DOC_BYTES_PER_SYNC`` (total bytes, 50 MiB)
+        # Both enforced before ``ingest_document_bytes`` is called.
+        docs_pulled = 0
+        docs_written = 0
+        supports_docs = _opt_in(provider, "supports_documents")
+        if supports_docs:
+            try:
+                docs_data = await provider.pull_documents(integration)
+                docs_data = docs_data or []
+                docs_pulled = len(docs_data)
+                if docs_data:
+                    from app.services.document_service import (
+                        ingest_document_bytes,
+                    )
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.concept_service import (
+                        resolve_concept_by_slug,
+                    )
+
+                    actor = await resolve_integration_actor(db, integration)
+                    bytes_this_sync = 0
+                    dropped_by_count_cap = 0
+                    dropped_by_byte_cap = 0
+                    for idx, doc_spec in enumerate(docs_data):
+                        if idx >= INTEGRATION_MAX_DOCS_PER_SYNC:
+                            dropped_by_count_cap += 1
+                            continue
+                        content = getattr(doc_spec, "content", b"") or b""
+                        if (
+                            bytes_this_sync + len(content)
+                            > INTEGRATION_MAX_DOC_BYTES_PER_SYNC
+                        ):
+                            dropped_by_byte_cap += 1
+                            logger.warning(
+                                "documents sync: provider %s doc #%d (%d "
+                                "bytes) would exceed the %d-byte per-sync "
+                                "cap — dropping",
+                                integration.provider, idx, len(content),
+                                INTEGRATION_MAX_DOC_BYTES_PER_SYNC,
+                            )
+                            continue
+                        try:
+                            exam_ext_id = getattr(
+                                doc_spec, "examination_external_id", None
+                            )
+                            resolved_exam_id: Optional[UUID] = (
+                                exam_by_external_id.get(str(exam_ext_id))
+                                if exam_ext_id
+                                else None
+                            )
+                            category_slug = getattr(
+                                doc_spec, "category_concept_slug", None
+                            )
+                            resolved_category_id: Optional[UUID] = (
+                                await resolve_concept_by_slug(
+                                    db,
+                                    str(category_slug),
+                                    tenant_id=actor.tenant_id,
+                                )
+                                if category_slug
+                                else None
+                            )
+                            await ingest_document_bytes(
+                                filename=getattr(doc_spec, "filename", None)
+                                or "unknown",
+                                content=content,
+                                content_type=getattr(
+                                    doc_spec, "content_type", None
+                                ),
+                                tenant_id=actor.tenant_id,
+                                patient_id=integration.patient_id,
+                                owner_id=actor.user_id,
+                                db=db,
+                                examination_id=resolved_exam_id,
+                                include_in_extraction=bool(
+                                    getattr(
+                                        doc_spec,
+                                        "include_in_extraction",
+                                        True,
+                                    )
+                                ),
+                                category_concept_id=resolved_category_id,
+                            )
+                            docs_written += 1
+                            bytes_this_sync += len(content)
+                        except Exception as doc_err:
+                            logger.warning(
+                                "ingest_document_bytes failed for "
+                                "integration %s doc #%d (%r): %s",
+                                integration.id, idx,
+                                getattr(doc_spec, "filename", "?"),
+                                doc_err,
+                            )
+                    if dropped_by_count_cap:
+                        logger.warning(
+                            "documents sync: provider %s returned %d "
+                            "documents — count cap is %d; dropped %d",
+                            integration.provider, docs_pulled,
+                            INTEGRATION_MAX_DOCS_PER_SYNC,
+                            dropped_by_count_cap,
+                        )
+                    if dropped_by_byte_cap:
+                        logger.warning(
+                            "documents sync: provider %s dropped %d "
+                            "documents that would have exceeded the "
+                            "%d-byte per-sync cap",
+                            integration.provider, dropped_by_byte_cap,
+                            INTEGRATION_MAX_DOC_BYTES_PER_SYNC,
+                        )
+            except Exception as docs_pull_err:
+                logger.warning(
+                    "pull_documents failed for %s: %s",
+                    integration.provider, docs_pull_err,
+                )
+            else:
+                if docs_pulled and docs_written < docs_pulled:
+                    logger.info(
+                        "documents sync: provider %s pulled %d, wrote %d "
+                        "(%d dropped by cap or failed ingest)",
+                        integration.provider, docs_pulled, docs_written,
+                        docs_pulled - docs_written,
                     )
 
         # ---- push ----
@@ -552,7 +897,13 @@ async def run_sync(
             tenant_id=integration.tenant_id,
             status=sync_status,
             records_synced=(
-                telemetry_count + fhir_count + events_written + exams_written
+                telemetry_count
+                + fhir_count
+                + events_written
+                + exams_written
+                + proposals_applied
+                + hitl_inserted
+                + docs_written
             ),
             started_at=started,
             completed_at=completed,
@@ -570,6 +921,12 @@ async def run_sync(
             status=sync_status,
             started_at=started,
             completed_at=completed,
+            proposals_pulled=proposals_pulled,
+            proposals_applied=proposals_applied,
+            hitl_proposals_pulled=hitl_pulled,
+            hitl_proposals_inserted=hitl_inserted,
+            documents_pulled=docs_pulled,
+            documents_written=docs_written,
         )
         return result
 
@@ -723,6 +1080,72 @@ async def _filter_specs_by_owner_type_prefs(
             continue
         out.append(spec)
     return out
+
+
+async def _emit_hitl_proposal_notification(
+    integration: Any, spec: Any
+) -> None:
+    """Fire the HITL notification for one newly-inserted proposal.
+
+    Mirrors the chat-side ``_notify_hitl_proposal`` shape but keyed on
+    ``NotificationSource.INTEGRATION`` so the frontend can render
+    integration-sourced proposals separately if it wants. The action
+    button links to the integration instance's proposals view
+    (``/integrations/{provider}/{integration_id}/proposals/{proposal_id}``);
+    the route doesn't exist in the SPA yet (frontend G.5 deferred per
+    parent plan §G mitigation), so the link is forward-compatible — when
+    G.5 lands it'll Just Work.
+
+    Best-effort: failures are logged + swallowed so a buggy notification
+    path can't break the sync.
+    """
+    try:
+        from app.models.enums import (
+            NotificationCategory,
+            NotificationSeverity,
+            NotificationSource,
+            NotificationType,
+            RecipientKind,
+        )
+        from app.services.notification_service import emit
+
+        proposal_type = getattr(spec, "proposal_type", "proposal")
+        title = getattr(spec, "title", "Integration proposal needs your review")
+        await emit(
+            source=NotificationSource.INTEGRATION,
+            type=NotificationType.HITL_TASK,
+            category=NotificationCategory.HITL,
+            severity=NotificationSeverity.WARNING,
+            title=title,
+            body=(
+                f"{integration.provider or 'Integration'} proposed a "
+                f"{proposal_type.replace('_', ' ')} for your review."
+            ),
+            patient_id=getattr(spec, "patient_id", None),
+            tenant_id=integration.tenant_id,
+            targets=[
+                {
+                    "kind": RecipientKind.USER.value,
+                    "id": str(integration.user_id),
+                }
+            ],
+            payload={
+                "proposal_type": proposal_type,
+                "integration_id": str(integration.id),
+                "domain": integration.provider,
+                "proposed_payload": getattr(spec, "proposed_payload", {}),
+            },
+            source_ref={
+                "integration_id": str(integration.id),
+                "proposal_type": proposal_type,
+                "source": "integration_hitl",
+            },
+        )
+    except Exception:
+        logger.exception(
+            "HITL-proposal notification emit failed for integration=%s",
+            getattr(integration, "id", None),
+        )
 
 
 async def _emit_provider_notifications(

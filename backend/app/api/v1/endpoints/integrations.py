@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, Dict, List, Optional
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1018,6 +1018,234 @@ async def execute_notification_action(
     except Exception as e:
         logger.error("Notification action %s failed for %s: %s", action_id, domain, e)
         raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Integration proposals (HITL — workstream G)
+# ---------------------------------------------------------------------------
+
+
+async def _load_owned_integration(
+    integration_id: str,
+    *,
+    current_user: TokenData,
+    db: AsyncSession,
+    require_active: bool = False,
+) -> UserIntegration:
+    """Load a ``UserIntegration`` row scoped to the requesting user.
+
+    The triple ``(id, user_id, tenant_id)`` is the de-facto ownership
+    check used across this endpoint. Raises ``HTTPException(404)`` if the
+    row doesn't exist or doesn't belong to the caller.
+
+    Set ``require_active=True`` to additionally require
+    ``status=IntegrationStatus.ACTIVE`` (e.g. the manual-sync endpoint
+    needs an active instance; the proposal endpoints accept any owned
+    integration so a paused instance's pending proposals are still
+    reviewable).
+    """
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.tenant_id == current_user.tenant_id,
+    )
+    if require_active:
+        stmt = stmt.where(UserIntegration.status == IntegrationStatus.ACTIVE)
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    if integration is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Integration instance not found for this user.",
+        )
+    return integration
+
+
+@router.get(
+    "/instance/{integration_id}/proposals",
+    response_model=List[Dict[str, Any]],
+)
+async def list_integration_proposals(
+    integration_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> Any:
+    """List HITL proposals for an integration instance.
+
+    Optional ``status`` filter accepts a ``HitlTaskStatus`` value
+    (``proposed`` / ``confirmed`` / ``dismissed`` / ``failed``). The
+    endpoint returns proposals regardless of integration state so a
+    paused integration's pending queue is still reviewable.
+    """
+    from app.models.enums import HitlTaskStatus
+    from app.services import integration_proposal_service as proposal_svc
+    from app.schemas.integration_proposal import IntegrationProposalResponse
+
+    integration = await _load_owned_integration(
+        integration_id, current_user=current_user, db=db
+    )
+
+    status_filter: Optional[HitlTaskStatus] = None
+    if status is not None:
+        try:
+            status_filter = HitlTaskStatus(status.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unknown status {status!r}. Valid: "
+                    f"{[s.value for s in HitlTaskStatus]}"
+                ),
+            )
+
+    proposals = await proposal_svc.list_proposals(
+        db,
+        integration_id=integration.id,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+    return [
+        IntegrationProposalResponse.model_validate(p).model_dump(
+            mode="json"
+        )
+        for p in proposals
+    ]
+
+
+@router.get(
+    "/instance/{integration_id}/proposals/{proposal_id}",
+    response_model=Dict[str, Any],
+)
+async def get_integration_proposal(
+    integration_id: str,
+    proposal_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Fetch one HITL proposal by id (scoped to the owned integration)."""
+    from app.services import integration_proposal_service as proposal_svc
+    from app.schemas.integration_proposal import IntegrationProposalResponse
+
+    integration = await _load_owned_integration(
+        integration_id, current_user=current_user, db=db
+    )
+    try:
+        proposal_uuid = UUID(proposal_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid proposal ID")
+
+    proposal = await proposal_svc.get_proposal(
+        db, integration_id=integration.id, proposal_id=proposal_uuid
+    )
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return IntegrationProposalResponse.model_validate(proposal).model_dump(
+        mode="json"
+    )
+
+
+@router.post(
+    "/instance/{integration_id}/proposals/{proposal_id}/resolve",
+    response_model=Dict[str, Any],
+)
+async def resolve_integration_proposal(
+    integration_id: str,
+    proposal_id: str,
+    body: Dict[str, Any],
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Resolve a pending HITL proposal.
+
+    Body shape (``IntegrationProposalResolveRequest``):
+
+    .. code-block:: json
+
+        {
+          "action": "approve" | "reject" | "cancel",
+          "payload": {"...": "..."},   // optional override on approve
+          "note": "free-text reason"   // optional audit note
+        }
+
+    - ``approve`` → apply the (possibly-edited) payload through
+      :func:`catalog_proposal_service.apply_proposal`. Status transitions
+      to ``confirmed`` on success, ``failed`` on apply error.
+    - ``reject`` / ``cancel`` → status ``dismissed``, no apply.
+
+    Re-resolve from a terminal state returns 409 (idempotent contract).
+    """
+    from app.models.enums import HitlTaskStatus, Role
+    from app.services import integration_proposal_service as proposal_svc
+    from app.schemas.integration_proposal import (
+        IntegrationProposalResolveRequest,
+        IntegrationProposalResponse,
+    )
+
+    integration = await _load_owned_integration(
+        integration_id, current_user=current_user, db=db
+    )
+    try:
+        proposal_uuid = UUID(proposal_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid proposal ID")
+
+    try:
+        req = IntegrationProposalResolveRequest(**body)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid resolve body: {exc}"
+        )
+
+    # Catalog writes (biomarker / medication / concept / edge) require
+    # ADMIN+ under the catalog policy. USER-role callers can list + view
+    # but not resolve — surface as 403 so the UI can hide the buttons.
+    if req.action == "approve" and current_user.role == Role.USER.value:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Approving catalog proposals requires ADMIN or higher. "
+                "Ask a tenant admin to review."
+            ),
+        )
+
+    provider = integration_registry.get_provider(integration.provider)
+
+    try:
+        result = await proposal_svc.resolve_proposal(
+            db,
+            integration=integration,
+            proposal_id=proposal_uuid,
+            action=req.action,
+            actor=current_user,
+            payload_override=req.payload,
+            note=req.note,
+            provider=provider,
+        )
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    except ValueError as exc:
+        # Terminal-state re-resolve → 409 (caller already decided).
+        if "terminal state" in str(exc):
+            raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    response = IntegrationProposalResponse.model_validate(
+        result.proposal
+    ).model_dump(mode="json")
+    response["applied_entity_id"] = (
+        str(result.applied_entity_id) if result.applied_entity_id else None
+    )
+    response["error"] = result.error
+    return response
 
 
 @router.post("/instance/{integration_id}/sync")

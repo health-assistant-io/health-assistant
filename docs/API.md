@@ -870,7 +870,17 @@ systems that don't carry the platform JWT.
 | `POST` | `/integrations/instance/{integration_id}/toggle-debug` | any | `patient_id` * | `{message, is_debug_enabled}` |  |
 | `DELETE` | `/integrations/instance/{integration_id}` | any | `patient_id` * | `{message}` | Best-effort revokes OAuth tokens (RFC 7009). |
 | `POST` | `/integrations/instance/{integration_id}/action/{action_id}` | any | `patient_id` * | provider ActionResult | 400 if the provider doesn't implement `execute_custom_action`. |
-| `POST` | `/integrations/instance/{integration_id}/sync` | any | `patient_id` * | `{message, metrics_synced, pulled, dropped_invalid, status, last_synced_at}` | 409 if a sync is already running; 401 on auth failure; 429 on upstream rate limit; 500 on other failures. |
+| `POST` | `/integrations/instance/{integration_id}/sync` | any | `patient_id` * | `{message, metrics_synced, pulled, dropped_invalid, status, last_synced_at}` | 409 if a sync is already running; 401 on auth failure; 429 on upstream rate limit; 500 on other failures. Runs every opt-in hook the provider supports (events / exams / catalog-proposals / HITL-proposals / documents). |
+
+### HITL proposals (review + resolve)
+
+Catalog write proposals queued for human review by providers that opt into `supports_hitl_proposals` (see [INTEGRATIONS_SDK.md §3.12](INTEGRATIONS_SDK.md#312-hitl-proposals-human-in-the-loop-catalog-review)). Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook (§3.11) uses.
+
+| Method | Path | Auth | Body / Query | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/integrations/instance/{integration_id}/proposals` | owner | `status?=proposed\|confirmed\|dismissed\|failed`, `limit?=100`, `offset?=0` | `List[IntegrationProposalResponse]` | Newest-first; deterministic `(created_at, id)` tiebreaker. |
+| `GET` | `/integrations/instance/{integration_id}/proposals/{proposal_id}` | owner | — | `IntegrationProposalResponse` | 404 if proposal doesn't exist or belongs to another integration. |
+| `POST` | `/integrations/instance/{integration_id}/proposals/{proposal_id}/resolve` | ADMIN+ for `action=approve`; USER can `reject`/`cancel` | `{action: "approve"\|"reject"\|"cancel", payload?: Dict, note?: str}` | `IntegrationProposalResponse` (+ `applied_entity_id`, `error`) | 409 if proposal is already in a terminal state. On `approve`, the resolver runs `apply_proposal` server-side; `applied_entity_id` is the created/updated catalog row's UUID. `payload` overrides `proposed_payload` (user edits in the review modal). |
 
 ### Notifications (per-integration preferences + actionable push)
 

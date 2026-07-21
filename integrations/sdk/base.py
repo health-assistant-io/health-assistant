@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 import logging
 import httpx
 import json
@@ -260,6 +261,185 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         :meth:`supports_examinations`. Swallow per-instance errors and
         return ``[]`` on failure so one bad integration doesn't break the
         whole sync turn.
+        """
+        return []
+
+    # --- Catalog proposals (opt-in) -------------------------------------
+    # Workstream F of the integrations follow-ups pass. Lets a provider
+    # contribute catalog entries (biomarker classes, medications, concepts,
+    # typed concept edges) sourced from upstream — closing the gap left by
+    # ``ConceptProvenance.INTEGRATION`` (declared in the enum but unwritten
+    # before F). Mirrors the supports_X / pull_X shape from B + E. The
+    # platform's ``run_sync`` calls the hook after the examinations step,
+    # resolves a service-context actor via
+    # ``integration_actor.resolve_integration_actor``, and applies each
+    # proposal through ``catalog_proposal_service.apply_proposal`` — which
+    # routes by ``kind`` to the matching service-layer write path and
+    # stamps ``ConceptProvenance.INTEGRATION`` provenance where the
+    # underlying model supports it. Idempotent on the natural key per
+    # kind, so re-syncs are no-ops.
+
+    def supports_catalog_proposals(self) -> bool:
+        """Return True if this provider contributes catalog entries.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_catalog_proposals`.
+        """
+        return False
+
+    async def pull_catalog_proposals(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull catalog proposals for this integration instance.
+
+        Returns a list of ``CatalogProposal`` (re-exported from
+        :mod:`integrations.sdk`). Each proposal's ``kind`` routes it
+        through the matching service-layer write path
+        (``biomarker`` → ``BiomarkerDefinition``, ``medication`` →
+        ``MedicationCatalog``, ``concept`` → ``ConceptService.create_concept``,
+        ``edge`` → ``ConceptService.create_edge``). Re-applying the same
+        proposal on consecutive syncs is a no-op (idempotent on the
+        natural key per kind) — providers don't need to track what they've
+        already proposed.
+
+        Default: ``[]`` (no proposals). Override on providers that opt in
+        via :meth:`supports_catalog_proposals`. Swallow per-instance errors
+        and return ``[]`` on failure so one bad integration doesn't break
+        the whole sync turn.
+        """
+        return []
+
+    # --- HITL proposals (opt-in) ----------------------------------------
+    # Workstream G of the integrations follow-ups pass. The HITL layer is
+    # the human-in-the-loop counterpart to ``supports_catalog_proposals``
+    # (workstream F) — same payload shapes, but the integration asks the
+    # platform to queue each proposal for human review instead of
+    # auto-applying. The platform's ``run_sync`` calls the hook after the
+    # catalog-proposals step, persists each spec as a PROPOSED
+    # ``IntegrationProposal`` row + fires an HITL notification. The user
+    # resolves via the
+    # ``/api/v1/integrations/instance/{id}/proposals/.../resolve``
+    # endpoint, which routes the (possibly-edited) payload through
+    # ``catalog_proposal_service.apply_proposal`` — the same write path
+    # F.3 auto-applies through — and invokes the provider's
+    # ``handle_proposal_resolution`` callback so it can react.
+    #
+    # Why both hooks exist: a single provider can opt into both. Use
+    # ``supports_catalog_proposals`` for entries the provider is confident
+    # about (low-risk, idempotent — e.g. declaring a known LOINC code the
+    # local catalog is missing). Use ``supports_hitl_proposals`` for
+    # entries that need a human's judgement (e.g. mapping a novel upstream
+    # biomarker to an existing catalog class).
+
+    def supports_hitl_proposals(self) -> bool:
+        """Return True if this provider contributes HITL proposals.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_hitl_proposals` (and optionally
+        :meth:`handle_proposal_resolution`).
+        """
+        return False
+
+    async def pull_hitl_proposals(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull HITL proposals for this integration instance.
+
+        Returns a list of ``IntegrationProposalSpec`` (re-exported from
+        :mod:`integrations.sdk`). Each spec is persisted as a PROPOSED
+        ``IntegrationProposal`` row + fires an HITL notification. The
+        user reviews via the resolve endpoint; on approve, the resolver
+        delegates to ``catalog_proposal_service.apply_proposal``.
+
+        Idempotent on ``(proposal_type, proposed_payload)`` across syncs
+        — re-emitting the same spec on consecutive syncs is a no-op
+        (doesn't duplicate, doesn't re-spam the inbox). Providers wanting
+        stronger "don't re-propose after decision" semantics should
+        advance their own cursor in :meth:`handle_proposal_resolution`.
+
+        Default: ``[]`` (no proposals). Override on providers that opt in
+        via :meth:`supports_hitl_proposals`. Swallow per-instance errors
+        and return ``[]`` on failure so one bad integration doesn't break
+        the whole sync turn.
+        """
+        return []
+
+    async def handle_proposal_resolution(
+        self,
+        integration: UserIntegration,
+        proposal_id: UUID,
+        outcome: Any,
+    ) -> None:
+        """React to a user resolving one of this integration's proposals.
+
+        Called by the resolver endpoint after a successful or failed
+        approve (NOT on reject/cancel — there's nothing to act on). The
+        provider can use this to advance a cursor so it doesn't
+        re-propose, log audit, etc. The default no-op keeps providers
+        that don't care unaffected.
+
+        Failures are logged + swallowed by the resolver — a buggy
+        provider can't break the resolve flow.
+
+        Args:
+            integration: The owning :class:`UserIntegration` row.
+            proposal_id: The resolved proposal's UUID.
+            outcome: A :class:`~integrations.sdk.proposals.ProposalOutcome`
+                carrying the action, the final payload (after the user's
+                edits), the applied entity id (if any), and any error.
+        """
+        return None
+
+    # --- Documents (opt-in) ---------------------------------------------
+    # Workstream C of the integrations follow-ups pass. Mirrors the
+    # supports_X / pull_X shape from B + E + F + G — providers that can
+    # deliver document bytes from upstream (a hospital integration
+    # pulling scanned lab reports, a fax-to-email gateway, a wearable
+    # companion app syncing ECG printouts) override
+    # ``supports_documents`` to return True and implement
+    # ``pull_documents``. The platform's ``run_sync`` pipeline calls the
+    # hook after the examinations + catalog-proposals + HITL-proposals
+    # steps, resolves a service-context actor via
+    # ``integration_actor.resolve_integration_actor``, and writes each
+    # document via ``document_service.ingest_document_bytes`` (the same
+    # path the UI upload endpoint uses). The OCR + LLM extraction Celery
+    # task fires automatically when ``include_in_extraction=True`` on
+    # the spec.
+
+    def supports_documents(self) -> bool:
+        """Return True if this provider pulls documents from upstream.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_documents`.
+        """
+        return False
+
+    async def pull_documents(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull documents for this integration instance.
+
+        Returns a list of ``DocumentPull`` (re-exported from
+        :mod:`integrations.sdk`). Each carries the filename, raw bytes
+        (the provider fetches them from upstream before returning), and
+        optional metadata for linking to a pulled exam or a catalog
+        category concept.
+
+        Per-sync caps protect against runaway providers: at most
+        ``INTEGRATION_MAX_DOCS_PER_SYNC`` (default 20) documents and
+        ``INTEGRATION_MAX_DOC_BYTES_PER_SYNC`` (default 50 MiB) total
+        bytes per sync. Over-cap items are dropped with a warning.
+
+        Idempotency is the provider's responsibility — the platform has
+        no document-level dedup today (no ``source_integration_id`` +
+        ``external_id`` columns on ``DocumentModel``). Providers should
+        advance their own cursor via ``set_sync_cursor`` so they don't
+        re-pull the same upstream files on every sync.
+
+        Default: ``[]`` (no documents). Override on providers that opt
+        in via :meth:`supports_documents`. Swallow per-instance errors
+        and return ``[]`` on failure so one bad integration doesn't
+        break the whole sync turn.
         """
         return []
 

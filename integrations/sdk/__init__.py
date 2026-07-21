@@ -23,6 +23,24 @@ from app.schemas.clinical_event import ClinicalEventCreate
 # ``ExaminationCreate`` similarly re-exported for ``pull_examinations``
 # (workstream E.3).
 from app.schemas.examination import ExaminationCreate
+from .catalog import (
+    CatalogProposal,
+    CatalogProposalKind,
+    biomarker_proposal,
+    medication_proposal,
+    concept_proposal,
+    edge_proposal,
+)
+from .proposals import (
+    IntegrationProposalSpec,
+    IntegrationProposalType,
+    ProposalOutcome,
+    biomarker_hitl_proposal,
+    medication_hitl_proposal,
+    concept_hitl_proposal,
+    edge_hitl_proposal,
+)
+from .documents import DocumentPull
 from .display import (
     kv_block,
     list_block,
@@ -72,6 +90,20 @@ __all__ = [
     "parse_operation_outcome",
     "ClinicalEventCreate",
     "ExaminationCreate",
+    "CatalogProposal",
+    "CatalogProposalKind",
+    "biomarker_proposal",
+    "medication_proposal",
+    "concept_proposal",
+    "edge_proposal",
+    "IntegrationProposalSpec",
+    "IntegrationProposalType",
+    "ProposalOutcome",
+    "biomarker_hitl_proposal",
+    "medication_hitl_proposal",
+    "concept_hitl_proposal",
+    "edge_hitl_proposal",
+    "DocumentPull",
     "kv_block",
     "list_block",
     "table_block",

@@ -109,19 +109,19 @@
         "id": "fhir-r4-facade",
         "file": "FHIR_R4_FACADE.md",
         "title": "FHIR R4 Facade",
-        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 18 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
+        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 19 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
       },
       {
         "id": "integrations-framework",
         "file": "INTEGRATIONS_FRAMEWORK.md",
         "title": "Integrations Framework",
-        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers with schema-driven config flows and background sync."
+        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, and document pull."
       },
       {
         "id": "integrations-sdk",
         "file": "INTEGRATIONS_SDK.md",
         "title": "Integrations SDK",
-        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate limiting, cursor sync, and OAuth2+PKCE."
+        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate limiting, cursor sync, OAuth2+PKCE, clinical events, examinations, catalog proposals, HITL review, and document pull."
       },
       {
         "id": "mobile-sync-app",

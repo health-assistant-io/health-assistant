@@ -235,3 +235,147 @@ def test_examination_create_is_reexported_from_sdk():
     assert ExaminationCreate is SchemaSource, (
         "SDK re-export must alias the schema, not duplicate it"
     )
+
+
+# ---------------------------------------------------------------------------
+# Workstream F.1 (this stack): ``supports_catalog_proposals`` opt-in hook
+# + ``CatalogProposal`` re-export. Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_base_declares_catalog_proposals_opt_in_hook_with_safe_defaults():
+    """``BaseHealthProvider`` must declare ``supports_catalog_proposals`` and
+    ``pull_catalog_proposals`` with safe defaults (False / []) so existing
+    providers that don't opt in are unaffected. Mirrors the clinical-events
+    + examinations contract tests."""
+    import inspect
+
+    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+
+    assert hasattr(SDKBaseProvider, "supports_catalog_proposals")
+    assert hasattr(SDKBaseProvider, "pull_catalog_proposals")
+
+    supports_src = inspect.getsource(
+        SDKBaseProvider.supports_catalog_proposals
+    )
+    assert "return False" in supports_src, (
+        "supports_catalog_proposals must default to False — flipping it to "
+        "True would opt every existing integration into the catalog-proposal "
+        "pull path"
+    )
+
+    pull_src = inspect.getsource(SDKBaseProvider.pull_catalog_proposals)
+    assert "return []" in pull_src, (
+        "pull_catalog_proposals must default to [] — providers that haven't "
+        "implemented it must return an empty list, not raise"
+    )
+
+
+def test_catalog_proposal_is_reexported_from_sdk():
+    """``from integrations.sdk import CatalogProposal`` must work — the SDK
+    re-exports the spec so providers can build proposals in
+    ``pull_catalog_proposals`` without reaching into the SDK submodule
+    directly."""
+    from integrations.sdk import CatalogProposal
+    from integrations.sdk.catalog import (
+        CatalogProposal as CatalogProposalSource,
+    )
+
+    assert CatalogProposal is CatalogProposalSource, (
+        "SDK re-export must alias the spec, not duplicate it"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workstream G.3 (this stack): ``supports_hitl_proposals`` opt-in hook +
+# ``IntegrationProposalSpec`` / ``ProposalOutcome`` re-exports.
+# Source-level guards against a revert.
+# ---------------------------------------------------------------------------
+
+
+def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
+    """``BaseHealthProvider`` must declare ``supports_hitl_proposals``,
+    ``pull_hitl_proposals``, and ``handle_proposal_resolution`` with safe
+    defaults (False / [] / no-op) so existing providers that don't opt in
+    are unaffected. Mirrors the clinical-events + examinations +
+    catalog-proposals contract tests."""
+    import inspect
+
+    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+
+    assert hasattr(SDKBaseProvider, "supports_hitl_proposals")
+    assert hasattr(SDKBaseProvider, "pull_hitl_proposals")
+    assert hasattr(SDKBaseProvider, "handle_proposal_resolution")
+
+    supports_src = inspect.getsource(
+        SDKBaseProvider.supports_hitl_proposals
+    )
+    assert "return False" in supports_src, (
+        "supports_hitl_proposals must default to False — flipping it to "
+        "True would opt every existing integration into the HITL pull "
+        "path"
+    )
+
+    pull_src = inspect.getsource(SDKBaseProvider.pull_hitl_proposals)
+    assert "return []" in pull_src, (
+        "pull_hitl_proposals must default to [] — providers that haven't "
+        "implemented it must return an empty list, not raise"
+    )
+
+    # ``handle_proposal_resolution`` must be awaitable + no-op by default.
+    import asyncio
+    import uuid
+
+    class _P(SDKBaseProvider):
+        domain = "test"
+
+        async def pull_data(self, integration):
+            return []
+
+    provider = _P()
+    coro = provider.handle_proposal_resolution(None, uuid.uuid4(), None)
+    assert hasattr(coro, "__await__"), (
+        "handle_proposal_resolution must be async so the resolver can "
+        "``await`` it unconditionally"
+    )
+    assert asyncio.run(coro) is None, (
+        "handle_proposal_resolution must default to a no-op (return None) "
+        "so providers that haven't opted in don't need to override it"
+    )
+
+    # Source-level guard: the default body should explicitly return None
+    # so a future revert that drops the ``return`` doesn't implicitly
+    # return None (works but loses the documented contract).
+    cb_src = inspect.getsource(
+        SDKBaseProvider.handle_proposal_resolution
+    )
+    assert "return None" in cb_src, (
+        "handle_proposal_resolution must explicitly ``return None`` — "
+        "documents the no-op contract"
+    )
+
+
+def test_integration_proposal_spec_is_reexported_from_sdk():
+    """``from integrations.sdk import IntegrationProposalSpec`` must work —
+    the SDK re-exports the spec so providers can build HITL proposals in
+    ``pull_hitl_proposals`` without reaching into the SDK submodule
+    directly."""
+    from integrations.sdk import IntegrationProposalSpec
+    from integrations.sdk.proposals import (
+        IntegrationProposalSpec as SpecSource,
+    )
+
+    assert IntegrationProposalSpec is SpecSource, (
+        "SDK re-export must alias the spec, not duplicate it"
+    )
+
+
+def test_proposal_outcome_is_reexported_from_sdk():
+    """``from integrations.sdk import ProposalOutcome`` must work — the
+    resolver passes instances of this to ``handle_proposal_resolution``."""
+    from integrations.sdk import ProposalOutcome
+    from integrations.sdk.proposals import ProposalOutcome as OutcomeSource
+
+    assert ProposalOutcome is OutcomeSource, (
+        "SDK re-export must alias the spec, not duplicate it"
+    )

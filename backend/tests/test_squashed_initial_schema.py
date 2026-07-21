@@ -69,9 +69,39 @@ def test_revision_identifiers():
     )
 
 
+#: Tables registered on the ORM metadata today that are intentionally NOT in
+#: the consolidated baseline — they were added by a follow-up migration after
+#: the squash. Each entry documents the migration that introduced the table so
+#: the exception is auditable.
+POST_BASELINE_TABLES: dict[str, str] = {
+    # Workstream G.1 of the integrations follow-ups pass
+    # (plan: dev/plans/integrations-sdk-followups-2026-07-21.md).
+    "integration_proposals": "g1h2i3t4l5pr_add_integration_proposals",
+}
+
+
 @pytest.mark.parametrize("table", sorted(Base.metadata.tables))
 def test_every_model_table_is_created_by_the_baseline(table):
-    """The baseline must define every table registered on the ORM metadata."""
+    """The baseline must define every table registered on the ORM metadata,
+    unless the table is in :data:`POST_BASELINE_TABLES` (added by a named
+    follow-up migration)."""
+    if table in POST_BASELINE_TABLES:
+        migration = POST_BASELINE_TABLES[table]
+        # Sanity-check: the named migration actually exists + creates the
+        # table. Catches the allowlist getting out of sync with reality.
+        migration_path = VERSIONS_DIR / f"{migration}.py"
+        assert migration_path.exists(), (
+            f"POST_BASELINE_TABLES lists {table!r} as added by "
+            f"{migration!r}, but {migration_path.name} doesn't exist"
+        )
+        assert (
+            f"op.create_table('{table}'" in migration_path.read_text()
+        ), (
+            f"POST_BASELINE_TABLES lists {table!r} as added by "
+            f"{migration_path.name}, but that migration doesn't create it"
+        )
+        return  # exception honored
+
     mod, path = _load_migration_module()
     src = path.read_text()
     assert f"op.create_table('{table}'" in src, (
