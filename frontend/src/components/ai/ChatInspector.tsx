@@ -21,7 +21,7 @@ export const ChatInspector: React.FC<ChatInspectorProps> = ({
   const { t } = useTranslation();
 
   return createPortal(
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
        <div className="bg-white dark:bg-dark-bg w-full max-w-4xl max-h-[85vh] rounded-[3rem] shadow-2xl border border-gray-200 dark:border-dark-border flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
            <div className="px-10 py-8 border-b border-gray-200 dark:border-dark-border flex items-center justify-between bg-gray-50/50 dark:bg-dark-surface/50">
               <div className="flex items-center gap-6">

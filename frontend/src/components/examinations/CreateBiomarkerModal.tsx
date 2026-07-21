@@ -56,7 +56,7 @@ export const CreateBiomarkerModal: React.FC<Props> = ({
   const canSubmit = Boolean(draft.name) && !submitting;
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex-1 min-h-0 overflow-y-auto p-6 custom-scrollbar">
           <BiomarkerForm values={draft} onChange={handleChange} mode="create" />

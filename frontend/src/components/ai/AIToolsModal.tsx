@@ -100,7 +100,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div 
         className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[85vh] h-[85vh]"
         onClick={e => e.stopPropagation()}

@@ -60,7 +60,7 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
