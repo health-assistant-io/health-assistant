@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.models.document_model import DocumentModel
 from app.core.config import settings
 from app.utils.image_utils import edit_image
@@ -178,6 +179,8 @@ async def ingest_document_bytes(
     examination_id: Optional[str | UUID] = None,
     include_in_extraction: bool = True,
     category_concept_id: Optional[str | UUID] = None,
+    source_integration_id: Optional[str | UUID] = None,
+    external_id: Optional[str] = None,
 ) -> DocumentModel:
     """Persist a document from raw bytes — the canonical ingestion path.
 
@@ -209,14 +212,46 @@ async def ingest_document_bytes(
         category_concept_id: Optional catalog concept link (e.g.
             "Lab Report", "Imaging"). The engine resolves this from
             ``DocumentPull.category_concept_slug`` before calling.
+        source_integration_id: Optional integration provenance + dedup
+            key (item 3 of integrations-sdk-improvements plan). When
+            supplied together with ``external_id``, the service looks
+            up an existing document by
+            ``(tenant, patient, integration, external_id)`` and returns
+            it as-is — no duplicate file write, no re-OCR dispatch.
+            UI uploads leave both unset and bypass dedup.
+        external_id: Optional upstream stable document id. See
+            ``source_integration_id`` above.
 
     Returns:
         The persisted :class:`DocumentModel` (refreshed + ready to
-        serialize).
+        serialize). On a dedup hit, the existing row is returned without
+        any side effects (no file write, no OCR dispatch).
     """
     import logging
 
     logger = logging.getLogger(__name__)
+
+    # Integration-key dedup (item 3 of integrations-sdk-improvements plan).
+    # Mirrors the pattern on examination_service + clinical_event_service:
+    # when both keys are supplied, look up the existing row by the
+    # natural key and return it. The partial unique index
+    # ``uq_document_integration_dedup`` catches the race window between
+    # this SELECT and the INSERT below.
+    if source_integration_id is not None and external_id is not None:
+        existing = await _find_document_by_integration_key(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            source_integration_id=source_integration_id,
+            external_id=external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "Document dedup hit for integration=%s external_id=%s "
+                "→ returning existing document %s (no re-OCR)",
+                source_integration_id, external_id, existing.id,
+            )
+            return existing
 
     doc_id = uuid4()
     file_extension = _validate_upload_extension(filename)
@@ -249,6 +284,10 @@ async def ingest_document_bytes(
         progress=0,
         updated_at=datetime.now(),
     )
+    if source_integration_id is not None:
+        document.source_integration_id = UUID(str(source_integration_id))
+    if external_id is not None:
+        document.external_id = str(external_id)
 
     practitioner_id = await _resolve_practitioner_id(db, owner_id, tenant_id)
     if practitioner_id is not None:
@@ -256,7 +295,28 @@ async def ingest_document_bytes(
 
     assert_valid_fhir(document)
     db.add(document)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Race window: a concurrent sync beat won the INSERT against
+        # the same dedup key. Roll back + re-fetch the winner rather
+        # than surfacing the error. Mirrors examination_service.
+        await db.rollback()
+        existing = await _find_document_by_integration_key(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            source_integration_id=source_integration_id,
+            external_id=external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "Document dedup race recovered for integration=%s "
+                "external_id=%s → returning document %s",
+                source_integration_id, external_id, existing.id,
+            )
+            return existing
+        raise
     await db.refresh(document)
 
     if include_in_extraction:
@@ -283,6 +343,35 @@ async def ingest_document_bytes(
             )
 
     return document
+
+
+async def _find_document_by_integration_key(
+    db: AsyncSession,
+    *,
+    tenant_id: str | UUID,
+    patient_id: Optional[str | UUID],
+    source_integration_id: str | UUID,
+    external_id: str,
+) -> Optional[DocumentModel]:
+    """Look up an existing integration-sourced document by exact dedup key.
+
+    Item 3 of the integrations-sdk-improvements plan. Mirrors
+    ``examination_service._find_by_integration_key``. The partial unique
+    index ``uq_document_integration_dedup`` makes this lookup fast; in
+    the race window between the SELECT and the subsequent INSERT, the
+    index also catches duplicates at the DB layer.
+    """
+    stmt = select(DocumentModel).where(
+        DocumentModel.tenant_id == tenant_id,
+        DocumentModel.source_integration_id == source_integration_id,
+        DocumentModel.external_id == external_id,
+    )
+    if patient_id is not None:
+        stmt = stmt.where(DocumentModel.patient_id == patient_id)
+    else:
+        stmt = stmt.where(DocumentModel.patient_id.is_(None))
+    result = await db.execute(stmt)
+    return result.scalars().first()
 
 
 async def get_document(

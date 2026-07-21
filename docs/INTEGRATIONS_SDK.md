@@ -215,10 +215,10 @@ Implement the `handle_api_request` method:
 ## 3. Advanced SDK Features
 
 ### 3.1 HTTP Client & Auto-Retries
-Providers share a pooled `httpx.AsyncClient` (`self._http_client`). For robust HTTP, call the SDK's shared helpers from `integrations.sdk.http` (`http_request`) or `integrations.sdk.fhir` (`fhir_search`, `fhir_create`, `fhir_conditional_update`). All of them delegate to a single `_retry_request` primitive that handles:
+Providers share a pooled `httpx.AsyncClient` (`self._http_client`). For HTTP that retries and maps status codes consistently, call the SDK's shared helpers from `integrations.sdk.http` (`http_request`) or `integrations.sdk.fhir` (`fhir_search`, `fhir_create`, `fhir_conditional_update`). All of them delegate to a single `_retry_request` primitive that handles:
 - **Connection pooling** to preserve sockets.
 - **Full-jitter exponential backoff** (AWS-recommended) for 5xx server errors and network timeouts — every client picks an independent random wait, so retry waves spread out instead of stampeding the server on each tick.
-- **Rate Limit awareness**, explicitly pausing if a `429 Too Many Requests` is hit (respecting `Retry-After` headers when present, otherwise full-jitter backoff).
+- **Rate Limit awareness**, explicitly pausing if a `429 Too Many Requests` is hit (respecting `Retry-After` headers when present, otherwise full-jitter backoff). The captured `Retry-After` is now surfaced on the raised `IntegrationRateLimitError.retry_after_seconds` so the worker can honour it across beats (see §3.3).
 
 ```python
 from integrations.sdk import http_request
@@ -241,7 +241,19 @@ self.set_sync_cursor(integration, "last_timestamp", new_timestamp)
 ### 3.3 Managed Exceptions & UI Feedback
 Throw specific exceptions from `integrations.sdk.exceptions` to instruct the core engine.
 - `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by the SDK HTTP helpers (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, `_request_json`) on 401/403 responses.
-- `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted.
+- `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted. Carries an optional `retry_after_seconds: Optional[float]` field (sourced from the last seen `Retry-After` header). When set, the worker writes a Redis cooldown key `sync_cooldown:{integration_id}` with TTL clamped to `[60s, 1h]` so subsequent beats skip the integration until it expires — defending against the 60-second beat re-stampeding a closed window. Degrades gracefully when Redis is down (logs + falls back to the per-instance `sync_interval` throttle). Legacy `raise IntegrationRateLimitError("msg")` callers are unaffected (the field defaults to `None`).
+
+```python
+from integrations.sdk import IntegrationRateLimitError
+
+# Manual raise with explicit hint (legacy shape still works):
+raise IntegrationRateLimitError(
+    "Upstream throttled us",
+    retry_after_seconds=120,
+)
+
+# The auto-raised path (http_request etc.) captures Retry-After for you.
+```
 
 ### 3.4 Payload Debugging
 When deciphering undocumented third-party APIs or receiving webhooks, you can securely dump raw payloads into a dedicated debug database. These logs can then be viewed directly in the Integration's Debug Console UI.
@@ -405,7 +417,12 @@ from integrations.sdk import BaseHealthProvider, SmartOAuth
 class MyProvider(BaseHealthProvider):
     domain = "my_oauth_integration"
 
-    async def setup(self, config):
+    async def setup(self, config: dict | None = None) -> None:
+        """One-time init. The registry calls this on app startup with the
+        SystemIntegration.global_config JSONB (when present). Use it for
+        HTTP pool warmup, OAuth discovery, signing-key preload, etc.
+        Failures bubble up and exclude the integration from the active set."""
+        await super().setup(config)
         self._smart = SmartOAuth(self._http_client)
 
     async def begin_oauth(self, integration, redirect_uri, *, extra_state=None):
@@ -529,6 +546,7 @@ spec = (
 | `add_action(NotificationAction)` | Build-it-yourself escape hatch |
 | `display_block(block)` | Attach a DisplayBlock (`kv_block` / `list_block` / `table_block` / `json_block` / `text_block` / `code_block`) |
 | `targets([{kind, id}])` | Override the default "integration owner only" target |
+| `digest_key(key)` | Collapse repeated emissions with the same key into one Notification inside the TTL window (default 6h, clamped `[60s, 7d]`, tunable via `settings.NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS`). Recommended for any spec that may fire repeatedly (e.g. threshold alert on every sync). Format suggestion: `"{domain}:{type_id}:{scope}"`. |
 
 #### Action button contract
 
@@ -691,6 +709,8 @@ Without a dedup key, every sync creates fresh duplicates. With one, the engine l
 - `source_integration_id` — **not** on the payload schema. The engine always supplies it (= the integration's own id) so providers can't fake their provenance.
 
 For examinations, the service also runs a **heuristic UI dedup** (date + category + notes) when called by an interactive user — but that path is bypassed entirely for integration-sourced writes (any caller that sets `source_integration_id`), so an integration-sourced exam can't accidentally match an unrelated UI row.
+
+The same contract applies to documents pulled via §3.13's `supports_documents` hook — set `external_id` on the `DocumentPull` spec and the engine forwards both keys to `ingest_document_bytes`.
 
 #### What the engine does for you
 
@@ -974,13 +994,14 @@ class MyProvider(BaseHealthProvider):
                 content_type="application/pdf",
                 examination_external_id=report.encounter_id,
                 category_concept_slug="lab-report",
+                external_id=report.accession_number,  # upstream stable id — enables DB-layer dedup
                 include_in_extraction=True,
             )
             for report in reports
         ]
 ```
 
-`DocumentPull` is a Pydantic spec with `filename` (gated by the medical-types allowlist — PDF, images, DICOM, plain text), `content` (raw bytes), `content_type` (informational), `examination_external_id` (links to a pulled exam — see below), `category_concept_slug` (resolves to a catalog concept), and `include_in_extraction` (default `True` — fires the OCR + LLM extraction Celery task).
+`DocumentPull` is a Pydantic spec with `filename` (gated by the medical-types allowlist — PDF, images, DICOM, plain text), `content` (raw bytes), `content_type` (informational), `examination_external_id` (links to a pulled exam — see below), `category_concept_slug` (resolves to a catalog concept), `external_id` (upstream stable document id — triggers DB-layer dedup when set; see "Idempotency" below), and `include_in_extraction` (default `True` — fires the OCR + LLM extraction Celery task).
 
 #### What the engine does for you
 
@@ -988,13 +1009,16 @@ For each spec the engine:
 1. **Cap check** — rejects if adding the document would exceed `INTEGRATION_MAX_DOCS_PER_SYNC = 20` (item count) or `INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 MiB` (running byte total) for this sync. Dropped items log a warning.
 2. **Examination link** — if `examination_external_id` is set, resolves it via a `{external_id: exam_id}` map built during the examinations step (§3.10) — i.e. against the exam that was just pulled in the same sync. Misses are non-fatal (document created unlinked).
 3. **Category link** — if `category_concept_slug` is set, resolves it via `resolve_concept_by_slug`. Misses are non-fatal.
-4. **Writes** via `document_service.ingest_document_bytes` — the **same canonical ingestion path the UI upload endpoint uses**. Writes the file under `UPLOAD_DIR/<tenant_id>/`, creates the `DocumentModel` row with `owner_id` = the integration's owning user, fires the OCR task best-effort when `include_in_extraction=True`.
+4. **Writes** via `document_service.ingest_document_bytes` — the **same canonical ingestion path the UI upload endpoint uses**. Writes the file under `UPLOAD_DIR/<tenant_id>/`, creates the `DocumentModel` row with `owner_id` = the integration's owning user, fires the OCR task best-effort when `include_in_extraction=True`. Forwards `source_integration_id=integration.id` + `external_id=spec.external_id` so the service can dedup (see below).
 
 Per-document failures are logged and don't abort the sync.
 
 #### Idempotency
 
-There are **no document-level dedup columns** on `DocumentModel` today (no `source_integration_id` / `external_id`). Re-pulling the same upstream file on the next sync creates a fresh row. **Providers are responsible for advancing their own cursor** via `set_sync_cursor` so they don't re-pull:
+`DocumentModel` carries `source_integration_id` + `external_id` columns (migration `d1o2c3u4m5e6`) plus a partial unique index `uq_document_integration_dedup` on `(tenant_id, patient_id, source_integration_id, external_id)` — the same pattern as examinations (§3.10) and clinical events. The engine always supplies `source_integration_id` (= `integration.id`); the provider supplies `external_id` via the `DocumentPull` spec.
+
+- **When `external_id` is set**, `ingest_document_bytes` looks up an existing document by the natural key and returns it as-is on a hit — **no duplicate file write, no re-OCR dispatch**. The race window between SELECT and INSERT is caught at the DB layer by the partial unique index (`IntegrityError` → rollback + re-fetch).
+- **When `external_id` is unset** (or the upstream has no stable ids), the provider owns idempotency via `set_sync_cursor` — same as the pre-3 behaviour:
 
 ```python
 async def pull_documents(self, integration):
@@ -1007,7 +1031,7 @@ async def pull_documents(self, integration):
     return new_docs
 ```
 
-A future workstream may add document-level dedup columns if providers prove unable to manage their own cursors.
+**Recommended:** set `external_id` whenever the upstream exposes a stable document id. It's strictly better than cursor-only dedup (survives provider bugs, worker crashes, and webhook-driven ingestion).
 
 #### Storage + size considerations
 
@@ -1017,7 +1041,58 @@ A future workstream may add document-level dedup columns if providers prove unab
 
 #### Relationship to the UI upload path
 
-The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `ingest_document_bytes` function this hook uses. Both write to the same `UPLOAD_DIR`, both stamp the same `DocumentModel` columns, both dispatch the same OCR task. A document pulled by an integration is indistinguishable in the UI from one uploaded by the user — the `owner_id` is the integration's owning user, same as if they'd uploaded it themselves.
+The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `ingest_document_bytes` function this hook uses. Both write to the same `UPLOAD_DIR`, both stamp the same `DocumentModel` columns, both dispatch the same OCR task. A document pulled by an integration is indistinguishable in the UI from one uploaded by the user — the `owner_id` is the integration's owning user, same as if they'd uploaded it themselves. Integration provenance is preserved on the row (`source_integration_id` + `external_id`) and surfaced in the FHIR projection via `meta.tag[]` (system `urn:health-assistant:document-provenance`).
+
+---
+
+### 3.14 Webhook Signature Verification (Reusable Helpers)
+
+The platform provisions two tokenless routes per integration instance — a webhook receiver and a wildcard two-way API proxy. Both can require an HMAC signature when the integration configures a secret. Signature verification was previously inlined in two places (the platform endpoint layer + each provider that wanted to validate inside `handle_webhook`); the algorithm is now in one reusable SDK module.
+
+#### `integrations.sdk.webhook_security`
+
+Three pure functions, stdlib-only (no `app.*` imports — the SDK must not depend on the backend):
+
+```python
+from integrations.sdk import (
+    verify_hmac_signature,
+    verify_canonical_signature,
+    get_signature_header,
+    DEFAULT_WEBHOOK_SIGNATURE_HEADERS,
+)
+```
+
+| Function | Purpose |
+|---|---|
+| `verify_hmac_signature(secret, raw_body, provided_signature, *, accepted_prefixes=("sha256=", "sha256:"))` | Constant-time HMAC-SHA256 of `raw_body`. Strips the conventional GitHub/Slack/Stripe `sha256=` / `sha256:` prefixes before comparing. Returns `False` on empty inputs (callers should treat as "not verified" and reject). |
+| `verify_canonical_signature(secret, method, path, raw_body, provided_signature, *, provided_timestamp=None, max_skew_seconds=300)` | Constant-time HMAC-SHA256 over `METHOD\n<path>\n[<timestamp>\n]<raw_body>`. When `provided_timestamp` is set, the timestamp is folded into the signed payload (so a captured signature can't be replayed) and the request is rejected if skew exceeds `max_skew_seconds`. Used by the two-way API proxy when `user_config["api_secret"]` is set. |
+| `get_signature_header(headers, *, names=DEFAULT_WEBHOOK_SIGNATURE_HEADERS)` | Case-insensitive lookup over the conventional header names (`X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256`). Providers with their own header convention (e.g. dev_dummy's `X-DevDummy-Signature`) pass `names=` explicitly. |
+
+#### Provider-side example
+
+```python
+from integrations.sdk import verify_hmac_signature, get_signature_header
+from integrations.sdk.exceptions import IntegrationDataError
+
+async def handle_webhook(self, integration, payload, request=None):
+    secret = self._resolve_webhook_secret(integration)  # decrypt user_config["webhook_secret"]
+    if secret:
+        signature = get_signature_header(
+            request.headers, names=("X-MyService-Signature",),
+        )
+        if not signature:
+            raise IntegrationDataError("Missing signature header.")
+        body = await request.body()
+        if not verify_hmac_signature(secret, body, signature):
+            raise IntegrationDataError("Invalid signature.")
+    # ... build observations from payload ...
+```
+
+The platform endpoint layer (`app/api/v1/endpoints/integrations.py::_verify_webhook_signature` / `_verify_api_signature`) is now a thin wrapper around the same SDK functions — so providers, the webhook route, and the API proxy route all share one canonical implementation.
+
+#### What about other schemes?
+
+`verify_hmac_signature`'s `accepted_prefixes` parameter covers GitHub/Slack/Stripe-style prefixed HMAC. AWS-style `X-Amz-Signature` v4 (request-scoped, multi-step canonicalisation) and asymmetric schemes (JWS) are not provided — implement them inline in your provider if your upstream requires them.
 
 ---
 

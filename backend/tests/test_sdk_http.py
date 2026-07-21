@@ -227,6 +227,72 @@ async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch
     )
 
 
+@pytest.mark.asyncio
+async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
+    """When the upstream sends ``Retry-After`` and retries exhaust, the
+    raised :class:`IntegrationRateLimitError` must carry ``retry_after_seconds``
+    so the worker can write a cooldown key (item 1 of the
+    integrations-sdk-improvements plan)."""
+
+    # Mock sleep so the test doesn't actually wait the Retry-After window.
+    async def _no_sleep(_d):
+        return
+
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    def handler(request):
+        return httpx.Response(429, headers={"Retry-After": "120"})
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationRateLimitError) as exc_info:
+            await http_request(
+                http, "GET", "https://ehr/x", access_token="T", max_retries=2
+            )
+
+    assert exc_info.value.retry_after_seconds == 120.0, (
+        "retry_after_seconds must be the last-seen Retry-After header value"
+    )
+
+
+@pytest.mark.asyncio
+async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatch):
+    """When the upstream sends no ``Retry-After`` header (or a non-numeric
+    one), ``retry_after_seconds`` stays ``None`` — the worker falls back
+    to the per-instance ``sync_interval`` throttle."""
+
+    async def _no_sleep(_d):
+        return
+
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    def handler(request):
+        # Non-numeric Retry-After (HTTP date form) — not parseable as seconds.
+        return httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationRateLimitError) as exc_info:
+            await http_request(
+                http, "GET", "https://ehr/x", access_token="T", max_retries=2
+            )
+
+    assert exc_info.value.retry_after_seconds is None
+
+
+def test_integration_rate_limit_error_legacy_call_shape_still_works():
+    """Pre-2.1 callers raise with just a message — the new
+    ``retry_after_seconds`` field defaults to None and the attribute
+    must still exist so ``getattr(exc, "retry_after_seconds", None)``
+    is safe in the engine."""
+    exc = IntegrationRateLimitError("upstream throttled us")
+    assert str(exc) == "upstream throttled us"
+    assert exc.retry_after_seconds is None
+
+
+def test_integration_rate_limit_error_accepts_retry_after_kwarg():
+    exc = IntegrationRateLimitError("throttled", retry_after_seconds=42.5)
+    assert exc.retry_after_seconds == 42.5
+
+
 # ---------------------------------------------------------------------------
 # Default max_pages cap (this stack)
 # ---------------------------------------------------------------------------

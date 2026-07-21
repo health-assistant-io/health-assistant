@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 from typing import Any, Iterable, Optional, Sequence
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import to_uuid as _uuid, utcnow as _now
@@ -57,6 +58,47 @@ _CLINICAL_SOURCES = frozenset(
     {NotificationSource.RULE, NotificationSource.CLINICAL, NotificationSource.AGENT}
 )
 
+# Item 4 of integrations-sdk-improvements: digest collapsing defaults.
+# These bound the TTL window that ``emit(dedup_key=..., dedup_ttl_seconds=...)``
+# honours when collapsing repeated emissions. The floor stops a caller
+# from disabling digestion via a tiny TTL; the ceiling stops a buggy
+# caller from freezing out an alert for months.
+_DIGEST_TTL_FLOOR_SECONDS = 60
+_DIGEST_TTL_CEILING_SECONDS = 7 * 24 * 60 * 60  # 7 days
+_DEFAULT_DIGEST_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+
+
+def _resolve_digest_ttl(ttl_seconds: Optional[int]) -> Optional[int]:
+    """Resolve + clamp the requested TTL against the floor + ceiling.
+
+    Returns ``None`` when the caller passed ``None`` AND no platform
+    default is configured (signals "no digestion, regular emission").
+    """
+    if ttl_seconds is None:
+        # Read the platform default lazily so a missing settings attr
+        # doesn't crash unrelated emit() callers.
+        try:
+            from app.core.config import get_settings
+
+            ttl_seconds = int(
+                get_settings().NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS
+            )
+        except (AttributeError, TypeError, ValueError):
+            ttl_seconds = _DEFAULT_DIGEST_TTL_SECONDS
+    if ttl_seconds <= 0:
+        return None
+    return max(
+        _DIGEST_TTL_FLOOR_SECONDS,
+        min(int(ttl_seconds), _DIGEST_TTL_CEILING_SECONDS),
+    )
+
+
+def _compute_dedup_expires_at(ttl_seconds: Optional[int]):
+    """Compute the ``dedup_expires_at`` timestamp for a new row."""
+    if ttl_seconds is None:
+        return None
+    return _now() + timedelta(seconds=ttl_seconds)
+
 
 async def emit(
     *,
@@ -79,6 +121,8 @@ async def emit(
     trigger_id: str | UUID | None = None,
     link_communication: bool = False,
     session: Optional[AsyncSession] = None,
+    dedup_key: Optional[str] = None,
+    dedup_ttl_seconds: Optional[int] = None,
 ) -> Optional[Notification]:
     """Create a notification event and fan it out to its recipients.
 
@@ -95,8 +139,21 @@ async def emit(
       crash), ``emit`` writes + commits on **that** session and still
       dispatches. The caller retains lifecycle ownership (no close here).
 
-    Returns the created ``Notification`` (or ``None`` when the DB is
-    unavailable or the write failed).
+    Item 4 of integrations-sdk-improvements — digest collapsing:
+
+    * When ``dedup_key`` is set, ``emit`` first looks up an existing
+      Notification with the same ``(tenant_id, dedup_key)`` whose
+      ``dedup_expires_at`` is still in the future. If found, the
+      existing row is returned as-is — no new row, no re-fan-out, no
+      re-push. This lets providers emit threshold alerts on every sync
+      without flooding the user's inbox.
+    * ``dedup_ttl_seconds`` controls how long the dedup window lasts.
+      Defaults to ``settings.NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS``
+      (6h), capped at 7d.
+
+    Returns the created ``Notification`` (or the existing one on a
+    digest hit, or ``None`` when the DB is unavailable or the write
+    failed).
     """
     if not DATABASE_AVAILABLE:
         logger.warning("Notification emit skipped: database unavailable")
@@ -109,9 +166,38 @@ async def emit(
 
     owns_session = session is None
 
+    # Item 4 of integrations-sdk-improvements: digest collapsing.
+    # Resolve the TTL up-front so both the dedup lookup + the new-row
+    # write use the same value. ``None`` means "no dedup requested".
+    resolved_ttl = _resolve_digest_ttl(dedup_ttl_seconds)
+
+    async def _find_existing_dedup(s: AsyncSession) -> Optional[Notification]:
+        """Look up an unexpired notification with the same dedup key."""
+        if dedup_key is None or tenant_uuid is None:
+            return None
+        stmt = select(Notification).where(
+            Notification.tenant_id == tenant_uuid,
+            Notification.dedup_key == dedup_key,
+            or_(
+                Notification.dedup_expires_at.is_(None),
+                Notification.dedup_expires_at > _now(),
+            ),
+        )
+        return (await s.execute(stmt)).scalars().first()
+
     async def _write(
         s: AsyncSession,
     ) -> tuple[Notification, set[UUID], list[tuple[UUID, UUID, NotificationChannel]]]:
+        # Short-circuit on digest hit — return the existing row + an
+        # empty fan-out set (we don't re-announce or re-push).
+        existing = await _find_existing_dedup(s)
+        if existing is not None:
+            logger.info(
+                "Notification dedup hit for key=%s → returning existing %s",
+                dedup_key, existing.id,
+            )
+            return existing, set(), []
+
         communication_id = None
         if (
             link_communication
@@ -143,6 +229,8 @@ async def emit(
             payload=payload or {},
             source_ref=source_ref or {},
             sender_user_id=sender_uuid,
+            dedup_key=dedup_key,
+            dedup_expires_at=_compute_dedup_expires_at(resolved_ttl),
         )
         s.add(notification)
         await s.flush()  # populate notification.id

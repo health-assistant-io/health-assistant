@@ -31,11 +31,22 @@ class IntegrationRegistry:
         result = await db.execute(stmt)
         system_integrations = result.scalars().all()
 
+        # Build a per-domain config map from SystemIntegration rows so
+        # the registry can hand each provider its system-level config
+        # (item 5 of integrations-sdk-improvements). Falls back to an
+        # empty dict for newly-enabled integrations that haven't been
+        # configured yet.
+        system_config_by_domain: dict[str, dict] = {
+            si.domain: dict(si.global_config or {})
+            for si in system_integrations
+        }
         enabled_domains = {si.domain for si in system_integrations if si.is_enabled}
 
         for domain, manifest in self._manifests.items():
             if domain in enabled_domains:
-                await self._load_integration(domain)
+                await self._load_integration(
+                    domain, system_config=system_config_by_domain.get(domain, {})
+                )
             else:
                 logger.debug(
                     f"Integration {domain} is discovered but not enabled in system_integrations."
@@ -57,7 +68,7 @@ class IntegrationRegistry:
                     except Exception as e:
                         logger.error(f"Failed to load manifest for {item}: {e}")
 
-    async def _load_integration(self, domain: str):
+    async def _load_integration(self, domain: str, *, system_config: dict | None = None):
         try:
             # Dynamically import the modules
             provider_module = importlib.import_module(f"integrations.{domain}.provider")
@@ -77,8 +88,11 @@ class IntegrationRegistry:
                 provider_instance = provider_class()
                 config_flow_instance = config_flow_class()
 
-                # Perform setup
-                await provider_instance.setup({})
+                # Perform one-time setup. Item 5 of the
+                # integrations-sdk-improvements plan: pass the actual
+                # SystemIntegration.global_config dict (when present)
+                # so providers can do system-level resource setup.
+                await provider_instance.setup(system_config or {})
 
                 self._providers[domain] = provider_instance
                 self._config_flows[domain] = config_flow_instance

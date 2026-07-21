@@ -29,8 +29,6 @@ Capabilities demonstrated (search for the §N markers in this file):
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
@@ -48,6 +46,8 @@ from integrations.sdk import (
     ProposalOutcome,
     biomarker_proposal,
     concept_hitl_proposal,
+    get_signature_header,
+    verify_hmac_signature,
 )
 from integrations.sdk.display import kv_block, list_block, table_block, action_result
 from integrations.sdk.exceptions import (
@@ -113,6 +113,31 @@ class DevDummyProvider(BaseHealthProvider):
     """Reference provider exercising every BaseHealthProvider hook."""
 
     domain = "dev_dummy"
+
+    # ------------------------------------------------------------------
+    # §setup — one-time lifecycle hook (item 5 of integrations-sdk-
+    # improvements plan). The registry calls this on app startup with
+    # the SystemIntegration.global_config JSONB so providers can do
+    # one-time resource setup keyed off system-level config.
+    # ------------------------------------------------------------------
+
+    async def setup(self, config: dict | None = None) -> None:
+        """Demonstrate the ``setup(config)`` lifecycle hook.
+
+        The registry calls this once on app startup after instantiating
+        the provider. ``config`` is the ``SystemIntegration.global_config``
+        JSONB (when present). Use it for one-time resource setup — HTTP
+        pools, OAuth discovery, signing keys, entitlement checks, etc.
+
+        Failures bubble up to the registry's loader, which logs them
+        and excludes the integration from the active set (so a buggy
+        provider can't crash the whole startup loop).
+        """
+        await super().setup(config or {})
+        self.logger.info(
+            "dev_dummy setup() called with system_config=%s",
+            config,
+        )
 
     # ==================================================================
     # §F — Custom UI actions
@@ -248,6 +273,13 @@ class DevDummyProvider(BaseHealthProvider):
                 .patient_id(patient_id)
                 .source_ref("biomarker_code", "8867-4")
                 .source_ref("reading_value", heart_rate)
+                # Item 4 of integrations-sdk-improvements: collapse
+                # repeated elevated-HR alerts into a single inbox entry
+                # inside the TTL window (default 6h) so the user doesn't
+                # get one notification per sync.
+                .digest_key(
+                    f"dev_dummy:elevated_heart_rate:patient/{patient_id}"
+                )
                 .add_link_action("View trend", patient_url)
                 .add_post_action(
                     "Acknowledge",
@@ -486,21 +518,30 @@ class DevDummyProvider(BaseHealthProvider):
         """Validate the ``X-DevDummy-Signature`` header.
 
         Format: ``HMAC-SHA256(secret, raw_body)`` hex-encoded. Raises
-        ``IntegrationDataError`` on mismatch / missing header so the
-        webhook endpoint returns a 4xx.
+        :class:`IntegrationDataError` on mismatch / missing header so
+        the webhook endpoint returns a 4xx.
+
+        Delegates to :func:`integrations.sdk.webhook_security.verify_hmac_signature`
+        — the SDK helper is the single canonical implementation; both
+        the platform endpoint and this provider share it.
         """
         if request is None:
             raise IntegrationDataError(
                 "Webhook secret is configured but no request object was "
                 "supplied for signature verification."
             )
-        signature = request.headers.get("X-DevDummy-Signature") if hasattr(request, "headers") else None
+        # Provider-local header convention; providers SHOULD use the
+        # SDK's ``DEFAULT_WEBHOOK_SIGNATURE_HEADERS`` when possible so
+        # client libraries don't need per-provider header config.
+        signature = get_signature_header(
+            request.headers if hasattr(request, "headers") else {},
+            names=("X-DevDummy-Signature",),
+        )
         if not signature:
             raise IntegrationDataError("Missing X-DevDummy-Signature header.")
 
         body = await request.body() if hasattr(request, "body") else b""
-        expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, signature):
+        if not verify_hmac_signature(secret, body, signature):
             raise IntegrationDataError("Invalid webhook signature.")
 
     # ==================================================================
@@ -893,6 +934,13 @@ class DevDummyProvider(BaseHealthProvider):
                 content_type="text/plain",
                 # Optional: link to the exam pulled above by its upstream id.
                 examination_external_id="dev_dummy_annual_checkup_demo",
+                # Item 3 of integrations-sdk-improvements: stable
+                # upstream id lets the platform dedup at the DB layer
+                # via ``(tenant, patient, source_integration_id,
+                # external_id)``. Without this, the provider owns
+                # idempotency via set_sync_cursor (which we also do,
+                # belt + braces).
+                external_id="dev_dummy_demo_report_v1",
                 # Optional: catalog concept slug for the document category.
                 # Left unset so the engine creates the doc without a category
                 # (the slug may not exist in every deployment).

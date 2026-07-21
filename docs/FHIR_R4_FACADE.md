@@ -97,7 +97,7 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 | `Medication` | `medication_catalog` | Drug definitions. Read-only via facade. |
 | `Immunization` | `patient_immunizations` | Patient dose records. Read + search-type only (REST CRUD at `/vaccines/*`). `date`→`administered_at`, `vaccine-code`→JSONB text. |
 | `DiagnosticReport` | `fhir_diagnostic_reports` | |
-| `DocumentReference` | `documents` | Attachment is metadata-only (`urn:ha-document:<id>`); binary resolves via the existing download endpoint, not the facade. |
+| `DocumentReference` | `documents` | Attachment is metadata-only (`urn:ha-document:<id>`); binary resolves via the existing download endpoint, not the facade. Integration-sourced documents surface their provenance via `meta.tag[]` (system `urn:health-assistant:document-provenance`, code = `source_integration_id`, display = `integration/{external_id}`) when both columns are set. |
 | `Device` | `fhir_devices` (new) | Backfilled from `user_integrations`. |
 | `Communication` | `fhir_communications` (new) | Clinical messaging — distinct from push notifications. |
 | `Organization` | `fhir_organizations` | Now mixes in `TimestampMixin` (audit D15 — gained `created_at`/`updated_at` + indexes) and `SoftDeleteMixin` (audit D6). |

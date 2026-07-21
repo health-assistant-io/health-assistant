@@ -20,7 +20,7 @@ flowchart TD
 
 | Table | Purpose | Key columns |
 |---|---|---|
-| `notifications` | Immutable event row (1 per emit) | `source`, `type`, `category`, `severity`, `title`, `body`, `payload`, `patient_id?`, `tenant_id?`, `trigger_id?`, `communication_id?`, `sender_user_id?` |
+| `notifications` | Immutable event row (1 per emit) | `source`, `type`, `category`, `severity`, `title`, `body`, `payload`, `patient_id?`, `tenant_id?`, `trigger_id?`, `communication_id?`, `sender_user_id?`, `dedup_key?`, `dedup_expires_at?` |
 | `notification_recipients` | Inbox state (N rows, 1 per resolved user) | `user_id`, `recipient_kind`, `recipient_ref`, `status` (`unread`/`read`/`dismissed`), `read_at`, `dismissed_at`. Indexed `(user_id, status)` |
 | `notification_deliveries` | Per-channel delivery log (N rows per recipient) | `user_id`, `channel` (`IN_APP`/`PUSH`/`EMAIL`/`SMS` — note: only `IN_APP` and `PUSH` are wired today; `EMAIL`/`SMS` are reserved enum values for future channels), `status` (`pending`/`sent`/`delivered`/`failed`), `attempted_at`, `delivered_at`, `error`, `subscription_id?` |
 
@@ -67,6 +67,7 @@ spec = (
         severity="warning",
     )
     .patient_id(integration.patient_id)
+    .digest_key(f"dev_dummy:elevated_heart_rate:patient/{integration.patient_id}")
     .add_link_action("View trend", f"/patients/{pid}/biomarkers/8867-4")
     .add_post_action(
         "Acknowledge",
@@ -80,7 +81,15 @@ spec = (
 
 Action button contract: `{id, label, type: link|post, url|endpoint, method, style: primary|danger|ghost|default}`. The frontend `NotificationDetailModal` renders both `payload.actions[]` and `payload.display_blocks[]` (kv/list/table/json/text/code).
 
-**Worked reference**: `integrations/dev_dummy/provider.py` overrides `supports_notifications() → True`, declares **4 NotificationTypeSpecs** (alert/warning, hitl/warning, system/info, agent/critical), tags every emitted spec with the matching `type_id`, and implements `handle_notification_action` for the Acknowledge / Dismiss buttons. Read it as a copy-paste recipe for the full type-declaration + runtime-link + action-handler round-trip.
+#### Digest collapsing (`digest_key`)
+
+Set `digest_key` on any spec that may fire repeatedly inside a TTL window — most commonly a threshold alert that fires on every sync. The platform collapses repeated emissions with the same key into a single Notification row instead of flooding the inbox. Recommended format: `"{domain}:{type_id}:{scope}"` (e.g. `"dev_dummy:elevated_heart_rate:patient/{uuid}"`).
+
+- The TTL defaults to 6 hours, clamped to `[60s, 7d]`, tunable via `settings.NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS`.
+- On a digest hit, `emit()` returns the existing row as-is — **no new row, no re-fan-out, no re-push**. After `dedup_expires_at` passes, the next emit creates a fresh row (so a daily summary can be emitted once per day, not once ever).
+- **No unique partial index** (unlike every other dedup pattern in the codebase). Postgres partial indexes can't reference `now()` in the predicate, and the TTL semantics require multiple historical rows per key. The lookup is a SELECT-then-INSERT on the non-unique composite index `ix_notification_dedup_lookup` — the race window is benign (worst case: two notifications emitted instead of one, the pre-digest behaviour).
+
+**Worked reference**: `integrations/dev_dummy/provider.py` overrides `supports_notifications() → True`, declares **4 NotificationTypeSpecs** (alert/warning, hitl/warning, system/info, agent/critical), tags every emitted spec with the matching `type_id`, tags the elevated-HR spec with `digest_key="dev_dummy:elevated_heart_rate:patient/{uuid}"` so consecutive syncs collapse, and implements `handle_notification_action` for the Acknowledge / Dismiss buttons. Read it as a copy-paste recipe for the full type-declaration + runtime-link + digest + action-handler round-trip.
 
 ### Three-layer preference filter
 
@@ -130,11 +139,14 @@ await emit(
     channels=(NotificationChannel.IN_APP, NotificationChannel.PUSH),  # default
     sender_user_id=current_user.user_id,
     link_communication=True,           # write a FHIR Communication for clinical sources
+    dedup_key=None,                    # optional — collapse repeated emissions inside the TTL window
+    dedup_ttl_seconds=None,            # optional — overrides the default 6h (clamped [60s, 7d])
 )
 ```
 
 `emit` does:
-1. Creates one immutable `Notification` row.
+0. **(If `dedup_key` is set)** Looks up an existing `Notification` with the same `(tenant_id, dedup_key)` whose `dedup_expires_at` is in the future. On hit, returns the existing row as-is — **no new row, no fan-out, no push**. The TTL defaults to 6h (`settings.NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS`), clamped to `[60s, 7d]`.
+1. Creates one immutable `Notification` row (with `dedup_key` + `dedup_expires_at` populated when set).
 2. Calls `resolve_targets()` to expand target specs into concrete `user_id`s.
 3. Fans out one `NotificationRecipient` (inbox state) per user.
 4. Creates `NotificationDelivery` rows for each channel (skips PUSH if the user has no active subscription).
@@ -374,6 +386,7 @@ That's it — the bell, the WebSocket fan-out, the inbox, the admin feed, the de
 2. **Celery worker + beat running** — `deliver_notification` (push) and `check_notification_triggers` (scheduled) are Celery tasks. If the worker isn't running, push deliveries queue in Redis forever and scheduled triggers never fire. Use `scripts/run-dev.sh` (honcho) in dev; separate Compose services in prod.
 3. **Redis reachable** — needed for the WebSocket fan-out AND the Celery broker. If down, the WS endpoint can't subscribe and emits can't enqueue delivery tasks.
 4. **Browser permissions** — the user must grant notification permission in their browser. The first subscription attempt prompts; subsequent attempts use the saved choice (URL bar → Permissions → Notifications → Allow).
+5. **`NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS`** (optional, default `21600` = 6h) — the TTL window for `emit(dedup_key=...)` collapsing. Tune longer for low-urgency summaries (daily digests) or shorter for fast-moving alerts. Clamped to `[60s, 7d]` regardless.
 
 ## Debugging
 

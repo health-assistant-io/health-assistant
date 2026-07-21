@@ -67,7 +67,7 @@
         "id": "notification-system",
         "file": "NOTIFICATION_SYSTEM.md",
         "title": "Notification System",
-        "description": "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, and real-time WebSocket delivery."
+        "description": "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, digest collapsing, and real-time WebSocket delivery."
       },
       {
         "id": "telemetry-and-aggregation",
@@ -115,13 +115,13 @@
         "id": "integrations-framework",
         "file": "INTEGRATIONS_FRAMEWORK.md",
         "title": "Integrations Framework",
-        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, and document pull."
+        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, document pull, rate-limit backoff, and notification digests."
       },
       {
         "id": "integrations-sdk",
         "file": "INTEGRATIONS_SDK.md",
         "title": "Integrations SDK",
-        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate limiting, cursor sync, OAuth2+PKCE, clinical events, examinations, catalog proposals, HITL review, and document pull."
+        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate-limit cooldown, cursor sync, OAuth2+PKCE, webhook HMAC helpers, clinical events, examinations, catalog proposals, HITL review, document pull with DB dedup, and notification digests."
       },
       {
         "id": "mobile-sync-app",

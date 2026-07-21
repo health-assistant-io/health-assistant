@@ -6,8 +6,20 @@ from app.models.user_integration import UserIntegration
 class BaseHealthProvider(ABC):
     domain: str
 
-    async def setup(self, config: dict):
-        """Called when the integration is loaded."""
+    async def setup(self, config: dict | None = None) -> None:
+        """Called once when the integration is loaded by the registry.
+
+        Item 5 of the integrations-sdk-improvements plan: the registry
+        now passes the ``SystemIntegration.global_config`` JSONB (when
+        present) so providers can do one-time resource setup keyed off
+        system-level configuration — bootstrap HTTP pools, fetch
+        well-known endpoints, validate entitlements, etc.
+
+        Default no-op. Override and call ``super().setup(config)`` for
+        forward-compat. Failures bubble up to the registry's loader,
+        which logs them and excludes the integration from the active
+        set (rather than crashing the whole startup loop).
+        """
         pass
 
     async def pull_data(self, integration: UserIntegration) -> List[Observation]:

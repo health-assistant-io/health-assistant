@@ -323,6 +323,28 @@ async def sync_active_integrations(self):
             for integration in active_integrations:
                 start_time = datetime.datetime.now(datetime.timezone.utc)
 
+                # Rate-limit cooldown (item 1 of the integrations-sdk-
+                # improvements plan): when an upstream returned 429 with a
+                # Retry-After hint, ``run_sync`` wrote a Redis cooldown key
+                # via ``set_rate_limit_cooldown``. While it exists, skip
+                # this integration entirely — the upstream told us to back
+                # off and re-hitting it every 60 s just makes it worse.
+                from app.services.integration_sync_service import is_rate_limited
+
+                try:
+                    if await is_rate_limited(integration.id):
+                        logger.debug(
+                            "Skipping sync for %s (user %s): rate-limit cooldown active",
+                            integration.provider,
+                            integration.user_id,
+                        )
+                        continue
+                except Exception:
+                    # Redis down — degrade to "not rate limited" so the
+                    # sync proceeds; the upstream will re-raise if it's
+                    # still closed and the cooldown will be re-set.
+                    pass
+
                 # Check if it's time to sync based on user config interval (default to 15 if missing)
                 sync_interval = 15
                 if (
@@ -356,7 +378,10 @@ async def sync_active_integrations(self):
                 # Delegate to the shared sync pipeline (acquires the Redis
                 # dedup lock internally, handles the 3-tier error contract,
                 # writes the IntegrationSyncLog).
-                from app.services.integration_sync_service import run_sync
+                from app.services.integration_sync_service import (
+                    run_sync,
+                    set_rate_limit_cooldown,
+                )
 
                 result = await run_sync(db, integration, provider, source="background")
                 if result.status == "skipped":
@@ -372,6 +397,14 @@ async def sync_active_integrations(self):
                         integration.user_id,
                         result.error,
                     )
+                    # If the upstream told us to wait, honour it so the
+                    # next beat skips this integration until the cooldown
+                    # expires. No-op when ``retry_after_seconds`` is None
+                    # (manual raises / unknown upstream behaviour).
+                    if result.retry_after_seconds is not None:
+                        await set_rate_limit_cooldown(
+                            integration.id, result.retry_after_seconds
+                        )
                 else:
                     logger.info(
                         "Sync %s for %s: pulled=%d fhir=%d telemetry=%d dropped=%d",

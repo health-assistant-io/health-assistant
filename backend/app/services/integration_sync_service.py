@@ -214,6 +214,12 @@ class SyncResult:
     hitl_proposals_inserted: int = 0
     documents_pulled: int = 0
     documents_written: int = 0
+    # Carried from ``IntegrationRateLimitError.retry_after_seconds`` when
+    # the upstream sent a ``Retry-After`` header. The caller (worker)
+    # may use this to write a Redis cooldown key so the next beat skips
+    # this integration until the cooldown expires. ``None`` when the
+    # upstream sent no hint (caller falls back to ``sync_interval``).
+    retry_after_seconds: Optional[float] = None
 
 
 async def _try_acquire_lock(integration_id: UUID) -> Tuple[bool, str]:
@@ -238,6 +244,101 @@ async def _try_acquire_lock(integration_id: UUID) -> Tuple[bool, str]:
             integration_id,
         )
         return True, lock_key
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit cooldown (item 1 of the integrations-sdk-improvements plan).
+#
+# When an upstream returns 429 with a ``Retry-After`` header, the SDK
+# surfaces the value on ``IntegrationRateLimitError.retry_after_seconds``.
+# ``run_sync`` copies it onto ``SyncResult.retry_after_seconds``; the
+# worker then calls ``set_rate_limit_cooldown`` so subsequent beats
+# skip the integration until the cooldown expires (instead of
+# re-hitting the upstream every 60 s while the window is still closed).
+# ---------------------------------------------------------------------------
+
+#: Minimum cooldown we'll honour even if the upstream said less. Protects
+#: against an upstream sending ``Retry-After: 0`` (which would effectively
+#: disable the cooldown and let the worker re-stampede).
+_COOLDOWN_MIN_SECONDS = 60
+
+#: Maximum cooldown we'll honour even if the upstream said more. Protects
+#: against an upstream lying (or a misconfigured proxy) and freezing the
+#: integration out for hours. The worker's per-instance ``sync_interval``
+#: takes over once the cooldown expires.
+_COOLDOWN_MAX_SECONDS = 60 * 60
+
+
+def _cooldown_key(integration_id: UUID) -> str:
+    return f"sync_cooldown:{integration_id}"
+
+
+def _clamp_cooldown(seconds: Optional[float]) -> Optional[int]:
+    """Clamp the upstream hint to a sane window. Returns ``None`` for
+    empty / non-positive values (no cooldown, fall back to ``sync_interval``).
+    """
+    if seconds is None:
+        return None
+    try:
+        value = float(seconds)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return int(max(_COOLDOWN_MIN_SECONDS, min(value, _COOLDOWN_MAX_SECONDS)))
+
+
+async def set_rate_limit_cooldown(integration_id: UUID, retry_after_seconds: Optional[float]) -> None:
+    """Write the rate-limit cooldown key for this integration.
+
+    Degrades gracefully when Redis is unavailable (logs + returns) — the
+    worker falls back to the per-instance ``sync_interval`` throttle,
+    matching the pre-cooldown behaviour.
+    """
+    ttl = _clamp_cooldown(retry_after_seconds)
+    if ttl is None:
+        return
+    try:
+        from app.core.redis import redis_client
+
+        await redis_client.set(_cooldown_key(integration_id), "1", ex=ttl)
+        logger.info(
+            "Rate-limit cooldown set for %s: %ds", integration_id, ttl,
+        )
+    except Exception:
+        logger.warning(
+            "Redis unavailable for rate-limit cooldown on %s — "
+            "falling back to sync_interval throttle",
+            integration_id,
+        )
+
+
+async def is_rate_limited(integration_id: UUID) -> bool:
+    """Is this integration currently in a rate-limit cooldown?
+
+    Returns ``False`` when Redis is unavailable (degrades to "not
+    rate limited" so the sync proceeds; the upstream will re-raise
+    ``IntegrationRateLimitError`` if still closed, and the cooldown
+    will be re-set).
+    """
+    try:
+        from app.core.redis import redis_client
+
+        return bool(await redis_client.exists(_cooldown_key(integration_id)))
+    except Exception:
+        return False
+
+
+async def clear_rate_limit_cooldown(integration_id: UUID) -> None:
+    """Clear the cooldown key. Useful when a manual sync should bypass
+    the upstream's last ``Retry-After`` hint (e.g. the user clicked
+    "Sync now" in the UI)."""
+    try:
+        from app.core.redis import redis_client
+
+        await redis_client.delete(_cooldown_key(integration_id))
+    except Exception:
+        pass
 
 
 async def _release_lock(lock_key: str) -> None:
@@ -831,6 +932,17 @@ async def run_sync(
                                     )
                                 ),
                                 category_concept_id=resolved_category_id,
+                                # Item 3 of integrations-sdk-improvements:
+                                # pass the integration-key pair so the
+                                # service dedups at the DB layer. The
+                                # engine supplies source_integration_id
+                                # from integration.id (the provider
+                                # can't fake it); external_id comes
+                                # from the DocumentPull spec.
+                                source_integration_id=integration.id,
+                                external_id=getattr(
+                                    doc_spec, "external_id", None
+                                ),
                             )
                             docs_written += 1
                             bytes_this_sync += len(content)
@@ -956,12 +1068,19 @@ async def run_sync(
             db, integration, started, "Rate Limit Exceeded. Will retry later."
         )
         await db.commit()
+        # Surface the upstream's Retry-After hint (if any) so the
+        # caller can avoid hammering the upstream on every beat. The
+        # worker reads ``SyncResult.retry_after_seconds`` and writes a
+        # Redis cooldown key. The value is clamped inside the cooldown
+        # helper (60s..1h) to defend against an upstream lying.
+        retry_after = getattr(e, "retry_after_seconds", None)
         result = SyncResult(
             status="failed",
             error=str(e),
             error_type="rate_limit",
             started_at=started,
             completed_at=_now(),
+            retry_after_seconds=retry_after,
         )
         return result
 
@@ -1254,6 +1373,10 @@ async def _emit_provider_notifications(
                 payload=spec.to_payload(),
                 source_ref=source_ref,
                 sender_user_id=None,
+                # Item 4 of integrations-sdk-improvements: forward the
+                # provider's digest_key so consecutive syncs collapse
+                # into one inbox entry inside the TTL window.
+                dedup_key=getattr(spec, "digest_key", None),
             )
         except Exception:
             logger.exception(

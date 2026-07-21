@@ -82,6 +82,19 @@ class DocumentPull(BaseModel):
             "Misses are non-fatal — the document is created unlinked."
         ),
     )
+    external_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional upstream stable document id — when set, the engine "
+            "passes it through to ``ingest_document_bytes`` and the "
+            "platform dedups at the DB layer on "
+            "``(tenant, patient, source_integration_id, external_id)``. "
+            "Strongly recommended when the upstream has stable ids "
+            "(lab accession #, EHR attachment id, fax message id, ...). "
+            "When unset, the provider owns idempotency via "
+            "``set_sync_cursor`` (the pre-3 behaviour)."
+        ),
+    )
     category_concept_slug: Optional[str] = Field(
         default=None,
         description=(

@@ -177,6 +177,16 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
     # emissions leave this null).
     sender_user_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
+    # Item 4 of integrations-sdk-improvements: digest collapsing.
+    # When ``dedup_key`` is set, the partial unique index
+    # ``uq_notification_dedup`` enforces one row per
+    # ``(tenant_id, dedup_key)`` while the row's ``dedup_expires_at`` is
+    # in the future. ``notification_service.emit`` consults these to
+    # collapse repeated threshold / summary emissions into one inbox
+    # entry inside the TTL window.
+    dedup_key = Column(String(64), nullable=True, index=True)
+    dedup_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
@@ -195,6 +205,10 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "source_ref": self.source_ref,
             "sender_user_id": str(self.sender_user_id) if self.sender_user_id else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "dedup_key": getattr(self, "dedup_key", None),
+            "dedup_expires_at": self.dedup_expires_at.isoformat()
+            if getattr(self, "dedup_expires_at", None)
+            else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

@@ -82,6 +82,19 @@ class DocumentModel(
         nullable=True,
         index=True,
     )
+    # Integration dedup (item 3 of integrations-sdk-improvements plan).
+    # When both columns are set, the partial unique index
+    # ``uq_document_integration_dedup`` enforces one document per
+    # ``(tenant, patient, integration, external_id)``. UI uploads leave
+    # both NULL and bypass dedup. Mirrors the pattern on ``examinations``
+    # + ``clinical_events``.
+    source_integration_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String(255), nullable=True, index=True)
     # updated_at is now handled by TimestampMixin
 
     # Relationships
@@ -134,6 +147,10 @@ class DocumentModel(
             "is_edited": self.is_edited,
             "extracted_text": self.extracted_text,
             "entities": self.entities,
+            "source_integration_id": str(self.source_integration_id)
+            if getattr(self, "source_integration_id", None)
+            else None,
+            "external_id": getattr(self, "external_id", None),
             "created_at": created_at_value.isoformat()
             if created_at_value is not None
             else (updated_at_value.isoformat() if updated_at_value else None),
@@ -221,5 +238,18 @@ class DocumentModel(
             if "context" not in data:
                 data["context"] = {}
             data["context"]["period"] = {"start": ts}
+
+        # Surface integration provenance as FHIR meta.tag so consumers
+        # can trace the document back to its upstream source. Omitted
+        # for UI-uploaded documents (both fields NULL).
+        if getattr(self, "source_integration_id", None) and getattr(self, "external_id", None):
+            tag = data["meta"].setdefault("tag", [])
+            tag.append(
+                {
+                    "system": "urn:health-assistant:document-provenance",
+                    "code": str(self.source_integration_id),
+                    "display": f"integration/{self.external_id}",
+                }
+            )
 
         return build_fhir_resource("DocumentReference", data)

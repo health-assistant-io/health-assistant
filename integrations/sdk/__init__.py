@@ -41,6 +41,12 @@ from .proposals import (
     edge_hitl_proposal,
 )
 from .documents import DocumentPull
+from .webhook_security import (
+    verify_hmac_signature,
+    verify_canonical_signature,
+    get_signature_header,
+    DEFAULT_WEBHOOK_SIGNATURE_HEADERS,
+)
 from .display import (
     kv_block,
     list_block,
@@ -104,6 +110,10 @@ __all__ = [
     "concept_hitl_proposal",
     "edge_hitl_proposal",
     "DocumentPull",
+    "verify_hmac_signature",
+    "verify_canonical_signature",
+    "get_signature_header",
+    "DEFAULT_WEBHOOK_SIGNATURE_HEADERS",
     "kv_block",
     "list_block",
     "table_block",

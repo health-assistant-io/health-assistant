@@ -87,6 +87,9 @@ async def _retry_request(
         treats 412 as a non-error precondition-not-met tuple).
     """
     attempt = 0
+    # Track the last-seen Retry-After so we can surface it on the
+    # exhausted-rate-limit exception. Cleared on a successful response.
+    last_retry_after: Optional[float] = None
     while True:
         try:
             response = await do_request()
@@ -107,18 +110,22 @@ async def _retry_request(
             )
         if response.status_code == 429:
             attempt += 1
-            if attempt >= max_retries:
-                raise IntegrationRateLimitError(
-                    f"Rate limited by {url} after {max_retries} attempts."
-                )
-            retry_after = response.headers.get("Retry-After")
+            retry_after_header = response.headers.get("Retry-After")
             # Retry-After overrides our computed backoff when present (server
             # knows best); otherwise fall back to full-jitter exponential.
-            wait = (
-                float(retry_after)
-                if retry_after and retry_after.isdigit()
-                else _backoff_delay(attempt)
-            )
+            if retry_after_header and retry_after_header.isdigit():
+                wait = float(retry_after_header)
+                last_retry_after = wait
+            else:
+                wait = _backoff_delay(attempt)
+            if attempt >= max_retries:
+                # Surface the captured hint so the worker can write a
+                # cooldown key; falls back to None when the upstream
+                # never sent one (legacy behaviour preserved).
+                raise IntegrationRateLimitError(
+                    f"Rate limited by {url} after {max_retries} attempts.",
+                    retry_after_seconds=last_retry_after,
+                )
             logger.warning("Rate limited by %s. Waiting %.2fs.", url, wait)
             await asyncio.sleep(wait)
             continue

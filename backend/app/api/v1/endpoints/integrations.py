@@ -1335,21 +1335,14 @@ def _verify_webhook_signature(
       - ``X-Hub-Signature-256`` (GitHub): ``sha256=<hex digest>``
 
     Returns True iff the computed HMAC matches the provided signature.
+
+    Thin wrapper around :func:`integrations.sdk.webhook_security.verify_hmac_signature`
+    — the canonical implementation lives in the SDK so providers can
+    reuse it without re-implementing the algorithm.
     """
-    import hashlib
-    import hmac as _hmac
+    from integrations.sdk.webhook_security import verify_hmac_signature
 
-    if not secret or not provided_signature:
-        return False
-
-    computed = _hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-
-    # Strip an optional "sha256=" prefix (GitHub convention) before comparing.
-    provided = provided_signature.strip()
-    if provided.lower().startswith("sha256="):
-        provided = provided[len("sha256=") :]
-
-    return _hmac.compare_digest(computed, provided.strip().lower())
+    return verify_hmac_signature(secret, raw_body, provided_signature)
 
 
 def _verify_api_signature(
@@ -1386,37 +1379,21 @@ def _verify_api_signature(
     AND (when timestamp is supplied) the timestamp is within the allowed
     skew window. Returns False when ``secret`` or ``provided_signature``
     is empty.
+
+    Thin wrapper around
+    :func:`integrations.sdk.webhook_security.verify_canonical_signature`.
     """
-    import hashlib
-    import hmac as _hmac
-    import time
+    from integrations.sdk.webhook_security import verify_canonical_signature
 
-    if not secret or not provided_signature:
-        return False
-
-    canonical_parts = [
-        method.upper().encode("utf-8"),
-        b"\n",
-        path.encode("utf-8"),
-        b"\n",
-    ]
-    if provided_timestamp:
-        # Fold the timestamp into the signed payload so a captured signature
-        # cannot be replayed after the skew window.
-        try:
-            ts_int = int(provided_timestamp)
-        except (ValueError, TypeError):
-            return False
-        now = int(time.time())
-        if abs(now - ts_int) > max_skew_seconds:
-            return False
-        canonical_parts.append(provided_timestamp.encode("utf-8") + b"\n")
-    canonical_parts.append(raw_body)
-    canonical = b"".join(canonical_parts)
-
-    computed = _hmac.new(secret.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
-
-    return _hmac.compare_digest(computed, provided_signature.strip().lower())
+    return verify_canonical_signature(
+        secret,
+        method,
+        path,
+        raw_body,
+        provided_signature,
+        provided_timestamp=provided_timestamp,
+        max_skew_seconds=max_skew_seconds,
+    )
 
 
 @router.post("/{domain}/webhook/{integration_id}")

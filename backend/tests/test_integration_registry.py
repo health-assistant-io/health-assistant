@@ -1,6 +1,9 @@
 import pytest
 import os
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
+
+from integrations.base import BaseHealthProvider, BaseConfigFlow
 from app.core.integration_registry import IntegrationRegistry
 
 @pytest.mark.asyncio
@@ -55,8 +58,10 @@ async def test_integration_registry_initialize():
         
         await registry.initialize(mock_db)
         
-        # Ensure it tried to load the dev_dummy integration because it was enabled
-        mock_load_int.assert_called_once_with("dev_dummy")
+        # Ensure it tried to load the dev_dummy integration because it was enabled.
+        # Item 5 of integrations-sdk-improvements: initialize now passes
+        # the per-domain system_config (None for the mock → coerced to {}).
+        mock_load_int.assert_called_once_with("dev_dummy", system_config={})
 
 
 # ---------------------------------------------------------------------------
@@ -379,3 +384,117 @@ def test_proposal_outcome_is_reexported_from_sdk():
     assert ProposalOutcome is OutcomeSource, (
         "SDK re-export must alias the spec, not duplicate it"
     )
+
+
+# ---------------------------------------------------------------------------
+# Item 5 of integrations-sdk-improvements: setup() gets real config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_load_integration_passes_system_config_to_setup():
+    """``_load_integration`` must forward the system-level config dict
+    to ``provider.setup(config)`` instead of the legacy empty dict."""
+    registry = IntegrationRegistry()
+
+    # Build a fake provider module + class so we can capture the setup
+    # call without importing a real integration. The registry's
+    # ``_find_class_by_base`` checks ``item.__module__ == module.__name__``
+    # so we have to set both consistently.
+    captured: dict = {}
+
+    class FakeProvider(BaseHealthProvider):
+        domain = "fake_setup_test"
+
+        async def setup(self, config: dict | None = None) -> None:
+            captured["config"] = config or {}
+
+        async def pull_data(self, integration):
+            return []
+
+    class FakeConfigFlow(BaseConfigFlow):
+        domain = "fake_setup_test"
+
+        async def get_schema(self) -> dict:
+            return {}
+
+        async def validate_input(self, user_input: dict) -> dict:
+            return user_input
+
+    FakeProvider.__module__ = "fake_provider"
+    FakeConfigFlow.__module__ = "fake_config_flow"
+
+    fake_module = SimpleNamespace(FakeProvider=FakeProvider, __name__="fake_provider")
+    fake_flow_module = SimpleNamespace(
+        FakeConfigFlow=FakeConfigFlow, __name__="fake_config_flow"
+    )
+
+    with patch("importlib.import_module") as mock_import:
+        mock_import.side_effect = [fake_module, fake_flow_module]
+        await registry._load_integration(
+            "fake_setup_test",
+            system_config={"entitlement": "pro", "region": "eu"},
+        )
+
+    assert captured.get("config") == {
+        "entitlement": "pro",
+        "region": "eu",
+    }, "registry must forward the SystemIntegration.global_config to setup()"
+
+
+@pytest.mark.asyncio
+async def test_initialize_passes_per_domain_system_config(monkeypatch):
+    """``initialize`` must build the per-domain config map from the
+    SystemIntegration rows and pass each to ``_load_integration``."""
+    registry = IntegrationRegistry()
+    registry._manifests = {
+        "alpha": {"domain": "alpha"},
+        "beta": {"domain": "beta"},
+    }
+
+    # Mock DB query.
+    alpha_si = MagicMock(domain="alpha", is_enabled=True, global_config={"k": "alpha-v"})
+    beta_si = MagicMock(domain="beta", is_enabled=True, global_config=None)
+    mock_result = MagicMock()
+    mock_result.scalars().all.return_value = [alpha_si, beta_si]
+
+    async def mock_execute(*args, **kwargs):
+        return mock_result
+
+    mock_db = MagicMock()
+    mock_db.execute = mock_execute
+
+    # Capture _load_integration calls.
+    calls: list[tuple[str, dict]] = []
+
+    async def _capture(domain, *, system_config=None):
+        calls.append((domain, system_config or {}))
+
+    monkeypatch.setattr(registry, "_load_integration", _capture)
+    monkeypatch.setattr(registry, "_load_manifests", lambda: None)
+
+    await registry.initialize(mock_db)
+
+    assert ("alpha", {"k": "alpha-v"}) in calls
+    assert ("beta", {}) in calls, "None global_config must coerce to empty dict"
+
+
+def test_dev_dummy_provider_overrides_setup():
+    """The reference provider overrides setup() so authors have a
+    copy-paste example of the lifecycle hook."""
+    from integrations.dev_dummy.provider import DevDummyProvider
+
+    # The class must override setup (not just inherit the no-op default).
+    assert DevDummyProvider.setup.__qualname__.startswith("DevDummyProvider"), (
+        "DevDummyProvider must override setup() to demonstrate the lifecycle hook"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dev_dummy_setup_does_not_raise():
+    from integrations.dev_dummy.provider import DevDummyProvider
+
+    provider = DevDummyProvider()
+    # Must accept both shapes: dict / None.
+    await provider.setup({"k": "v"})
+    await provider.setup(None)

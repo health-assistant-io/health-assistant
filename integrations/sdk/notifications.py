@@ -129,6 +129,14 @@ class NotificationSpec:
     display_blocks: list[dict[str, Any]] = field(default_factory=list)
     # If set, overrides the default "integration owner only" target.
     targets_override: Optional[list[dict[str, Any]]] = None
+    # Item 4 of integrations-sdk-improvements: optional digest key. When
+    # set, the platform collapses repeated emissions with the same key
+    # into a single Notification row inside the TTL window (default 6h).
+    # Providers SHOULD set this for any spec that may fire repeatedly
+    # (e.g. same biomarker threshold on every sync) so the user's inbox
+    # doesn't flood. Format suggestion: ``"{domain}:{type_id}:{scope}"``
+    # e.g. ``"dev_dummy:elevated_heart_rate:patient/{uuid}"``.
+    digest_key: Optional[str] = None
 
     @staticmethod
     def builder(
@@ -264,6 +272,21 @@ class NotificationSpecBuilder:
     def targets(self, targets: list[dict[str, Any]]) -> "NotificationSpecBuilder":
         """Override the default "integration owner only" target."""
         self._spec.targets_override = targets
+        return self
+
+    def digest_key(self, key: str) -> "NotificationSpecBuilder":
+        """Set the digest key — repeated emissions with the same key
+        collapse into a single Notification row inside the TTL window
+        (default 6h, tunable via settings.NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS).
+
+        Format suggestion: ``"{domain}:{type_id}:{scope}"`` — e.g.
+        ``"dev_dummy:elevated_heart_rate:patient/{uuid}"``.
+
+        Providers SHOULD set this for any spec that may fire repeatedly
+        so the user's inbox doesn't flood with the same threshold alert
+        on every sync.
+        """
+        self._spec.digest_key = key
         return self
 
     def build(self) -> NotificationSpec:
