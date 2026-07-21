@@ -807,7 +807,7 @@ export const AIChatInterface: React.FC<Props> = ({
         {isFullScreen && !isHistoryOpen && (
           <button
             onClick={() => setIsHistoryOpen(true)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-[500] group flex items-center"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-[960] group flex items-center"
           >
             <div className="bg-white dark:bg-dark-surface border border-l-0 border-gray-100 dark:border-dark-border py-8 px-1 rounded-r-2xl shadow-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all flex flex-col items-center gap-4">
                <History className="w-4 h-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />

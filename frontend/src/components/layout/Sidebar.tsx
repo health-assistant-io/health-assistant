@@ -264,7 +264,7 @@ function Sidebar() {
         onClick={toggleSidebarCollapse}
         title={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         aria-label={effectiveCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-50 w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-3 z-[960] w-6 h-9 items-center justify-center rounded-lg bg-white dark:bg-dark-surface ring-1 ring-black/5 dark:ring-white/10 shadow-md text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 ${isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       >
         {effectiveCollapsed ? (
           <ChevronRight className="w-4 h-4" />
