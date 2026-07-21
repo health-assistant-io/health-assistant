@@ -5,14 +5,20 @@
       {
         "id": "overview",
         "file": "overview.md",
-        "title": "Dummy Integration Overview",
-        "description": "Developer dummy integration for Health Assistant, the self-hosted, open-source health records platform. Simulates OAuth flows, data pulling, and webhook pushing to test the integration engine without real API credentials."
+        "title": "Dev Dummy Overview",
+        "description": "Reference integration for Health Assistant that exercises every Integrations SDK capability — pull, push, webhook with HMAC, two-way API, chat tools, notifications, clinical events, examinations, catalog and HITL proposals, and documents."
+      },
+      {
+        "id": "capabilities",
+        "file": "capabilities.md",
+        "title": "Capability Reference",
+        "description": "Catalogue of every SDK hook Dev Dummy demonstrates, with the config-flow toggle that enables it and the file location to read."
       },
       {
         "id": "testing",
         "file": "testing.md",
         "title": "Testing Scenarios",
-        "description": "Testing scenarios for the Dev Dummy integration in Health Assistant. Trigger config-flow rejections, Celery sync failures, and rate-limit handling to validate the integration engine."
+        "description": "How to trigger every Dev Dummy capability — error simulation toggles, the HMAC-signed webhook contract, the two-way API routes, and the unit-test coverage map."
       }
     ]
   },
@@ -23,7 +29,7 @@
         "id": "troubleshooting",
         "file": "troubleshooting.md",
         "title": "Troubleshooting",
-        "description": "Troubleshooting the Dev Dummy integration in Health Assistant. Diagnose missing fake biomarker data, verify Celery sync tasks, and trigger manual integration syncs via the REST API."
+        "description": "Diagnose missing fake biomarker data, verify Celery sync tasks, and trigger manual integration syncs via the REST API."
       }
     ]
   }

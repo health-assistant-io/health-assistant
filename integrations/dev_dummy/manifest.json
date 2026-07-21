@@ -1,9 +1,9 @@
 {
   "domain": "dev_dummy",
   "name": "Developer Dummy Data",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "integration_type": ["pull", "push"],
-  "description": "Simulates API flows, random errors, and fake biomarker data for core engine testing.",
+  "description": "Reference integration that exercises every SDK capability — pull/push, webhook, two-way API, tools, notifications, clinical events, examinations, catalog/HITL proposals, documents.",
   "author": "Core",
   "access_type": "local",
   "categories": ["System", "Development", "Testing"],
