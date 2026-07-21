@@ -5,9 +5,10 @@
  * via {@link getCatalogItem}, projects it through the metadata-driven
  * {@link TYPE_FIELDS} registry (the single source of truth for each catalog
  * type's field layout), and renders a compact info card: type icon + type chip
- * + name + scope badge, followed by the type's key fields — richtext collapses
- * to a one-line snippet, chips render as semantic pills, everything else
- * stringifies. This is the inline-form companion shown under a
+ * + name + scope badge, followed by the type's key fields — richtext renders
+ * as formatted prose via {@link FormattedText} (auto-detects HTML / Markdown /
+ * plain, same mechanism as {@link CatalogItemInfo}), chips render as semantic
+ * pills, everything else stringifies. This is the inline-form companion shown
  * {@link CatalogItemPicker} in `displayMode="cards"`, so a selected catalog
  * definition (e.g. a medication picked while recording a prescription) is
  * visible at a glance — indications, dosage, side effects, contraindications —
@@ -23,9 +24,9 @@ import { ExternalLink, X, AlertCircle } from 'lucide-react';
 import { ScopeBadge } from './ScopeBadge';
 import { ChipList } from '../ui/ChipList';
 import { Modal } from '../ui/Modal';
+import { FormattedText } from '../ui/FormattedText';
 import { CatalogItemInfo } from './info/CatalogItemInfo';
 import { getCatalogTypeIcon } from './catalogTypeIcons';
-import { toSnippet } from '../../utils/textFormat';
 import { getCatalogItem } from '../../services/catalogService';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useFieldDescriptors } from './info/useFieldDescriptors';
@@ -92,8 +93,9 @@ export function invalidateCatalogItemCard(type: string, id: string): void {
   cache.delete(cacheKey(type, id));
 }
 
-/** Compact value renderer for one field descriptor. Richtext → snippet,
- *  chips → {@link ChipList}, everything else → a defensive string. */
+/** Compact value renderer for one field descriptor. Richtext → formatted
+ *  prose via {@link FormattedText} (height-capped), chips → {@link ChipList},
+ *  everything else → a defensive string. */
 function renderFieldValue(
   descriptor: FieldDescriptor,
   raw: unknown,
@@ -104,8 +106,20 @@ function renderFieldValue(
     return { node: <ChipList items={items} variant={descriptor.variant} />, isEmpty: items.length === 0 };
   }
   if (descriptor.kind === 'richtext') {
-    const snippet = toSnippet(typeof raw === 'string' ? raw : String(raw), 160);
-    return { node: snippet || null, isEmpty: !snippet };
+    const text = typeof raw === 'string' ? raw : String(raw);
+    if (!text.trim()) return { node: null, isEmpty: true };
+    // Render the stored value as proper formatted prose (auto-detects HTML /
+    // Markdown / plain — same mechanism as the full CatalogItemInfo detail).
+    // Capped in height so a long description can't make the compact card
+    // unbounded; the full text remains one click away via "open in catalog".
+    return {
+      node: (
+        <div className="max-h-28 overflow-hidden">
+          <FormattedText value={text} />
+        </div>
+      ),
+      isEmpty: false,
+    };
   }
   if (typeof raw === 'boolean') {
     if (descriptor.kind === 'boolean') {

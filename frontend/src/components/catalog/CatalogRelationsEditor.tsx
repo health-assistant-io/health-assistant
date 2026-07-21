@@ -152,6 +152,7 @@ export const CatalogRelationsEditor: React.FC<CatalogRelationsEditorProps> = ({
           value={selections}
           onChange={handleChange}
           relationPicker={{}}
+          displayMode="cards"
           placeholder={t('catalogs.edge_search_placeholder', 'Search any catalog for the target…')}
         />
       )}

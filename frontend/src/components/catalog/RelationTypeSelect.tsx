@@ -46,6 +46,10 @@ export const RelationTypeSelect: React.FC<RelationTypeSelectProps> = ({
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  // Whether the popover renders above ('top') or below ('bottom') the trigger.
+  // Flipped to 'top' when there's no room below the trigger (e.g. a chip near
+  // the viewport/modal bottom) so the dropdown is never clipped.
+  const [placement, setPlacement] = useState<'top' | 'bottom'>('bottom');
   // Re-render once the async metadata cache resolves.
   const [, setMetaTick] = useState(0);
 
@@ -65,14 +69,27 @@ export const RelationTypeSelect: React.FC<RelationTypeSelectProps> = ({
   }, []);
 
   // Reposition the Portaled popover on scroll/resize (capture-phase catches
-  // the modal's overflow container, whose scroll events don't bubble).
+  // the modal's overflow container, whose scroll events don't bubble). Also
+  // picks placement ('top'/'bottom') based on available space so the dropdown
+  // is never clipped by the viewport/modal bottom edge.
   useLayoutEffect(() => {
     if (!open) {
       setRect(null);
       return;
     }
     const update = () => {
-      if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      setRect(r);
+      // Estimate the popover's max height: search header (~45px) + the
+      // `max-h-72` (288px) scrollable list + padding. Overestimating slightly
+      // is safe — it only makes us flip sooner when space is tight.
+      const POPOVER_H = 340;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const spaceAbove = r.top;
+      setPlacement(
+        spaceBelow < POPOVER_H + 8 && spaceAbove > spaceBelow ? 'top' : 'bottom',
+      );
     };
     update();
     window.addEventListener('resize', update);
@@ -216,8 +233,15 @@ export const RelationTypeSelect: React.FC<RelationTypeSelectProps> = ({
         <Portal>
           <div
             ref={popRef}
-            className="fixed z-popover w-72 max-w-[85vw] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
-            style={{ top: rect.bottom + 4, left: rect.left }}
+            className={`fixed z-popover w-72 max-w-[85vw] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg animate-in fade-in ${placement === 'top' ? 'slide-in-from-bottom-1' : 'slide-in-from-top-1'} duration-150`}
+            style={
+              placement === 'top'
+                ? // Anchor to the trigger's top edge and grow upward. Using
+                  // `bottom` (distance from viewport bottom) avoids needing
+                  // the popover's measured height.
+                  { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+                : { top: rect.bottom + 4, left: rect.left }
+            }
           >
             <div className="relative p-2 border-b border-gray-100 dark:border-gray-700">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />

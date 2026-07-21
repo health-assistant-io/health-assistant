@@ -186,6 +186,11 @@ export const LinksSection: React.FC<LinksSectionProps> = ({
           allowedTypes={allowedTypes}
           relationPicker={{}} // enable relation chips; default relations applied
           getRelationsForType={getRelationsForType}
+          // Cards mode surfaces each pick's catalog type (icon + label) and key
+          // fields at a glance — the type is otherwise hidden behind the
+          // relation dropdown in chips mode. The relation dropdown renders in
+          // each card's `actions` slot (see CatalogItemPicker cards branch).
+          displayMode="cards"
           placeholder={
             placeholder ??
             t('ai_chat.hitl.links.placeholder', 'Search catalog items to link…')
