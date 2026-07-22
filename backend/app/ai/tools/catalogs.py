@@ -91,6 +91,7 @@ def build(ctx: ToolContext):
         id: str,
         max_depth: int = 2,
         relations: Optional[List[str]] = None,
+        types: Optional[List[str]] = None,
     ) -> str:
         """Explore the knowledge graph around a catalog item.
 
@@ -104,11 +105,19 @@ def build(ctx: ToolContext):
                 "allergy", "anatomy", "concept", "clinical_event_type".
             id: the item UUID.
             max_depth: traversal depth 1–3 (default 2). 1 = direct neighbors.
+                Clamped to 3 to keep the result LLM-context-safe.
             relations: optional whitelist of relation types (e.g.
                 ["AFFECTS", "TREATS", "PREVENTS"]). None = all relations.
+            types: optional whitelist of destination endpoint types — keep only
+                edges touching at least one of these (e.g. ["anatomy"] to see
+                only the anatomy sub-graph around a biomarker, or
+                ["medication", "vaccine"] to see what treats/prevents a disease).
+                Same vocabulary as ``type`` ("vaccine" maps to the immunization
+                endpoint). Big token saver on dense graphs.
 
-        Returns JSON: {start: {type, id, label}, nodes: [...], edges: [...]}
-        where each edge is {id, src: {type, id}, dst: {type, id}, relation, status}.
+        Returns JSON: {start, nodes, edges, truncated, node_count, edge_count}.
+        ``truncated`` is true when the edge cap was hit — narrow further with
+        ``relations`` / ``types`` / lower ``max_depth`` when set.
         """
         from app.models.enums import ConceptRelationType, EdgeEndpointType
         from app.services.catalog_graph_service import traverse
@@ -145,13 +154,35 @@ def build(ctx: ToolContext):
                     pass
             whitelist = tuple(resolved) if resolved else None
 
+        # Resolve the destination-type whitelist (same alias map).
+        endpoint_whitelist: Optional[tuple[EdgeEndpointType, ...]] = None
+        if types:
+            resolved_types = []
+            for t in types:
+                try:
+                    resolved_types.append(
+                        EdgeEndpointType(_TYPE_ALIASES.get(t, t))
+                    )
+                except ValueError:
+                    pass
+            endpoint_whitelist = tuple(resolved_types) if resolved_types else None
+
+        # Clamp depth to the documented 1–3 range (the service allows up to 5,
+        # but depth >3 saturates the edge cap on any non-trivial graph).
+        clamped_depth = max(1, min(3, max_depth))
+
         graph = await traverse(
             ctx.db,
             start_type=etype,
             start_id=eid,
             tenant_id=ctx.tenant_id,
-            max_depth=max_depth,
+            max_depth=clamped_depth,
             relation_whitelist=whitelist,
+            endpoint_type_whitelist=endpoint_whitelist,
+            # LLM-facing cap is tighter than the service default (500) to keep
+            # the result within a sane token budget (~8K ceiling at 150 edges).
+            # The workspace Graph UI keeps the 500 default.
+            limit=150,
         )
         return json.dumps(graph, default=str)
 

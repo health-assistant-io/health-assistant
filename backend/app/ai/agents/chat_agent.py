@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.agents.hitl import (
     _append_assistant_turn_to_history,
     _hitl_llm_feedback,
+    _hitl_proposal_note,
     _parse_hitl_proposal,
 )
 from app.ai.assistance.attachments import build_multimodal_content, has_images
@@ -274,7 +275,8 @@ async def run_reasoning_loop(
                 hitl_task = _parse_hitl_proposal(observation)
                 if hitl_task:
                     all_tasks.append(hitl_task)
-                    feedback = _hitl_llm_feedback(hitl_task)
+                    note = _hitl_proposal_note(observation)
+                    feedback = _hitl_llm_feedback(hitl_task, note)
                     # Trimmed tool result so the chip resolves to "finished".
                     trimmed = {
                         "name": tool_name,

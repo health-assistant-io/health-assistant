@@ -20,6 +20,7 @@ from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.enums import HitlTaskStatus
 from app.models.examination_model import ExaminationModel
+from app.services import anatomy_service
 
 
 async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
@@ -73,6 +74,84 @@ async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
         import logging
 
         logging.getLogger(__name__).exception("HITL notification emit failed")
+
+
+async def _search_existing_anatomy(
+    ctx: ToolContext, target_structure: str
+) -> tuple[Optional[dict], str]:
+    """Look up the target in the existing anatomy catalog (tenant + global) and,
+    when found, traverse its 2-hop neighborhood so the generation step can fill
+    gaps instead of duplicating existing structures/edges.
+
+    Returns ``(existing_snapshot, llm_note)``:
+      - ``existing_snapshot`` is ``None`` when nothing matches, else a compact
+        dict with the root + the existing node slugs + slug-based edges.
+      - ``llm_note`` is a one-line summary surfaced to the LLM via the HITL
+        feedback so it can inform the user.
+
+    Best-effort: any DB error degrades to "nothing found" (the proposal still
+    renders; the generation runs from scratch).
+    """
+    label = target_structure.strip()
+    if not label:
+        return None, ""
+    try:
+        root = await anatomy_service.get_anatomy_structure_by_id_or_slug(
+            ctx.db, label, ctx.tenant_id
+        )
+    except Exception:
+        root = None
+    if root is None:
+        return None, (
+            f"No existing anatomy structure matches '{label}' — the full "
+            f"sub-graph will be generated from scratch."
+        )
+
+    try:
+        graph = await anatomy_service.get_anatomy_graph(
+            ctx.db, root, ctx.tenant_id, depth=2
+        )
+    except Exception:
+        graph = {"nodes": [{"structure": root, "depth": 0}], "edges": []}
+
+    # Map node UUIDs → slugs so edges can be expressed in slug form (what the
+    # generation LLM + the import pipeline expect).
+    id_to_slug: Dict[str, str] = {}
+    node_slugs: List[str] = []
+    for n in graph.get("nodes", []):
+        struct = n.get("structure") if isinstance(n, dict) else None
+        if struct is None:
+            continue
+        id_to_slug[str(struct.id)] = struct.slug
+        if struct.slug not in node_slugs:
+            node_slugs.append(struct.slug)
+
+    existing_edges: List[Dict[str, str]] = []
+    for e in graph.get("edges", []):
+        src = id_to_slug.get(str(e.get("source_id")))
+        dst = id_to_slug.get(str(e.get("target_id")))
+        rel = e.get("relation_type")
+        if src and dst and rel:
+            existing_edges.append(
+                {"source_slug": src, "target_slug": dst, "relation_type": str(rel)}
+            )
+
+    snapshot = {
+        "root_slug": root.slug,
+        "root_name": root.name,
+        "root_id": str(root.id),
+        "node_count": len(node_slugs),
+        "edge_count": len(existing_edges),
+        "node_slugs": node_slugs,
+        "edges": existing_edges,
+    }
+    note = (
+        f"Found existing '{root.name}' (slug '{root.slug}') with "
+        f"{len(node_slugs)} structures and {len(existing_edges)} edges already "
+        f"defined. The review card carries this snapshot so the generation step "
+        f"will fill gaps rather than duplicate them."
+    )
+    return snapshot, note
 
 
 @register_chat_tool("hitl_proposals")
@@ -869,20 +948,66 @@ def build(ctx: ToolContext) -> List[Any]:
         """Propose generating an anatomical graph expansion (nodes and edges) for a
         specific body part, organ, or system (e.g., 'Heart', 'Cardiovascular System').
 
-        This does NOT generate the graph immediately. It renders a human-in-the-loop
-        review card which will trigger the AI graph orchestrator if the user confirms.
+        Renders a human-in-the-loop review card. The graph is generated NOW (at
+        proposal time, using the ``define_anatomy_graph`` assistance task) so the
+        review card opens instantly with a prefilled, editable draft — the user
+        does not wait for an LLM call when they open the modal.
+
+        Before generating, the tool searches the existing anatomy catalog so the
+        generation fills gaps rather than duplicating structures/edges. Both the
+        existing-graph snapshot and the generated draft are embedded in the proposal.
 
         Args:
             target_structure: The name of the anatomical structure to generate (e.g. 'Heart').
         """
+        # 1. Pre-flight: search the existing anatomy catalog (tenant + global).
+        existing, note = await _search_existing_anatomy(ctx, target_structure)
+
+        # 2. Generate the graph NOW so the review card opens instantly. Deferred
+        #    imports avoid a cycle (these are leaf modules — definitions has no
+        #    tools-layer deps; AIProviderService has no tools-layer deps).
+        generated = None
+        try:
+            from app.ai.providers.service import AIProviderService
+            from app.ai.assistance.definitions import define_anatomy_graph
+            from app.ai.providers.enums import TaskType
+
+            llm = await AIProviderService(ctx.db).get_llm(
+                TaskType.DEFINE_ANATOMY_GRAPH, ctx.tenant_id, ctx.user_id
+            )
+            gen = await define_anatomy_graph(
+                llm, target_structure, {"existing": existing}
+            )
+            if gen.get("success"):
+                suggested = gen.get("suggested_data") or {}
+                if suggested.get("nodes"):
+                    generated = suggested
+                    n = len(suggested.get("nodes", []))
+                    e = len(suggested.get("edges", []))
+                    note += f" Generated {n} nodes and {e} edges — the review card is prefilled."
+        except Exception:
+            # Generation failed (provider down, parse error, timeout). The
+            # proposal still renders with the existing-graph snapshot; the
+            # frontend handler falls back to a client-side generation call
+            # (with a Retry button) when the user opens the card.
+            import logging
+            logging.getLogger(__name__).warning(
+                "propose_anatomy_graph_generation: in-tool generation failed; "
+                "falling back to client-side generation on card open.",
+                exc_info=True,
+            )
+            note += " Generation is pending — the review card will generate when opened."
+
         task = {
-            "schema_version": 1,
+            "schema_version": 3,
             "proposal_id": str(uuid4()),
             "task_type": "generate_anatomy_graph",
             "title": f"Generate Anatomy Graph: {target_structure}",
             "status": HitlTaskStatus.PROPOSED,
             "proposed_payload": {
                 "target_structure": target_structure,
+                "existing": existing,
+                "generated": generated,
             },
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
@@ -891,7 +1016,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
-        return json.dumps({"__hitl__": True, "task": task})
+        return json.dumps({"__hitl__": True, "task": task, "note": note})
 
     return [
         propose_create_clinical_event,

@@ -168,9 +168,9 @@ Alternatively, use the REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_A
 
 ### 6.4 AI-Driven Graph Expansion
 
-The system includes an AI orchestrator for on-demand anatomy graph generation. System admins can ask the AI chatbot to generate a detailed anatomical sub-graph (e.g., "Generate the anatomy of the cardiovascular system in detail"). The AI uses the `propose_anatomy_graph_generation` tool, which creates a HITL (human-in-the-loop) review card. Upon user confirmation, the AI generates the graph nodes and edges, validates them, and imports them via the same JSON import pipeline.
+The system includes an end-to-end AI orchestrator for on-demand anatomy graph generation. System admins can ask the AI chatbot to generate a detailed anatomical sub-graph (e.g., "Generate the anatomy of the cardiovascular system in detail"). The AI uses the `propose_anatomy_graph_generation` tool, which creates a HITL (human-in-the-loop) review card; on confirmation the client generates the graph (nodes + edges) via the `define_anatomy_graph` assistance task, surfaces an editable node/edge review, and imports them through the same JSON pipeline as `POST /api/v1/anatomy/import` (SYSTEM_ADMIN-gated — the import writes to the **global** ontology shared across all people, so the modal warns the user about the global scope before commit).
 
-The AI task type `define_anatomy_graph` can also be called directly via `POST /api/v1/ai-assistance/assist` with a `user_input` describing the target structure.
+The AI task type `define_anatomy_graph` can also be called directly via `POST /api/v1/ai-assistance/assist` with a `user_input` describing the target structure — this path returns `{nodes, edges}` for programmatic import without the chat card.
 
 ### 6.5 Adding New Seed Nodes
 

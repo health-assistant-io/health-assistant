@@ -26,6 +26,7 @@ from app.models.enums import ConceptRelationType
 from app.models.user_model import Role
 from app.services import anatomy_service
 from app.services.anatomy_import_service import AnatomyImportService
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.security import RoleChecker
 
 router = APIRouter()
@@ -91,10 +92,13 @@ async def create_anatomy_structure(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
+    """Create a new anatomical structure.
+
+    Scope is derived from the caller's role via the shared catalog policy
+    (SYSTEM_ADMIN→system, ADMIN/MANAGER→tenant, USER→user) — identical to
+    biomarker/medication/allergy/vaccine.
     """
-    Create a new anatomical structure.
-    """
-    # Check if slug exists
+    # Check if slug exists in the caller's visible scope (tenant + global).
     existing = await anatomy_service.get_anatomy_structure_by_id_or_slug(
         db, structure_in.slug, current_user.tenant_id
     )
@@ -103,9 +107,12 @@ async def create_anatomy_structure(
             status_code=400, detail="Structure with this slug already exists."
         )
 
-    # Standard users create tenant-scoped items. System admins create global ones if they don't have a tenant.
     return await anatomy_service.create_anatomy_structure(
-        db, structure_in, tenant_id=current_user.tenant_id
+        db,
+        structure_in,
+        role=current_user.role,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
     )
 
 
@@ -295,23 +302,22 @@ async def update_anatomy_structure(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
-    """
-    Update an existing anatomy structure. Only fields provided in the body are
-    changed. Global (non-custom) structures require a SYSTEM_ADMIN role.
-    """
+    """Update an existing anatomy structure. Only fields provided in the body
+    are changed. RBAC is enforced by the shared catalog policy
+    (``check_modify``): SYSTEM_ADMIN for system rows, ADMIN/MANAGER for tenant
+    rows, creator-or-ADMIN for user-scope rows."""
     structure = await anatomy_service.get_anatomy_structure_by_id_or_slug(
         db, identifier, current_user.tenant_id
     )
     if not structure:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
 
-    is_global = structure.tenant_id is None
-    if is_global and current_user.role != Role.SYSTEM_ADMIN:
-        raise HTTPException(
-            status_code=403,
-            detail="Only system admins can edit global anatomy structures",
-        )
-
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        structure.scope,
+        item_created_by=structure.created_by,
+        actor_user_id=current_user.user_id,
+    )
     return await anatomy_service.update_anatomy_structure(db, structure, structure_in)
 
 
@@ -321,23 +327,20 @@ async def delete_anatomy_structure(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
-    """
-    Delete an anatomy structure. Global (non-custom) structures require a
-    SYSTEM_ADMIN role.
-    """
+    """Delete an anatomy structure. RBAC is enforced by the shared catalog
+    policy (``check_modify``) — same matrix as update."""
     structure = await anatomy_service.get_anatomy_structure_by_id_or_slug(
         db, identifier, current_user.tenant_id
     )
     if not structure:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
 
-    is_global = structure.tenant_id is None
-    if is_global and current_user.role != Role.SYSTEM_ADMIN:
-        raise HTTPException(
-            status_code=403,
-            detail="Only system admins can delete global anatomy structures",
-        )
-
+    DEFAULT_CATALOG_POLICY.check_modify(
+        current_user.role,
+        structure.scope,
+        item_created_by=structure.created_by,
+        actor_user_id=current_user.user_id,
+    )
     await anatomy_service.delete_anatomy_structure(db, structure)
     return {"detail": "Anatomy structure deleted"}
 

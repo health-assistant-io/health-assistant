@@ -44,6 +44,32 @@ class CatalogPermissionDenied(Exception):
     """
 
 
+class CatalogConflict(Exception):
+    """Raised when a scope transition (promote/demote) would create a duplicate
+    slug at the target scope tier.
+
+    Endpoints translate this to HTTP 409. Carries the conflicting item's id +
+    name so the caller can offer "open the existing item" without a re-query.
+    """
+
+    def __init__(
+        self,
+        *,
+        slug: str,
+        existing_id: str,
+        existing_name: Optional[str],
+        target_scope: str,
+    ) -> None:
+        self.slug = slug
+        self.existing_id = existing_id
+        self.existing_name = existing_name
+        self.target_scope = target_scope
+        label = f"'{existing_name}'" if existing_name else f"id {existing_id}"
+        super().__init__(
+            f"a {target_scope}-scope item with slug '{slug}' already exists ({label})"
+        )
+
+
 def _norm(role: RoleLike) -> str:
     return role.value if isinstance(role, Role) else str(role)
 

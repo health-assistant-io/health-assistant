@@ -363,7 +363,7 @@ The JSON format:
 }
 ```
 
-Nodes are upserted by `slug` (existing nodes update, nothing is deleted); edges deduplicate on `(source, target, relation_type)`. The REST endpoint `POST /api/v1/anatomy/import` (SYSTEM_ADMIN token) accepts the same payload for programmatic imports. You can also ask the AI Assistant to generate a sub-graph on demand (e.g. *"generate the detailed anatomy of the cardiovascular system"*) — it produces a human-in-the-loop review card for your approval before anything is imported. See [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) for full details.
+Nodes are upserted by `slug` (existing nodes update, nothing is deleted); edges deduplicate on `(source, target, relation_type)`. The REST endpoint `POST /api/v1/anatomy/import` (SYSTEM_ADMIN token) accepts the same payload for programmatic imports. You can also ask the AI Assistant to generate a sub-graph on demand (e.g. *"generate the detailed anatomy of the cardiovascular system"*) — it produces a human-in-the-loop review card with an editable node/edge table for your approval before anything is imported. See [Seeding & Demo Data §6.4](./SEEDING_AND_DEMOS.md#64-ai-driven-graph-expansion) for full details.
 
 ## See also
 

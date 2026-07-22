@@ -29,7 +29,11 @@ import {
   renderCreateAllergySummary,
 } from './handlers/CreateAllergyDefinitionHandler';
 import { AskUserHandler, renderAskUserSummary } from './handlers/AskUserHandler';
-import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, ShieldAlert, HelpCircle } from 'lucide-react';
+import {
+  GenerateAnatomyGraphHandler,
+  renderAnatomyGraphSummary,
+} from './handlers/GenerateAnatomyGraphHandler';
+import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, ShieldAlert, HelpCircle, Network } from 'lucide-react';
 
 export type HitlTaskStatus = TaskInfo['status'];
 
@@ -137,6 +141,13 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     renderSummary: renderAskUserSummary,
     FormComponent: AskUserHandler,
     inline: true,
+  },
+  generate_anatomy_graph: {
+    taskType: 'generate_anatomy_graph',
+    icon: Network,
+    accent: 'indigo',
+    renderSummary: renderAnatomyGraphSummary,
+    FormComponent: GenerateAnatomyGraphHandler,
   },
 };
 

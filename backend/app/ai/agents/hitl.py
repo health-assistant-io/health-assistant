@@ -51,16 +51,41 @@ def _parse_hitl_proposal(observation: Any) -> Optional[Dict[str, Any]]:
     return task
 
 
-def _hitl_llm_feedback(task: Dict[str, Any]) -> str:
+def _hitl_proposal_note(observation: Any) -> Optional[str]:
+    """Extract the optional LLM-facing ``note`` a propose_* tool attaches to its
+    ``__hitl__`` result (sibling to ``task``). Used by tools that do pre-flight
+    work worth telling the LLM about (e.g. ``propose_anatomy_graph_generation``
+    reports how much of the target already exists so the LLM can inform the
+    user). Returns ``None`` when no note is present."""
+    parsed = observation
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(parsed, dict) or not parsed.get("__hitl__"):
+        return None
+    note = parsed.get("note")
+    return note if isinstance(note, str) and note.strip() else None
+
+
+def _hitl_llm_feedback(task: Dict[str, Any], note: Optional[str] = None) -> str:
     """Concise note appended to the LLM history so the agent knows a proposal
-    was emitted and that it must wait for human confirmation (no auto-retry)."""
-    return (
+    was emitted and that it must wait for human confirmation (no auto-retry).
+
+    ``note`` is an optional tool-supplied pre-flight summary (e.g. "Found 8
+    existing structures for 'Heart'") prepended to the standard wait-message."""
+    parts: List[str] = []
+    if note:
+        parts.append(note)
+    parts.append(
         f"[HITL] A {task.get('task_type', 'action')} proposal has been rendered "
         f"as a review card for the user ({task.get('title', '')}). "
         f"The user must explicitly confirm or edit it before it takes effect. "
         f"Do NOT call the same proposal tool again for this request; continue "
         f"your explanation and wait for the user's response."
     )
+    return "\n".join(parts)
 
 
 def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:

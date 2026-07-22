@@ -20,6 +20,7 @@ from app.schemas.anatomy import (
     AnatomyRelationCreate,
 )
 from app.core.config import settings
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.services.concept_service import resolve_concept_by_slug
 
 
@@ -102,8 +103,15 @@ async def get_anatomy_structure_by_id_or_slug(
 async def create_anatomy_structure(
     db: AsyncSession,
     structure_in: AnatomyStructureCreate,
+    *,
+    role: str,
     tenant_id: Optional[UUID] = None,
+    user_id: Optional[UUID] = None,
 ) -> AnatomyStructure:
+    """Create a new anatomy structure. Scope/tenant_id/created_by are stamped
+    by the shared ``DEFAULT_CATALOG_POLICY.assign_create_scope`` (same path
+    biomarker/medication/allergy/vaccine use) — SYSTEM_ADMIN→system,
+    ADMIN/MANAGER→tenant, USER→user."""
     data = structure_in.model_dump()
     # Resolve the friendly class slug to a class_concept_id (takes precedence
     # over an explicit class_concept_id if both are supplied).
@@ -112,7 +120,10 @@ async def create_anatomy_structure(
         data["class_concept_id"] = await resolve_concept_by_slug(
             db, slug, ConceptKind.ANATOMY_CLASS
         )
-    db_structure = AnatomyStructure(**data, tenant_id=tenant_id)
+    db_structure = AnatomyStructure(**data)
+    DEFAULT_CATALOG_POLICY.assign_create_scope(
+        role, db_structure, tenant_id, user_id
+    )
     db.add(db_structure)
     await db.commit()
     await db.refresh(db_structure)

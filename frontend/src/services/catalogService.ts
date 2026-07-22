@@ -16,6 +16,7 @@ import type {
   CatalogRelationEdge,
   CatalogAuditHistoryResponse,
   CatalogType,
+  CatalogScope,
   RelationTypeListResponse,
   RelationTypeMeta,
 } from '../types/catalog';
@@ -101,6 +102,27 @@ export async function deleteCatalogItem(
   itemId: string,
 ): Promise<void> {
   await api.delete(`/catalogs/${type}/${itemId}`);
+}
+
+/**
+ * Transition a catalog item's scope (promote/demote). Body: ``{scope}``.
+ * Role-gated server-side: user↔tenant requires ADMIN/MANAGER; any transition
+ * involving system requires SYSTEM_ADMIN. On a slug collision at the target
+ * scope the server returns 409 with ``{code:'catalog_conflict', existing_id,
+ * existing_name}`` — callers can offer "open the existing item".
+ *
+ * Returns the updated item (scope + tenant_id flipped).
+ */
+export async function promoteCatalogItem(
+  type: CatalogType | string,
+  itemId: string,
+  targetScope: CatalogScope,
+): Promise<Record<string, unknown>> {
+  const { data } = await api.post<Record<string, unknown>>(
+    `/catalogs/${type}/${itemId}/promote`,
+    { scope: targetScope },
+  );
+  return data;
 }
 
 /**

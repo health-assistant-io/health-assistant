@@ -196,6 +196,151 @@ async def test_explore_relations_from_vaccine(catalogs_ctx):
     assert any("measles" in (lbl or "").lower() for lbl in labels), labels
 
 
+@pytest.mark.asyncio
+async def test_explore_relations_returns_truncation_metadata(catalogs_ctx):
+    """The result carries truncated + node_count + edge_count so the LLM can
+    self-correct when the edge cap is hit."""
+    from sqlalchemy import func, select
+
+    from app.ai.tools.catalogs import build
+    from app.models.fhir.medication import MedicationCatalog
+
+    metformin_id = await catalogs_ctx.db.scalar(
+        select(MedicationCatalog.id).where(
+            func.lower(MedicationCatalog.name) == "metformin",
+            MedicationCatalog.tenant_id.is_(None),
+        )
+    )
+    tools = build(catalogs_ctx)
+    explore = next(t for t in tools if t.name == "explore_catalog_relations")
+
+    result = await explore.ainvoke(
+        {"type": "medication", "id": str(metformin_id), "max_depth": 1}
+    )
+    data = json.loads(result)
+    assert "truncated" in data
+    assert data["truncated"] is False  # the seed graph is small, no truncation
+    assert data["node_count"] == len(data["nodes"])
+    assert data["edge_count"] == len(data["edges"])
+
+
+@pytest.mark.asyncio
+async def test_explore_relations_types_filter(catalogs_ctx):
+    """The `types` whitelist prunes edges to only those touching the listed
+    endpoint types. Metformin TREATS diabetes (a concept) — filtering to
+    'concept' keeps those edges; filtering to 'anatomy' drops them."""
+    from sqlalchemy import func, select
+
+    from app.ai.tools.catalogs import build
+    from app.models.fhir.medication import MedicationCatalog
+
+    metformin_id = await catalogs_ctx.db.scalar(
+        select(MedicationCatalog.id).where(
+            func.lower(MedicationCatalog.name) == "metformin",
+            MedicationCatalog.tenant_id.is_(None),
+        )
+    )
+    tools = build(catalogs_ctx)
+    explore = next(t for t in tools if t.name == "explore_catalog_relations")
+
+    # No filter — TREATS edges to concepts are present.
+    unfiltered = json.loads(
+        await explore.ainvoke(
+            {"type": "medication", "id": str(metformin_id), "max_depth": 1}
+        )
+    )
+    assert any(e["relation"] == "TREATS" for e in unfiltered["edges"])
+
+    # Filter to anatomy only — the concept edges are pruned.
+    anatomy_only = json.loads(
+        await explore.ainvoke(
+            {
+                "type": "medication",
+                "id": str(metformin_id),
+                "max_depth": 1,
+                "types": ["anatomy"],
+            }
+        )
+    )
+    if anatomy_only["edges"]:
+        for e in anatomy_only["edges"]:
+            assert e["src"]["type"] == "anatomy" or e["dst"]["type"] == "anatomy"
+    # TREATS→concept edges are gone (metformin has no anatomy edges in the seed).
+    assert not any(e["relation"] == "TREATS" for e in anatomy_only["edges"])
+
+    # Filter to concept — the TREATS edges survive.
+    concept_only = json.loads(
+        await explore.ainvoke(
+            {
+                "type": "medication",
+                "id": str(metformin_id),
+                "max_depth": 1,
+                "types": ["concept"],
+            }
+        )
+    )
+    assert any(e["relation"] == "TREATS" for e in concept_only["edges"])
+
+
+@pytest.mark.asyncio
+async def test_explore_relations_depth_clamp(catalogs_ctx):
+    """max_depth > 3 is clamped to 3 at the tool layer — it must not raise
+    (the service allows 1-5 and would raise ValueError only above 5; the
+    tool's clamp prevents even that)."""
+    from sqlalchemy import func, select
+
+    from app.ai.tools.catalogs import build
+    from app.models.fhir.medication import MedicationCatalog
+
+    metformin_id = await catalogs_ctx.db.scalar(
+        select(MedicationCatalog.id).where(
+            func.lower(MedicationCatalog.name) == "metformin",
+            MedicationCatalog.tenant_id.is_(None),
+        )
+    )
+    tools = build(catalogs_ctx)
+    explore = next(t for t in tools if t.name == "explore_catalog_relations")
+
+    # depth=10 would crash the service (max 5) without the clamp.
+    result = await explore.ainvoke(
+        {"type": "medication", "id": str(metformin_id), "max_depth": 10}
+    )
+    data = json.loads(result)
+    assert "nodes" in data  # no crash → clamp worked
+
+
+@pytest.mark.asyncio
+async def test_traverse_truncation_flag(catalogs_ctx):
+    """The traverse() service sets truncated=True when the edge LIMIT is hit,
+    using the limit+1 probe pattern (no extra round-trip)."""
+    from sqlalchemy import func, select
+
+    from app.models.fhir.medication import MedicationCatalog
+    from app.models.enums import EdgeEndpointType
+    from app.services.catalog_graph_service import traverse
+
+    metformin_id = await catalogs_ctx.db.scalar(
+        select(MedicationCatalog.id).where(
+            func.lower(MedicationCatalog.name) == "metformin",
+            MedicationCatalog.tenant_id.is_(None),
+        )
+    )
+    assert metformin_id is not None
+
+    # limit=1 forces truncation when metformin has ≥1 edge (it TREATS diabetes).
+    graph = await traverse(
+        catalogs_ctx.db,
+        EdgeEndpointType.MEDICATION,
+        metformin_id,
+        tenant_id=catalogs_ctx.tenant_id,
+        max_depth=1,
+        limit=1,
+    )
+    assert graph["truncated"] is True
+    assert graph["edge_count"] == 1  # trimmed back to the limit
+    assert graph["node_count"] == len(graph["nodes"])
+
+
 # ---------------------------------------------------------------------------
 # Registration — tools appear in get_tools
 # ---------------------------------------------------------------------------

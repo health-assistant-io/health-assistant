@@ -12,7 +12,7 @@ shape used in tests.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -108,8 +108,17 @@ async def define_anatomy_graph(
     (``AnatomyImportEdge``) describing the anatomical hierarchy of the structure
     named in ``user_input``. The output is fed into the same JSON import pipeline
     as ``POST /api/v1/anatomy/import``.
+
+    When ``context['existing']`` carries a snapshot of structures/edges that
+    already exist for the target (populated by the ``propose_anatomy_graph_*
+    `` tool's pre-flight search), the prompt instructs the LLM to generate only
+    the MISSING detail — referencing existing nodes as edge endpoints without
+    recreating them — so the import upserts gaps instead of duplicating.
     """
-    system_prompt = """You are an expert anatomical ontologist assisting in building a modular graph database of the human body.
+    existing = (context or {}).get("existing") if isinstance(context, dict) else None
+    dedup_block = _existing_anatomy_block(existing)
+
+    system_prompt = f"""You are an expert anatomical ontologist assisting in building a modular graph database of the human body.
 
     The user wants to generate the anatomical hierarchy and components for a specific body part, organ, or system.
     You must output a list of nodes (AnatomyImportNode) and edges (AnatomyImportEdge) that represent this anatomical structure.
@@ -119,7 +128,7 @@ async def define_anatomy_graph(
     - `is_custom` should be true.
     - Ensure all `source_slug` and `target_slug` in the edges exist in the nodes you provide, OR refer to major known systems (like 'heart', 'brain', 'cardiovascular-system').
     - Be highly accurate with relation types (PART_OF, BRANCH_OF, DRAINS_INTO, etc.).
-    """
+    {dedup_block}"""
 
     chain = ChatPromptTemplate.from_messages(
         [
@@ -133,3 +142,36 @@ async def define_anatomy_graph(
     except Exception as e:
         logger.error("Error defining anatomy graph: %s", e)
         return {"success": False, "message": str(e)}
+
+
+def _existing_anatomy_block(existing: Optional[Dict[str, Any]]) -> str:
+    """Build the 'do not duplicate' instruction block for the anatomy-graph
+    generation prompt from a pre-flight existing-graph snapshot. Returns an
+    empty string when no snapshot is present (generate from scratch)."""
+    if not existing or not isinstance(existing, dict):
+        return ""
+    node_slugs = existing.get("node_slugs") or []
+    edges = existing.get("edges") or []
+    if not node_slugs:
+        return ""
+    parts = [
+        "\n    - The following structures ALREADY EXIST for this target. Do NOT "
+        "recreate them as new nodes — you MAY reference them as edge endpoints "
+        "(e.g. a new 'left-atrium' node PART_OF the existing 'heart').:"
+    ]
+    for slug in node_slugs[:80]:  # cap to keep the prompt bounded
+        parts.append(f"      • {slug}")
+    if edges:
+        parts.append(
+            "    - These edges ALREADY EXIST — do NOT recreate them:"
+        )
+        for e in edges[:80]:
+            parts.append(
+                f"      • {e.get('source_slug')} -> {e.get('target_slug')} "
+                f"({e.get('relation_type')})"
+            )
+    parts.append(
+        "    - Focus on generating the MISSING anatomical detail (sub-structures, "
+        "supply, drainage, innervation) that fills gaps in the existing graph."
+    )
+    return "\n".join(parts)

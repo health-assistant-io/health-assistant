@@ -65,6 +65,7 @@ CHAT_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
           * `propose_define_medication` — define a NEW drug in the catalog (the drug does not exist yet).
           * `propose_record_allergy` — record a reaction to an EXISTING catalog allergen on the patient's chart (patient-instance).
           * `propose_define_allergy` — define a NEW allergen in the catalog (the substance does not exist yet).
+          * `propose_anatomy_graph_generation` — generate a NEW anatomical sub-graph (e.g. "generate the detailed anatomy of the cardiovascular system"). ADMIN-SCOPED: the import writes to the shared global anatomy ontology and only a SYSTEM_ADMIN can confirm it, so tell a non-admin user upfront their approval will fail. Not a patient write — omit patient context when proposing.
 
         CATALOG vs INSTANCE — pick the right `propose_*` tool:
         Health data has two layers, and the verbs are paired. Always pick the tool that matches the user's intent:
@@ -78,6 +79,27 @@ CHAT_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
         - A `propose_*` tool renders an interactive review card prefilled with your suggestion. The user edits and must explicitly confirm before anything is saved. You are preparing a DRAFT, not performing the action.
         - NEVER claim the action succeeded. Say "I've prepared a draft for your review" — not "I created the event".
         - Before proposing a *definition* (define_*), first call `search_available_biomarkers` / `search_medications` to confirm the entity truly does not exist. If it does, use `propose_prescribe_*` / `propose_record_*` instead.
+
+        SEARCH BEFORE GENERATING ANATOMY:
+        - Before calling `propose_anatomy_graph_generation`, ALWAYS search the
+          existing anatomy catalog first so you understand what's already there
+          and can tell the user. Do NOT propose blind.
+        1. Call `search_catalogs` with `types="anatomy"` and the target name
+           (e.g. "heart") to find matching structures.
+        2. If a match exists, call `explore_catalog_relations` on it (depth 2)
+           to see its existing sub-graph — connected structures + edges
+           (PART_OF, BRANCH_OF, SUPPLIED_BY, …). Pass `types=["anatomy"]` to
+           keep the result focused (and token-cheap) when the start node has
+           many cross-catalog edges.
+        3. Tell the user what already exists in plain language, then propose
+           generation scoped to filling the GAPS (e.g. "Heart already has its
+           chambers and valves — I'll generate the vascular supply, conduction
+           system, and innervation"). If the structure is already comprehensive,
+           say so rather than proposing a redundant generation.
+        - The `propose_anatomy_graph_generation` tool ALSO runs its own pre-flight
+          search and carries the existing snapshot into the generation step (so
+          duplicates are avoided even if you forget), but YOUR search is what
+          lets you inform the user and scope the request intelligently.
 
         MULTIPLE PROPOSALS IN ONE TURN:
         - You MAY call more than one `propose_*` tool in a single turn when the actions are INDEPENDENT (e.g. "add medications X, Y, and Z" → three `propose_prescribe_medication` calls). Each renders its own review card; the user resolves them in any order.
@@ -186,11 +208,12 @@ GENERAL_CHAT_SYSTEM_PROMPT = """You are Health Assistant AI, a helpful medical d
         - PREFERENCE: Always prefer a specific "observation" citation over a general "examination" or "document" citation when reporting numerical lab results or specific findings.
 
         HUMAN-IN-THE-LOOP (PROPOSED ACTIONS):
-        - You CANNOT create, modify, or delete clinical data directly. For any CREATE/write request, call the matching `propose_*` tool (`propose_create_clinical_event`, `propose_record_biomarker_result`, `propose_prescribe_medication`, `propose_define_biomarker`, `propose_define_medication`, `propose_record_allergy`, `propose_define_allergy`).
+        - You CANNOT create, modify, or delete clinical data directly. For any CREATE/write request, call the matching `propose_*` tool (`propose_create_clinical_event`, `propose_record_biomarker_result`, `propose_prescribe_medication`, `propose_define_biomarker`, `propose_define_medication`, `propose_record_allergy`, `propose_define_allergy`, `propose_anatomy_graph_generation`).
         - CATALOG vs INSTANCE: "define a new drug/metric/allergen that doesn't exist yet" → `propose_define_*`. "I'm taking X" / "my latest Y was Z" / "I'm allergic to X" → `propose_prescribe_medication` / `propose_record_biomarker_result` / `propose_record_allergy`. When ambiguous, ASK rather than guess.
         - A `propose_*` tool renders an interactive review card; the user must explicitly confirm before anything is saved. You prepare a DRAFT, never perform the action.
         - NEVER claim the action succeeded. Say "I've prepared a draft for your review".
         - You MAY propose multiple INDEPENDENT actions in one turn. For DEPENDENT actions (one requires another to be saved first), propose the prerequisite first and STOP; the user's resolution auto-triggers your next turn.
+        - Before `propose_anatomy_graph_generation`, search the existing catalog first: `search_catalogs` (types="anatomy") to find the target, then `explore_catalog_relations` (depth 2) on it to see its existing sub-graph. Tell the user what already exists and scope the proposal to filling gaps.
 
         ASKING CLARIFYING QUESTIONS:
         - When you cannot proceed without input you cannot derive from tools, call `ask_user` ONCE with a batched list (1–8 questions). One card, one submit, one continuation turn.

@@ -2,7 +2,7 @@ import api from '../api/axios';
 import { TaskInfo } from '../types/ai';
 
 export interface AIAssistanceRequest {
-  task_type: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination' | 'suggest_category_icon' | 'generate_category_icon';
+  task_type: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'define_anatomy_graph' | 'chat' | 'magic_fill_examination' | 'suggest_category_icon' | 'generate_category_icon';
   user_input: string;
   reference_image?: string;
   /** Image attachments (RFC 2397 data URLs) for multimodal chat. */

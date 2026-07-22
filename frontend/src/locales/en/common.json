@@ -1125,6 +1125,30 @@
       },
       "create_allergy": {
         "confirm": "Confirm & Create Allergen"
+      },
+      "generate_anatomy_graph": {
+        "confirm": "Confirm & Import Graph",
+        "generating": "Generating anatomy graph…",
+        "view_graph": "Graph",
+        "view_table": "Table",
+        "legend_new": "New",
+        "legend_existing": "Already exists",
+        "global_note": "Imported structures are added to the global anatomy catalog shared across all people.",
+        "nodes": "Nodes",
+        "edges": "Edges",
+        "slug": "Slug",
+        "name": "Name",
+        "class": "Class",
+        "source": "Source",
+        "target": "Target",
+        "relation": "Relation",
+        "no_edges": "No edges.",
+        "empty": "No graph generated yet.",
+        "retry": "Retry generation",
+        "retry_hint": "Generation failed. You can retry.",
+        "error_no_target": "No target structure was provided.",
+        "error_generic": "Generation failed.",
+        "error_403": "Only system admins can import anatomy graphs."
       }
     },
     "status": {
@@ -1910,6 +1934,15 @@
     "open_in_domain": "Open in domain view",
     "view_relations": "View relations",
     "audit_history_title": "History",
+    "promote": {
+      "button": "Scope",
+      "title": "Change scope tier",
+      "to_system": "Promote to system",
+      "to_tenant": "Move to tenant",
+      "to_user": "Move to user scope",
+      "conflict": "A {{scope}}-scope item with this slug already exists ({{name}}). Rename it or open the existing one.",
+      "error_generic": "Scope change failed."
+    },
     "delete_confirm": "Delete \"{{name}}\"? This cannot be undone.",
     "total": "total",
     "audit_load_error": "Could not load history.",

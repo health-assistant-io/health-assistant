@@ -37,7 +37,9 @@ class AnatomyStructureUpdate(BaseModel):
 class AnatomyStructureResponse(AnatomyStructureBase):
     id: UUID
     class_concept_name: Optional[str] = None
+    scope: str
     tenant_id: Optional[UUID] = None
+    created_by: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 

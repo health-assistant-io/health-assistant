@@ -26,6 +26,7 @@ import { Portal } from '../../components/ui/Portal';
 import { CatalogToolbar } from '../../components/catalog/CatalogToolbar';
 import { CatalogBrowser } from '../../components/catalog/CatalogBrowser';
 import { CatalogItemInfo } from '../../components/catalog/info/CatalogItemInfo';
+import { PromoteScopeButton } from '../../components/catalog/PromoteScopeButton';
 import { CatalogRelationsGraph } from '../../components/catalog/CatalogRelationsGraph';
 import { CatalogRelationsIndex } from '../../components/catalog/CatalogRelationsIndex';
 import { CatalogRelationsEditor } from '../../components/catalog/CatalogRelationsEditor';
@@ -627,6 +628,12 @@ export const CatalogWorkspace: React.FC = () => {
               >
                 <Edit3 className="w-4 h-4" />
               </button>
+              <PromoteScopeButton
+                catalogType={activeType}
+                itemId={String(selectedItem.id)}
+                currentScope={selectedItem.scope}
+                onPromoted={() => load()}
+              />
               <button
                 onClick={() =>
                   setHistoryItem({ id: String(selectedItem.id), name: labelField(selectedItem) })

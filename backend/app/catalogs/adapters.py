@@ -30,7 +30,11 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY, CatalogAccessPolicy
+from app.catalogs.policy import (
+    DEFAULT_CATALOG_POLICY,
+    CatalogAccessPolicy,
+    CatalogConflict,
+)
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.concept_model import Concept, ConceptKindTag
 from app.models.enums import ConceptKind
@@ -335,7 +339,8 @@ class BaseCatalogAdapter:
         Role-gated: user↔tenant requires ADMIN/MANAGER; any transition
         involving system requires SYSTEM_ADMIN. On promote-to-system the
         ``tenant_id`` is cleared (canonical); on demote-to-tenant it is set to
-        the actor's tenant.
+        the actor's tenant. Raises :class:`CatalogConflict` (→ 409) if another
+        row already owns the same slug at the target scope tier.
         """
         from app.models.enums import CatalogScope
 
@@ -343,12 +348,33 @@ class BaseCatalogAdapter:
         if obj is None:
             return None
         target = CatalogScope(target_scope)
+        await self._apply_scope_transition(db, obj, target, actor)
+        return self.serialize(obj)
+
+    # --- scope-transition core (shared with BiomarkerCatalogAdapter) --------
+
+    async def _apply_scope_transition(
+        self,
+        db: AsyncSession,
+        obj: Any,
+        target: "CatalogScope",
+        actor: Any,
+    ) -> str:
+        """The shared promote/demote core: RBAC check + slug-collision guard +
+        ``tenant_id``/``scope`` flip + audit row. Returns the previous scope
+        value. The caller owns loading the object + serializing the result.
+
+        Kept here (not inlined into ``promote_scope``) so the biomarker adapter
+        — which serializes via a Unit join — reuses the exact same transition
+        logic instead of duplicating it.
+        """
         from_scope = obj.scope.value if obj.scope is not None else None
         self.policy.check_promote(actor.role, obj.scope, target)
+        await self._check_slug_collision(db, obj, target, actor.tenant_id)
         # Keep tenant_id consistent with the new scope.
-        if target is CatalogScope.SYSTEM:
+        if target.value == "system":
             obj.tenant_id = None
-        elif target is CatalogScope.TENANT and obj.tenant_id is None:
+        elif target.value == "tenant" and obj.tenant_id is None:
             obj.tenant_id = actor.tenant_id
         obj.scope = target
         await db.commit()
@@ -361,7 +387,47 @@ class BaseCatalogAdapter:
             from_scope=from_scope,
             to_scope=target.value,
         )
-        return self.serialize(obj)
+        return from_scope or ""
+
+    async def _check_slug_collision(
+        self,
+        db: AsyncSession,
+        obj: Any,
+        target: "CatalogScope",
+        actor_tenant_id: Optional[UUID],
+    ) -> None:
+        """Raise :class:`CatalogConflict` if another row at the target scope
+        tier already owns ``obj.slug``. No-op for models without a ``slug``
+        column or when the object has no slug.
+
+        The collision namespace mirrors the scope invariant
+        (``system`` ⇔ ``tenant_id IS NULL``; ``tenant``/``user`` ⇔ the actor's
+        tenant). Same-scope transitions are skipped (nothing changes).
+        """
+        slug_col = getattr(self.model, "slug", None)
+        if slug_col is None or not getattr(obj, "slug", None):
+            return
+        if obj.scope is not None and obj.scope.value == target.value:
+            return  # same scope — no namespace change, no collision possible
+        target_tenant = None if target.value == "system" else actor_tenant_id
+        tenant_pred = (
+            self.model.tenant_id.is_(None)
+            if target_tenant is None
+            else self.model.tenant_id == target_tenant
+        )
+        stmt = select(self.model.id, self.model.name).where(
+            slug_col == obj.slug,
+            tenant_pred,
+            self.model.id != obj.id,
+        )
+        row = (await db.execute(stmt)).first()
+        if row is not None:
+            raise CatalogConflict(
+                slug=obj.slug,
+                existing_id=str(row[0]),
+                existing_name=row[1],
+                target_scope=target.value,
+            )
 
     # --- helpers -----------------------------------------------------------
 
@@ -584,10 +650,11 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
     resources; their values surface on FHIR ``Observation``).
 
     Inherits the audit helpers (``_audit`` / ``_audit_snapshot`` / ``catalog_type``)
-    from :class:`BaseCatalogAdapter` but overrides every CRUD/search method for
+    from :class:`BaseCatalogAdapter but overrides every CRUD/search method for
     the Unit join.
     """
 
+    model = BiomarkerDefinition
     policy: CatalogAccessPolicy = DEFAULT_CATALOG_POLICY
 
     # --- reads -------------------------------------------------------------
@@ -738,23 +805,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         if bio is None:
             return None
         target = CatalogScope(target_scope)
-        from_scope = bio.scope.value if bio.scope is not None else None
-        self.policy.check_promote(actor.role, bio.scope, target)
-        if target is CatalogScope.SYSTEM:
-            bio.tenant_id = None
-        elif target is CatalogScope.TENANT and bio.tenant_id is None:
-            bio.tenant_id = actor.tenant_id
-        bio.scope = target
-        await db.commit()
-        await db.refresh(bio)
-        await self._audit(
-            db,
-            actor,
-            "promote",
-            bio,
-            from_scope=from_scope,
-            to_scope=target.value,
-        )
+        await self._apply_scope_transition(db, bio, target, actor)
         return await self._get_with_symbol(db, bio)
 
     # --- helpers -----------------------------------------------------------

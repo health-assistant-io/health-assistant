@@ -68,18 +68,26 @@ async def traverse(
     tenant_id: Optional[UUID],
     max_depth: int = 3,
     relation_whitelist: Optional[tuple[ConceptRelationType, ...]] = None,
+    endpoint_type_whitelist: Optional[tuple[EdgeEndpointType, ...]] = None,
     include_proposed: bool = False,
     limit: int = 500,
 ) -> dict[str, Any]:
     """BFS-ish recursive-CTE traversal from a start node.
 
-    Returns ``{"start": payload, "nodes": [payload, ...], "edges": [edge_dict, ...]}``
-    where each ``edge_dict`` is
-    ``{"id", "src": {type, id}, "dst": {type, id}, "relation", "status"}``.
-    Endpoints (``nodes``) are resolved to display payloads via the resolver
-    registry; the ``start`` node is always included. Tenant-scoped
+    Returns ``{"start": payload, "nodes": [payload, ...], "edges": [edge_dict, ...],
+    "truncated": bool, "node_count": int, "edge_count": int}`` where each
+    ``edge_dict`` is ``{"id", "src": {type, id}, "dst": {type, id}, "relation",
+    "status"}``. Endpoints (``nodes``) are resolved to display payloads via the
+    resolver registry; the ``start`` node is always included. Tenant-scoped
     (``or_(tenant_id == caller, tenant_id IS NULL)``); proposed edges excluded
     unless ``include_proposed``.
+
+    ``truncated`` is True when the SQL ``LIMIT`` was hit — the LLM caller should
+    narrow with ``relation_whitelist`` / ``endpoint_type_whitelist`` / lower
+    ``max_depth`` when this is set. ``endpoint_type_whitelist`` post-filters the
+    result to edges touching at least one endpoint of the listed types (e.g. only
+    anatomy neighbors of a biomarker) — it keeps the traversal's full reach so
+    the path exists, then prunes the returned edges + nodes.
     """
     if max_depth < 1 or max_depth > 5:
         raise ValueError("max_depth must be between 1 and 5")
@@ -91,13 +99,16 @@ async def traverse(
         relation_clause_rec=relation_clause,
     )
 
+    # Fetch one extra row so we can detect whether the LIMIT was hit without a
+    # second COUNT round-trip — the standard "limit + 1" truncation sentinel.
+    probe_limit = limit + 1
     params: dict[str, Any] = {
         "ok_statuses": ok_statuses,
         "tenant_id": str(tenant_id) if tenant_id else None,
         "start_id": str(start_id),
         "start_type": start_type.value,
         "max_depth": max_depth,
-        "limit": limit,
+        "limit": probe_limit,
     }
     if relation_whitelist:
         # asyncpg binds a Python list as a PG array, which ``= ANY()`` accepts.
@@ -105,6 +116,9 @@ async def traverse(
 
     result = await db.execute(text(sql), params)
     rows = result.mappings().all()
+    truncated = len(rows) > limit
+    if truncated:
+        rows = rows[:limit]
 
     # Collect every endpoint (type, id) referenced, plus the start node.
     endpoint_pairs: list[tuple[EdgeEndpointType, UUID]] = [(start_type, start_id)]
@@ -124,15 +138,32 @@ async def traverse(
             }
         )
 
+    # Post-filter by destination endpoint type (keep edges touching at least one
+    # whitelisted type). Done in Python because the recursive CTE's 4-way OR
+    # JOIN makes a type predicate awkward to push into SQL; safe given the cap.
+    if endpoint_type_whitelist:
+        allowed = {t.value for t in endpoint_type_whitelist}
+        edges = [
+            e
+            for e in edges
+            if e["src"]["type"] in allowed or e["dst"]["type"] in allowed
+        ]
+
     resolved = await resolve_endpoints(db, endpoint_pairs)
 
-    # Dedup nodes by id while preserving a stable order (start first).
+    # Dedup nodes by id while preserving a stable order (start first). When an
+    # endpoint-type filter pruned the edge set, only nodes referenced by a
+    # surviving edge (plus the start node) are returned.
+    surviving_ids: set[str] = {str(start_id)}
+    for e in edges:
+        surviving_ids.add(e["src"]["id"])
+        surviving_ids.add(e["dst"]["id"])
     seen: set[str] = {str(start_id)}
     nodes = [resolved.get(start_id) or _fallback(start_type, start_id)]
     for row in rows:
         for side in ("src_id", "dst_id"):
             eid = row[side]
-            if str(eid) not in seen:
+            if str(eid) not in seen and str(eid) in surviving_ids:
                 seen.add(str(eid))
                 nodes.append(resolved.get(eid) or _fallback(start_type, eid))
 
@@ -140,6 +171,9 @@ async def traverse(
         "start": nodes[0],
         "nodes": nodes,
         "edges": edges,
+        "truncated": truncated,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
     }
 
 

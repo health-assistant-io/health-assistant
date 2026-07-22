@@ -8,7 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
 from app.core.config import settings
-from app.catalogs.policy import CatalogPermissionDenied
+from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
 from app.services.fhir_helpers import FhirSerializationError
 from app.core.errors import DomainError
 
@@ -261,6 +261,28 @@ async def catalog_permission_denied_handler(
     handler turns it into a 403 without per-route try/except.
     """
     return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+@app.exception_handler(CatalogConflict)
+async def catalog_conflict_handler(request: Request, exc: CatalogConflict):
+    """Map a scope-transition slug collision to HTTP 409.
+
+    Raised by ``BaseCatalogAdapter._check_slug_collision`` when a promote would
+    create a duplicate slug at the target scope tier. The body carries the
+    conflicting item's id + name so the client can offer "open the existing
+    item" without a re-query.
+    """
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": str(exc),
+            "code": "catalog_conflict",
+            "slug": exc.slug,
+            "target_scope": exc.target_scope,
+            "existing_id": exc.existing_id,
+            "existing_name": exc.existing_name,
+        },
+    )
 
 
 # CORS middleware

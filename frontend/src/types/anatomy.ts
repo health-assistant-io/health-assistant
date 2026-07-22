@@ -128,11 +128,14 @@ export interface AnatomyGraphResponse {
 export interface AnatomyImportNode {
   slug: string;
   name: string;
-  category: AnatomyCategory;
+  /** Anatomy-class concept slug (lowercase, e.g. ``organ``, ``system``).
+   *  Resolved to ``class_concept_id`` by the import service. */
+  class_concept_slug?: string | null;
   standard_system?: CodingSystem | null;
   standard_code?: string | null;
   description?: string | null;
   is_custom?: boolean;
+  display?: AnatomyDisplay | null;
 }
 
 export interface AnatomyImportEdge {
