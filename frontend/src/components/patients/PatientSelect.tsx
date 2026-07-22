@@ -79,7 +79,7 @@ export const PatientSelect: React.FC<Props> = ({
               {getPatientName(currentPatient)}
             </div>
             <div className="text-[9px] text-gray-400 dark:text-dark-muted font-black uppercase tracking-[0.1em] leading-tight mt-0.5 opacity-80">
-              {formatAge(currentPatient.birth_date)} • {currentPatient.mrn || 'NO MRN'}
+              {formatAge(currentPatient.birth_date)}
             </div>
           </div>
         ) : (
