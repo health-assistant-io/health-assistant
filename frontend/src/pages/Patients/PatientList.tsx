@@ -15,7 +15,7 @@ import { FormModal } from '../../components/ui/FormModal';
 
 function Patients() {
   const { t } = useTranslation();
-  const { patients, setPatients } = usePatientStore();
+  const { patients, setPatients, setCurrentPatient } = usePatientStore();
   const { user } = useAuthStore();
   const showConfirmation = useUIStore(state => state.showConfirmation);
   const navigate = useNavigate();
@@ -117,7 +117,13 @@ function Patients() {
       if (editingPatient) {
         await updatePatient(editingPatient.id, payload);
       } else {
-        await createPatient(payload, currentTenantId!);
+        const created = await createPatient(payload, currentTenantId!);
+        // Auto-select the newly created patient when none is currently
+        // selected (startup/onboarding flow) so the dashboard and other
+        // patient-scoped pages work immediately without a page reload.
+        if (!usePatientStore.getState().currentPatient) {
+          setCurrentPatient(created);
+        }
       }
       
       await fetchPatients();
