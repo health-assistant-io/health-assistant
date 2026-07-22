@@ -32,11 +32,16 @@ AI-assisted steps.
 ## 1. Sign in
 
 Open the app URL your installer gave you (typically
-[http://localhost](http://localhost) for a local Docker install). Sign
-in with the email and password created during installation. If you're
-unsure what those are, ask whoever ran the install — there are **no
-default credentials**; they were chosen by the installer (see the
-[Installation Guide](./INSTALL.md) first-time sign-in section).
+[http://localhost](http://localhost) for a local Docker install).
+
+- **First time here?** A fresh install detects that no admin exists and
+  redirects you to a **setup wizard** instead of the login screen. Pick
+  the admin email, password, and organization name there — you choose
+  them, there are no defaults. (If you're accessing remotely, the wizard
+  asks for a one-time *setup token* printed in the backend container
+  logs, so a stranger can't claim your instance before you do.)
+- **Returning?** Sign in with the email and password you set up during
+  first-run.
 
 After login you land on the **Dashboard**, a drag-and-drop grid of cards
 you can rearrange per person (trends, reminders, imaging previews).

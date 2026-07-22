@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
@@ -18,9 +18,10 @@ function Login() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if user has an expired token on mount
+  // Check token validity + first-run status on mount. If the system is
+  // uninitialized, redirect to the setup wizard instead of showing login.
   useEffect(() => {
-    const checkToken = async () => {
+    const init = async () => {
       const token = localStorage.getItem('accessToken');
       if (token) {
         const isValid = await validateToken(token);
@@ -29,11 +30,20 @@ function Login() {
           await logout();
         }
       }
+      try {
+        const res = await api.get('/auth/setup-status');
+        if (res.data && !res.data.initialized) {
+          navigate('/setup', { replace: true });
+          return;
+        }
+      } catch {
+        // Status endpoint unreachable — fall through to the login form.
+      }
       setChecking(false);
     };
-    
-    checkToken();
-  }, []);
+
+    init();
+  }, [navigate, logout]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,11 +166,12 @@ function Login() {
           </button>
 
           <div className="text-center">
-            <p className="text-sm text-gray-600 dark:text-dark-muted">
-              {t('auth.no_account')}{' '}
-              <Link to="/register" className="text-blue-600 hover:text-blue-700">
-                {t('auth.sign_up')}
-              </Link>
+            <p className="text-sm text-gray-500 dark:text-dark-muted">
+              {t('auth.no_account', 'Need an account?')}
+              <br />
+              <span className="text-xs">
+                {t('auth.invite_only_hint', 'Ask your administrator for an invite, or set up a new install.')}
+              </span>
             </p>
           </div>
 

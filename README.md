@@ -171,17 +171,14 @@ python scripts/setup_env.py          # generates SECRET_KEY, Fernet key, POSTGRE
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
-Create your initial admin:
+Create your initial admin by opening **http://localhost** — a fresh install auto-redirects to a setup wizard where you pick the email, password, and organization name. There are no default credentials; you choose them.
+
+For headless/automation deploys, use the CLI instead:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
   python scripts/create_system_admin.py --email admin@example.com --password 'securepassword' --tenant "My Organization"
 ```
-
-> There are no default login credentials — the email and password above
-> are placeholders. Replace them with your own and sign in with what you
-> passed. See the [Installation Guide](docs/INSTALL.md) for the full
-> first-time sign-in flow.
 
 The standalone compose file ships a built-in Nginx on port 80. If you already run a reverse proxy (Traefik/Nginx/Caddy), use `docker/docker-compose.prod.yml` instead. Full details in the [Installation Guide](docs/INSTALL.md).
 

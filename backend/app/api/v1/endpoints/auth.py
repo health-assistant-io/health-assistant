@@ -1,28 +1,30 @@
-"""Authentication endpoints — login, register, token refresh, invite.
-
-Audit item B7: ``POST /auth/register`` previously accepted any
-``tenant_id`` with no check that the caller was authorized to join.
-An attacker who learned a victim ``tenant_id`` could register inside it
-and immediately read tenant-scoped data. The first-user SYSTEM_ADMIN
-check used ``SELECT COUNT(*) FROM users`` with no locking, so two
-concurrent bootstrap registrations could both promote.
+"""Authentication endpoints — login, register, invite, first-run setup.
 
 Post-fix contract:
-1. **Bootstrap (no tenant_id)** — creates a new tenant and the new user
-   becomes SYSTEM_ADMIN of it. Race-protected by
-   ``pg_advisory_xact_lock`` held for the duration of the count + insert.
-2. **Join existing tenant (tenant_id + invite_token)** — verifies the
-   tenant exists AND that ``invite_token`` is a valid JWT signed with
-   ``SECRET_KEY``, scoped to that tenant. 403 otherwise. The role in
-   the token wins; SYSTEM_ADMIN is never granted via this path.
-3. **Invite issuance (POST /auth/invite)** — ADMIN+ only. Mints a
-   7-day token scoped to the caller's tenant.
+1. **First-run setup (POST /auth/setup)** — the only bootstrap path.
+   Creates the initial tenant + SYSTEM_ADMIN. Only callable while the
+   system is uninitialized (zero users). Protected by a one-time setup
+   token (from the backend logs) for non-localhost / non-dev requests,
+   closing the first-claim race for internet-exposed instances.
+2. **Join existing tenant (POST /auth/register with tenant_id +
+   invite_token)** — verifies the tenant exists AND that ``invite_token``
+   is a valid JWT signed with ``SECRET_KEY``, scoped to that tenant. 403
+   otherwise. The role in the token wins; SYSTEM_ADMIN is never granted
+   via this path.
+3. **Invite issuance (POST /auth/invite)** — ADMIN+ only. Mints a 7-day
+   token scoped to the caller's tenant.
+
+Audit item B7: ``POST /auth/register`` previously accepted any
+``tenant_id`` with no check that the caller was authorized to join, and
+the first-user SYSTEM_ADMIN check used an unlocked ``COUNT(*)``. Both
+fixed: invite-token verification + the advisory-lock bootstrap (now in
+``/auth/setup``).
 """
 
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,9 +47,16 @@ from app.core.security import (
     verify_password,
 )
 from app.core import token_store
+from app.core import setup_token
 from app.models.enums import Role
 from app.models.user_model import UserModel
-from app.schemas.auth import TokenRefresh, TokenResponse, UserRegister
+from app.schemas.auth import (
+    SetupRequest,
+    SetupStatus,
+    TokenRefresh,
+    TokenResponse,
+    UserRegister,
+)
 from app.schemas.user import TokenData, UserResponse
 from app.services.tenant_service import create_tenant, get_tenant
 from app.services.user_service import (
@@ -62,6 +71,142 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # "HEALTH_ASSISTANT_BOOTSTRAP" so it's deterministic across code paths but
 # unlikely to collide with anything else in the DB.
 _BOOTSTRAP_ADVISORY_KEY = 0x48414F424F4F54  # 'HAOBOOT' as int56
+
+
+async def _is_initialized(db: AsyncSession) -> bool:
+    """True once at least one user row exists."""
+    result = await db.execute(select(func.count()).select_from(UserModel))
+    return (result.scalar() or 0) > 0
+
+
+@router.get("/setup-status", response_model=SetupStatus)
+async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
+    """First-run status — drives the frontend's login-vs-setup decision.
+
+    No auth: the frontend must be able to call this before any user exists.
+    ``initialized`` reflects whether a SYSTEM_ADMIN has been created (via
+    the wizard, the CLI script, or the legacy register path).
+    ``setup_token_required`` tells the wizard whether to collect the
+    one-time setup token printed in the backend logs (skipped for
+    localhost / dev).
+    """
+    initialized = await _is_initialized(db)
+    return SetupStatus(
+        initialized=initialized,
+        setup_token_required=(
+            False if initialized else setup_token.is_setup_token_required(request)
+        ),
+    )
+
+
+@router.post("/setup", response_model=TokenResponse)
+async def setup(
+    payload: SetupRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _rl=Depends(rate_limit("register", max_requests=5, window=60)),
+):
+    """First-run setup wizard endpoint.
+
+    Creates the initial tenant + SYSTEM_ADMIN and returns login tokens so
+    the caller is immediately authenticated. Only callable while the
+    system is uninitialized. Protected by the one-time setup token (from
+    the backend logs) for non-localhost / non-dev requests — closes the
+    first-claim race for internet-exposed instances.
+
+    Replaces the old ``POST /auth/register`` no-tenant_id bootstrap path
+    (moved here so registration can be locked down to invite-only).
+    """
+    if await _is_initialized(db):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=(
+                "This instance is already initialized. New accounts must be "
+                "created by an admin via an invite token (POST /auth/invite)."
+            ),
+        )
+
+    # Setup-token guardrail (skipped for localhost / dev).
+    if setup_token.is_setup_token_required(request):
+        if not setup_token.validate(payload.setup_token):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "A setup token is required for first-run setup. Retrieve it "
+                    "from the backend container logs: "
+                    "`docker compose ... logs backend | grep -i 'setup token'`."
+                ),
+            )
+
+    if await get_user_by_email(payload.email):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+
+    hashed_password = get_password_hash(payload.password)
+
+    # Race-protected bootstrap: the advisory lock serializes the count +
+    # insert so two concurrent setup attempts cannot both succeed. Same
+    # pattern as the old register bootstrap path.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY}
+    )
+
+    # Re-check inside the lock — a concurrent setup may have initialized
+    # while we waited.
+    if await _is_initialized(db):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This instance was just initialized by another request.",
+        )
+
+    new_tenant = await create_tenant(name=payload.tenant_name)
+    if not new_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create the initial tenant.",
+        )
+
+    new_user_obj = UserModel(
+        email=payload.email,
+        hashed_password=hashed_password,
+        tenant_id=str(new_tenant.id),
+        role=Role.SYSTEM_ADMIN,
+        settings={"is_initial_admin": True},
+    )
+    db.add(new_user_obj)
+    await db.commit()
+    await db.refresh(new_user_obj)
+
+    # Invalidate the one-time token — the system is now initialized.
+    setup_token.clear()
+
+    # Issue login tokens (mirrors /auth/login) so the caller is signed in.
+    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    token_claims = {
+        "sub": new_user_obj.email,
+        "user_id": str(new_user_obj.id),
+        "tenant_id": str(new_user_obj.tenant_id),
+        "role": Role.SYSTEM_ADMIN.value,
+    }
+    access_token = create_access_token(
+        data=token_claims, expires_delta=access_token_expires
+    )
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
+    refresh_token, jti = create_refresh_token(
+        data=token_claims, expires_delta=refresh_token_expires
+    )
+    await token_store.register_refresh(
+        str(new_user_obj.id), jti, int(refresh_token_expires.total_seconds())
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=int(access_token_expires.total_seconds()),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -125,9 +270,13 @@ async def register(
     db: AsyncSession = Depends(get_db),
     _rl=Depends(rate_limit("register", max_requests=5, window=60)),
 ):
-    """Register a new user.
+    """Register a new user into an existing tenant (invite-only).
 
-    See module docstring for the two onboarding paths.
+    The open bootstrap path (no ``tenant_id``) was removed — first-run
+    provisioning now goes through ``POST /auth/setup`` (the browser
+    wizard) or the ``create_system_admin.py`` CLI. Every registration
+    here requires a ``tenant_id`` plus a valid invite token minted by
+    that tenant's admin via ``POST /auth/invite``.
     """
     user = await get_user_by_email(user_data.email)
     if user:
@@ -135,91 +284,56 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
+    if not user_data.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "A tenant_id and a valid invite token are required to register. "
+                "If this is a fresh install, use the first-run setup wizard "
+                "(POST /auth/setup) instead."
+            ),
+        )
+
     hashed_password = get_password_hash(user_data.password)
 
-    if user_data.tenant_id:
-        # Joining an existing tenant — require a valid invite token.
-        tenant = await get_tenant(user_data.tenant_id)
-        if not tenant:
-            # 404 (not 403) so we don't leak that the tenant exists but is
-            # locked down — matches the rest of the API's posture.
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tenant not found",
-            )
-
-        if not user_data.invite_token:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "An invite token is required to join an existing tenant. "
-                    "Ask the tenant administrator to issue one via POST /auth/invite."
-                ),
-            )
-
-        ok, granted_role = verify_invite_token(
-            user_data.invite_token,
-            expected_tenant_id=str(tenant.id),
-            expected_email=user_data.email,
+    # Joining an existing tenant — require a valid invite token.
+    tenant = await get_tenant(user_data.tenant_id)
+    if not tenant:
+        # 404 (not 403) so we don't leak that the tenant exists but is
+        # locked down — matches the rest of the API's posture.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found",
         )
-        if not ok:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid, expired, or tenant-mismatched invite token.",
-            )
 
-        role = granted_role or Role.USER.value
-        new_user = await service_create_user(
-            email=user_data.email,
-            hashed_password=hashed_password,
-            tenant_id=str(tenant.id),
-            role=role,
+    if not user_data.invite_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "An invite token is required to join an existing tenant. "
+                "Ask the tenant administrator to issue one via POST /auth/invite."
+            ),
         )
-        return new_user
 
-    # Bootstrap path — create a new tenant and become its SYSTEM_ADMIN.
-    # The race-protection lock serializes the count + insert so two
-    # concurrent bootstrap registrations cannot both promote. The lock
-    # is held for the duration of this transaction (released on commit /
-    # rollback), and the INSERT happens in the same session so the count
-    # sees the new row before the lock is released.
-    await db.execute(
-        text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY}
+    ok, granted_role = verify_invite_token(
+        user_data.invite_token,
+        expected_tenant_id=str(tenant.id),
+        expected_email=user_data.email,
     )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid, expired, or tenant-mismatched invite token.",
+        )
 
-    count_result = await db.execute(select(func.count()).select_from(UserModel))
-    total_users = count_result.scalar() or 0
-    is_first_user = total_users == 0
-
-    tenant_name = user_data.email.split("@")[0].capitalize()
-    new_tenant = await create_tenant(name=f"{tenant_name} Household")
-    if not new_tenant:
-        raise HTTPException(status_code=500, detail="Could not create default tenant")
-
-    # The very first user in the system bootstraps as SYSTEM_ADMIN +
-    # ADMIN. Later bootstrap registrations (their own household tenant)
-    # become ADMIN of their new tenant.
-    role = "SYSTEM_ADMIN" if is_first_user else "ADMIN"
-
-    # Insert via the request's session so the advisory lock actually
-    # covers the write (service_create_user opens its own session, which
-    # would race). Inline the minimal create_user logic here.
-    try:
-        user_role = Role(role)
-    except ValueError:
-        user_role = Role.ADMIN
-
-    new_user_obj = UserModel(
+    role = granted_role or Role.USER.value
+    new_user = await service_create_user(
         email=user_data.email,
         hashed_password=hashed_password,
-        tenant_id=str(new_tenant.id),
-        role=user_role,
-        settings={},
+        tenant_id=str(tenant.id),
+        role=role,
     )
-    db.add(new_user_obj)
-    await db.commit()
-    await db.refresh(new_user_obj)
-    return new_user_obj
+    return new_user
 
 
 @router.post("/invite")

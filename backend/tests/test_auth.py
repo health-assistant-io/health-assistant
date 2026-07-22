@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from app.core.security import get_password_hash
 from app.models.enums import Role
 from app.models.user_model import UserModel
@@ -76,45 +76,42 @@ async def test_login_user_not_found(mock_get_user_by_email, async_client: AsyncC
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.auth.get_user_by_email")
+@patch("app.api.v1.endpoints.auth.token_store.register_refresh", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.auth.create_tenant")
-async def test_register_success(
-    mock_create_tenant,
+@patch("app.api.v1.endpoints.auth.get_user_by_email")
+@patch("app.api.v1.endpoints.auth._is_initialized", new_callable=AsyncMock)
+async def test_setup_success(
+    mock_is_initialized,
     mock_get_user_by_email,
+    mock_create_tenant,
+    mock_register_refresh,
     async_client: AsyncClient,
     mock_user,
 ):
-    """Bootstrap registration (no tenant_id) → new tenant + SYSTEM_ADMIN user.
+    """First-run setup (POST /auth/setup) → new tenant + SYSTEM_ADMIN + tokens.
 
-    Audit B7 changed the contract: providing a ``tenant_id`` now requires
-    a valid invite token. The original test used the join-existing-tenant
-    path without an invite; that's exactly the hole B7 closes. Switched
-    to the bootstrap path (no tenant_id), which is what a household
-    self-onboarding user would actually hit.
+    The bootstrap path moved from POST /auth/register (now invite-only)
+    to POST /auth/setup, which is the browser wizard endpoint. This test
+    exercises the happy path: uninitialized system, no token required
+    (dev env), creates the initial admin and returns login tokens.
     """
     from app.models.enums import Role
 
+    mock_is_initialized.return_value = False
     mock_get_user_by_email.return_value = None
-    mock_create_tenant.return_value = type(
-        "X", (), {"id": mock_user.tenant_id}
-    )()
+    mock_create_tenant.return_value = type("X", (), {"id": mock_user.tenant_id})()
 
     # Capture every UserModel the endpoint tries to persist so we can
-    # assert the role. The bootstrap path inlines the create in the
-    # request session (audit B7 race protection).
+    # assert the role. The setup path inlines the create in the request
+    # session (audit B7 race protection via pg_advisory_xact_lock).
     created_users = []
 
     class _FakeDB:
-        def __init__(self):
-            self._seq = 0
-
         async def execute(self, stmt, *a, **kw):
-            # First call → advisory lock; second → COUNT(users) → 0.
-            self._seq += 1
+            # The advisory-lock call — result is ignored.
             return type("R", (), {"scalar": lambda self: 0})()
 
         async def commit(self):
-            # Assign an id so the response_model validation passes.
             for u in created_users:
                 if u.id is None:
                     u.id = mock_user.id
@@ -132,19 +129,24 @@ async def test_register_success(
     app.dependency_overrides[get_db] = lambda: fake_db
     try:
         response = await async_client.post(
-            "/api/v1/auth/register",
+            "/api/v1/auth/setup",
             json={
                 "email": "newuser@example.com",
                 "password": "securepassword123",
-                # No tenant_id → bootstrap path
+                "tenant_name": "My Organization",
             },
         )
     finally:
         app.dependency_overrides.pop(get_db, None)
 
     assert response.status_code == 200, response.text
-    assert created_users, "bootstrap path must add a UserModel to the session"
+    assert created_users, "setup path must add a UserModel to the session"
     assert created_users[0].role == Role.SYSTEM_ADMIN
+    # Tokens returned so the caller is immediately authenticated.
+    body = response.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["token_type"] == "bearer"
 
 
 @pytest.mark.asyncio

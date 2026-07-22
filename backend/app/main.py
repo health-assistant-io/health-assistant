@@ -126,6 +126,44 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             _abort_or_warn(e, "Integration registry initialization")
 
+        # First-run setup token. If the system is uninitialized (zero
+        # users), generate a one-time token and print it to the logs so
+        # the operator can complete the browser setup wizard. Skipped
+        # silently once any user exists. See app/core/setup_token.py.
+        try:
+            from sqlalchemy import func, select
+
+            from app.core.database import AsyncSessionLocal
+            from app.core import setup_token
+            from app.models.user_model import UserModel
+
+            async with AsyncSessionLocal() as db:
+                count_result = await db.execute(
+                    select(func.count()).select_from(UserModel)
+                )
+                user_count = count_result.scalar() or 0
+
+            if user_count == 0:
+                token = setup_token.generate()
+                logger.info(
+                    "\n══════════════════════════════════════════════════════\n"
+                    " FIRST-RUN SETUP REQUIRED\n"
+                    " Open the app in your browser and complete the setup\n"
+                    " wizard to create your administrator account.\n"
+                    " Setup token (required if accessing remotely):\n"
+                    "   %s\n"
+                    " Retrieve later: docker compose ... logs backend"
+                    " | grep -i 'setup token'\n"
+                    " Localhost / dev access does not need the token.\n"
+                    "══════════════════════════════════════════════════════",
+                    token,
+                )
+            else:
+                # Already initialized — ensure no stale token lingers.
+                setup_token.clear()
+        except Exception as e:
+            logger.warning("Could not check first-run setup status: %s", e)
+
     yield
     # Shutdown
     try:

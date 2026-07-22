@@ -40,26 +40,30 @@ Docker is the fastest way to get Health Assistant — a self-hosted, open-source
    ```
    *(Note: This uses the recommended "Standalone" flavor with a built-in Nginx proxy on port 80. If you already run a reverse proxy like Traefik/Nginx, or if you want to set up a development environment, see the advanced sections below).*
 
-6. **First-Time Data Seeding:**
-   You must manually create your initial admin account:
-   
-   For Standalone (all-in-one with proxy):
+6. **Create your admin account (first-run wizard):**
+   Open [http://localhost](http://localhost) in your browser. On a fresh install the app detects that no admin exists and redirects you to the **setup wizard** instead of the login screen. Fill in:
+
+   - **Organization name** (the initial tenant — e.g. "My Organization"),
+   - **Admin email** and **password** (you choose these — there are no defaults),
+   - **Setup token**, *only if prompted*. This token prints to the backend container logs on first boot and is required for remote (non-localhost) access to prevent a stranger claiming your instance before you do. Localhost and dev deployments skip it.
+
+   Retrieve the token with:
+
+   ```bash
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i "setup token"
+   ```
+
+   On submit, the wizard creates your `SYSTEM_ADMIN` account + tenant and logs you straight in.
+
+   > **There are no default login credentials.** The email and password you enter in the wizard are the ones you sign in with from then on.
+
+   **Headless / automation alternative.** If you're provisioning via Docker/Ansible and can't use a browser, create the admin from the CLI instead:
+
    ```bash
    docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
-   
-   Or for Prod (bring-your-own-proxy):
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
-   ```
 
-   > **There are no default login credentials.** You choose the email and
-   > password when you run the script — the `admin@example.com` /
-   > `securepassword` values above are **placeholders**. Replace them with
-   > your own, and log in with whatever you passed to `--email` /
-   > `--password`. If you run the script with **no flags**, the argparse
-   > fallbacks are `sysadmin@health-assistant.local` / `admin123` — fine
-   > for a throwaway local VM, **never** for anything exposed.
+   The `admin@example.com` / `securepassword` values are **placeholders** — replace them. Running the script with no flags falls back to `sysadmin@health-assistant.local` / `admin123` (fine for a throwaway local VM, **never** for anything exposed).
 
    **Clinical Catalogs (auto-seeded on every startup):**
    The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy, first), diseases, medications, vaccines, clinical event types, allergies, **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these — they reconcile to the JSON seed files on every start.
@@ -81,27 +85,15 @@ Docker is the fastest way to get Health Assistant — a self-hosted, open-source
 
 ## First-Time Sign-In
 
-There are **two ways** the first user account is created. You only need one.
+There are **two ways** the first admin account is created. You only need one.
 
-**Path A — the admin script (what this guide uses).** You already ran
-`create_system_admin.py` in step 6. That account is a `SYSTEM_ADMIN`
-attached to the tenant you named with `--tenant`. Just open
-[http://localhost](http://localhost) (or your domain) and sign in with
-the email + password you passed to the script.
+**Path A — the setup wizard (what this guide uses).** Step 6 above: open the URL, the app detects the fresh install, and the wizard creates your `SYSTEM_ADMIN` + tenant. You're logged in immediately after.
 
-**Path B — open registration (alternative).** If you didn't run the
-script, the *first* person to register through the login screen (no
-`tenant_id` entered) bootstraps a brand-new tenant and is promoted to
-its `SYSTEM_ADMIN`; every later registration needs an invite token from
-an admin. See the [Tenancy & User Management guide](./TENANCY_AND_USER_MANAGEMENT.md)
-for the invite flow.
+**Path B — the CLI script (headless/automation).** `create_system_admin.py` (shown in step 6's callout) writes the admin + tenant directly to the database. Useful for Docker/Ansible provisioning where no browser is available.
 
-Once signed in, you can optionally **link your user account to a Patient
-record** (so the dashboard and biomarker trends show your own data) or
-to a Doctor record (for clinical staff). Both are done from **Profile**
-in the app. For the full first-hour walkthrough — adding a person,
-uploading a lab report, configuring the AI, connecting a wearable — see
-the [Getting Started Guide](./GETTING_STARTED_GUIDE.md).
+Once signed in, additional users join by **invite token** — an admin mints one via the in-app user management or `POST /auth/invite`, and the invitee registers with it. Open self-sign-up is disabled by design. See the [Tenancy & User Management guide](./TENANCY_AND_USER_MANAGEMENT.md) for the invite flow.
+
+You can optionally **link your user account to a Patient record** (so the dashboard and biomarker trends show your own data) or to a Doctor record (for clinical staff) from **Profile** in the app. For the full first-hour walkthrough — adding a person, uploading a lab report, configuring the AI, connecting a wearable — see the [Getting Started Guide](./GETTING_STARTED_GUIDE.md).
 
 ## Development Setup
 

@@ -1,23 +1,15 @@
 """Regression tests for audit item B7 — auth.register tenant impersonation.
 
-Pre-fix contract:
-- ``POST /auth/register`` accepted any ``tenant_id`` with no check that
-  the caller was authorized to join. An attacker who learned a victim
-  ``tenant_id`` could register inside it and immediately read tenant-
-  scoped data.
-- The "first user becomes SYSTEM_ADMIN" check used
-  ``SELECT COUNT(*) FROM users`` with no locking, so two concurrent
-  bootstrap registrations could both promote.
-
 Post-fix contract pinned here:
-1. Joining an existing tenant (tenant_id provided) requires a valid
-   invite token minted by that tenant's admin. Missing/invalid/wrong-
-   tenant token → 403.
-2. Bootstrap (no tenant_id) creates a new tenant + SYSTEM_ADMIN user.
-3. Invite tokens are minted by ADMIN/MANAGER/SYSTEM_ADMIN via
+1. ``POST /auth/register`` is invite-only — a ``tenant_id`` + valid
+   invite token minted by that tenant's admin is always required.
+   Missing/invalid/wrong-tenant token → 403. The open bootstrap path
+   (no ``tenant_id``) was removed and replaced by ``POST /auth/setup``
+   (covered in ``test_auth_setup.py``).
+2. Invite tokens are minted by ADMIN/MANAGER/SYSTEM_ADMIN via
    POST /auth/invite. USER → 403.
-4. SYSTEM_ADMIN role can never be granted via invite token (bootstrap
-   is the only SYSTEM_ADMIN grantor).
+3. SYSTEM_ADMIN role can never be granted via invite token (setup is
+   the only SYSTEM_ADMIN grantor).
 """
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -323,125 +315,9 @@ async def test_invite_manager_role_succeeds():
 
 
 # ---------------------------------------------------------------------------
-# B7: bootstrap path is race-protected via pg_advisory_xact_lock
+# B7: bootstrap path moved to /auth/setup — see test_auth_setup.py
+# (advisory lock + first-user SYSTEM_ADMIN). register is now invite-only.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_register_bootstrap_acquires_advisory_lock():
-    """Bootstrap path (no tenant_id) must acquire the advisory lock BEFORE
-    the count() check so concurrent registrations serialize."""
-    tenant_id = uuid.uuid4()
-    fake_tenant = MagicMock(id=tenant_id)
-    fake_user = MagicMock()
-
-    db = MagicMock()
-    db.execute = AsyncMock()
-    db.add = MagicMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-
-    # First db.execute → advisory lock; second → COUNT() returning 0
-    # (first user); any further calls return None-shaped results.
-    lock_result = MagicMock()
-    count_result = MagicMock()
-    count_result.scalar.return_value = 0
-    db.execute.side_effect = [lock_result, count_result]
-
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-    ):
-        await auth_endpoint.register(
-            user_data=UserRegister(
-                email="first@family.com",
-                password="password123",
-            ),
-            db=db,
-        )
-
-    # First execute call must be the advisory lock.
-    first_call = db.execute.call_args_list[0]
-    rendered = str(first_call.args[0])
-    assert "pg_advisory_xact_lock" in rendered, (
-        "Bootstrap path must call pg_advisory_xact_lock before the count() check"
-    )
-
-
-@pytest.mark.asyncio
-async def test_register_bootstrap_first_user_gets_system_admin():
-    """First ever user → SYSTEM_ADMIN."""
-    tenant_id = uuid.uuid4()
-    fake_tenant = MagicMock(id=tenant_id)
-
-    db = MagicMock()
-    db.execute = AsyncMock()
-    lock_result = MagicMock()
-    count_result = MagicMock()
-    count_result.scalar.return_value = 0
-    db.execute.side_effect = [lock_result, count_result]
-    db.add = MagicMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-
-    # Capture the UserModel before commit.
-    added = {}
-
-    def _capture_add(obj):
-        added["obj"] = obj
-
-    db.add.side_effect = _capture_add
-
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-    ):
-        await auth_endpoint.register(
-            user_data=UserRegister(
-                email="first@family.com",
-                password="password123",
-            ),
-            db=db,
-        )
-
-    assert added["obj"].role == Role.SYSTEM_ADMIN
-
-
-@pytest.mark.asyncio
-async def test_register_bootstrap_subsequent_user_gets_admin():
-    """Second+ bootstrap (creates their own tenant) → ADMIN, not SYSTEM_ADMIN."""
-    tenant_id = uuid.uuid4()
-    fake_tenant = MagicMock(id=tenant_id)
-
-    db = MagicMock()
-    db.execute = AsyncMock()
-    lock_result = MagicMock()
-    count_result = MagicMock()
-    count_result.scalar.return_value = 1  # already a user
-    db.execute.side_effect = [lock_result, count_result]
-    db.add = MagicMock()
-    db.commit = AsyncMock()
-    db.refresh = AsyncMock()
-
-    added = {}
-    db.add.side_effect = lambda obj: added.setdefault("obj", obj)
-
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-    ):
-        await auth_endpoint.register(
-            user_data=UserRegister(
-                email="second@family.com",
-                password="password123",
-            ),
-            db=db,
-        )
-
-    assert added["obj"].role == Role.ADMIN
 
 
 # ---------------------------------------------------------------------------

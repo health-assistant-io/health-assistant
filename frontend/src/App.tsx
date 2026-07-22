@@ -14,6 +14,7 @@ import './features/instances/views';
 import './features/instances/details';
 import Layout from './components/layout/Layout';
 import Login from './pages/Auth/Login';
+import Setup from './pages/Auth/Setup';
 import Dashboard from './pages/Dashboard/Dashboard';
 import AllergyAlerts from './pages/Dashboard/AllergyAlerts';
 import { BiomarkerTrends, CorrelativeAnalytics } from './pages/Analytics';
@@ -233,6 +234,7 @@ function App() {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/setup" element={<Setup />} />
         <Route path="*" element={<Login />} />
       </Routes>
     );

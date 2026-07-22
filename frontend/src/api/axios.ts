@@ -16,7 +16,7 @@ api.interceptors.request.use(
     const token = localStorage.getItem('accessToken');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
-    } else if (!['auth/login', 'auth/register', 'auth/refresh'].some(u => config.url?.includes(u))) {
+    } else if (!['auth/login', 'auth/register', 'auth/refresh', 'auth/setup-status', 'auth/setup'].some(u => config.url?.includes(u))) {
       console.warn('No access token found for request:', config.url);
     }
 
