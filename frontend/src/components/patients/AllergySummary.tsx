@@ -59,11 +59,12 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
 
   const activeAllergies = allergies.filter(a => a.clinical_status?.toUpperCase() === 'ACTIVE');
   const resolvedAllergies = allergies.filter(a => a.clinical_status?.toUpperCase() !== 'ACTIVE');
+  const highCriticalityCount = activeAllergies.filter(a => (a.criticality ?? '').toUpperCase() === 'HIGH').length;
 
   const getCriticalityStyles = (criticality?: string | null) => {
     switch((criticality ?? '').toUpperCase()) {
-      case 'HIGH': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 animate-pulse-slow';
-      case 'LOW': return 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
+      case 'HIGH': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800';
+      case 'LOW': return 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800';
       default: return 'bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-dark-text border-gray-200 dark:border-dark-border';
     }
   };
@@ -91,6 +92,11 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
         }}
         tags={[
           <span key="active" className={TAG_NEUTRAL}>{activeAllergies.length} {t('allergies.active')}</span>,
+          ...(highCriticalityCount > 0 ? [
+            <span key="high" className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/40">
+              {highCriticalityCount} {t('allergies.high_criticality', { defaultValue: 'high' })}
+            </span>,
+          ] : []),
         ]}
         onAdd={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
         addLabel={t('allergies.add_record')}
@@ -99,8 +105,17 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
 
       <div className="p-4 sm:p-6 max-h-[400px] overflow-y-auto custom-scrollbar">
         {activeAllergies.length === 0 && resolvedAllergies.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-gray-400 text-sm italic">{t('allergies.no_allergies')}</p>
+          <div className="text-center py-8 flex flex-col items-center">
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl mb-3">
+              <ShieldAlert className="w-6 h-6 text-emerald-500" />
+            </div>
+            <p className="text-sm font-bold text-gray-500 dark:text-dark-muted">{t('allergies.no_allergies')}</p>
+            <button
+              onClick={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
+              className="mt-3 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+            >
+              {t('allergies.add_record')}
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -112,7 +127,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                   onClick={() => setExpandedId(expandedId === allergy.id ? null : allergy.id)}
                 >
                   <div className="flex items-start space-x-3 w-full pr-8">
-                    <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${(allergy.criticality ?? '').toUpperCase() === 'HIGH' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`} />
+                    <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${(allergy.criticality ?? '').toUpperCase() === 'HIGH' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm leading-tight dark:text-dark-text break-words">{allergy.code.text}</p>
                       <p className="text-[10px] opacity-70 font-medium uppercase tracking-tighter dark:text-dark-muted break-words">
