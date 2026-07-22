@@ -2,7 +2,7 @@
 
 ## Quick Start (Recommended)
 
-Using Docker is the easiest and most recommended way to get Health Assistant up and running.
+Docker is the fastest way to get Health Assistant — a self-hosted, open-source health records platform — up and running. This quick start takes you from a fresh clone to a working install in seven steps: clone, generate secure keys, boot the stack, create your admin account, and sign in. Everything (UI, API, API docs) is served behind a single Nginx proxy on port 80.
 
 ### Setup
 
@@ -53,89 +53,59 @@ Using Docker is the easiest and most recommended way to get Health Assistant up 
    docker compose --env-file .env -f docker/docker-compose.prod.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
 
+   > **There are no default login credentials.** You choose the email and
+   > password when you run the script — the `admin@example.com` /
+   > `securepassword` values above are **placeholders**. Replace them with
+   > your own, and log in with whatever you passed to `--email` /
+   > `--password`. If you run the script with **no flags**, the argparse
+   > fallbacks are `sysadmin@health-assistant.local` / `admin123` — fine
+   > for a throwaway local VM, **never** for anything exposed.
+
    **Clinical Catalogs (auto-seeded on every startup):**
    The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy, first), diseases, medications, vaccines, clinical event types, allergies, **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these — they reconcile to the JSON seed files on every start.
 
    The anatomy graph ships as `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/concept_edges.json` (edges, including anatomy hierarchy edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
 
-   The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs are still available if you ever need to **force a re-seed** outside the startup pipeline, but they are no longer required for first-time setup.
-
-   **Anatomy Graph Expansion Packs (Optional):**
-   The base anatomy catalog (54 nodes) ships with the application and is seeded automatically. For specialized deployments (e.g., ophthalmology clinics, neurology practices), you can import custom anatomy expansion packs:
-
-   ```bash
-   # Standalone (all-in-one with proxy)
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py --file /path/to/my-anatomy-pack.json
-
-   # Or from a URL
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py --url https://example.com/anatomy-pack.json
-   ```
-
-   You can also re-seed the base catalog at any time:
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/seed_anatomy.py
-   ```
-
-   The JSON format is:
-   ```json
-   {
-     "nodes": [
-       {
-         "slug": "left-ventricle",
-         "name": "Left Ventricle",
-         "category": "ORGAN_PART",
-         "standard_system": "snomed",
-         "standard_code": "87878005",
-         "description": "The lower left chamber of the heart"
-       }
-     ],
-     "edges": [
-       {
-         "source_slug": "left-ventricle",
-         "target_slug": "heart",
-         "relation_type": "PART_OF"
-       }
-     ]
-   }
-   ```
-
-   Nodes are upserted by `slug` (existing nodes are updated, never deleted). Edges are deduplicated by `(source, target, relation_type)`. The REST API endpoint `POST /api/v1/anatomy/import` (SYSTEM_ADMIN token) accepts the same JSON format if you prefer to import programmatically. See [Seeding and Demos](./SEEDING_AND_DEMOS.md) for full details.
-
-   You can also ask the AI Assistant to generate anatomy sub-graphs on demand (e.g., "Generate the detailed anatomy of the cardiovascular system"). The AI will create a human-in-the-loop review card with the proposed nodes and edges for your approval before importing.
+   The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs are still available if you ever need to **force a re-seed** outside the startup pipeline, but they are no longer required for first-time setup. Specialized deployments can also import custom anatomy expansion packs — see [Optional: anatomy expansion packs](#optional-anatomy-expansion-packs) at the end of this guide.
 
 7. **Access the application:**
    Once the services are running, open your web browser and navigate to:
-   - **Main Application (Frontend):** [http://localhost:3000](http://localhost:3000) - *This is the main user interface where you will interact with the Health Assistant.*
-   - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
+   - **Application (frontend UI):** [http://localhost](http://localhost) — this is what you'll use day-to-day. The standalone stack serves the UI, the API, and the API docs behind a single Nginx proxy on port 80.
+   - **API docs (Swagger):** [http://localhost/docs](http://localhost/docs) — interactive developer reference for the backend REST API.
+   - **Health check:** [http://localhost/health](http://localhost/health) — returns `{"status":"healthy",...}`.
+   - **Flower (task monitor):** [http://localhost/flower/](http://localhost/flower/) — Celery worker dashboard (behind the same proxy).
+
+   > Using the **bring-your-own-proxy** flavor instead? The UI/API aren't exposed publicly by default — they bind to `127.0.0.1`. Point your reverse proxy at the frontend (`:3000`) and backend (`:8000`) ports as described under [Production Deployment](#production-deployment). The `:3000` / `:8000` ports below only apply to the **development setup** (see [Development Guide](./DEVELOPMENT.md)).
 
 ---
 
-## First-Time Setup & Linking
+## First-Time Sign-In
 
-After your application is running and your data is seeded, you need to finalize your user setup.
+There are **two ways** the first user account is created. You only need one.
 
-1. **Log In**: Open the application at [http://localhost](http://localhost) (or your domain) and log in with the credentials you provided to the script.
-2. **Auto-Provisioning**: On first registration, the system will automatically create a new **Household Tenant** and a **Default Organization** if they don't exist.
-3. **Link Your Profile**: Visit your profile settings in the app to link your User account to a Patient or Doctor record.
+**Path A — the admin script (what this guide uses).** You already ran
+`create_system_admin.py` in step 6. That account is a `SYSTEM_ADMIN`
+attached to the tenant you named with `--tenant`. Just open
+[http://localhost](http://localhost) (or your domain) and sign in with
+the email + password you passed to the script.
 
-For more details on managing multiple users and clinical hierarchies, see the [Tenancy and User Management Guide](./TENANCY_AND_USER_MANAGEMENT.md).
+**Path B — open registration (alternative).** If you didn't run the
+script, the *first* person to register through the login screen (no
+`tenant_id` entered) bootstraps a brand-new tenant and is promoted to
+its `SYSTEM_ADMIN`; every later registration needs an invite token from
+an admin. See the [Tenancy & User Management guide](./TENANCY_AND_USER_MANAGEMENT.md)
+for the invite flow.
+
+Once signed in, you can optionally **link your user account to a Patient
+record** (so the dashboard and biomarker trends show your own data) or
+to a Doctor record (for clinical staff). Both are done from **Profile**
+in the app. For the full first-hour walkthrough — adding a person,
+uploading a lab report, configuring the AI, connecting a wearable — see
+the [Getting Started Guide](./GETTING_STARTED_GUIDE.md).
 
 ## Development Setup
 
 If you are looking to contribute to the codebase or run the application from source with hot-reloading, please see our dedicated [Development Guide](./DEVELOPMENT.md) instead of this installation manual.
-
-## Configuration
-
-Both the frontend and backend utilize `.env` files to document required configuration variables. 
-
-1. Ensure you have run the setup script (or manually copied the example file) to create your active `.env` file:
-   ```bash
-   python scripts/setup_env.py
-   ```
-2. Open this file in your preferred text editor.
-3. Review the inline comments within the `.env` file and supply any additional specific configuration. If you used the setup script, your secure keys have already been populated. If you chose manual setup, you must ensure all secure keys are generated and filled in.
-
-
 
 ## Verification
 
@@ -148,14 +118,14 @@ curl http://localhost/health
 # Expected: {"status":"healthy","database":"connected","redis":"not_configured"}
 ```
 
-> The `redis` field always reports `not_configured` in the current health
-> check (the handler at `backend/app/main.py` does not probe Redis — it
-> returns the static string). Redis connectivity is exercised indirectly via
-> the Celery worker (`celery inspect ping`) and the WebSocket paths.
+> The `redis` field reports `not_configured` because the health handler
+> doesn't probe Redis directly — it's a static string. Redis connectivity
+> is exercised indirectly through the Celery worker and WebSocket paths.
+> If the worker is up (check Flower at `/flower/`), Redis is fine.
 
 ### Test Frontend
 
-Open http://localhost in your browser.
+Open http://localhost in your browser. You should see the login screen.
 
 ## Production Deployment
 
@@ -206,61 +176,86 @@ docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
 
+#### TLS with Let's Encrypt
+
+The standalone stack terminates TLS at Nginx. The easiest way to add a real certificate on the host in front of the stack is `certbot`:
+
 ```bash
 sudo apt install certbot python3-certbot-nginx
 ```
 
 ```bash
-sudo certbot --nginx -d health_assistant.example.com
+sudo certbot --nginx -d health.example.com
 ```
+
+If you run the **bring-your-own-proxy** flavor, terminate TLS at your existing proxy (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel) instead — the app containers don't need to know about certificates.
 
 ## Updates
 
-### Manual Update
+### Docker (recommended)
 
-**Backend:**
-```bash
-cd backend
-```
+This is the update path for the standalone / prod compose stacks described above:
+
 ```bash
 git pull
 ```
+
 ```bash
-source venv/bin/activate
-```
-```bash
-pip install -r requirements.txt
+python scripts/setup_env.py   # only needed when .env.example gained new required vars
 ```
 
-**Frontend:**
 ```bash
-cd frontend
+docker compose --env-file .env -f docker/docker-compose.standalone.yml pull
 ```
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+```
+
+The application runs its seed pipeline on every boot, so new catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist).
+
+### From source (development)
+
+For a venv/dev install (see the [Development Guide](./DEVELOPMENT.md)):
+
 ```bash
 git pull
 ```
+
+Backend:
+
 ```bash
-npm install
+cd backend && source venv/bin/activate && pip install -r requirements.txt
+```
+
+Frontend:
+
+```bash
+cd frontend && npm install
 ```
 
 ## Troubleshooting
 
 ### Port Already in Use
 
-Find and kill process on port 8000:
+Find what's holding the port (run the one for your port):
+
+```bash
+lsof -i :80
+```
+
 ```bash
 lsof -i :8000
 ```
-```bash
-lsof -ti:8000 | xargs kill -9
-```
 
-Find and kill process on port 3000:
 ```bash
 lsof -i :3000
 ```
+
+Then kill it, e.g. for port 8000:
+
 ```bash
-lsof -ti:3000 | xargs kill -9
+lsof -ti:8000 | xargs kill -9
 ```
 
 ### Backend Import Errors
@@ -268,34 +263,77 @@ lsof -ti:3000 | xargs kill -9
 ```bash
 cd backend
 ```
+
 ```bash
 source venv/bin/activate
 ```
+
 ```bash
-python -c "from app.main import app"
+python -c "from app.main import app"   # should print nothing (no errors)
 ```
-*(Should output no errors)*
 
 ### Frontend Build Errors
 
 ```bash
 cd frontend
 ```
+
 ```bash
-npm run build
+npm run build   # surfaces TypeScript / ESLint errors
 ```
-*(Check for TypeScript/ESLint errors)*
 
 ### Database Connection Error
 
-- Check DATABASE_URL in .env
-- Ensure PostgreSQL is running: `systemctl status postgresql`
-- Verify database exists: `psql -U admin -l`
+- Check `DATABASE_URL` in `.env`.
+- Ensure PostgreSQL is running: `systemctl status postgresql` (or `docker compose … ps`).
+- Verify the database exists: `psql -U admin -l`.
+- Remember PostgreSQL needs the **TimescaleDB** extension — a plain Postgres will crash on the telemetry hypertable migration. The compose files ship a compatible image.
 
-## Support
+## Optional: anatomy expansion packs
 
-For issues and questions:
-- Check [CHANGELOG.md](../CHANGELOG.md) for recent updates
-- View [DEVELOPMENT.md](DEVELOPMENT.md) for development guide
-- Check API docs at http://localhost:8000/docs
-- Review browser console (frontend) and terminal logs (backend)
+The base anatomy catalog (54 nodes) ships with the app and is seeded automatically on every boot. For specialized deployments (e.g. ophthalmology, neurology) you can import custom anatomy packs.
+
+From a local file:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
+  python scripts/seed_anatomy.py --file /path/to/my-anatomy-pack.json
+```
+
+From a URL:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
+  python scripts/seed_anatomy.py --url https://example.com/anatomy-pack.json
+```
+
+The JSON format:
+
+```json
+{
+  "nodes": [
+    {
+      "slug": "left-ventricle",
+      "name": "Left Ventricle",
+      "category": "ORGAN_PART",
+      "standard_system": "snomed",
+      "standard_code": "87878005",
+      "description": "The lower left chamber of the heart"
+    }
+  ],
+  "edges": [
+    { "source_slug": "left-ventricle", "target_slug": "heart", "relation_type": "PART_OF" }
+  ]
+}
+```
+
+Nodes are upserted by `slug` (existing nodes update, nothing is deleted); edges deduplicate on `(source, target, relation_type)`. The REST endpoint `POST /api/v1/anatomy/import` (SYSTEM_ADMIN token) accepts the same payload for programmatic imports. You can also ask the AI Assistant to generate a sub-graph on demand (e.g. *"generate the detailed anatomy of the cardiovascular system"*) — it produces a human-in-the-loop review card for your approval before anything is imported. See [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) for full details.
+
+## See also
+
+- [Getting Started Guide](./GETTING_STARTED_GUIDE.md) — first-hour walkthrough after install (add a person, upload a lab, configure AI, connect a wearable)
+- [Architecture Overview](./ARCHITECTURE.md) — tech stack, data model, biomarker engine, AI pipeline
+- [Development Guide](./DEVELOPMENT.md) — local dev setup with hot-reload
+- [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) — how catalogs, taxonomy, and anatomy reconcile on boot
+- [Tenancy & User Management](./TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, invite tokens
+- [CHANGELOG.md](../CHANGELOG.md) — recent updates and any post-upgrade actions

@@ -157,8 +157,17 @@ Reproducible screenshots captured against a seeded clinical dataset — see the 
 
 ```bash
 git clone https://github.com/health-assistant-io/health-assistant.git
+```
+
+```bash
 cd health-assistant
+```
+
+```bash
 python scripts/setup_env.py          # generates SECRET_KEY, Fernet key, POSTGRES_PASSWORD, VAPID pair
+```
+
+```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
@@ -166,8 +175,13 @@ Create your initial admin:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
-  python scripts/create_system_admin.py --email admin@example.com --password 'securepassword' --tenant "My Household"
+  python scripts/create_system_admin.py --email admin@example.com --password 'securepassword' --tenant "My Organization"
 ```
+
+> There are no default login credentials — the email and password above
+> are placeholders. Replace them with your own and sign in with what you
+> passed. See the [Installation Guide](docs/INSTALL.md) for the full
+> first-time sign-in flow.
 
 The standalone compose file ships a built-in Nginx on port 80. If you already run a reverse proxy (Traefik/Nginx/Caddy), use `docker/docker-compose.prod.yml` instead. Full details in the [Installation Guide](docs/INSTALL.md).
 

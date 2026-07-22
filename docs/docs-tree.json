@@ -22,6 +22,12 @@
         "description": "Install Health Assistant, a self-hosted, open-source health records platform. Docker quick start, production deployment, environment setup with auto-generated keys, and a security checklist."
       },
       {
+        "id": "getting-started-guide",
+        "file": "GETTING_STARTED_GUIDE.md",
+        "title": "Getting Started Guide",
+        "description": "End-user guide to Health Assistant, a self-hosted, open-source health records platform. Sign in, add a person, upload a lab report, read biomarker trends, configure the AI assistant, connect a wearable, and start a health journey."
+      },
+      {
         "id": "architecture",
         "file": "ARCHITECTURE.md",
         "title": "Architecture Overview",
