@@ -18,11 +18,17 @@ NC='\033[0m' # No Color
 
 # Default values
 FORCE_STOP=false
+NO_ADMIN=false
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --force-stop) FORCE_STOP=true ;;
+        --no-admin)
+            # Skip the create_system_admin step so the first-run setup wizard
+            # can be exercised (the wizard only appears when zero users exist).
+            NO_ADMIN=true
+            ;;
         --force-celery)
             # Accepted for backward compat; honcho owns the worker lifecycle now.
             echo -e "${YELLOW}--force-celery is deprecated (honcho owns celery now); ignoring.${NC}"
@@ -184,9 +190,18 @@ export PYTHONPATH="$PWD:$(dirname "$PWD")"
 echo -e "${YELLOW}Running database migrations...${NC}"
 alembic upgrade head || echo -e "${RED}Migration failed. Proceeding anyway...${NC}"
 
-# Create admin user if database is available
-echo -e "${YELLOW}Setting up admin user...${NC}"
-python3 scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
+# Create admin user if database is available (skip with --no-admin to test
+# the first-run setup wizard, which only appears when zero users exist).
+if [ "$NO_ADMIN" = true ]; then
+    echo -e "${YELLOW}Skipping admin creation (--no-admin).${NC}"
+    echo -e "${YELLOW}  If the DB has no users, visit http://localhost:3000 to run the${NC}"
+    echo -e "${YELLOW}  first-run setup wizard. To test it from a clean slate, reset the${NC}"
+    echo -e "${YELLOW}  existing admin first, e.g.:${NC}"
+    echo -e "${YELLOW}    psql \"\$DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'${NC}"
+else
+    echo -e "${YELLOW}Setting up admin user...${NC}"
+    python3 scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
+fi
 
 # Frontend deps (done here so the honcho-managed `npm run dev` doesn't pay the install cost on every start)
 cd ../frontend

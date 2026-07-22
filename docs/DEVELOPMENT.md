@@ -39,6 +39,22 @@ This guide covers local development for Health Assistant — a self-hosted, open
    others so you see the error immediately in the foreground. To start just
    one process (e.g. the worker): `honcho start worker -f Procfile.dev`.
 
+   **Testing the first-run setup wizard:** by default the script creates an
+   admin (`admin@healthassistant.local` / `admin123`) so you can skip
+   login. To exercise the browser setup wizard instead, pass `--no-admin`
+   and start from a clean DB:
+
+   ```bash
+   ./scripts/reset-dev-db.sh -y --migrate
+   ```
+
+   ```bash
+   ./scripts/run-dev.sh --no-admin
+   ```
+
+   The app now has zero users, so visiting http://localhost:3000 redirects
+   to `/setup`. (Localhost/dev skips the setup token.)
+
    **Wiping the dev database:** when a migration diverges from your local
    schema or seed data gets into a bad state, `scripts/reset-dev-db.sh`
    stops the dev Postgres + Redis containers, removes their volumes, and
