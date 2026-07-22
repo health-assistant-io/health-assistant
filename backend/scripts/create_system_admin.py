@@ -21,15 +21,10 @@ from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE, engine
 from app.models.user_model import UserModel
 from app.models.tenant_model import TenantModel
 from app.models.enums import Role
+from app.utils.slug import slugify
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-import re
 
-def generate_slug(text: str) -> str:
-    """Generate a URL-safe slug from text."""
-    # Convert to lowercase, replace spaces and non-alphanumeric chars with hyphens
-    slug = re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
-    return slug or "system-tenant"
 
 async def create_system_admin(email: str, password: str, tenant_name: str = "System Tenant") -> bool:
     """Create system admin user and associated tenant if needed"""
@@ -66,7 +61,7 @@ async def create_system_admin(email: str, password: str, tenant_name: str = "Sys
 
                 if not tenant:
                     print(f"🏢 Creating {tenant_name}...")
-                    slug = generate_slug(tenant_name)
+                    slug = slugify(tenant_name, fallback="system-tenant")
                     tenant = TenantModel(name=tenant_name, slug=slug, settings={"is_system": True})
                     session.add(tenant)
                     await session.flush()

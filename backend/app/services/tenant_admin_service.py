@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import secrets
 from datetime import timedelta
 from typing import Any, Dict, Optional, Tuple
@@ -57,17 +56,9 @@ from app.schemas.tenant import (
     UserSummary,
 )
 from app.services.audit_service import log_audit_action
+from app.utils.slug import slugify
 
 logger = logging.getLogger(__name__)
-
-
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _slugify(name: str) -> str:
-    """Convert a name to a URL-safe slug (lowercase, '-' separators)."""
-    base = _SLUG_RE.sub("-", (name or "").strip().lower()).strip("-")
-    return base or "tenant"
 
 
 class TenantAdminService:
@@ -238,7 +229,7 @@ class TenantAdminService:
     # ------------------------------------------------------------------
 
     async def create_tenant(self, payload: TenantCreate, actor_id: UUID) -> TenantModel:
-        slug = await self._ensure_unique_slug(_slugify(payload.slug or payload.name))
+        slug = await self._ensure_unique_slug(slugify(payload.slug or payload.name))
         tenant = TenantModel(
             name=payload.name.strip(),
             slug=slug,
@@ -290,7 +281,7 @@ class TenantAdminService:
             flag_modified(tenant, "settings")
         if payload.slug is not None and payload.slug != tenant.slug:
             candidate = await self._ensure_unique_slug(
-                _slugify(payload.slug), exclude_id=tenant.id
+                slugify(payload.slug), exclude_id=tenant.id
             )
             tenant.slug = candidate
 

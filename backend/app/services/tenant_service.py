@@ -1,11 +1,13 @@
 from typing import Optional, Dict, Any
 from uuid import UUID
 import logging
-from sqlalchemy import select, update, delete
+import secrets
+from sqlalchemy import select, update, delete, func
 from app.models.tenant_model import TenantModel
 from app.models.fhir.organization import OrganizationModel
 from app.models.enums import OrganizationType
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.utils.slug import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +30,43 @@ async def get_tenant(tenant_id: str | UUID) -> Optional[TenantModel]:
         return result.scalar_one_or_none()
 
 
-async def create_tenant(name: str, settings: dict = None) -> Optional[TenantModel]:
-    """Create a new tenant and a default root organization"""
+async def create_tenant(
+    name: str,
+    settings: dict = None,
+    slug: Optional[str] = None,
+) -> Optional[TenantModel]:
+    """Create a new tenant and a default root organization.
+
+    The ``slug`` column is NOT NULL + UNIQUE, so when a slug isn't supplied
+    we derive one from the name and guarantee uniqueness by appending a
+    short random suffix on collision.
+    """
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for create_tenant")
         return None
 
-    new_tenant = TenantModel(name=name, settings=settings or {})
-
     async with AsyncSessionLocal() as session:
+        base_slug = slugify(slug) if slug else slugify(name)
+
+        # Guarantee uniqueness within the tenants table.
+        candidate = base_slug
+        for _ in range(8):
+            count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(TenantModel)
+                    .where(TenantModel.slug == candidate)
+                )
+            ).scalar() or 0
+            if count == 0:
+                break
+            candidate = f"{base_slug}-{secrets.token_hex(2)}"
+        else:
+            candidate = f"{base_slug}-{secrets.token_hex(4)}"
+
+        new_tenant = TenantModel(
+            name=name, slug=candidate, settings=settings or {}
+        )
         session.add(new_tenant)
         await session.flush()  # Get ID for new_tenant
 
