@@ -1,7 +1,15 @@
 """Authentication schemas"""
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
+
+# Lenient email pattern: one ``@`` with non-blank, whitespace-free text on
+# both sides. We deliberately do NOT use ``EmailStr``/email-validator here
+# because it rejects the ``user@localhost`` / ``user@host.local`` addresses
+# that are normal on a self-hosted install (e.g. the run-dev default
+# ``admin@healthassistant.local``). The email is a login identifier, not
+# used for deliverability, so strict RFC/DSL validation is the wrong call.
+_LENIENT_EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+$"
 
 
 class LoginRequest(BaseModel):
@@ -31,21 +39,17 @@ class TokenRefresh(BaseModel):
 
 
 class UserRegister(BaseModel):
-    """User registration schema.
+    """User registration schema (invite-only).
 
-    Two onboarding paths:
-    1. **Bootstrap (no tenant_id)** — creates a new tenant and the new user
-       becomes SYSTEM_ADMIN of it. Used for the household self-onboarding
-       UX. Race-protected via a Postgres advisory lock so concurrent
-       bootstraps cannot promote two registrations to SYSTEM_ADMIN.
-    2. **Join existing tenant (tenant_id + invite_token)** — joins an
-       existing tenant as USER (or another role encoded in the invite
-       token). Requires a valid invite token minted by that tenant's
-       admin via ``POST /auth/invite``. Closes the audit B7 hole where
-       knowing a ``tenant_id`` was sufficient to register inside it.
+    Joins an existing tenant as USER (or another role encoded in the
+    invite token). Requires a valid invite token minted by that tenant's
+    admin via ``POST /auth/invite``. First-run bootstrap lives in
+    ``SetupRequest`` / ``POST /auth/setup`` instead.
     """
 
-    email: EmailStr = Field(..., description="User email address")
+    email: str = Field(
+        ..., pattern=_LENIENT_EMAIL_PATTERN, description="User email address"
+    )
     password: str = Field(
         ..., min_length=8, max_length=100, description="Password (min 8 characters)"
     )
@@ -82,7 +86,9 @@ class SetupStatus(BaseModel):
 class SetupRequest(BaseModel):
     """First-run setup payload — creates the initial SYSTEM_ADMIN + tenant."""
 
-    email: EmailStr = Field(..., description="Admin email address")
+    email: str = Field(
+        ..., pattern=_LENIENT_EMAIL_PATTERN, description="Admin email address"
+    )
     password: str = Field(
         ..., min_length=8, max_length=100, description="Password (min 8 characters)"
     )

@@ -322,3 +322,33 @@ async def test_register_without_tenant_id_returns_403():
             )
     assert exc.value.status_code == 403
     assert "setup" in exc.value.detail.lower() or "invite" in exc.value.detail.lower()
+
+
+# ---------------------------------------------------------------------------
+# Lenient email validation — self-hosted installs use @localhost / @host.local
+# (EmailStr/email-validator rejected these; see schemas/auth.py)
+# ---------------------------------------------------------------------------
+
+
+def test_setup_request_accepts_localhost_email():
+    from pydantic import ValidationError
+
+    for addr in (
+        "admin@localhost",
+        "admin@healthassistant.local",
+        "admin@home",
+        "admin@example.com",
+    ):
+        req = SetupRequest(
+            email=addr, password="securepassword", tenant_name="Org"
+        )
+        assert req.email == addr
+
+
+def test_setup_request_rejects_malformed_email():
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    for bad in ("noatmark", "admin@", "@host", "a b@host", ""):
+        with _pytest.raises(ValidationError):
+            SetupRequest(email=bad, password="securepassword", tenant_name="Org")

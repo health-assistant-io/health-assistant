@@ -10,6 +10,31 @@ interface SetupStatus {
   setup_token_required: boolean;
 }
 
+/**
+ * Turn an API error `detail` into a renderable string.
+ *
+ * FastAPI's own validation errors (422) return `detail` as an array of
+ * `{type, loc, msg, input, ctx}` objects — rendering that directly crashes
+ * React ("Objects are not valid as a React child"). Our own HTTPException
+ * raises return `detail` as a plain string. Handle both.
+ */
+function normalizeDetail(detail: unknown): string {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((e: any) => {
+        const msg = e?.msg || 'invalid value';
+        const field =
+          Array.isArray(e?.loc) && e.loc.length > 1
+            ? e.loc[e.loc.length - 1]
+            : null;
+        return field ? `${field}: ${msg}` : msg;
+      })
+      .join('; ');
+  }
+  return 'Setup failed. Check your details and try again.';
+}
+
 function Setup() {
   const navigate = useNavigate();
   const { login } = useAuthStore();
@@ -85,7 +110,7 @@ function Setup() {
         navigate('/login', { replace: true });
         return;
       }
-      setError(detail || 'Setup failed. Check your details and try again.');
+      setError(normalizeDetail(detail));
     } finally {
       setLoading(false);
     }
