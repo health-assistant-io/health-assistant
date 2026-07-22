@@ -420,3 +420,71 @@ async def test_resolve_audit_note_propose_says_saved(async_client):
     text = captured_messages[0]["content"]["text"]
     assert "Confirmed and saved" in text
     assert "Pregnancy" in text
+
+
+# ---------------------------------------------------------------------------
+# Internal-message hiding (GET /messages must not surface HITL feedback)
+# ---------------------------------------------------------------------------
+
+
+def test_is_internal_message_flags_hitl_feedback():
+    """The [HITL RESOLUTION FEEDBACK] user message persisted by the resume
+    continuation must be hidden from the UI. Recognized both by the explicit
+    ``kind`` tag (new rows) and the text prefix (rows saved before the tag)."""
+    from app.services.chat_session_service import is_internal_message
+
+    # New rows: explicit kind tag.
+    assert is_internal_message(
+        {"text": "[HITL RESOLUTION FEEDBACK] ...", "kind": "hitl_feedback"}
+    ) is True
+    # Legacy rows: text prefix only (no kind tag).
+    assert is_internal_message({"text": "[HITL RESOLUTION FEEDBACK] legacy"}) is True
+    # Normal user message — not internal.
+    assert is_internal_message({"text": "What is my latest HbA1c?"}) is False
+    # Normal assistant message — not internal.
+    assert is_internal_message({"text": "Your last HbA1c was 6.4%."}) is False
+    # Unrelated kind — not internal.
+    assert is_internal_message({"text": "hi", "kind": "note"}) is False
+    # Non-dict content — not internal (defensive).
+    assert is_internal_message(None) is False
+
+
+@pytest.mark.asyncio
+async def test_get_session_messages_hides_hitl_feedback(async_client):
+    """The GET /messages endpoint must filter out the LLM-internal HITL
+    feedback message so it never renders as a chat bubble on reload."""
+    from app.api.v1.endpoints import ai_assistance as ep
+
+    def _msg(text):
+        m = MagicMock()
+        m.id = uuid4()
+        m.role = "user"
+        m.content = {"text": text}
+        m.tool_calls = None
+        m.citations = None
+        m.tasks = None
+        m.created_at = "2026-01-01T00:00:00Z"
+        return m
+
+    visible = [_msg("user question"), _msg("assistant answer")]
+    internal = _msg("[HITL RESOLUTION FEEDBACK] ...")
+    internal.content = {
+        "text": "[HITL RESOLUTION FEEDBACK] ...",
+        "kind": "hitl_feedback",
+    }
+
+    with patch.object(ep, "ChatSessionService") as mock_cls:
+        inst = mock_cls.return_value
+        inst.get_session_messages = AsyncMock(
+            return_value=[visible[0], internal, visible[1]]
+        )
+
+        session_id = uuid4()
+        resp = await async_client.get(
+            f"/api/v1/ai-assistance/sessions/{session_id}/messages"
+        )
+
+    assert resp.status_code == 200
+    msgs = resp.json()
+    assert len(msgs) == 2
+    assert "[HITL RESOLUTION FEEDBACK]" not in resp.text

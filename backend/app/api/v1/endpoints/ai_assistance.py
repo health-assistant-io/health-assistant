@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.core.database import get_db
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat_session_service import ChatSessionService, is_internal_message
 from app.models.enums import HitlTaskStatus
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
@@ -213,9 +213,13 @@ async def get_session_messages(
 ):
     """Get all messages for a specific chat session"""
     service = ChatSessionService(db)
-    return await service.get_session_messages(
+    messages = await service.get_session_messages(
         session_id, current_user.user_id, current_user.tenant_id
     )
+    # Hide LLM-internal artifacts (e.g. the [HITL RESOLUTION FEEDBACK] user
+    # message persisted by the resume continuation). These still reconstruct
+    # into LLM history via the shared service method — only the UI omits them.
+    return [m for m in messages if not is_internal_message(m.content)]
 
 
 @router.delete("/sessions/{session_id}")

@@ -29,6 +29,31 @@ def _has_tasks_filter():
     )
 
 
+def is_internal_message(content) -> bool:
+    """True for messages that are LLM-internal artifacts and must never render
+    as a chat bubble in the UI.
+
+    The HITL resume continuation persists a structured ``[HITL RESOLUTION
+    FEEDBACK]`` user message so the agent receives the user's task-card
+    outcomes on its next turn. It MUST reconstruct into LLM history (so
+    ``reconstruct_history`` still needs it from ``get_session_messages``), but
+    it must NOT surface to the user — the GET /messages endpoint filters it
+    out via this helper.
+
+    Recognizes both the explicit ``kind="hitl_feedback"`` tag (new rows) and
+    the ``[HITL RESOLUTION FEEDBACK]`` text prefix (rows persisted before the
+    tag was introduced).
+    """
+    if not isinstance(content, dict):
+        return False
+    if content.get("kind") == "hitl_feedback":
+        return True
+    text = content.get("text")
+    if isinstance(text, str) and text.startswith("[HITL RESOLUTION FEEDBACK]"):
+        return True
+    return False
+
+
 class ChatSessionService:
     def __init__(self, db: AsyncSession):
         self.db = db

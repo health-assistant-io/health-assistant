@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Save, Pill } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { HitlOutcomeDetail, buildLinkOutcomeChips } from '../outcome';
 import { MedicationForm } from '../../../catalog/forms/MedicationForm';
 import { addCustomMedication } from '../../../../services/medicationService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
@@ -83,6 +84,13 @@ export function renderCreateMedicationSummary(task: TaskInfo): React.ReactNode {
       )}
     </div>
   );
+}
+
+export function renderCreateMedicationOutcome(task: TaskInfo): React.ReactNode | null {
+  const chips = buildLinkOutcomeChips(
+    task.resolved?.result as { links?: unknown; links_failed?: number } | undefined,
+  );
+  return chips.length ? <HitlOutcomeDetail chips={chips} /> : null;
 }
 
 export const CreateMedicationDefinitionHandler: React.FC<HitlHandlerProps> = ({

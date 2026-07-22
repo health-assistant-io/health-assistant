@@ -9,30 +9,36 @@ import {
   renderAddBiomarkerSummary,
 } from './handlers/AddBiomarkerHandler';
 import {
-  CreateMedicationHandler,
-  renderMedicationSummary,
-} from './handlers/CreateMedicationHandler';
-import {
   CreateBiomarkerDefinitionHandler,
   renderCreateBiomarkerSummary,
+  renderCreateBiomarkerOutcome,
 } from './handlers/CreateBiomarkerDefinitionHandler';
 import {
   CreateMedicationDefinitionHandler,
   renderCreateMedicationSummary,
+  renderCreateMedicationOutcome,
 } from './handlers/CreateMedicationDefinitionHandler';
 import {
   CreateAllergyHandler,
   renderAllergySummary,
+  renderAllergyOutcome,
 } from './handlers/CreateAllergyHandler';
 import {
   CreateAllergyDefinitionHandler,
   renderCreateAllergySummary,
+  renderCreateAllergyOutcome,
 } from './handlers/CreateAllergyDefinitionHandler';
-import { AskUserHandler, renderAskUserSummary } from './handlers/AskUserHandler';
+import { AskUserHandler, renderAskUserSummary, renderAskUserOutcome } from './handlers/AskUserHandler';
 import {
   GenerateAnatomyGraphHandler,
   renderAnatomyGraphSummary,
+  renderAnatomyGraphOutcome,
 } from './handlers/GenerateAnatomyGraphHandler';
+import {
+  CreateMedicationHandler,
+  renderMedicationSummary,
+  renderMedicationOutcome,
+} from './handlers/CreateMedicationHandler';
 import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, ShieldAlert, HelpCircle, Network } from 'lucide-react';
 
 export type HitlTaskStatus = TaskInfo['status'];
@@ -72,6 +78,11 @@ export interface HitlTaskHandler {
   /** Compact, read-only preview rendered inside the chat card body. Should
    * surface 2-3 key fields so the user can decide whether to open the modal. */
   renderSummary: (task: TaskInfo) => React.ReactNode;
+  /** Optional: renders result/change details inside the RESOLVED (collapsed)
+   *  card — e.g. counts of nodes/edges imported, links created/failed. Return
+   *  null when there is nothing meaningful to show. Only called for terminal
+   *  tasks (confirmed/failed/dismissed). */
+  renderOutcome?: (task: TaskInfo) => React.ReactNode | null;
   /** The full interactive form, rendered INSIDE the modal popup. Owns its own
    * actions (confirm/dismiss) via onResolved. */
   FormComponent: React.FC<HitlHandlerProps>;
@@ -104,6 +115,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: Pill,
     accent: 'amber',
     renderSummary: renderMedicationSummary,
+    renderOutcome: renderMedicationOutcome,
     FormComponent: CreateMedicationHandler,
   },
   create_biomarker_definition: {
@@ -111,6 +123,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: Beaker,
     accent: 'blue',
     renderSummary: renderCreateBiomarkerSummary,
+    renderOutcome: renderCreateBiomarkerOutcome,
     FormComponent: CreateBiomarkerDefinitionHandler,
   },
   create_medication_definition: {
@@ -118,6 +131,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: Pill,
     accent: 'indigo',
     renderSummary: renderCreateMedicationSummary,
+    renderOutcome: renderCreateMedicationOutcome,
     FormComponent: CreateMedicationDefinitionHandler,
   },
   add_allergy: {
@@ -125,6 +139,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: ShieldAlert,
     accent: 'rose',
     renderSummary: renderAllergySummary,
+    renderOutcome: renderAllergyOutcome,
     FormComponent: CreateAllergyHandler,
   },
   create_allergy_definition: {
@@ -132,6 +147,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: ShieldAlert,
     accent: 'amber',
     renderSummary: renderCreateAllergySummary,
+    renderOutcome: renderCreateAllergyOutcome,
     FormComponent: CreateAllergyDefinitionHandler,
   },
   ask_user: {
@@ -139,6 +155,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: HelpCircle,
     accent: 'indigo',
     renderSummary: renderAskUserSummary,
+    renderOutcome: renderAskUserOutcome,
     FormComponent: AskUserHandler,
     inline: true,
   },
@@ -147,6 +164,7 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     icon: Network,
     accent: 'indigo',
     renderSummary: renderAnatomyGraphSummary,
+    renderOutcome: renderAnatomyGraphOutcome,
     FormComponent: GenerateAnatomyGraphHandler,
   },
 };

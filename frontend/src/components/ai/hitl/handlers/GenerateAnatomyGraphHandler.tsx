@@ -7,9 +7,12 @@ import {
   Trash2,
   Plus,
   RefreshCw,
+  Share2,
+  ArrowRight,
 } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { OutcomeDetailModal } from '../outcome';
 import {
   AnatomyImportNode,
   AnatomyImportEdge,
@@ -120,6 +123,117 @@ export function renderAnatomyGraphSummary(task: TaskInfo): React.ReactNode {
       )}
     </div>
   );
+}
+
+/** Result details rendered inside the RESOLVED card. The node/edge count chips
+ *  are clickable and open a popup listing exactly which items were imported,
+ *  with an added/updated breakdown from the import stats. */
+const AnatomyOutcomeDetail: React.FC<{ task: TaskInfo }> = ({ task }) => {
+  const { t } = useTranslation();
+  const [view, setView] = useState<null | 'nodes' | 'edges'>(null);
+
+  const stats = task.resolved?.result?.stats as Record<string, number> | undefined;
+  const nodes = (task.resolved?.final_payload?.nodes as AnatomyImportNode[] | undefined) ?? [];
+  const edges = (task.resolved?.final_payload?.edges as AnatomyImportEdge[] | undefined) ?? [];
+  const num = (v: unknown) => (typeof v === 'number' ? v : Number(v) || 0);
+  const added = num(stats?.nodes_added);
+  const updated = num(stats?.nodes_updated);
+  const eAdded = num(stats?.edges_added);
+  const eUpdated = num(stats?.edges_updated);
+  const errors = num(stats?.errors);
+
+  const nodeTotal = nodes.length || added + updated;
+  const edgeTotal = edges.length || eAdded + eUpdated;
+  if (!nodeTotal && !edgeTotal && !errors) return null;
+
+  const nodeSub = `${added} added · ${updated} updated`;
+  const edgeSub = `${eAdded} added · ${eUpdated} updated`;
+  const chipBtn =
+    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-[10px] font-bold text-gray-600 dark:text-dark-text hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-200 dark:hover:border-indigo-500/40 transition-colors cursor-pointer';
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-dark-border">
+        {nodeTotal > 0 && (
+          <button type="button" onClick={() => setView('nodes')} className={chipBtn}>
+            <Network className="w-2.5 h-2.5 text-indigo-500 dark:text-indigo-400" />
+            <span>{nodeTotal} {t('ai_chat.hitl.generate_anatomy_graph.nodes', 'Nodes')}</span>
+          </button>
+        )}
+        {edgeTotal > 0 && (
+          <button type="button" onClick={() => setView('edges')} className={chipBtn}>
+            <Share2 className="w-2.5 h-2.5 text-indigo-500 dark:text-indigo-400" />
+            <span>{edgeTotal} {t('ai_chat.hitl.generate_anatomy_graph.edges', 'Edges')}</span>
+          </button>
+        )}
+        {errors > 0 && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/20 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+            <AlertTriangle className="w-2.5 h-2.5 text-rose-500" />
+            <span>{errors} errors</span>
+          </span>
+        )}
+      </div>
+
+      <OutcomeDetailModal
+        isOpen={view === 'nodes'}
+        onClose={() => setView(null)}
+        title={t('ai_chat.hitl.generate_anatomy_graph.nodes', 'Nodes')}
+        subtitle={nodeSub}
+        icon={Network}
+      >
+        {nodes.length === 0 ? (
+          <p className="text-xs text-gray-400">{t('ai_chat.hitl.generate_anatomy_graph.empty', 'No items.')}</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {nodes.map((n, i) => (
+              <li key={`${n.slug}-${i}`} className="flex items-center gap-2 text-xs">
+                <span className="font-semibold text-gray-800 dark:text-dark-text truncate">
+                  {n.name || n.slug}
+                </span>
+                {n.slug && n.slug !== n.name && (
+                  <span className="text-gray-400 dark:text-dark-muted truncate">/{n.slug}</span>
+                )}
+                {n.class_concept_slug && (
+                  <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate">
+                    {n.class_concept_slug}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </OutcomeDetailModal>
+
+      <OutcomeDetailModal
+        isOpen={view === 'edges'}
+        onClose={() => setView(null)}
+        title={t('ai_chat.hitl.generate_anatomy_graph.edges', 'Edges')}
+        subtitle={edgeSub}
+        icon={Share2}
+      >
+        {edges.length === 0 ? (
+          <p className="text-xs text-gray-400">{t('ai_chat.hitl.generate_anatomy_graph.empty', 'No items.')}</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {edges.map((e, i) => (
+              <li key={`${e.source_slug}-${e.target_slug}-${e.relation_type}-${i}`} className="flex items-center gap-2 text-xs min-w-0">
+                <span className="font-semibold text-gray-800 dark:text-dark-text truncate">{e.source_slug}</span>
+                <ArrowRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                <span className="font-semibold text-gray-800 dark:text-dark-text truncate">{e.target_slug}</span>
+                <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate flex-shrink-0">
+                  {RELATION_LABELS[e.relation_type] ?? e.relation_type}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </OutcomeDetailModal>
+    </>
+  );
+};
+
+export function renderAnatomyGraphOutcome(task: TaskInfo): React.ReactNode | null {
+  return <AnatomyOutcomeDetail task={task} />;
 }
 
 export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, Pencil, X } from 'lucide-react';
+import { Bot, Pencil, X, AlertTriangle } from 'lucide-react';
 import { TaskInfo } from '../../../types/ai';
 import { getHitlHandler, HITL_STATUS_META } from './registry';
 import { HitlTaskModal } from './HitlTaskModal';
@@ -59,19 +59,37 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
   // `FormComponent` registry field name (kept for parity with the modal path).
   const FormComponentInternal = handler.FormComponent;
 
-  // Resolved cards collapse to a compact summary.
+  // Resolved cards collapse to a compact summary, including result details
+  // (e.g. counts imported / links created) when the handler provides them.
   if (!isProposed) {
     const tone = TONE_CLASSES[statusMeta.tone] ?? TONE_CLASSES.gray;
     const label = task.proposed_payload?.title || task.title || task.task_type;
+    const outcome = handler.renderOutcome?.(task);
+    const errorMsg = task.status === 'failed' ? task.resolved?.error : undefined;
+    const hasDetail = Boolean(outcome || errorMsg);
     return (
-      <div className={`mt-4 rounded-2xl border ${tone.ring} bg-white dark:bg-dark-surface p-3 flex items-center gap-3`}>
-        <StatusIcon className={`w-4 h-4 flex-shrink-0 ${tone.icon}`} />
-        <div className="min-w-0 flex-1">
-          <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">
-            {t(statusMeta.labelKey)}
+      <div className={`mt-4 rounded-2xl border ${tone.ring} bg-white dark:bg-dark-surface p-3`}>
+        <div className="flex items-center gap-3">
+          <StatusIcon className={`w-4 h-4 flex-shrink-0 ${tone.icon}`} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">
+              {t(statusMeta.labelKey)}
+            </div>
+            <div className="text-xs font-bold text-gray-800 dark:text-dark-text truncate">{label}</div>
           </div>
-          <div className="text-xs font-bold text-gray-800 dark:text-dark-text truncate">{label}</div>
         </div>
+        {hasDetail && (
+          <div className="min-w-0">
+            {errorMsg ? (
+              <div className="flex items-start gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-dark-border text-[10px] text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span className="break-words">{errorMsg}</span>
+              </div>
+            ) : (
+              outcome
+            )}
+          </div>
+        )}
       </div>
     );
   }

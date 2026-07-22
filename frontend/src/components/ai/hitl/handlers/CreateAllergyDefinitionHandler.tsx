@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Save, ShieldAlert } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { HitlOutcomeDetail, buildLinkOutcomeChips } from '../outcome';
 import { AllergyForm } from '../../../catalog/forms/AllergyForm';
 import { addCustomAllergen } from '../../../../services/allergyService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
@@ -83,6 +84,13 @@ export function renderCreateAllergySummary(task: TaskInfo): React.ReactNode {
       )}
     </div>
   );
+}
+
+export function renderCreateAllergyOutcome(task: TaskInfo): React.ReactNode | null {
+  const chips = buildLinkOutcomeChips(
+    task.resolved?.result as { links?: unknown; links_failed?: number } | undefined,
+  );
+  return chips.length ? <HitlOutcomeDetail chips={chips} /> : null;
 }
 
 export const CreateAllergyDefinitionHandler: React.FC<HitlHandlerProps> = ({

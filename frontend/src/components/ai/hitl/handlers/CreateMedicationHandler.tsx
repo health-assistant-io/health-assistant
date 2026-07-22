@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pill, Calendar, Tag } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { HitlOutcomeDetail, buildLinkOutcomeChips } from '../outcome';
 import {
   MedicationForm,
   MedicationFormPrefill,
@@ -93,6 +94,13 @@ export function renderMedicationSummary(task: TaskInfo): React.ReactNode {
       )}
     </div>
   );
+}
+
+export function renderMedicationOutcome(task: TaskInfo): React.ReactNode | null {
+  const chips = buildLinkOutcomeChips(
+    task.resolved?.result as { links?: unknown; links_failed?: number } | undefined,
+  );
+  return chips.length ? <HitlOutcomeDetail chips={chips} /> : null;
 }
 
 export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sessionId, onResolved, onCancel }) => {

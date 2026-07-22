@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Save, Tag, Beaker } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { HitlOutcomeDetail, buildLinkOutcomeChips } from '../outcome';
 import { BiomarkerForm } from '../../../catalog/forms/BiomarkerForm';
 import biomarkerService from '../../../../services/biomarkerService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
@@ -86,6 +87,13 @@ export function renderCreateBiomarkerSummary(task: TaskInfo): React.ReactNode {
       )}
     </div>
   );
+}
+
+export function renderCreateBiomarkerOutcome(task: TaskInfo): React.ReactNode | null {
+  const chips = buildLinkOutcomeChips(
+    task.resolved?.result as { links?: unknown; links_failed?: number } | undefined,
+  );
+  return chips.length ? <HitlOutcomeDetail chips={chips} /> : null;
 }
 
 export const CreateBiomarkerDefinitionHandler: React.FC<HitlHandlerProps> = ({

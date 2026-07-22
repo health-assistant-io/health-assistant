@@ -1115,6 +1115,10 @@
         "failed": "Failed",
         "dismissed": "Dismissed"
       },
+      "outcome": {
+        "answers_one": "{{count}} answer",
+        "answers_other": "{{count}} answers"
+      },
       "resume_status": "Continuing after your review...",
       "resume_error": "I could not continue after your review. Please try sending a message.",
       "continue_partial_one": "Continue (1 unanswered)",

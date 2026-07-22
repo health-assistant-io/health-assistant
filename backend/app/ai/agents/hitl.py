@@ -479,11 +479,13 @@ async def resume_after_hitl(
         )
 
     # Persist the summary as a user message so it reconstructs naturally
-    # into LLM history on subsequent turns.
+    # into LLM history on subsequent turns. It is tagged ``kind=hitl_feedback``
+    # so the GET /messages endpoint can hide it from the UI (it is an
+    # LLM-internal instruction, never meant to render as a chat bubble).
     await chat_session_service.save_message(
         session_id=session_id,
         role="user",
-        content={"text": summary},
+        content={"text": summary, "kind": "hitl_feedback"},
     )
 
     patient_id = str(session.patient_id) if session.patient_id else None

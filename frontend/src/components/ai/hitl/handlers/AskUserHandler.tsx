@@ -21,7 +21,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Loader2, Send, SkipForward } from 'lucide-react';
+import { AlertTriangle, Loader2, Send, SkipForward, ChevronRight, MessageSquareText } from 'lucide-react';
 import type {
   AskUserAnswers,
   AskUserPayload,
@@ -50,6 +50,76 @@ export function renderAskUserSummary(task: TaskInfo): React.ReactNode {
       question{n === 1 ? '' : 's'}
     </div>
   );
+}
+
+function formatAskUserAnswer(q: AskUserQuestion, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (q.kind === 'freetext') return String(value);
+  if (q.kind === 'single_choice') {
+    const opt = q.options.find(o => o.value === value);
+    return opt ? opt.label : String(value);
+  }
+  if (q.kind === 'multi_choice') {
+    const arr = Array.isArray(value) ? (value as string[]) : [];
+    if (!arr.length) return '—';
+    return arr.map(v => q.options.find(o => o.value === v)?.label ?? v).join(', ');
+  }
+  if (Array.isArray(value)) {
+    const arr = value as QuestionCandidate[];
+    return arr.length ? arr.map(c => c.name).filter(Boolean).join(', ') : '—';
+  }
+  const cand = value as QuestionCandidate | null;
+  return cand?.name ?? '—';
+}
+
+const AskUserAnswersDetail: React.FC<{ task: TaskInfo }> = ({ task }) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const questions = ((task.proposed_payload?.questions) as AskUserQuestion[] | undefined) ?? [];
+  const answers = (task.resolved?.final_payload?.answers as Record<string, unknown> | undefined) ?? {};
+  if (!questions.length) return null;
+
+  const answeredCount = questions.filter(q => {
+    const v = answers[q.id];
+    return !(v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0));
+  }).length;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100 dark:border-dark-border">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+        aria-expanded={open}
+      >
+        <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
+        <MessageSquareText className="w-3 h-3" />
+        <span>
+          {t('ai_chat.hitl.outcome.answers', {
+            defaultValue: '{{count}} answers',
+            count: answeredCount,
+          })}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {questions.map(q => (
+            <div key={q.id} className="text-[11px] leading-relaxed">
+              <div className="font-semibold text-gray-500 dark:text-dark-muted">{q.prompt}</div>
+              <div className="text-gray-800 dark:text-dark-text break-words">
+                {formatAskUserAnswer(q, answers[q.id])}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export function renderAskUserOutcome(task: TaskInfo): React.ReactNode | null {
+  if (!task.proposed_payload?.questions || !task.resolved?.final_payload?.answers) return null;
+  return <AskUserAnswersDetail task={task} />;
 }
 
 // ---------------------------------------------------------------------------
