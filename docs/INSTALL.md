@@ -150,6 +150,50 @@ This flavor runs the application containers without an internal proxy. By defaul
 docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 ```
 
+### Container images & custom registries
+
+The compose files pull **pre-built images** — they have no `build:` step, so `docker compose up` fetches images from a registry rather than building locally. This applies to every flavor above and to the quick start. By default the images come from the public GitHub Container Registry:
+
+```
+ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest
+ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest
+```
+
+Three environment variables (set in `.env`) redirect the images without editing the compose file:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `REGISTRY` | `ghcr.io` | Point at your own registry or mirror (a private registry, an air-gapped mirror, etc.) |
+| `REPOSITORY` | `health-assistant-io/health-assistant` | Your namespace or fork |
+| `IMAGE_TAG` | `latest` | Pin a specific release for reproducible deploys |
+
+**Pin a release** — recommended for production, so an upstream `latest` push can't change your running version. Add to `.env`:
+
+```bash
+IMAGE_TAG=0.3.2   # example — use a tag published to your registry (see CHANGELOG.md)
+```
+
+**Use your own registry** — a fork that publishes its own images, or an internal mirror. Add to `.env`:
+
+```bash
+REGISTRY=registry.yourdomain.tld
+REPOSITORY=myorg/health-assistant
+```
+
+**Run from source** — no registry, offline, or a modified build. Since the compose files only pull, build and tag the images locally first; `docker compose up` then reuses the local images instead of pulling:
+
+```bash
+docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest -f docker/Dockerfile .
+```
+
+```bash
+docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest -f docker/Dockerfile.frontend .
+```
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+```
+
 ### Security Checklist
 
 - [ ] Change `SECRET_KEY` to a secure random value *(handled by `setup_env.py` if used)*
