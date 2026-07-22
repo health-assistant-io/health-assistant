@@ -54,12 +54,27 @@ Go to **Settings -> Actions -> Secrets** in your Gitea repository and configure 
 
 To ensure Gitea Actions can run the pipeline smoothly, apply these critical configurations to your runner's `config.yaml` inside your runner's volume:
 
-### A. Run Jobs Concurrently
-Ensure your runner can execute parallel tasks:
+### A. Pin the Runner Image to Docker Hub & Enable Concurrency
+
+By default the runner pulls job containers from `docker.gitea.com/runner-images`, which times out from some networks (error: `Get "https://docker.gitea.com/v2/": context deadline exceeded`). Map the `runs-on` labels to the identical image mirrored on Docker Hub. This is the canonical place to set the default image (Gitea 1.21+) and it applies to **every** workflow. Both the image labels and job concurrency live under `runner:`:
+
 ```yaml
 runner:
-  capacity: 2  # Allows test-backend and test-frontend to run at the same time
+  capacity: 2  # Lets test-backend and test-frontend run at the same time
+  labels:
+    - "ubuntu-latest:docker://gitea/runner-images:ubuntu-latest"
+    - "ubuntu-22.04:docker://gitea/runner-images:ubuntu-latest"
+    - "ubuntu-24.04:docker://gitea/runner-images:ubuntu-latest"
 ```
+
+Edit the `config.yaml` mounted into your runner container, then restart the service so the new labels take effect, and pre-pull once so the first job isn't gated on the registry:
+
+```bash
+docker compose restart runner                       # apply new labels
+docker pull gitea/runner-images:ubuntu-latest       # pre-warm the host image cache
+```
+
+Note: `.gitea/workflows/deploy.yml` also pins this image per-job via a `container:` block, so the pipeline keeps working even before this runner-side change is applied (defense in depth — the workflow is not solely dependent on out-of-repo runner config).
 
 ### B. Network & Sibling Container DNS Resolution
 To let spawned action containers resolve your local domain names without timeout errors, configure Gitea's docker network and add the host-gateway:

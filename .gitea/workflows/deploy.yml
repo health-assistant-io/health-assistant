@@ -7,6 +7,18 @@ on:
       - master
   workflow_dispatch:
 
+# One pipeline per branch at a time; a newer push cancels any stale run so a
+# superseded commit never reaches production.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege token scopes. Registry pushes authenticate with the
+# REGISTRY_TOKEN PAT (docker/login-action), not the workflow token.
+permissions:
+  contents: read
+  packages: write
+
 env:
   # Completely secure: these values are pulled from Gitea Secrets at runtime
   REGISTRY: ${{ secrets.REGISTRY_HOST }}
@@ -17,6 +29,9 @@ jobs:
   test-backend:
     name: Run Backend Pytest Suite
     runs-on: ubuntu-latest
+    container:
+      # Pulled from Docker Hub; docker.gitea.com times out from the runner host.
+      image: gitea/runner-images:ubuntu-latest
     services:
       postgres:
         image: timescale/timescaledb:latest-pg14
@@ -72,6 +87,8 @@ jobs:
   test-frontend:
     name: Run Frontend Lint & Build Test
     runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -98,6 +115,8 @@ jobs:
     name: Build & Push Docker Images
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
     if: ${{ secrets.REGISTRY_HOST != '' && secrets.REGISTRY_TOKEN != '' }}
     steps:
       - name: Checkout Code
@@ -109,7 +128,7 @@ jobs:
           echo "REPOSITORY_LOWER=$(echo '${{ env.REPOSITORY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Log in to Gitea Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY_LOWER }}
           username: ${{ github.actor }}
@@ -131,6 +150,8 @@ jobs:
     name: Deploy to Target Server
     needs: build-and-push
     runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
     if: ${{ secrets.VM_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout Code
@@ -142,7 +163,7 @@ jobs:
           echo "REPOSITORY_LOWER=$(echo '${{ env.REPOSITORY }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Prepare Deployment Directory via SSH
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VM_HOST }}
           username: deploy
@@ -152,7 +173,7 @@ jobs:
             mkdir -p ${{ env.DEPLOY_PATH }}
 
       - name: Copy Compose and Database Init Configs
-        uses: appleboy/scp-action@master
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.VM_HOST }}
           username: deploy
@@ -163,7 +184,7 @@ jobs:
           strip_components: 1
 
       - name: Deploy Stack and Run Migrations
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VM_HOST }}
           username: deploy
