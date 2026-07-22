@@ -57,13 +57,13 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
     });
   };
 
-  const activeAllergies = allergies.filter(a => a.clinical_status?.toLowerCase() === 'active');
-  const resolvedAllergies = allergies.filter(a => a.clinical_status?.toLowerCase() !== 'active');
+  const activeAllergies = allergies.filter(a => a.clinical_status?.toUpperCase() === 'ACTIVE');
+  const resolvedAllergies = allergies.filter(a => a.clinical_status?.toUpperCase() !== 'ACTIVE');
 
-  const getCriticalityStyles = (criticality?: string) => {
-    switch(criticality) {
-      case 'high': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 animate-pulse-slow';
-      case 'low': return 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
+  const getCriticalityStyles = (criticality?: string | null) => {
+    switch((criticality ?? '').toUpperCase()) {
+      case 'HIGH': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 animate-pulse-slow';
+      case 'LOW': return 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
       default: return 'bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-dark-text border-gray-200 dark:border-dark-border';
     }
   };
@@ -94,7 +94,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
         ]}
         onAdd={() => { setSelectedAllergy(undefined); setIsModalOpen(true); }}
         addLabel={t('allergies.add_record')}
-        titleTo="/alerts"
+        titleTo="/allergies"
       />
 
       <div className="p-4 sm:p-6 max-h-[400px] overflow-y-auto custom-scrollbar">
@@ -112,7 +112,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                   onClick={() => setExpandedId(expandedId === allergy.id ? null : allergy.id)}
                 >
                   <div className="flex items-start space-x-3 w-full pr-8">
-                    <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${allergy.criticality === 'high' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`} />
+                    <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${(allergy.criticality ?? '').toUpperCase() === 'HIGH' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm leading-tight dark:text-dark-text break-words">{allergy.code.text}</p>
                       <p className="text-[10px] opacity-70 font-medium uppercase tracking-tighter dark:text-dark-muted break-words">
@@ -174,7 +174,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                             {a.reactions && a.reactions.length > 0 ? a.reactions.map((r, i) => (
                               <div key={i} className="bg-white dark:bg-dark-surface p-3 rounded-xl border border-gray-100 dark:border-dark-border flex justify-between items-center">
                                 <div className="flex items-center space-x-3">
-                                  <div className={`w-2 h-2 rounded-full ${r.severity === 'severe' ? 'bg-red-500' : (r.severity === 'moderate' ? 'bg-yellow-500' : 'bg-blue-500')}`} />
+                                  <div className={`w-2 h-2 rounded-full ${r.severity === 'SEVERE' ? 'bg-red-500' : (r.severity === 'MODERATE' ? 'bg-yellow-500' : 'bg-blue-500')}`} />
                                   <span className="text-sm font-bold text-gray-800 dark:text-dark-text">{r.manifestation}</span>
                                 </div>
                                 <span className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-tighter">{r.severity}</span>

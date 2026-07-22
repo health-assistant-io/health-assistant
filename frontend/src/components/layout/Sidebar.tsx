@@ -155,7 +155,7 @@ function Sidebar() {
         // ── Treatments & Alerts ──
         { path: '/medications', labelKey: 'common.medications', section: 'common.section_treatments_alerts' },
         { path: '/vaccinations', labelKey: 'common.vaccinations' },
-        { path: '/alerts', labelKey: 'common.allergy_alerts' },
+        { path: '/allergies', labelKey: 'common.allergies' },
         // ── Timeline ──
         { path: '/events', labelKey: 'events.title', section: 'common.section_timeline' },
         { path: '/calendar', labelKey: 'common.calendar' },

@@ -110,7 +110,7 @@ def register_all() -> None:
     from app.models.doctor_model import DoctorModel
     from app.models.document_model import DocumentModel
     from app.models.examination_model import ExaminationModel
-    from app.models.fhir.allergy import AllergyIntolerance
+    from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
     from app.models.fhir.communication import CommunicationModel
     from app.models.fhir.device import DeviceModel
     from app.models.fhir.medication import Medication, MedicationCatalog
@@ -371,6 +371,21 @@ def register_all() -> None:
             # No create/update/delete via facade — catalog is read-only there.
             interactions=frozenset({"read", "search-type"}),
             tenant_scope="none",  # global catalog; tenant-scoped via nullable tenant_id
+            versioned=False,
+            soft_delete=False,
+        )
+    )
+
+    # ---- Catalog / standalone Substance (allergy catalog projection) ----
+    # AllergyCatalog → FHIR Substance: the allergen reference (Peanuts, Latex,
+    # Penicillin), distinct from AllergyIntolerance (the patient's reaction).
+    # Read-only over FHIR; CRUD lives at /allergies/catalog/*.
+    RESOURCE_REGISTRY.register(
+        ResourceEntry(
+            resource_type="Substance",
+            model=AllergyCatalog,
+            interactions=frozenset({"read", "search-type"}),
+            tenant_scope="none",
             versioned=False,
             soft_delete=False,
         )

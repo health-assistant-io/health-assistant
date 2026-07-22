@@ -80,15 +80,16 @@ Health Assistant features a deeply integrated Agentic AI Copilot designed to pro
 The `app/ai/tools/` package dynamically binds functions to the LangChain model based on the current `tenant_id` and `patient_id` (via `get_tools(db, tenant_id, patient_id, examination_id=None)`). Individual tools are registered with the `@register_chat_tool` decorator and receive a `ToolContext`. These tools allow the LLM to:
 - **Search Available Biomarkers:** Discover metrics, IDs, and data types (Telemetry vs Clinical) using hybrid search (trigram + full-text + alias matching, fused via Reciprocal Rank Fusion). Matches name/slug/code AND aliases (so "TSH" finds "Thyroid Stimulating Hormone") AND description/info text (so "blood sugar" finds biomarkers whose description mentions it).
 - **Search Medications:** Discover drugs in the medication catalog using hybrid search (trigram + FTS over name/description/indications). Symptom-style queries work: "headache" finds drugs whose indications mention headache.
+- **Search Allergens:** Discover allergens in the allergy catalog using hybrid search (trigram + FTS over name/description/typical_reactions). Symptom queries work: "hives" finds allergens whose typical reactions mention hives.
 - **Search Catalogs:** Cross-catalog discovery in one call — returns globally RRF-ranked hits across biomarkers, medications, vaccines, allergies, anatomy, diseases, and clinical event types, each with a `matched_on` provenance list + a `ts_headline` snippet showing the match context.
 - **Explore Catalog Relations:** Multi-hop knowledge-graph traversal ("which organ does this biomarker affect?", "what diseases does this vaccine prevent?").
 - **Fetch Aggregated Trends:** Query TimescaleDB for high-frequency telemetry (Heart Rate, Steps) with OHLC downsampling using UUIDs.
 - Read raw OCR document extractions.
 - Fetch recent biomarker values and historical trends (for discrete clinical labs using UUIDs).
-- Query active medications and catalogs.
+- Query active medications, allergies, and catalogs.
 - Look up specific clinical visit details and notes.
 - Write updates to examination notes.
-- **Propose clinical write actions** (human-in-the-loop): render review cards for creating clinical events, adding biomarker results to an examination, adding medications, etc. The user must explicitly confirm; the AI never writes directly (see §4.1 below).
+- **Propose clinical write actions** (human-in-the-loop): render review cards for creating clinical events, adding biomarker results to an examination, adding medications, recording allergies, etc. The user must explicitly confirm; the AI never writes directly (see §4.1 below).
 
 ### Streaming & Context Awareness
 The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline citations linking back to the precise clinical entities.
@@ -110,8 +111,10 @@ Beyond the single direct write tool (`update_examination_notes`), the chatbot ca
 | `create_clinical_event` | `propose_create_clinical_event` | ✅ shipped |
 | `add_biomarker_to_examination` | `propose_record_biomarker_result` | ✅ shipped |
 | `add_medication` (+ schedule) | `propose_prescribe_medication` | ✅ shipped |
+| `add_allergy` | `propose_record_allergy` | ✅ shipped |
 | `create_biomarker_definition` | `propose_define_biomarker` | ✅ shipped |
 | `create_medication_definition` | `propose_define_medication` | ✅ shipped |
+| `create_allergy_definition` | `propose_define_allergy` | ✅ shipped |
 | `generate_anatomy_graph` | `propose_anatomy_graph_generation` | ✅ shipped (AI-defined anatomy sub-graphs via the anatomy import pipeline; see [SEEDING_AND_DEMOS.md §6.4](SEEDING_AND_DEMOS.md#64-ai-driven-graph-expansion)) |
 | `create_examination` | — | ⏸ deferred (exams are upload-driven; low chat value) |
 

@@ -20,8 +20,16 @@ import {
   CreateMedicationDefinitionHandler,
   renderCreateMedicationSummary,
 } from './handlers/CreateMedicationDefinitionHandler';
+import {
+  CreateAllergyHandler,
+  renderAllergySummary,
+} from './handlers/CreateAllergyHandler';
+import {
+  CreateAllergyDefinitionHandler,
+  renderCreateAllergySummary,
+} from './handlers/CreateAllergyDefinitionHandler';
 import { AskUserHandler, renderAskUserSummary } from './handlers/AskUserHandler';
-import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, HelpCircle } from 'lucide-react';
+import { Sparkles, Activity, CheckCircle2, XCircle, AlertCircle, Pill, Beaker, ShieldAlert, HelpCircle } from 'lucide-react';
 
 export type HitlTaskStatus = TaskInfo['status'];
 
@@ -107,6 +115,20 @@ const REGISTRY: Record<string, HitlTaskHandler> = {
     accent: 'indigo',
     renderSummary: renderCreateMedicationSummary,
     FormComponent: CreateMedicationDefinitionHandler,
+  },
+  add_allergy: {
+    taskType: 'add_allergy',
+    icon: ShieldAlert,
+    accent: 'rose',
+    renderSummary: renderAllergySummary,
+    FormComponent: CreateAllergyHandler,
+  },
+  create_allergy_definition: {
+    taskType: 'create_allergy_definition',
+    icon: ShieldAlert,
+    accent: 'amber',
+    renderSummary: renderCreateAllergySummary,
+    FormComponent: CreateAllergyDefinitionHandler,
   },
   ask_user: {
     taskType: 'ask_user',

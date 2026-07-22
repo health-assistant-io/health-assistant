@@ -245,6 +245,11 @@ jobs:
             SMTP_USER=${{ secrets.SMTP_USER }}
             SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
             SMTP_FROM=${{ secrets.SMTP_FROM || 'noreply@health-assistant.local' }}
+
+            # Web Push (VAPID) — required in production or the app refuses to boot
+            VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            VAPID_ADMIN_EMAIL=${{ secrets.VAPID_ADMIN_EMAIL || 'admin@healthassistant.local' }}
             EOF
             
             # 1. Pull new images explicitly BEFORE bringing down active containers

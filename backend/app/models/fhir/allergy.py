@@ -87,6 +87,44 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "is_custom": self.is_custom,
         }
 
+    def to_fhir_dict(self) -> dict:
+        """Project this AllergyCatalog row to a FHIR R4B ``Substance`` resource.
+
+        ``AllergyCatalog`` is the canonical allergen reference definition (the
+        substance itself — Peanuts, Penicillin, Latex), distinct from
+        ``AllergyIntolerance`` (which records a patient's reaction to a
+        substance). FHIR has no dedicated "allergen catalog" resource; the
+        natural projection is ``Substance`` (the allergen as a chemical /
+        biological entity). Parity with ``MedicationCatalog.to_fhir_dict``
+        projecting to ``Medication``.
+
+        Maps:
+        - name → Substance.code.text
+        - category (FOOD/MEDICATION/ENVIRONMENT/BIOLOGIC) → Substance.category[]
+        - description → no direct R4 field; omitted (kept in the ORM row only)
+        """
+        category_map = {
+            "FOOD": "food",
+            "MEDICATION": "medication",
+            "ENVIRONMENT": "biologic",
+            "BIOLOGIC": "biologic",
+            "OTHER": "other",
+        }
+        raw_category = _enum_value(self.category, "")
+        fhir_category = category_map.get(raw_category.upper(), "other")
+
+        return build_fhir_resource(
+            "Substance",
+            {
+                "resourceType": "Substance",
+                "id": str(self.id),
+                "status": "active",
+                "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/substance-category", "code": fhir_category}]}],
+                "code": {"text": self.name} if self.name else None,
+                "meta": build_meta(str(self.id)),
+            },
+        )
+
 
 class AllergyIntolerance(
     Base,

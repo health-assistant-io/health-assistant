@@ -187,6 +187,7 @@ export const AIChatInterface: React.FC<Props> = ({
   const currentExaminationId = useUIStore(state => state.currentExaminationId);
   const currentBiomarkerId = useUIStore(state => state.currentBiomarkerId);
   const currentMedicationId = useUIStore(state => state.currentMedicationId);
+  const currentAllergyId = useUIStore(state => state.currentAllergyId);
   const pendingAIMessage = useUIStore(state => state.pendingAIMessage);
   const setPendingAIMessage = useUIStore(state => state.setPendingAIMessage);
   const lastNonAiPath = useUIStore(state => state.lastNonAiPath);
@@ -380,6 +381,7 @@ export const AIChatInterface: React.FC<Props> = ({
             examination_id: currentExaminationId,
             biomarker_id: currentBiomarkerId,
             medication_id: currentMedicationId,
+            allergy_id: currentAllergyId,
             session_id: currentSessionId,
             current_tab: activeTab
           }

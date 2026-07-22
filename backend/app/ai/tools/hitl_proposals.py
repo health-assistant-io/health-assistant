@@ -643,6 +643,228 @@ def build(ctx: ToolContext) -> List[Any]:
         return json.dumps(result)
 
     @tool
+    async def propose_record_allergy(
+        allergen_name: str,
+        criticality: Optional[str] = "low",
+        category: Optional[str] = None,
+        note: Optional[str] = None,
+        onset_date: Optional[str] = None,
+        reactions: Optional[List[dict]] = None,
+        reason: Optional[str] = None,
+        links: Optional[List[dict]] = None,
+    ) -> str:
+        """Propose recording an allergy / intolerance on the patient's chart —
+        a PATIENT-INSTANCE record (the patient reacts to this substance).
+
+        Use `propose_define_allergy` INSTEAD when the user wants to add a NEW
+        allergen to the catalog itself (a reference definition, not a record
+        on a patient). Typical trigger: "X isn't in the system yet" → use
+        define, not record.
+
+        This does NOT save anything. It renders a human-in-the-loop review card
+        prefilled with your suggestion; the user edits and explicitly confirms
+        before anything is saved. Call this ONCE per request, after gathering
+        enough context, then explain what you prepared and wait for the user.
+
+        Catalog resolution: call `search_allergens` FIRST. If a close match
+        exists, pass its canonical name as `allergen_name` (the proposal will
+        reuse the catalog_id). If no match exists, pass the name as-is and the
+        user will be offered a "define custom catalog entry" path on confirm.
+
+        Args:
+            allergen_name: The allergen name (e.g. "Peanuts", "Penicillin"). Use
+                the name returned by `search_allergens` when there is a match.
+            criticality: One of "low", "high", "unable_to_assess" (default "low").
+                "high" flags a life-threatening reaction (anaphylaxis risk).
+            category: Optional FHIR allergy category — one of "food",
+                "medication", "environment", "biologic". Guessed from the
+                catalog entry when omitted.
+            note: Optional free-text clinical note.
+            onset_date: Optional ISO date (YYYY-MM-DD) when the allergy started.
+            reactions: Optional list of reaction episodes. Each item:
+                ``{"manifestation": str, "severity": "mild"|"moderate"|"severe",
+                "date": "YYYY-MM-DD"?}``.
+            reason: Optional clinical rationale for the proposal.
+            links: Optional list of related-items links to attach to the
+                allergy catalog entry once it's resolved (e.g.
+                ``{dst_type:"anatomy", dst_id:"<uuid>", relation:"AFFECTS"}``).
+                The destination must already exist. Valid combinations are
+                returned by ``get_link_schema(src_type="allergy")``. Invalid
+                combinations are silently dropped (kept vs dropped count is
+                reported in the tool result). Links are committed to the
+                allergy **catalog** entry, not the patient intolerance row.
+        """
+        from app.services.catalog_search_service import search_allergies as _search
+
+        # Resolve the catalog entry (tenant-scoped + globals).
+        matches = await _search(ctx.db, ctx.tenant_id, allergen_name, limit=5)
+        best = matches[0] if matches else None
+
+        catalog_id = str(best.id) if best else None
+        resolved_name = best.name if best else allergen_name
+        matched = best is not None
+        resolved_category = (
+            category
+            or (getattr(best, "category", None) if best else None)
+            or "OTHER"
+        ).upper()
+        typical_reactions = (
+            list(getattr(best, "typical_reactions", None) or []) if best else []
+        )
+
+        # Normalize criticality.
+        crit = (criticality or "low").upper()
+        if crit not in {"LOW", "HIGH", "UNABLE_TO_ASSESS"}:
+            crit = "LOW"
+
+        # Validate + snapshot any proposed links (allergy catalog entry is src).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from uuid import UUID
+
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            primary_existing_id = UUID(catalog_id) if catalog_id else None
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.ALLERGY,
+                links,
+                primary_existing_id=primary_existing_id,
+            )
+
+        task = {
+            "schema_version": 1,
+            "proposal_id": str(uuid4()),
+            "task_type": "add_allergy",
+            "title": f"Add Allergy: {resolved_name}",
+            "status": HitlTaskStatus.PROPOSED,
+            "proposed_payload": {
+                # Identity / catalog resolution
+                "name": resolved_name,
+                "catalog_id": catalog_id,
+                "matched": matched,
+                "is_new": not matched,
+                # Catalog detail snapshot
+                "category": resolved_category,
+                "typical_reactions": typical_reactions,
+                # Intolerance fields
+                "clinical_status": "ACTIVE",
+                "criticality": crit,
+                "verification_status": "confirmed",
+                "onset_date": onset_date or "",
+                "resolved_date": "",
+                "last_occurrence": "",
+                "note": note or "",
+                "reactions": reactions or [],
+                # Related-items links (validated + snapshotted server-side)
+                "links": link_specs["kept"],
+            },
+            "context": {
+                "patient_id": str(ctx.patient_id),
+                "reason": reason,
+            },
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "resolved": None,
+        }
+        await _notify_hitl_proposal(ctx, task)
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
+
+    @tool
+    async def propose_define_allergy(
+        name: str,
+        category: Optional[str] = "OTHER",
+        description: Optional[str] = None,
+        typical_reactions: Optional[List[str]] = None,
+        links: Optional[List[dict]] = None,
+    ) -> str:
+        """Propose defining a NEW allergen in the tenant catalog — a reference
+        definition (the substance itself, not a patient's reaction).
+
+        Use `propose_record_allergy` INSTEAD when the user wants to record a
+        reaction on the patient's chart (a patient-instance intolerance).
+        Typical trigger: "I'm allergic to X" / "add X to my allergies" → use
+        record, not define.
+
+        This does NOT save anything. It renders a human-in-the-loop review card
+        prefilled with your suggestion; the user edits and explicitly confirms
+        before anything is saved. Call this ONCE per request, then explain what
+        you prepared and wait for the user.
+
+        Use this when the user asks to track an allergen that
+        `search_allergens` cannot find (e.g. a niche substance). Do NOT use it
+        to record a reaction to an existing catalog allergen (use
+        `propose_record_allergy` for that).
+
+        Args:
+            name: Canonical allergen name (e.g. "Peanuts", "Latex").
+            category: One of "FOOD", "MEDICATION", "ENVIRONMENT", "BIOLOGIC",
+                "OTHER" (default "OTHER").
+            description: Optional short description.
+            typical_reactions: Optional list of common reaction symptoms
+                (e.g. ["Hives", "Anaphylaxis"]).
+            links: Optional list of related-items links to create alongside,
+                once this definition exists (e.g. anatomy affected via
+                ``relation:"AFFECTS"``). The destination must already exist.
+                Valid combinations are returned by
+                ``get_link_schema(src_type="allergy")``. Invalid combinations
+                are silently dropped (kept vs dropped count is reported in the
+                tool result).
+        """
+        # Normalize category to upper-case enum value.
+        cat = (category or "OTHER").upper()
+
+        # Validate + snapshot any proposed links (allergy is the src).
+        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        if links:
+            from app.ai.tools.propose_link import build_link_specs
+            from app.models.enums import EdgeEndpointType
+
+            link_specs = await build_link_specs(
+                ctx.db,
+                ctx.tenant_id,
+                EdgeEndpointType.ALLERGY,
+                links,
+            )
+
+        task = {
+            "schema_version": 1,
+            "proposal_id": str(uuid4()),
+            "task_type": "create_allergy_definition",
+            "title": f"Define Allergy: {name}",
+            "status": HitlTaskStatus.PROPOSED,
+            "proposed_payload": {
+                "name": name,
+                "category": cat,
+                "description": description or "",
+                "typical_reactions": list(typical_reactions or []),
+                "links": link_specs["kept"],
+            },
+            "context": {
+                "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
+            },
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "resolved": None,
+        }
+        await _notify_hitl_proposal(ctx, task)
+        drop_count = len(link_specs["dropped"])
+        result = {"__hitl__": True, "task": task}
+        if drop_count:
+            result["links_dropped"] = drop_count
+            result["links_dropped_reasons"] = [
+                d.get("reason", "unknown") for d in link_specs["dropped"]
+            ]
+        return json.dumps(result)
+
+    @tool
     async def propose_anatomy_graph_generation(target_structure: str) -> str:
         """Propose generating an anatomical graph expansion (nodes and edges) for a
         specific body part, organ, or system (e.g., 'Heart', 'Cardiovascular System').
@@ -675,7 +897,9 @@ def build(ctx: ToolContext) -> List[Any]:
         propose_create_clinical_event,
         propose_record_biomarker_result,
         propose_prescribe_medication,
-        propose_define_biomarker,
         propose_define_medication,
+        propose_record_allergy,
+        propose_define_allergy,
+        propose_define_biomarker,
         propose_anatomy_graph_generation,
     ]

@@ -103,6 +103,7 @@ async def check_medication_access(
         select(Medication).where(
             Medication.id == medication_id,
             Medication.tenant_id == current_user.tenant_id,
+            Medication.deleted_at.is_(None),
         )
     )
     medication = result.scalar_one_or_none()
@@ -185,6 +186,7 @@ async def check_allergy_access(
         select(AllergyIntolerance).where(
             AllergyIntolerance.id == allergy_id,
             AllergyIntolerance.tenant_id == current_user.tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
         )
     )
     allergy = result.scalar_one_or_none()

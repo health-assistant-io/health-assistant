@@ -559,7 +559,8 @@ Patient-instance routes use `check_patient_access` / `check_medication_access`.
 
 ### `allergies` — catalog + patient instances
 
-Same scope model as medications.
+Same scope model as medications. Mirrors the medications parity surface
+(single-instance fetch, cross-patient usage, AI reprocess).
 
 | Method | Path | Auth | Body / Query | Response |
 |---|---|---|---|---|
@@ -568,9 +569,12 @@ Same scope model as medications.
 | `POST` | `/allergies/catalog` | scope-derived | `AllergyCatalogCreate` | `AllergyCatalogResponse` |
 | `PUT` | `/allergies/catalog/{catalog_id}` | scope+ownership | `AllergyCatalogUpdate` | `AllergyCatalogResponse` |
 | `DELETE` | `/allergies/catalog/{catalog_id}` | scope+ownership | — | `{message}` |
-| `GET` | `/allergies/active` | any | — | `List[AllergyIntoleranceResponse]` | For `USER` returns own patients; otherwise whole-tenant active allergies. |
+| `GET` | `/allergies/catalog/{catalog_id}/usage` | any | — | `List[{allergy, patient}]` | Cross-patient intolerances pointing at this catalog allergen (drives the detail-page tab). |
+| `POST` | `/allergies/catalog/{catalog_id}/reprocess` | any | — | `AllergyCatalogResponse` | AI re-enrich the catalog entry's description / typical_reactions (best-effort — no-op when no NLP backend is wired). |
+| `GET` | `/allergies/active` | any | — | `List[AllergyIntoleranceResponse]` | For `USER` returns own patients; otherwise whole-tenant active allergies. Powers the dashboard `AllergyAlertsCard`. |
 | `GET` | `/allergies/patient/{patient_id}` | `check_patient_access` | — | `List[AllergyIntoleranceResponse]` |
 | `POST` | `/allergies/patient/{patient_id}` | `check_patient_access` | `AllergyIntoleranceCreate` | `AllergyIntoleranceResponse` |
+| `GET` | `/allergies/{allergy_id}` | `check_allergy_access` | — | `AllergyIntoleranceResponse` |
 | `PUT` | `/allergies/{allergy_id}` | `check_allergy_access` | `AllergyIntoleranceUpdate` | `AllergyIntoleranceResponse` |
 | `DELETE` | `/allergies/{allergy_id}` | `check_allergy_access` | — | `{message}` |
 

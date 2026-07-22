@@ -282,7 +282,7 @@
     "last_visit": "Last Visit",
     "yesterday": "Yesterday",
     "days_ago": "{{count}} days ago",
-    "since": "Since",
+    "since": "since",
     "examination_history": "Examination History",
     "examination_history_info": "Patient's examination visits sorted by date. Each row shows the category, attending clinician, and document processing status. Click to open the full examination record.",
     "no_exams_recorded": "No examinations recorded for this patient.",
@@ -298,7 +298,6 @@
     "currently_active": "Currently active",
     "currently_active_info": "Ongoing conditions and active episodes — shown once, not repeated daily.",
     "view_all": "View all",
-    "since": "since",
     "active_range": "active",
     "ongoing_indicator": "ongoing",
     "collapse": "Collapse",
@@ -500,7 +499,64 @@
       "manifestation_placeholder": "Manifestation (e.g. Hives, Nausea)",
       "notes_placeholder": "Additional clinical context or specific instructions...",
       "update_record": "Update Record",
-      "save_allergy": "Save Allergy"
+      "save_allergy": "Save Allergy",
+      "select_from_catalog": "Select from catalog",
+      "define_new": "Define a new allergen",
+      "clinical_records": "Clinical record",
+      "name_label": "Name",
+      "description_label": "Description",
+      "typical_reactions": "Typical reactions",
+      "add_reaction_placeholder": "Add a typical reaction",
+      "editing_record_for": "Editing record for",
+      "category_label": "Category"
+    },
+    "patient_allergies_for": "Allergies for {{name}}",
+    "open_catalog": "Open Catalog",
+    "add_allergy": "Add Allergy",
+    "active_allergies": "Active allergies",
+    "no_allergies_found": "No allergies found",
+    "try_adjusting_filters": "Try adjusting filters or add a new allergy.",
+    "resolved": "Resolved",
+    "back_to_list": "Back to allergies",
+    "allergen_id": "Allergen ID",
+    "description_placeholder": "Describe the allergen…",
+    "typical_reactions": "Typical reactions",
+    "category_info": "Category",
+    "reactions_tab": "Reactions",
+    "management": "Management",
+    "patient_usage": "Patient usage",
+    "affected_patients": "patients",
+    "no_patients_affected": "No patients affected",
+    "criticality_label": "Criticality",
+    "reactions_count": "reactions",
+    "no_recorded_reactions": "No recorded reactions",
+    "no_recorded_reactions_desc": "No patient has this allergen on their chart yet.",
+    "reprocessing": "Reprocessing…",
+    "ai_reprocess": "AI reprocess",
+    "manage_in_catalog": "Manage in Catalogs",
+    "add_reaction_placeholder": "Add a typical reaction",
+    "ai_actions_title": "Allergy AI Assistant",
+    "ai_actions": {
+      "explain": {
+        "label": "Explain Allergen",
+        "description": "What is this allergen?",
+        "prompt": "Explain the allergen \"{{name}}\": what it is, common sources, and how exposure typically happens."
+      },
+      "reactions": {
+        "label": "Reactions",
+        "description": "Typical reaction symptoms",
+        "prompt": "What are the typical reaction symptoms for \"{{name}}\" allergy, and which signs would indicate a severe or anaphylactic response?"
+      },
+      "alternatives": {
+        "label": "Alternatives",
+        "description": "Safe substitutes / avoidance",
+        "prompt": "Suggest safe alternatives and practical avoidance strategies for a patient allergic to \"{{name}}\"."
+      },
+      "severity": {
+        "label": "Severity",
+        "description": "Severity & management",
+        "prompt": "How is the severity of a \"{{name}}\" allergy typically assessed, and what monitoring or management plan would you recommend?"
+      }
     }
   },
   "examinations": {
@@ -1062,7 +1118,14 @@
       "resume_status": "Continuing after your review...",
       "resume_error": "I could not continue after your review. Please try sending a message.",
       "continue_partial_one": "Continue (1 unanswered)",
-      "continue_partial_other": "Continue ({{count}} unanswered)"
+      "continue_partial_other": "Continue ({{count}} unanswered)",
+      "add_allergy": {
+        "confirm": "Confirm & Add Allergy",
+        "error_no_patient": "A patient context is required to add an allergy."
+      },
+      "create_allergy": {
+        "confirm": "Confirm & Create Allergen"
+      }
     },
     "status": {
       "error": "I'm sorry, I encountered an error while responding.",

@@ -45,6 +45,7 @@ interface UIState {
   currentExaminationId: string | null;
   currentBiomarkerId: string | null;
   currentMedicationId: string | null;
+  currentAllergyId: string | null;
   pendingAIMessage: string | null;
   pageHeaderConfig: PageHeaderConfig | null;
 
@@ -68,6 +69,7 @@ interface UIState {
   setCurrentExaminationId: (id: string | null) => void;
   setCurrentBiomarkerId: (id: string | null) => void;
   setCurrentMedicationId: (id: string | null) => void;
+  setCurrentAllergyId: (id: string | null) => void;
   setPendingAIMessage: (message: string | null) => void;
   setPageHeaderConfig: (config: PageHeaderConfig | null) => void;
 }
@@ -88,6 +90,7 @@ export const useUIStore = create<UIState>((set) => ({
   currentExaminationId: null,
   currentBiomarkerId: null,
   currentMedicationId: null,
+  currentAllergyId: null,
   pendingAIMessage: null,
   pageHeaderConfig: null,
 
@@ -111,6 +114,7 @@ export const useUIStore = create<UIState>((set) => ({
   setCurrentExaminationId: (id) => set({ currentExaminationId: id }),
   setCurrentBiomarkerId: (id) => set({ currentBiomarkerId: id }),
   setCurrentMedicationId: (id) => set({ currentMedicationId: id }),
+  setCurrentAllergyId: (id) => set({ currentAllergyId: id }),
   setPendingAIMessage: (message) => set({ pendingAIMessage: message }),
   setPageHeaderConfig: (config) => set({ pageHeaderConfig: config }),
 }));

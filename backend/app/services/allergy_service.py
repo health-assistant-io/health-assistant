@@ -1,300 +1,405 @@
-import json
-from typing import List, Optional, Dict, Any
-from uuid import UUID
-from datetime import datetime
-import logging
-from sqlalchemy import select, or_
-from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
-from app.core.database import AsyncSessionLocal
-from app.services.fhir_helpers import assert_valid_fhir
+"""Allergy catalog + patient-instance intolerance service.
 
+Mirrors :mod:`app.services.medication_service`: db-injected async functions
+with Pydantic-schema params (not raw dicts), write-time FHIR validation gate,
+and scope+ownership RBAC on catalog mutations. Adds the parity surface that
+was missing vs medications — single-instance fetch, cross-patient usage, and
+AI reprocess.
+"""
+
+import logging
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.schemas.allergy import (
+    AllergyCatalogCreate,
+    AllergyCatalogUpdate,
+    AllergyIntoleranceCreate,
+    AllergyIntoleranceUpdate,
+)
+from app.services.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_iso_datetime(date_str: Optional[str]) -> Optional[datetime]:
-    if not date_str:
-        return None
-    try:
-        # Handle Z suffix for UTC if present
-        if isinstance(date_str, str) and date_str.endswith("Z"):
-            date_str = date_str.replace("Z", "+00:00")
-
-        dt = None
-        if isinstance(date_str, datetime):
-            dt = date_str
-        else:
-            dt = datetime.fromisoformat(date_str)
-
-        # Convert to naive UTC if it has timezone info
-        # because the database columns are currently TIMESTAMP WITHOUT TIME ZONE
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(None).replace(tzinfo=None)
-        return dt
-    except (ValueError, TypeError):
-        return None
+# ---------------------------------------------------------------------------
+# Catalog
+# ---------------------------------------------------------------------------
 
 
-def _ensure_json(val: Any) -> Any:
-    if isinstance(val, str):
-        try:
-            return json.loads(val)
-        except json.JSONDecodeError:
-            return val
-    return val
-
-
-async def list_allergy_catalog(
-    search: Optional[str] = None, tenant_id: Optional[UUID] = None
+async def get_allergy_catalog(
+    db: AsyncSession, tenant_id: UUID, search: Optional[str] = None
 ) -> List[AllergyCatalog]:
+    """Search the global + tenant allergy catalog (hybrid search)."""
     from app.services.catalog_search_service import search_allergies
 
-    # Delegate to the unified catalog search service (trigram + ilike fallback,
-    # tenant-scoped, ranked). This service manages its own session; we accept
-    # the previous signature (no db arg) for back-compat.
-    if tenant_id is None:
-        # No tenant context: fall back to a plain unranked listing of globals.
-        async with AsyncSessionLocal() as db:
-            query = select(AllergyCatalog).where(AllergyCatalog.tenant_id.is_(None))
-            if search:
-                query = query.where(AllergyCatalog.name.ilike(f"%{search}%"))
-            result = await db.execute(query.order_by(AllergyCatalog.name.asc()))
-            return result.scalars().all()
-
-    async with AsyncSessionLocal() as db:
-        return await search_allergies(db, tenant_id, search)
-
-
-async def get_active_allergies_by_tenant(tenant_id: UUID) -> List[Dict[str, Any]]:
-    async with AsyncSessionLocal() as db:
-        from app.models.fhir.allergy import AllergyClinicalStatus
-        from app.models.fhir.patient import Patient
-
-        query = (
-            select(AllergyIntolerance, Patient.name.label("patient_name"))
-            .join(Patient, AllergyIntolerance.patient_id == Patient.id)
-            .where(
-                AllergyIntolerance.tenant_id == tenant_id,
-                AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
-            )
-            .order_by(AllergyIntolerance.criticality.desc())
-        )
-
-        result = await db.execute(query)
-        rows = result.all()
-
-        output = []
-        for allergy, p_name in rows:
-            data = allergy.to_dict()
-            data["patient_name_display"] = (
-                f"{p_name.get('given', [''])[0]} {p_name.get('family', '')}"
-            )
-            output.append(data)
-
-        return output
-
-
-async def add_to_catalog(
-    name: str,
-    category: str,
-    actor,
-    description: Optional[str] = None,
-) -> AllergyCatalog:
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    async with AsyncSessionLocal() as db:
-        new_entry = AllergyCatalog(name=name, category=category, description=description)
-        DEFAULT_CATALOG_POLICY.assign_create_scope(
-            actor.role, new_entry, actor.tenant_id, actor.user_id
-        )
-        db.add(new_entry)
-        await db.commit()
-        await db.refresh(new_entry)
-        return new_entry
+    return await search_allergies(db, tenant_id, search)
 
 
 async def get_catalog_allergy(
-    catalog_id: UUID, tenant_id: UUID
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
 ) -> Optional[AllergyCatalog]:
-    """Fetch one allergy catalog entry, tenant-scoped (global + caller's tenant)."""
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AllergyCatalog).where(
-                AllergyCatalog.id == catalog_id,
-                or_(
-                    AllergyCatalog.tenant_id.is_(None),
-                    AllergyCatalog.tenant_id == tenant_id,
-                ),
-            )
-        )
-        return result.scalar_one_or_none()
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def create_catalog_allergy(
+    db: AsyncSession, actor, data: AllergyCatalogCreate
+) -> AllergyCatalog:
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    new_entry = AllergyCatalog(**data.model_dump())
+    DEFAULT_CATALOG_POLICY.assign_create_scope(
+        actor.role, new_entry, actor.tenant_id, actor.user_id
+    )
+    # Write-time FHIR gate (parity with medication_service). AllergyCatalog
+    # projects to FHIR Substance; invalid shapes never persist.
+    assert_valid_fhir(new_entry)
+    db.add(new_entry)
+    await db.commit()
+    await db.refresh(new_entry)
+    return new_entry
 
 
 async def update_catalog_allergy(
-    catalog_id: UUID, actor, data: Dict[str, Any]
+    db: AsyncSession,
+    catalog_id: UUID,
+    actor,
+    data: AllergyCatalogUpdate,
 ) -> Optional[AllergyCatalog]:
-    """Update an allergy catalog entry with scope+ownership RBAC.
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
-    USER-scope: creator OR ADMIN; tenant-scope: ADMIN/MANAGER; system-scope:
-    SYSTEM_ADMIN. Raises :class:`CatalogPermissionDenied` (→ HTTP 403).
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == actor.tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        entry.scope,
+        item_created_by=entry.created_by,
+        actor_user_id=actor.user_id,
+    )
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(entry, key, value)
+
+    assert_valid_fhir(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+async def delete_catalog_allergy(
+    db: AsyncSession,
+    catalog_id: UUID,
+    actor,
+) -> bool:
+    """Delete an allergy catalog entry (scope + ownership enforced).
+
+    Returns ``False`` if the entry is missing or out of tenant scope.
+    Raises :class:`CatalogPermissionDenied` (→ HTTP 403) on insufficient role.
     """
     from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AllergyCatalog).where(
-                AllergyCatalog.id == catalog_id,
-                or_(
-                    AllergyCatalog.tenant_id.is_(None),
-                    AllergyCatalog.tenant_id == actor.tenant_id,
-                ),
-            )
-        )
-        entry = result.scalar_one_or_none()
-        if entry is None:
-            return None
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == actor.tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return False
 
-        DEFAULT_CATALOG_POLICY.check_modify(
-            actor.role,
-            entry.scope,
-            item_created_by=entry.created_by,
-            actor_user_id=actor.user_id,
-        )
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        entry.scope,
+        item_created_by=entry.created_by,
+        actor_user_id=actor.user_id,
+    )
 
-        for key, value in data.items():
-            if hasattr(entry, key) and key != "id":
-                setattr(entry, key, value)
-        await db.commit()
-        await db.refresh(entry)
-        return entry
+    await db.delete(entry)
+    await db.commit()
+    return True
 
 
-async def delete_catalog_allergy(catalog_id: UUID, actor) -> bool:
-    """Delete an allergy catalog entry with scope+ownership RBAC."""
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AllergyCatalog).where(
-                AllergyCatalog.id == catalog_id,
-                or_(
-                    AllergyCatalog.tenant_id.is_(None),
-                    AllergyCatalog.tenant_id == actor.tenant_id,
-                ),
-            )
-        )
-        entry = result.scalar_one_or_none()
-        if entry is None:
-            return False
-
-        DEFAULT_CATALOG_POLICY.check_modify(
-            actor.role,
-            entry.scope,
-            item_created_by=entry.created_by,
-            actor_user_id=actor.user_id,
-        )
-        await db.delete(entry)
-        await db.commit()
-        return True
+# ---------------------------------------------------------------------------
+# Patient-instance intolerances
+# ---------------------------------------------------------------------------
 
 
 async def get_patient_allergies(
-    patient_id: UUID, tenant_id: UUID
+    db: AsyncSession, patient_id: UUID, tenant_id: UUID
 ) -> List[AllergyIntolerance]:
-    async with AsyncSessionLocal() as db:
-        query = (
-            select(AllergyIntolerance)
-            .where(
-                AllergyIntolerance.patient_id == patient_id,
-                AllergyIntolerance.tenant_id == tenant_id,
-            )
-            .order_by(
-                AllergyIntolerance.clinical_status.asc(),
-                AllergyIntolerance.onset_date.desc(),
-            )
+    query = (
+        select(AllergyIntolerance)
+        .where(
+            AllergyIntolerance.patient_id == patient_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
         )
+        .order_by(
+            AllergyIntolerance.clinical_status.asc(),
+            AllergyIntolerance.onset_date.desc().nullslast(),
+            AllergyIntolerance.created_at.desc(),
+        )
+    )
+    result = await db.execute(query)
+    return list(result.scalars().all())
 
-        result = await db.execute(query)
-        return result.scalars().all()
+
+async def get_allergy(
+    db: AsyncSession, allergy_id: UUID, tenant_id: UUID
+) -> Optional[AllergyIntolerance]:
+    """Fetch one patient-instance allergy, tenant-scoped + non-deleted."""
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def add_patient_allergy(
-    patient_id: UUID, tenant_id: UUID, data: Dict[str, Any]
+    db: AsyncSession,
+    patient_id: UUID,
+    tenant_id: UUID,
+    data: AllergyIntoleranceCreate,
 ) -> AllergyIntolerance:
-    async with AsyncSessionLocal() as db:
-        new_allergy = AllergyIntolerance(
-            patient_id=patient_id,
-            tenant_id=tenant_id,
-            clinical_status=data.get("clinical_status", "ACTIVE"),
-            category=data.get("category"),
-            criticality=data.get("criticality"),
-            code=_ensure_json(data.get("code")),  # {"text": "...", "catalog_id": "..."}
-            onset_date=_parse_iso_datetime(data.get("onset_date")),
-            resolved_date=_parse_iso_datetime(data.get("resolved_date")),
-            last_occurrence=_parse_iso_datetime(data.get("last_occurrence")),
-            note=data.get("note"),
-            reactions=_ensure_json(data.get("reactions", [])),
-        )
-        # Write-time FHIR validation gate: invalid FHIR can never persist via
-        # this path. Parity with fhir_service's gate for Observation/Medication/
-        # DiagnosticReport.
-        assert_valid_fhir(new_allergy)
-        db.add(new_allergy)
-        await db.commit()
-        await db.refresh(new_allergy)
-        return new_allergy
+    new_record = AllergyIntolerance(
+        patient_id=patient_id,
+        tenant_id=tenant_id,
+        **data.model_dump(exclude_unset=True),
+    )
+    # Write-time FHIR gate (audit C13): invalid FHIR never persists.
+    assert_valid_fhir(new_record)
+    db.add(new_record)
+    await db.commit()
+    await db.refresh(new_record)
+    return new_record
 
 
 async def update_patient_allergy(
-    allergy_id: UUID, tenant_id: UUID, data: Dict[str, Any]
+    db: AsyncSession,
+    allergy_id: UUID,
+    tenant_id: UUID,
+    data: AllergyIntoleranceUpdate,
 ) -> Optional[AllergyIntolerance]:
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AllergyIntolerance).where(
-                AllergyIntolerance.id == allergy_id,
-                AllergyIntolerance.tenant_id == tenant_id,
-            )
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
         )
-        allergy = result.scalar_one_or_none()
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return None
 
-        if not allergy:
-            return None
+    update_data = data.model_dump(exclude_unset=True)
 
-        # Handle specific fields
-        date_fields = ["onset_date", "resolved_date", "last_occurrence"]
-        json_fields = ["code", "reactions"]
+    # Merge code partially so a text-only update doesn't wipe catalog_id (and
+    # vice versa) — mirrors medication_service.update_patient_medication.
+    if "code" in update_data and update_data["code"]:
+        current_code = record.code or {}
+        record.code = {**current_code, **update_data["code"]}
+        del update_data["code"]
 
-        for key, value in data.items():
-            if hasattr(allergy, key):
-                if key in date_fields:
-                    setattr(allergy, key, _parse_iso_datetime(value))
-                elif key in json_fields:
-                    setattr(allergy, key, _ensure_json(value))
-                else:
-                    setattr(allergy, key, value)
+    for key, value in update_data.items():
+        setattr(record, key, value)
 
-        # Validate the projected FHIR shape after mutation, before commit.
-        # Catches malformed JSON in code/reactions that would otherwise only
-        # surface at export time.
-        assert_valid_fhir(allergy)
-        await db.commit()
-        await db.refresh(allergy)
-        return allergy
+    assert_valid_fhir(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
 
 
-async def delete_patient_allergy(allergy_id: UUID, tenant_id: UUID) -> bool:
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(AllergyIntolerance).where(
-                AllergyIntolerance.id == allergy_id,
-                AllergyIntolerance.tenant_id == tenant_id,
-            )
+async def delete_patient_allergy(
+    db: AsyncSession, allergy_id: UUID, tenant_id: UUID
+) -> bool:
+    """Hard-delete the row (parity with medication_service.delete_patient_medication).
+
+    Note: the FHIR R4 facade soft-deletes via ``deleted_at`` (audit C5). This
+    domain endpoint removes the row entirely, matching the medications path.
+    """
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
         )
-        allergy = result.scalar_one_or_none()
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return False
+    await db.delete(record)
+    await db.commit()
+    return True
 
-        if not allergy:
-            return False
 
-        await db.delete(allergy)
-        await db.commit()
-        return True
+async def get_active_allergies_by_tenant(
+    db: AsyncSession, tenant_id: UUID
+) -> List[Dict[str, Any]]:
+    """All ACTIVE intolerances in the tenant + the patient display name.
+
+    Used by the dashboard ``AllergyAlertsCard`` and the legacy cross-patient
+    alerts feed (now reachable at ``/allergies/active``).
+    """
+    from app.models.enums import AllergyClinicalStatus
+    from app.models.fhir.patient import Patient
+
+    query = (
+        select(AllergyIntolerance, Patient.name.label("patient_name"))
+        .join(Patient, AllergyIntolerance.patient_id == Patient.id)
+        .where(
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+        .order_by(AllergyIntolerance.criticality.desc())
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    output: List[Dict[str, Any]] = []
+    for allergy, p_name in rows:
+        data = allergy.to_dict()
+        data["patient_name_display"] = (
+            f"{p_name.get('given', [''])[0]} {p_name.get('family', '')}"
+        )
+        output.append(data)
+    return output
+
+
+async def get_allergy_usage(
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
+) -> List[Dict[str, Any]]:
+    """All patient intolerances pointing at the given allergy catalog entry.
+
+    Mirrors ``medication_service.get_medication_usage``: drives the "patients
+    affected" tab on the allergy detail page and surfaces cross-patient
+    impact for clinicians reviewing the allergen.
+    """
+    from app.models.fhir.patient import Patient
+
+    query = (
+        select(AllergyIntolerance, Patient)
+        .join(Patient, AllergyIntolerance.patient_id == Patient.id)
+        .where(
+            AllergyIntolerance.code["catalog_id"].astext == str(catalog_id),
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    usage: List[Dict[str, Any]] = []
+    for allergy, patient in rows:
+        usage.append(
+            {
+                "allergy": allergy.to_dict(),
+                "patient": {
+                    "id": str(patient.id),
+                    "name": patient.name,
+                    "mrn": patient.mrn,
+                },
+            }
+        )
+    return usage
+
+
+async def reprocess_allergy(
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
+) -> Optional[AllergyCatalog]:
+    """AI re-enrich an existing allergy catalog entry's description and
+    typical_reactions.
+
+    Parity with ``medication_service.reprocess_medication``: pulls the catalog
+    row, runs the NLP extractor's pass-2 allergen enrichment, and writes the
+    enriched fields back. Falls back gracefully (returns the unchanged row)
+    when AI is unavailable, the extractor has no allergen enrichment method,
+    or it returns nothing. This keeps the endpoint usable today while leaving
+    a seam for future NLP enrichment.
+    """
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+
+    try:
+        from app.ai.processors.nlp import get_nlp_extractor_from_db
+
+        nlp = await get_nlp_extractor_from_db(
+            db, task_type="nlp", tenant_id=tenant_id
+        )
+    except Exception as exc:
+        logger.warning("Allergy reprocess: NLP extractor unavailable (%s).", exc)
+        return entry
+
+    # The allergen-enrichment pass is optional on the extractor contract; only
+    # invoke it when the configured backend implements it.
+    enrich = getattr(nlp, "parse_document_pass_2_allergies", None)
+    if enrich is None:
+        logger.info(
+            "Allergy reprocess: extractor has no allergen enrichment; no-op."
+        )
+        return entry
+
+    try:
+        new_defs = await enrich([{"raw_name": entry.name}])
+    except Exception as exc:
+        logger.warning("Allergy reprocess: NLP pass-2 raised %s", exc)
+        return entry
+
+    definitions = getattr(new_defs, "definitions", None) or []
+    if not definitions:
+        return entry
+
+    enriched = definitions[0]
+    if getattr(enriched, "description", None):
+        entry.description = enriched.description
+    typical = getattr(enriched, "typical_reactions", None)
+    if typical:
+        entry.typical_reactions = list(typical)
+    category_raw = getattr(enriched, "category", None)
+    if category_raw:
+        try:
+            from app.models.enums import AllergyCategory
+
+            entry.category = AllergyCategory(str(category_raw).upper())
+        except (ValueError, KeyError):
+            pass
+
+    await db.commit()
+    await db.refresh(entry)
+    return entry

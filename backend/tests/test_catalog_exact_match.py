@@ -89,9 +89,9 @@ def test_c9_import_service_allergy_catalog_uses_exact_match():
 def test_c9_catalog_search_uses_hybrid_pipeline():
     """catalog SEARCH was upgraded from plain substring ilike to a hybrid
     pipeline (trigram + FTS + Reciprocal Rank Fusion). Verify the hybrid
-    markers are present and the old dedup-hostile raw ilike on the unified
-    search service is gone. (The per-domain allergy_service keeps an ilike
-    fallback for its non-hybrid read path.)"""
+    markers are present in the unified search service and the old dedup-hostile
+    raw ilike is gone. The per-domain allergy_service delegates entirely to
+    ``search_allergies`` from the unified service (no legacy ilike fallback)."""
     from app.services import catalog_search_service, allergy_service
 
     # catalog_search_service now uses trigram + FTS, fused via RRF.
@@ -108,6 +108,12 @@ def test_c9_catalog_search_uses_hybrid_pipeline():
     assert 'MedicationCatalog.name.ilike(f"%{q}%")' not in cs_src
     assert 'AllergyCatalog.name.ilike(f"%{q}%")' not in cs_src
 
-    # allergy_service still uses ilike as a fallback on its non-hybrid path.
+    # allergy_service.get_allergy_catalog delegates to the unified hybrid
+    # search (no legacy ilike fallback of its own anymore).
     as_src = inspect.getsource(allergy_service)
-    assert 'AllergyCatalog.name.ilike(f"%{search}%")' in as_src
+    assert "search_allergies" in as_src, (
+        "allergy_service should delegate catalog search to the unified hybrid pipeline"
+    )
+    assert 'AllergyCatalog.name.ilike' not in as_src, (
+        "allergy_service should not carry its own ilike fallback anymore"
+    )

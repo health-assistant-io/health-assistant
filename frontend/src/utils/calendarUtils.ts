@@ -123,7 +123,7 @@ export const adaptAllergyToEvent = (allergy: AllergyIntolerance): CalendarEvent 
     id: allergy.id,
     type: 'allergy',
     title: `Allergy: ${allergy.code.text}`,
-    subtitle: allergy.criticality,
+    subtitle: allergy.criticality ?? undefined,
     date: parseISO(dateStr),
     status: allergy.clinical_status,
     kind: 'point',

@@ -15,7 +15,7 @@ export interface AIAction {
 interface Props {
   actions: AIAction[];
   contextId: string;
-  contextType: 'examination' | 'biomarker' | 'medication';
+  contextType: 'examination' | 'biomarker' | 'medication' | 'allergy';
   title?: string;
   className?: string;
   align?: 'left' | 'right';
@@ -41,6 +41,7 @@ export const AIActionsDropdown: React.FC<Props> = ({
   const setCurrentExaminationId = useUIStore(state => state.setCurrentExaminationId);
   const setCurrentBiomarkerId = useUIStore(state => state.setCurrentBiomarkerId);
   const setCurrentMedicationId = useUIStore(state => state.setCurrentMedicationId);
+  const setCurrentAllergyId = useUIStore(state => state.setCurrentAllergyId);
 
   const updateCoords = () => {
     if (triggerRef.current) {
@@ -82,7 +83,8 @@ export const AIActionsDropdown: React.FC<Props> = ({
     if (contextType === 'examination') setCurrentExaminationId(contextId);
     if (contextType === 'biomarker') setCurrentBiomarkerId(contextId);
     if (contextType === 'medication') setCurrentMedicationId(contextId);
-    
+    if (contextType === 'allergy') setCurrentAllergyId(contextId);
+
     setPendingAIMessage(prompt);
     setAIDrawerOpen(true);
     setIsOpen(false);

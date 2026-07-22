@@ -16,7 +16,8 @@ import Layout from './components/layout/Layout';
 import Login from './pages/Auth/Login';
 import Setup from './pages/Auth/Setup';
 import Dashboard from './pages/Dashboard/Dashboard';
-import AllergyAlerts from './pages/Dashboard/AllergyAlerts';
+import AllergyList from './pages/Allergies/AllergyList';
+import AllergyDetail from './pages/Allergies/AllergyDetail';
 import { BiomarkerTrends, CorrelativeAnalytics } from './pages/Analytics';
 import Documents from './pages/Documents/DocumentList';
 import DocumentDetail from './pages/Documents/DocumentDetail';
@@ -248,7 +249,9 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/alerts" element={<AllergyAlerts />} />
+          <Route path="/alerts" element={<Navigate to="/allergies" replace />} />
+          <Route path="/allergies" element={<AllergyList />} />
+          <Route path="/allergies/details/:allergyId" element={<AllergyDetail />} />
           <Route path="/notifications" element={<NotificationManagement />} />
           <Route path="/notifications/:tab" element={<NotificationManagement />} />
           <Route path="/analytics/trends" element={<BiomarkerTrends />} />

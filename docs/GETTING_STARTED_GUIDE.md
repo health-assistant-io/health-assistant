@@ -200,8 +200,9 @@ sidebar, and are all per-person:
   a drug in the shared reference catalog.
 - **Vaccinations** (`/vaccinations`) — doses, lot numbers, dates, linked
   to the vaccine catalog.
-- **Allergy Alerts** (`/alerts`) — allergies and intolerances, surfaced
-  on the dashboard.
+- **Allergies** (`/allergies`) — allergies and intolerances. Patient-scoped
+  list + allergen catalog detail page (`/allergies/details/:id`); active
+  allergies also surface on the dashboard card.
 
 There's a useful distinction: the **catalog** (`/catalogs`) is the
 shared reference library of drugs, vaccines, biomarkers, etc., while the

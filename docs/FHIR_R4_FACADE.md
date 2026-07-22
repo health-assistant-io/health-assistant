@@ -82,7 +82,7 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 
 ---
 
-## Registered resources (19)
+## Registered resources (20)
 
 | Resource | Backed by | Notes |
 |----------|-----------|-------|
@@ -91,10 +91,11 @@ Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 | `Condition` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_condition_dict()`. Metadata-driven JSONB stays untouched. |
 | `EpisodeOfCare` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_episode_of_care_dict()` from the **same row** as Condition. `Condition` = the diagnosis fact; `EpisodeOfCare` = the longitudinal journey view (status, period, diagnosis list). |
 | `Encounter` | `examinations` | Projected via `ExaminationModel.to_fhir_dict()`. Default status `finished`, class `AMB`. |
-| `AllergyIntolerance` | `fhir_allergy_intolerances` | |
+| `AllergyIntolerance` | `fhir_allergy_intolerances` | Patient reactions. |
 | `MedicationStatement` | `fhir_medications` | Filter: `intent = statement` (default) |
 | `MedicationRequest` | `fhir_medications` | Filter: `intent != statement` (order/plan/proposal) |
 | `Medication` | `medication_catalog` | Drug definitions. Read-only via facade. |
+| `Substance` | `allergy_catalog` | Allergen definitions (the substances themselves — Peanuts, Penicillin, Latex). Projected via `AllergyCatalog.to_fhir_dict()`. Read-only via facade; REST CRUD at `/allergies/catalog/*`. Maps `category` enum → FHIR substance-category codes (`food` / `medication` / `biologic` / `other`). |
 | `Immunization` | `patient_immunizations` | Patient dose records. Read + search-type only (REST CRUD at `/vaccines/*`). `date`→`administered_at`, `vaccine-code`→JSONB text, `encounter`→`examination_id` (the visit the dose was administered at; mirrors `fhir_medications.examination_id`). |
 | `DiagnosticReport` | `fhir_diagnostic_reports` | |
 | `DocumentReference` | `documents` | Attachment is metadata-only (`urn:ha-document:<id>`); binary resolves via the existing download endpoint, not the facade. Integration-sourced documents surface their provenance via `meta.tag[]` (system `urn:health-assistant:document-provenance`, code = `source_integration_id`, display = `integration/{external_id}`) when both columns are set. |

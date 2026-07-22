@@ -41,15 +41,15 @@ export const allergyAdapter: InstanceAdapter<AllergyIntolerance> = {
   facets: getAllergyFacets(),
 
   toRow(a) {
-    const active = a.clinical_status === 'active';
+    const active = a.clinical_status === 'ACTIVE';
     return {
       id: a.id,
       type: 'allergy',
       label: a.code?.text || 'Allergy',
       subtitle: a.clinical_status,
-      date: a.onset_date,
+      date: a.onset_date ?? undefined,
       status: a.clinical_status,
-      statusColor: active ? '#dc2626' : a.criticality === 'high' ? '#ea580c' : null,
+      statusColor: active ? '#dc2626' : a.criticality === 'HIGH' ? '#ea580c' : null,
       icon: 'AlertTriangle',
       raw: a,
     };

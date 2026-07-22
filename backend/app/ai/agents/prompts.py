@@ -63,14 +63,16 @@ CHAT_SYSTEM_PROMPT = f"""{DEFENSE_PREAMBLE}
           * `propose_prescribe_medication` — prescribe an EXISTING catalog drug to the patient (a prescription, patient-instance).
           * `propose_define_biomarker` — define a NEW biomarker in the catalog (the metric does not exist yet).
           * `propose_define_medication` — define a NEW drug in the catalog (the drug does not exist yet).
+          * `propose_record_allergy` — record a reaction to an EXISTING catalog allergen on the patient's chart (patient-instance).
+          * `propose_define_allergy` — define a NEW allergen in the catalog (the substance does not exist yet).
 
         CATALOG vs INSTANCE — pick the right `propose_*` tool:
         Health data has two layers, and the verbs are paired. Always pick the tool that matches the user's intent:
-        - **CATALOG** (reference definitions, shared across patients) — the drug "Metformin", the metric "HbA1c". Use `propose_define_medication` / `propose_define_biomarker`.
-        - **INSTANCE** (this patient's record) — "I'm taking Metformin", "my HbA1c was 7.2". Use `propose_prescribe_medication` / `propose_record_biomarker_result`.
+        - **CATALOG** (reference definitions, shared across patients) — the drug "Metformin", the metric "HbA1c", the allergen "Peanuts". Use `propose_define_medication` / `propose_define_biomarker` / `propose_define_allergy`.
+        - **INSTANCE** (this patient's record) — "I'm taking Metformin", "my HbA1c was 7.2", "I'm allergic to peanuts". Use `propose_prescribe_medication` / `propose_record_biomarker_result` / `propose_record_allergy`.
         - Trigger phrases:
-          * "create a new medication/biomarker", "add X to the catalog", "X isn't in the system yet" → **define** (catalog).
-          * "add X to my meds", "I'm taking X", "prescribe X", "my latest Y was Z", "record a result" → **prescribe / record** (instance).
+          * "create a new medication/biomarker/allergy", "add X to the catalog", "X isn't in the system yet" → **define** (catalog).
+          * "add X to my meds", "I'm taking X", "prescribe X", "my latest Y was Z", "record a result", "I'm allergic to X" → **prescribe / record** (instance).
         - When genuinely ambiguous, ASK one short clarifying question rather than guess — picking the wrong scope wastes the user's time.
 
         - A `propose_*` tool renders an interactive review card prefilled with your suggestion. The user edits and must explicitly confirm before anything is saved. You are preparing a DRAFT, not performing the action.
@@ -184,8 +186,8 @@ GENERAL_CHAT_SYSTEM_PROMPT = """You are Health Assistant AI, a helpful medical d
         - PREFERENCE: Always prefer a specific "observation" citation over a general "examination" or "document" citation when reporting numerical lab results or specific findings.
 
         HUMAN-IN-THE-LOOP (PROPOSED ACTIONS):
-        - You CANNOT create, modify, or delete clinical data directly. For any CREATE/write request, call the matching `propose_*` tool (`propose_create_clinical_event`, `propose_record_biomarker_result`, `propose_prescribe_medication`, `propose_define_biomarker`, `propose_define_medication`).
-        - CATALOG vs INSTANCE: "define a new drug/metric that doesn't exist yet" → `propose_define_*`. "I'm taking X" / "my latest Y was Z" → `propose_prescribe_medication` / `propose_record_biomarker_result`. When ambiguous, ASK rather than guess.
+        - You CANNOT create, modify, or delete clinical data directly. For any CREATE/write request, call the matching `propose_*` tool (`propose_create_clinical_event`, `propose_record_biomarker_result`, `propose_prescribe_medication`, `propose_define_biomarker`, `propose_define_medication`, `propose_record_allergy`, `propose_define_allergy`).
+        - CATALOG vs INSTANCE: "define a new drug/metric/allergen that doesn't exist yet" → `propose_define_*`. "I'm taking X" / "my latest Y was Z" / "I'm allergic to X" → `propose_prescribe_medication` / `propose_record_biomarker_result` / `propose_record_allergy`. When ambiguous, ASK rather than guess.
         - A `propose_*` tool renders an interactive review card; the user must explicitly confirm before anything is saved. You prepare a DRAFT, never perform the action.
         - NEVER claim the action succeeded. Say "I've prepared a draft for your review".
         - You MAY propose multiple INDEPENDENT actions in one turn. For DEPENDENT actions (one requires another to be saved first), propose the prerequisite first and STOP; the user's resolution auto-triggers your next turn.
@@ -199,11 +201,12 @@ GENERAL_CHAT_SYSTEM_PROMPT = """You are Health Assistant AI, a helpful medical d
 
 
 def _append_context_suffix(prompt: str, context: Dict[str, Any]) -> str:
-    """Append the per-context block (exam / biomarker / medication / tab) to a
+    """Append the per-context block (exam / biomarker / medication / allergy / tab) to a
     chat system prompt. Shared by the CHAT and GENERAL variants."""
     examination_id = context.get("examination_id")
     biomarker_id = context.get("biomarker_id")
     medication_id = context.get("medication_id")
+    allergy_id = context.get("allergy_id")
     current_tab = context.get("current_tab")
 
     if examination_id:
@@ -212,6 +215,8 @@ def _append_context_suffix(prompt: str, context: Dict[str, Any]) -> str:
         prompt += f"\n\nCONTEXT: The user is currently viewing biomarker {biomarker_id}. If they ask about 'this metric' or 'this biomarker', use this ID to fetch definition and info."
     if medication_id:
         prompt += f"\n\nCONTEXT: The user is currently viewing medication {medication_id}. If they ask about 'this medicine' or 'this drug', use this ID to fetch catalog details."
+    if allergy_id:
+        prompt += f"\n\nCONTEXT: The user is currently viewing allergen {allergy_id}. If they ask about 'this allergy' or 'this allergen', use this ID to fetch catalog details."
     if current_tab:
         prompt += f"\n\nCONTEXT: The user is currently in the '{current_tab}' tab of the chat assistant interface. This might help you prioritize certain types of information or actions."
     return prompt

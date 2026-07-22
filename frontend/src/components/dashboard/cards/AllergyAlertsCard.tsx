@@ -14,14 +14,14 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
   const { id, isEditMode, onRemove, style, className, onMouseDown, onMouseUp, onTouchEnd, children, data } = props;
   
   const activeAllergies: AllergyIntolerance[] = (data || []).filter(
-    (a: AllergyIntolerance) => a.clinical_status?.toLowerCase() === 'active'
+    (a: AllergyIntolerance) => a.clinical_status?.toUpperCase() === 'ACTIVE'
   );
 
-  const getCriticalityStyles = (criticality?: string) => {
-    switch (criticality) {
-      case 'high':
+  const getCriticalityStyles = (criticality?: string | null) => {
+    switch (criticality?.toUpperCase()) {
+      case 'HIGH':
         return 'bg-red-50/50 border-red-200 text-red-700 dark:bg-red-900/10 dark:border-red-900/30 dark:text-red-400';
-      case 'low':
+      case 'LOW':
         return 'bg-blue-50/50 border-blue-200 text-blue-700 dark:bg-blue-900/10 dark:border-blue-900/30 dark:text-blue-400';
       default:
         return 'bg-gray-50/50 border-gray-200 text-gray-700 dark:bg-dark-bg/50 dark:border-dark-border dark:text-dark-text';
@@ -48,7 +48,7 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
 
       <div className="flex items-center justify-between mb-6">
         <CardTitle
-          to="/alerts"
+          to="/allergies"
           title={t('dashboard.cards.clinical_alerts')}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"
           icon={
@@ -70,7 +70,7 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
           >
             <div className="flex justify-between items-start">
               <div className="flex items-center space-x-2">
-                <AlertTriangle className={`w-4 h-4 ${allergy.criticality === 'high' ? 'text-red-500' : 'text-blue-500'}`} />
+                <AlertTriangle className={`w-4 h-4 ${(allergy.criticality ?? '').toUpperCase() === 'HIGH' ? 'text-red-500' : 'text-blue-500'}`} />
                 <span className="font-bold text-sm">{allergy.code.text}</span>
               </div>
               {allergy.criticality && (
