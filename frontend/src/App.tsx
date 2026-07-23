@@ -72,6 +72,7 @@ import { CatalogWorkspace } from './pages/Catalogs/CatalogWorkspace';
 import { VaccinationList } from './pages/Vaccinations/VaccinationList';
 import SystemIntegrations from './pages/Admin/SystemIntegrations';
 import AtlasManager from './pages/Admin/AtlasManager';
+import OAuthClients from './pages/Admin/OAuthClients';
 
 import { AIConfig } from './pages/Settings/AIConfig';
 import { useProtectedRoute } from './hooks/useProtectedRoute';
@@ -315,11 +316,12 @@ function App() {
           )}
 
           {/* Tenant Management (Admin & System Admin) */}
-          {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
+          {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'SYSTEM_ADMIN') && (
             <>
               {/* Full-page admin dashboards — no settings sidebar */}
               <Route path="/admin/tenant/users" element={<UserManagement />} />
               <Route path="/admin/tenant/users/:userId" element={<UserDetail />} />
+              <Route path="/admin/tenant/oauth-clients" element={<OAuthClients />} />
 
               {/* Configuration surfaces — share the settings shell */}
               <Route element={<SettingsShell nav={tenantSettingsNav} header={tenantSettingsHeader} />}>

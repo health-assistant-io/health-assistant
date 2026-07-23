@@ -1,11 +1,16 @@
 # Health Assistant — REST API Reference
 
 The Health Assistant REST API exposes the platform's clinical and operational
-surface over JSON. It's the primary API for the web frontend, the future mobile
-companion app, and any external integrator that prefers a domain-shaped REST
-contract over canonical FHIR. Every endpoint is **tenant-scoped** (callers only
-see rows whose `tenant_id` matches their own, except `SYSTEM_ADMIN`) and most
+surface over JSON. It's the primary API for the **web frontend and the mobile
+companion app**. Every endpoint is **tenant-scoped** (callers only see rows
+whose `tenant_id` matches their own, except `SYSTEM_ADMIN`) and most
 patient-scoped routes additionally verify ownership for the `USER` role.
+
+> **External integrators:** this router is **not** a public API. It returns
+> internal ORM-shape JSON and is intended for first-party clients only. To
+> integrate an external system, use the [FHIR R4 facade](FHIR_R4_FACADE.md)
+> (`/api/v1/fhir/R4/*`) with OAuth2 client-credentials + SMART-on-FHIR scopes
+> — see [API Access Layers](API_LAYERS.md) for the decision guide.
 
 **Base URL:** `http://localhost:8000/api/v1`
 **Interactive docs (when running):** `http://localhost:8000/docs` (Swagger) and `http://localhost:8000/redoc`
@@ -13,12 +18,14 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 > This reference documents every router module mounted under
 > `backend/app/api/v1/endpoints/`. Each section mirrors the FastAPI tag/grouping.
-> 298 HTTP/WS handlers across 36 modules. For the always-current OpenAPI
-> rendering, visit `http://localhost:8000/docs` while the server is running.
+> 300+ HTTP/WS handlers across 37 modules (incl. `oauth` client management). For
+> the always-current OpenAPI rendering, visit `http://localhost:8000/docs` while
+> the server is running.
 
 ## Contents
 
 - [Authentication & authorization](#authentication--authorization) — JWT, tenant/patient scoping, rate limits
+- [OAuth2 — FHIR facade client auth](#oauth--fhir-facade-client-auth-oauth2--smart) — client-credentials + SMART scopes for external systems
 - [Quick start — common flows](#quick-start--common-flows) — login → list → upload → extract → subscribe
 - [Identity & access](#identity--access) — `users`, `tenants`, `settings`, `admin`, `admin/tenants`, `admin/integrations`
 - [Patient clinical record](#patient-clinical-record) — `patients`, `patients/{id}/layouts`, `observations`, `examinations`, `documents`, `clinical-events`
@@ -80,10 +87,9 @@ The auth endpoints are rate-limited per client IP via Redis fixed-window counter
 
 | Method | Path | Body | Response | Notes |
 |---|---|---|---|---|
-| `POST` | `/auth/login` | `OAuth2PasswordRequestForm` (`username`, `password`) | `TokenResponse` | Issues access + refresh JWTs. Rejects service-account emails. |
+| `POST` | `/auth/login` | `OAuth2PasswordRequestForm` (`username`, `password`) | `TokenResponse` | Issues access + refresh JWTs. |
 | `POST` | `/auth/register` | `UserRegister` | `UserResponse` | Two paths: **bootstrap** (no `tenant_id`) creates a new tenant + "Default Household" org; the first user ever is promoted to `SYSTEM_ADMIN` (race-protected via `pg_advisory_xact_lock`), subsequent bootstraps become `ADMIN`. **Join** requires `tenant_id` + a valid `invite_token` JWT. |
 | `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. `SYSTEM_ADMIN` cannot be granted via invite. |
-| `POST` | `/auth/service-account` | (none; query: `instance_name` *, `tenant_id?`, `expires_days=90`) | `{access_token, token_type, tenant_id, client_id, expires_in_days}` | `ADMIN`/`MANAGER`/`SYSTEM_ADMIN`. Mints a long-lived service-account JWT (creates a `UserModel` with `is_service_account=True`). `ADMIN`/`MANAGER` limited to own tenant. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
 | `POST` | `/auth/refresh` | `{refresh_token}` | `TokenResponse` | **Rotates** the refresh token (audit A5): the presented `jti` is revoked and a brand-new refresh token is returned. Access tokens can no longer be replayed here (the `type=refresh` claim is enforced). |
 | `POST` | `/auth/logout` | `{refresh_token}` | `{revoked: true}` | Revokes one refresh token's `jti`. |
@@ -120,6 +126,54 @@ Login response shape:
 
 See [TENANCY_AND_USER_MANAGEMENT.md](TENANCY_AND_USER_MANAGEMENT.md) for the full
 invite + bootstrap flow and curl examples.
+
+### `oauth` — FHIR facade client auth (OAuth2 + SMART)
+
+External systems authenticate against the public FHIR R4 facade
+(`/api/v1/fhir/R4/*`) via the OAuth2 **client-credentials** grant (RFC 6749
+§4.4) with SMART-on-FHIR scopes. An administrator registers a client (the
+Admin "API Clients" UI or `POST /oauth/clients`); the external system then
+exchanges its credentials for a short-lived access token and sends it as a
+Bearer against the facade. The domain REST API above does **not** accept
+these tokens — see [API Access Layers](API_LAYERS.md).
+
+| Method | Path | Auth | Body / Query | Response | Notes |
+|---|---|---|---|---|---|
+| `POST` | `/oauth/token` | client creds | form or JSON: `grant_type=client_credentials`, `client_id`, `client_secret` (or HTTP Basic); `scope?` | `{access_token, token_type, expires_in, scope, tenant_id}` | RFC 6749 §4.4. `scope` is intersected with the client's registered scopes; an ungranted scope → `400 invalid_scope`. |
+| `POST` | `/oauth/revoke` | any session token | `{token}` | `{revoked: true}` | RFC 7009 (best-effort jti blocklist). Always 200. |
+| `GET` | `/oauth/clients` | `ADMIN`/`MANAGER`/`SYSTEM_ADMIN` | `search?`, `is_active?` | `List[OAuthClientResponse]` | Tenant-scoped; SYSTEM_ADMIN sees all. Never returns the secret. |
+| `POST` | `/oauth/clients` | `ADMIN`/`MANAGER`/`SYSTEM_ADMIN` | `OAuthClientCreate` (`display_name`, `scopes[]`, `tenant_id?`, `bound_patient_id?`) | `OAuthClientCreateResponse` (`201`) | Returns the plaintext `client_secret` **exactly once**. `patient/` scopes require `bound_patient_id`. |
+| `POST` | `/oauth/clients/{id}/rotate-secret` | admin | — | `{client_id, client_secret}` | New plaintext secret; old hash overwritten. |
+| `PATCH` | `/oauth/clients/{id}` | admin | `OAuthClientUpdate` (`display_name?`, `scopes?`, `is_active?`, `bound_patient_id?`) | `OAuthClientResponse` | Scope changes apply on the next token mint. |
+| `DELETE` | `/oauth/clients/{id}` | admin | — | `{message}` | Hard delete. Outstanding tokens stay valid until expiry. |
+| `GET` | `/.well-known/smart-configuration` | **none** | — | smart-configuration JSON | SMART discovery: token endpoint, grant types, supported scopes. |
+
+**SMART scope syntax:** `<context>/<resource>.<permission>` — `context` ∈
+`{system, patient}` (`user/` + `launch` arrive with the Stage-4 authorize
+flow); `resource` is any registered FHIR type or `*`; `permission` is
+`read`/`write`/`*`. Examples: `system/Observation.read`, `system/*.*`,
+`patient/Condition.read`. Read/search needs a `.read` scope; create/update/
+delete needs `.write`. See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md) for the
+full scope model and the patient-compartment rules.
+
+Token mint:
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/oauth/token \
+  -d "grant_type=client_credentials" \
+  -d "client_id=ci_..." \
+  -d "client_secret=..." \
+  -d "scope=system/Observation.read" | jq
+# → { "access_token": "eyJ...", "token_type": "Bearer",
+#     "expires_in": 3600, "scope": "system/Observation.read", "tenant_id": "..." }
+```
+
+Then use the token against the facade:
+
+```bash
+curl -s http://localhost:8000/api/v1/fhir/R4/Observation?patient=Patient/{id} \
+  -H "Authorization: Bearer <access_token>" | jq
+```
 
 ---
 

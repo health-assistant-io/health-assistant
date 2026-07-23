@@ -142,7 +142,9 @@ Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/
 
 **Medication intent discriminator**: one `fhir_medications` table serves both MedicationStatement (`intent=statement`) and MedicationRequest (`intent=order|plan|proposal`). The facade routes to the right FHIR resource based on the discriminator column.
 
-**Provenance-on-write**: every facade `POST`/`PUT`/`DELETE` records a `Provenance` targeting the affected resource (best-effort — never aborts the parent write on Provenance failure). Agents are the authenticated user or the integration.
+**Provenance-on-write**: every facade `POST`/`PUT`/`DELETE` records a `Provenance` targeting the affected resource (best-effort — never aborts the parent write on Provenance failure). Agents are the OAuth client (api tokens carry a `client_id`; the agent display is `OAuth Client: <client_id>`) or the integration.
+
+**Authentication (external-only)**: the facade is the public interop surface and authenticates external systems via the OAuth2 **client-credentials** grant (`POST /api/v1/oauth/token`, RFC 6749 §4.4) with **SMART-on-FHIR scopes**. Admin-managed clients (`POST /api/v1/oauth/clients` — the Admin "API Clients" UI) are tenant-bound and carry granted scopes; every CRUD interaction is scope-gated by `require_fhir_scopes` (read vs write per resource), and `patient/`-scoped clients are compartment-narrowed to their bound patient. Discovery at `GET /.well-known/smart-configuration` + the CapabilityStatement `rest.security` SMART extension. **Session JWTs (the frontend) are rejected on the facade; api tokens are rejected on the domain REST API** — see [API_LAYERS.md](API_LAYERS.md). The interactive OAuth2 *authorize* flow (`user/` context, `launch`) is the Stage-4 roadmap; today the facade serves backend service flows via client-credentials.
 
 **Error shape**: every error response is a FHIR `OperationOutcome` resource with `issue[]` blocks (severity, code, diagnostics). The existing global exception handler still wraps unexpected 500s with a correlation id; facade-specific errors map to 400/404/405/410 with OperationOutcome bodies.
 

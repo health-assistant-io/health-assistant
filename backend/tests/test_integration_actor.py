@@ -82,7 +82,6 @@ async def test_resolve_actor_returns_token_data_with_owner_fields():
     assert actor.tenant_id == tenant_id
     assert actor.role == "ADMIN"
     assert actor.sub == "owner@example.com"  # TokenData exposes email via ``sub``
-    assert actor.is_service_account is False
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,13 @@ This document covers the high-level architecture and how the system manages inte
 ## Architecture Highlights
 
 1. **Pluggable & Modular**: Each integration lives in its own isolated folder under `integrations/`. The core platform discovers them dynamically.
+   > **Scope boundary:** the Integrations Framework is for **per-provider
+   > inbound sync** — connecting one specific platform (a wearable, a lab, a
+   > hospital portal) that has its own OAuth, polling, or push model. It is
+   > deliberately **not** a general-purpose public REST gateway; external
+   > REST consumers use the [FHIR R4 facade](FHIR_R4_FACADE.md) with OAuth2
+   > + SMART scopes. See [API Access Layers](API_LAYERS.md) for the
+   > layer-by-audience breakdown.
 2. **Two-Tiered Enablement**:
    - **System Admins** determine if an integration is globally available to the platform.
    - **Users** connect their individual accounts, provide credentials, and control sync preferences. Users can create **multiple instances** of the same integration (e.g., tracking two separate IoT scales).

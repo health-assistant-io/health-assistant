@@ -63,3 +63,36 @@ async def revoke_all_refresh(user_id: str) -> int:
     except Exception as e:
         logger.warning("token_store: could not revoke all refresh tokens: %s", e)
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# OAuth2 api-token revocation (best-effort jti blocklist)
+# ---------------------------------------------------------------------------
+# Access tokens are stateless JWTs, so revocation works by recording the token's
+# ``jti`` in Redis with a TTL equal to the token's remaining lifetime. The
+# facade auth dependency (``get_api_principal``) checks this on every request.
+# Degrades open: if Redis is unreachable, a revoked token is treated as active
+# (matches the availability-first posture of refresh-token revocation).
+
+_API_PREFIX = "api_revoked"
+
+
+def _api_key(jti: str) -> str:
+    return f"{_API_PREFIX}:{jti}"
+
+
+async def revoke_api_jti(jti: str, ttl_seconds: int) -> None:
+    """Record an api-token ``jti`` as revoked for ``ttl_seconds``."""
+    try:
+        ttl = max(int(ttl_seconds), 1)
+        await redis_client.set(_api_key(jti), "1", ex=ttl)
+    except Exception as e:
+        logger.warning("token_store: could not revoke api jti: %s", e)
+
+
+async def is_api_revoked(jti: str) -> bool:
+    try:
+        return bool(await redis_client.exists(_api_key(jti)))
+    except Exception as e:
+        logger.warning("token_store unavailable, skipping api revocation check: %s", e)
+        return False

@@ -85,7 +85,6 @@ async def resolve_integration_actor(
         tenant_id=user.tenant_id,
         role=role_value,
         sub=user.email,
-        is_service_account=False,
     )
 
 

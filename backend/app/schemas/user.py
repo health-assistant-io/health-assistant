@@ -49,24 +49,42 @@ class TokenData(BaseModel):
       * ``original_user_id``   — the admin's real user id.
       * ``switched``           — flag distinguishing a switched session.
 
-    All switch claims are optional so normal tokens still validate.
+    API-token claims (only present on OAuth2 client-credentials tokens issued
+    for the FHIR facade — see ``docs/API_LAYERS.md``):
+      * ``token_kind`` — ``"session"`` (default; frontend/mobile) or
+        ``"api"`` (OAuth2 client; facade-only).
+      * ``scope``      — space-separated SMART-on-FHIR scopes.
+      * ``client_id``  — the OAuth client id.
+      * ``aud`` / ``iss`` — JWT audience / issuer.
+
+    All extra claims are optional so normal session tokens still validate.
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    user_id: UUID
+    user_id: Optional[UUID] = None
     tenant_id: UUID
-    role: str
+    role: str = ""
     sub: Optional[str] = None
-    is_service_account: bool = False
     client_id: Optional[str] = None
     original_tenant_id: Optional[UUID] = None
     original_user_id: Optional[UUID] = None
     switched: bool = False
+    # API-token claims (defaults keep session tokens valid).
+    token_kind: str = "session"
+    scope: str = ""
+    aud: Optional[Any] = None
+    iss: Optional[str] = None
+    bound_patient_id: Optional[UUID] = None
 
     @property
     def email(self) -> Optional[str]:
         return self.sub
+
+    @property
+    def scope_set(self) -> set[str]:
+        """SMART scopes parsed into a set (empty for session tokens)."""
+        return {s for s in (self.scope or "").split() if s}
 
 
 class UserInDB(UserResponse):

@@ -1643,6 +1643,7 @@
     "role_update_failed": "Failed to update access level.",
     "system_settings": "System Settings",
     "tenant_settings": "Tenant Settings",
+    "api_clients": "API Clients",
     "tenants": {
       "title": "Tenant Management",
       "subtitle": "Global tenant management",

@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user_with_tenant_override as get_current_user
+from app.facade.scopes import require_fhir_scopes
 from app.facade import crud
 from app.facade.registry import RESOURCE_REGISTRY, register_all
 from app.facade.responses import (
@@ -105,7 +105,7 @@ async def capability_statement(request: Request) -> Dict[str, Any]:
 async def search_resources(
     resource_type: str,
     request: Request,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_fhir_scopes("read")),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Search resources. Returns a FHIR Bundle (type=searchset)."""
@@ -151,7 +151,7 @@ async def search_resources(
 async def read_resource(
     resource_type: str,
     resource_id: str,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_fhir_scopes("read")),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Read a single resource by id."""
@@ -191,7 +191,7 @@ async def create_resource(
     resource_type: str,
     payload: Dict[str, Any],
     request: Request,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_fhir_scopes("write")),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Create a resource from canonical FHIR JSON. Returns 201 + Location."""
@@ -238,7 +238,7 @@ async def update_resource(
     resource_id: str,
     payload: Dict[str, Any],
     request: Request,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_fhir_scopes("write")),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Update a resource by id (full replacement).
@@ -301,7 +301,7 @@ async def update_resource(
 async def delete_resource(
     resource_type: str,
     resource_id: str,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_fhir_scopes("write")),
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Soft-delete a resource. Subsequent reads return 410 Gone."""

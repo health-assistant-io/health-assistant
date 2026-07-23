@@ -60,7 +60,6 @@ def mock_target_user():
         role=Role.USER,
         tenant_id=uuid.uuid4(),
         is_active=True,
-        is_service_account=False,
         settings={},
     )
 
@@ -102,7 +101,6 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
         role=Role.SYSTEM_ADMIN,
         tenant_id=switched_admin.original_tenant_id,
         is_active=True,
-        is_service_account=False,
         settings={},
     )
     mock_get_user_by_id.return_value = admin_user

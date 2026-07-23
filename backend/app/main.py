@@ -336,6 +336,14 @@ else:
 app.include_router(api_router)
 
 
+@app.get("/.well-known/smart-configuration", tags=["oauth"])
+async def smart_configuration():
+    """SMART-on-FHIR discovery document for the FHIR facade."""
+    from app.services.fhir_facade_service import build_smart_configuration
+
+    return build_smart_configuration()
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""

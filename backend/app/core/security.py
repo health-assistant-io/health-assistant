@@ -1,7 +1,7 @@
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 from app.core.config import settings
 from fastapi import HTTPException, status, Header, Depends, Request
 
@@ -43,10 +43,20 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Decode and validate a JWT access token"""
+    """Decode and validate a JWT access token.
+
+    ``verify_aud`` is disabled here because both session JWTs (no ``aud``
+    claim, frontend) and api tokens (``aud`` set, facade) flow through this
+    decoder. The api-token audience is enforced explicitly in
+    :func:`get_api_principal` via ``_aud_matches``; the domain REST API blocks
+    api tokens via the :func:`require_session_token` guard.
+    """
     try:
         payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False},
         )
         return payload
     except jwt.PyJWTError:
@@ -155,33 +165,6 @@ def get_current_user(token: str = Depends(get_token)):
         )
 
     return token_data
-
-
-def get_current_user_with_tenant_override(
-    token: str = Depends(get_token),
-    x_tenant: Optional[str] = Header(None, alias="X-Tenant"),
-) -> TokenData:
-    """F19: get_current_user + optional X-Tenant header override.
-
-    When ``X-Tenant: <uuid>`` is present, only ``SYSTEM_ADMIN`` may override
-    the tenant scope (service accounts are bound to their JWT's tenant and
-    cannot override). Non-admin callers get 403; malformed UUIDs get 400.
-    """
-    user = get_current_user(token)
-    if x_tenant is not None:
-        if user.role != Role.SYSTEM_ADMIN.value:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="X-Tenant header requires SYSTEM_ADMIN role.",
-            )
-        try:
-            user.tenant_id = UUID(x_tenant)
-        except (ValueError, TypeError):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Malformed X-Tenant header (expected UUID).",
-            )
-    return user
 
 
 class RoleChecker:
@@ -307,3 +290,145 @@ async def get_current_user_ws(token: str):
     from app.schemas.user import TokenData
 
     return TokenData(**payload)
+
+
+# ---------------------------------------------------------------------------
+# OAuth2 client-credentials — api tokens for the FHIR R4 facade
+# ---------------------------------------------------------------------------
+# The facade is the external-only interop surface (see docs/API_LAYERS.md).
+# External systems authenticate with the OAuth2 client-credentials grant
+# (RFC 6749 §4.4) and receive a short-lived JWT carrying SMART-on-FHIR scopes.
+# Session JWTs (frontend/mobile) are rejected on the facade; api tokens are
+# rejected on the domain REST API (require_session_token guard).
+
+
+def _aud_matches(aud_claim, expected: str) -> bool:
+    """True if the JWT ``aud`` claim contains the expected audience."""
+    if not aud_claim:
+        return False
+    if isinstance(aud_claim, str):
+        return aud_claim == expected
+    if isinstance(aud_claim, (list, tuple)):
+        return expected in aud_claim
+    return False
+
+
+def create_api_access_token(
+    *,
+    client_id: str,
+    tenant_id: str,
+    scopes: list[str],
+    bound_patient_id: str | None = None,
+    expires_delta: timedelta | None = None,
+) -> tuple[str, str]:
+    """Mint an OAuth2 client-credentials access token (JWT).
+
+    Returns ``(token, jti)``. The token carries ``token_kind="api"``, the
+    SMART ``scope`` string, the OAuth ``aud``/``iss`` claims, and the client's
+    ``tenant_id``. There is no ``user_id`` / ``role`` — an api token is a
+    client principal, not a user. ``bound_patient_id`` (for ``patient/``
+    scoped clients) is embedded so the facade can enforce the patient
+    compartment without a DB lookup per request. The caller may register the
+    ``jti`` for revocation via ``token_store``.
+    """
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=settings.OAUTH_ACCESS_TOKEN_TTL_MINUTES)
+    jti = uuid4().hex
+    to_encode = {
+        "sub": client_id,
+        "client_id": client_id,
+        "tenant_id": str(tenant_id),
+        "scope": " ".join(scopes),
+        "token_kind": "api",
+        "aud": settings.OAUTH_AUDIENCE,
+        "iss": settings.OAUTH_ISSUER or settings.APP_URL,
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + expires_delta,
+        "jti": jti,
+    }
+    if bound_patient_id is not None:
+        to_encode["bound_patient_id"] = str(bound_patient_id)
+    token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return token, jti
+
+
+async def get_api_principal(
+    token: str = Depends(get_token),
+) -> "TokenData":
+    """Facade auth dependency — OAuth2 api tokens only.
+
+    The facade is the external-only surface; session JWTs (frontend) are
+    rejected with 401. Validates the token, enforces ``token_kind="api"``,
+    checks the ``aud`` claim matches ``OAUTH_AUDIENCE`` (defense in depth),
+    and consults the api-token revocation list (``token_store``). Returns a
+    ``TokenData`` whose ``scope_set`` drives SMART scope enforcement
+    (Phase 2). The principal carries ``tenant_id`` (client-bound) and no
+    ``user_id``/``role``.
+    """
+    from app.schemas.user import TokenData
+    from app.core import token_store
+
+    payload = verify_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if payload.get("token_kind") != "api":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "The FHIR facade is an external API; session tokens are not "
+                "accepted. Obtain an OAuth2 client token via POST /api/v1/oauth/token."
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not _aud_matches(payload.get("aud"), settings.OAUTH_AUDIENCE):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token audience",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    jti = payload.get("jti")
+    if jti and await token_store.is_api_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        return TokenData(**payload)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def require_session_token(
+    authorization: Optional[str] = Header(None),
+) -> None:
+    """Guard dependency: block api tokens on session-only (domain) routes.
+
+    The domain REST API (``/api/v1/*`` except the facade + OAuth) is for
+    first-party clients holding a session JWT. This guard peeks at the
+    ``Authorization`` header and rejects any ``token_kind="api"`` token with
+    401 — api tokens must use the FHIR facade. Anonymous requests (no header)
+    and session tokens pass through unchanged; each endpoint's own
+    ``get_current_user`` dependency still enforces authentication where needed.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return  # Anonymous — the endpoint's own auth dependency handles it.
+    token = authorization[7:]
+    payload = verify_access_token(token)
+    if payload and payload.get("token_kind") == "api":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "API tokens are not accepted on this endpoint; use the FHIR "
+                "facade (/api/v1/fhir/R4/*)."
+            ),
+            headers={"WWW-Authenticate": "Bearer"},
+        )

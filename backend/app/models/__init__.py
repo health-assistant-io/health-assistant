@@ -73,6 +73,7 @@ from .system_setting import SystemSetting
 from .export_import_job import ExportJobModel, ImportJobModel
 from .catalog_audit_model import CatalogAuditLog
 from .integration_proposal import IntegrationProposal
+from .oauth import OAuthClient
 
 __all__ = [
     "Base",
@@ -153,4 +154,5 @@ __all__ = [
     "ImportJobModel",
     "CatalogAuditLog",
     "IntegrationProposal",
+    "OAuthClient",
 ]

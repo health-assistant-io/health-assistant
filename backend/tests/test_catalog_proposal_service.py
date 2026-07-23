@@ -51,7 +51,6 @@ async def tenant_and_actor():
         tenant_id=tenant_id,
         role="ADMIN",
         sub="integration-owner@test.local",
-        is_service_account=False,
     )
     return tenant_id, actor, slug_prefix
 

@@ -115,6 +115,28 @@ def _soft_delete_predicate(entry: ResourceEntry):
     return entry.model.deleted_at.is_(None)
 
 
+def _patient_compartment_predicate(entry: ResourceEntry, current_user: TokenData):
+    """Narrow patient-scoped resources to the principal's bound patient.
+
+    OAuth2 clients carrying a ``patient/`` SMART context are bound to a single
+    patient (``TokenData.bound_patient_id``, embedded in the api token). For
+    such principals every patient-compartment resource is restricted to that
+    patient; the ``Patient`` resource itself is matched on its own id.
+    Non-compartment resources (Organization, Practitioner, Medication catalog,
+    CodeSystem, ValueSet, Provenance, Device, Communication) are not narrowed.
+    Returns ``None`` when no narrowing applies (system context or no column).
+    """
+    bound = getattr(current_user, "bound_patient_id", None)
+    if bound is None:
+        return None
+    model = entry.model
+    if entry.resource_type == "Patient":
+        return model.id == bound
+    if hasattr(model, "patient_id"):
+        return model.patient_id == bound
+    return None
+
+
 def _resolve_id(value: str) -> Optional[UUID]:
     """Parse a str into a UUID; return None on failure."""
     try:
@@ -167,6 +189,9 @@ async def search(
     soft_pred = _soft_delete_predicate(entry)
     if soft_pred is not None:
         predicates.append(soft_pred)
+    compartment_pred = _patient_compartment_predicate(entry, current_user)
+    if compartment_pred is not None:
+        predicates.append(compartment_pred)
     if entry.search_filter is not None:
         predicates.append(entry.search_filter())
 
@@ -796,6 +821,9 @@ async def read(
     tenant_pred = _tenant_predicate(entry, current_user)
     if tenant_pred is not None:
         predicates.append(tenant_pred)
+    compartment_pred = _patient_compartment_predicate(entry, current_user)
+    if compartment_pred is not None:
+        predicates.append(compartment_pred)
 
     result = await db.execute(select(model).where(*predicates))
     row = result.scalar_one_or_none()
@@ -840,6 +868,22 @@ async def create(
     # Force tenant_id to the current user's tenant for compartment resources.
     if entry.tenant_scope == "tenant_id":
         obj.tenant_id = current_user.tenant_id
+
+    # Patient-compartment: a patient-bound client may only write for its bound
+    # patient. Coerce/validate the patient_id so a cross-patient write is
+    # rejected (403) rather than silently persisting.
+    bound = getattr(current_user, "bound_patient_id", None)
+    if bound is not None:
+        if entry.resource_type == "Patient":
+            raise PermissionError(
+                "patient-scoped clients cannot create new Patient resources"
+            )
+        if hasattr(obj, "patient_id"):
+            if obj.patient_id is not None and obj.patient_id != bound:
+                raise PermissionError(
+                    "patient-scoped clients may only write for their bound patient"
+                )
+            obj.patient_id = bound
 
     # Validate the FHIR projection before persisting. This is the write-time
     # gate that guarantees invalid FHIR can never be persisted via the facade.
@@ -901,6 +945,9 @@ async def update(
     tenant_pred = _tenant_predicate(entry, current_user)
     if tenant_pred is not None:
         predicates.append(tenant_pred)
+    compartment_pred = _patient_compartment_predicate(entry, current_user)
+    if compartment_pred is not None:
+        predicates.append(compartment_pred)
 
     result = await db.execute(select(model).where(*predicates))
     obj = result.scalar_one_or_none()
@@ -979,6 +1026,9 @@ async def delete(
     tenant_pred = _tenant_predicate(entry, current_user)
     if tenant_pred is not None:
         predicates.append(tenant_pred)
+    compartment_pred = _patient_compartment_predicate(entry, current_user)
+    if compartment_pred is not None:
+        predicates.append(compartment_pred)
 
     result = await db.execute(select(model).where(*predicates))
     obj = result.scalar_one_or_none()

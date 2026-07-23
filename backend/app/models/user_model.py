@@ -10,9 +10,7 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
     __tablename__ = "users"
 
     email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(
-        String(255), nullable=True
-    )  # nullable for service accounts (F19)
+    hashed_password = Column(String(255), nullable=True)
     role = Column(SQLEnum(Role), nullable=False, default=Role.USER)  # type: ignore[assignment]
     tenant_id = Column(
         UUID(as_uuid=True),
@@ -25,11 +23,6 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
         nullable=False,
         server_default="true",
         index=True,
-    )
-    is_service_account = Column(
-        Boolean,
-        nullable=False,
-        server_default="false",
     )
     settings = Column(JSONB, default=dict)
 

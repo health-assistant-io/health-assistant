@@ -77,6 +77,9 @@ POST_BASELINE_TABLES: dict[str, str] = {
     # Workstream G.1 of the integrations follow-ups pass
     # (plan: dev/plans/integrations-sdk-followups-2026-07-21.md).
     "integration_proposals": "g1h2i3t4l5pr_add_integration_proposals",
+    # OAuth2 client registry for the FHIR facade (api access layers plan).
+    # (plan: dev/plans/api-access-layers-2026-07-23.md).
+    "oauth_clients": "o1a2u3t4h5n6_create_oauth_clients",
 }
 
 

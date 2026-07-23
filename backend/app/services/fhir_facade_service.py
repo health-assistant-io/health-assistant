@@ -128,10 +128,44 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
         "rest": [
             {
                 "mode": "server",
-                "documentation": "Health Assistant FHIR R4 facade. Tenant-scoped. Two auth modes: (1) platform user JWT (login), (2) service-account JWT (admin-minted, long-lived, for external systems — POST /auth/service-account). SYSTEM_ADMIN can override tenant scope via the X-Tenant header. SMART-on-FHIR (OAuth2 + scopes) is deferred to Stage 4.",
+                "documentation": (
+                    "Health Assistant FHIR R4 facade — the external interop surface. "
+                    "Authentication is OAuth2 client-credentials (RFC 6749 §4.4) with "
+                    "SMART-on-FHIR scopes. Obtain a token from /api/v1/oauth/token "
+                    "after an administrator registers a client via /api/v1/oauth/clients. "
+                    "Session JWTs (frontend) are not accepted; the facade is external-only."
+                ),
                 "security": {
                     "cors": True,
-                    "description": "Bearer JWT auth. Two modes: (1) platform user JWT via /auth/login; (2) service-account JWT via /auth/service-account (for external systems). SMART-on-FHIR deferred to Stage 4.",
+                    "description": (
+                        "OAuth2 client-credentials + SMART-on-FHIR scopes. "
+                        "Authorization: Bearer <api token>."
+                    ),
+                    "service": [
+                        {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/restful-security-service",
+                                    "code": "SMART-on-FHIR",
+                                }
+                            ]
+                        }
+                    ],
+                    "extension": [
+                        {
+                            "url": "http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris",
+                            "extension": [
+                                {
+                                    "url": "token",
+                                    "valueUri": "/api/v1/oauth/token",
+                                },
+                                {
+                                    "url": "revoke",
+                                    "valueUri": "/api/v1/oauth/revoke",
+                                },
+                            ],
+                        }
+                    ],
                 },
                 "resource": resources,
                 # System-wide interactions: only advertise what the root /fhir/R4
@@ -148,5 +182,37 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
                 # implemented. Don't advertise it until it lands.
                 "operation": [],
             }
+        ],
+    }
+
+
+def build_smart_configuration() -> Dict[str, Any]:
+    """Build the SMART-on-FHIR discovery document (``/.well-known/smart-
+    configuration``).
+
+    Advertises the client-credentials grant, the token/revoke endpoints, the
+    supported SMART scopes, and the capabilities. The interactive authorize
+    flow (``authorization_code`` + ``launch``) is not yet supported — only the
+    backend-service client-credentials grant is.
+    """
+    return {
+        "issuer": None,
+        "authorization_endpoint": None,
+        "grant_types_supported": ["client_credentials"],
+        "token_endpoint": "/api/v1/oauth/token",
+        "token_endpoint_auth_methods_supported": [
+            "client_secret_post",
+            "client_secret_basic",
+        ],
+        "revocation_endpoint": "/api/v1/oauth/revoke",
+        "capabilities": [
+            "client-confidential-symmetric",
+            "sso-openid-connect",
+        ],
+        "scopes_supported": [
+            "system/*.read",
+            "system/*.write",
+            "patient/*.read",
+            "patient/*.write",
         ],
     }

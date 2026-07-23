@@ -214,13 +214,13 @@ async def record_provenance(
         agents, degraded = await _agent_block(
             db, user_id=user_id, tenant_id=tenant_id, integration_id=integration_id
         )
-        # G10: when the caller is a service account, record the external
-        # system identity as an additional agent (display-only — the SA's
+        # G10: when the caller is an OAuth client (api token), record the
+        # external system identity as an additional agent (display-only — the
         # client_id has no FHIR resource to reference).
         if client_id:
             agents.append(
                 {
-                    "who": {"display": f"Service Account: {client_id}"},
+                    "who": {"display": f"OAuth Client: {client_id}"},
                     "type": [
                         {
                             "coding": [

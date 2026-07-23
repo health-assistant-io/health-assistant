@@ -106,6 +106,12 @@
     "icon": "Plug",
     "items": [
       {
+        "id": "api-layers",
+        "file": "API_LAYERS.md",
+        "title": "API Access Layers",
+        "description": "The three API surfaces of Health Assistant, a self-hosted, open-source health records platform: the internal domain REST API for the web and mobile app, the public FHIR R4 facade with OAuth2 and SMART-on-FHIR scopes for external systems, and the Integrations Framework for per-provider sync."
+      },
+      {
         "id": "api",
         "file": "API.md",
         "title": "REST API Reference",

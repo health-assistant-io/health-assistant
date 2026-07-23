@@ -177,7 +177,7 @@ function Sidebar() {
       path: '/administration',
       labelKey: 'common.administration',
       icon: ShieldCheck,
-      roles: ['SYSTEM_ADMIN', 'ADMIN'],
+      roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'],
       subItems: [
         // ── System section ──
         { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'] },
@@ -186,6 +186,7 @@ function Sidebar() {
         // ── Tenant section ──
         { path: '/admin/tenant/users', labelKey: 'admin.users', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+        { path: '/admin/tenant/oauth-clients', labelKey: 'admin.api_clients', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'] },
         { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
         { path: '/organizations', labelKey: 'common.organizations', roles: ['SYSTEM_ADMIN', 'ADMIN'] },

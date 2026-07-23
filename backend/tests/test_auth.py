@@ -17,7 +17,6 @@ def mock_user():
         role=Role.USER,
         tenant_id=uuid.uuid4(),
         is_active=True,
-        is_service_account=False,
         settings={},
     )
 

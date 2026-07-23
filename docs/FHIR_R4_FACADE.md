@@ -34,12 +34,13 @@ with no app-table analog.
 
 ## HTTP surface
 
-All routes require Bearer JWT auth via `get_current_user_with_tenant_override`
-(two modes: platform user JWT from `/auth/login`, or service-account JWT from
-`/auth/service-account`), **except** `GET /metadata` (no auth per FHIR spec).
-
-SYSTEM_ADMIN can override the tenant scope via the `X-Tenant: <uuid>` header.
-Service accounts are bound to their JWT's tenant and cannot override.
+All routes require a Bearer token via `get_api_principal`, **OAuth2
+client-credentials only** — the facade is the external-only interop surface
+and the frontend does not call it. External systems obtain a token from
+`POST /api/v1/oauth/token` (RFC 6749 §4.4) carrying SMART-on-FHIR scopes;
+see [API_LAYERS.md](API_LAYERS.md) and
+[Authentication & SMART scopes](#authentication--smart-scopes). **Exception:**
+`GET /metadata` is unauthenticated per the FHIR spec.
 
 | Method | Path | Behavior |
 |--------|------|----------|
@@ -79,6 +80,71 @@ Service accounts are bound to their JWT's tenant and cannot override.
 Status codes: `400` (invalid FHIR), `404` (not found / unknown resource type),
 `405` (interaction not supported — e.g. DELETE on immutable Provenance),
 `410` (tombstone), `500` (unexpected; includes correlation id).
+
+---
+
+## Authentication & SMART scopes
+
+The facade is the **external-only** interop surface (the frontend never calls
+it — see [API_LAYERS.md](API_LAYERS.md)). Authentication is OAuth2
+**client-credentials** (RFC 6749 §4.4), the machine-to-machine grant.
+
+### Getting a token
+
+1. An administrator registers a client:
+   `POST /api/v1/oauth/clients` with a `display_name` and a list of SMART
+   scopes. The response returns a `client_id` and a `client_secret` (shown
+   once).
+2. The external system exchanges its credentials for an access token:
+   ```
+   POST /api/v1/oauth/token
+   Content-Type: application/x-www-form-urlencoded
+
+   grant_type=client_credentials
+   client_id=ci_...
+   client_secret=...
+   scope=system/Observation.read system/Patient.read
+   ```
+   The `scope` request is intersected with the client's registered scopes.
+3. Use the token against the facade:
+   ```
+   GET /api/v1/fhir/R4/Observation?patient=Patient/{id}
+   Authorization: Bearer <access_token>
+   ```
+
+The access token is a JWT carrying `iss`, `aud=health-assistant-api`,
+`client_id`, `tenant_id`, `scope`, and `token_kind=api`. TTL is short
+(default 60 min); the client re-authenticates to refresh.
+
+### SMART scope vocabulary
+
+`<context>/<resource>.<permission>`:
+
+| Context | Meaning | Tenant scoping |
+|---|---|---|
+| `system` | Backend service acting at the tenant level | Bound to the client's tenant |
+| `patient` | Restricted to one bound patient | The client's `bound_patient_id` filters every query/write |
+| `user` | On behalf of a user | Reserved for the future authorize flow (Stage 4) |
+
+`resource` is any registered FHIR resource type or `*`; `permission` is
+`read`, `write`, or `*`.
+
+Scope enforcement per interaction:
+- `read` / `search-type` → needs a matching `.read` (or `.*` / `*`).
+- `create` / `update` / `delete` → needs a matching `.write` (or `.*` / `*`).
+- A scope mismatch returns `403` with a FHIR `OperationOutcome`.
+
+### Discovery
+
+- `GET /.well-known/smart-configuration` — advertises the token endpoint,
+  supported scopes, grant types, and capabilities.
+- `GET /fhir/R4/metadata` — the CapabilityStatement includes a
+  `rest.security` SMART extension pointing at the discovery URL.
+
+### Provenance
+
+Writes performed through the facade record a `Provenance` whose `agent`
+names the OAuth client, so external writes are auditable end-to-end.
 
 ---
 
@@ -317,7 +383,7 @@ backend/tests/                              # 131 new tests across 6 files
 | `POST /fhir/R4/{Resource}/_search` | Phase 8 | Useful for long query strings; no users asking yet. |
 | `_format=xml` | Phase 8 | Adds `lxml` dependency; JSON is sufficient for interop. |
 | Transaction/batch Bundle (`POST /fhir/R4` with `type=transaction\|batch`) | Phase 8 | Complex; low priority, deferred. Note: the **import path** (`/import/*`, see `docs/EXPORT_IMPORT.md` §6) already honors `entry.request.method` (`PUT`/`POST`/`DELETE`/`ifNoneExist`) for round-tripping third-party transaction Bundles — this deferred item is specifically the facade's *system-level* `POST /fhir/R4` endpoint (audit G4), a separate surface. |
-| SMART-on-FHIR scopes (`/.well-known/smart-configuration`, `patient/*.read`) | Stage 4 | Facade uses existing JWT auth + tenant scoping for now. |
+| User-facing OAuth2 authorize flow (`grant_type=authorization_code`, PKCE, `launch`/`launch/patient`, `user/*` scopes) | Stage 4 | The facade serves backend service flows via client-credentials today; the interactive authorize flow (for SMART apps launched inside an EHR, or a mobile app acting for a user) is roadmap. |
 | US Core profile validation | Stage 4 | Profiles are an internal-best-practice, not required for interop. |
 | `_include` / `_revinclude` chained search params | Phase 8 | Default to depth=1; no recursion for v1. |
 | FHIR compartments (formal) | Stage 4 | Tenant isolation already provides informal compartments. |

@@ -23,19 +23,16 @@ from app.services.seed_service import SeedService
 
 
 async def _tenant_and_headers(role="ADMIN"):
+    """Tenant + facade api headers (the CodeSystem/ValueSet tests are
+    facade-only; the facade is api-only, so we mint an OAuth2 api token)."""
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="T", slug=f"cs-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
-        {
-            "sub": f"{role.lower()}@test.local",
-            "user_id": str(uuid.uuid4()),
-            "tenant_id": str(tenant_id),
-            "role": role,
-        }
-    )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    from tests._facade_auth import facade_api_headers
+
+    headers = await facade_api_headers(tenant_id)
+    return tenant_id, headers
 
 
 async def _seed_diseases():

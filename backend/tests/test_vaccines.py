@@ -17,6 +17,7 @@ from app.models.fhir.patient import Patient
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
 from app.models.tenant_model import TenantModel
 from app.services.fhir_helpers import assert_valid_fhir
+from tests._facade_auth import facade_api_headers
 
 
 async def _tenant_and_headers(role="ADMIN"):
@@ -246,7 +247,8 @@ async def test_patient_immunization_examination_link_roundtrip(async_client):
 
     # FHIR facade surfaces the encounter reference.
     fhir = await async_client.get(
-        f"/api/v1/fhir/R4/Immunization?patient={pid}", headers=headers
+        f"/api/v1/fhir/R4/Immunization?patient={pid}",
+        headers=await facade_api_headers(tenant_id),
     )
     entry = next(
         e["resource"]
@@ -275,7 +277,8 @@ async def test_patient_immunization_examination_link_roundtrip(async_client):
 
 @pytest.mark.asyncio
 async def test_fhir_immunization_facade_search(async_client):
-    tenant_id, headers = await _tenant_and_headers("ADMIN")
+    tenant_id, _session = await _tenant_and_headers("ADMIN")
+    headers = await facade_api_headers(tenant_id)
     pid = await _make_patient(tenant_id)
     async with AsyncSessionLocal() as db:
         db.add(

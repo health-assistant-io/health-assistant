@@ -55,6 +55,24 @@ async def _tenant_and_headers():
     return tid, {"Authorization": f"Bearer {token}"}
 
 
+async def _facade_headers(tenant_id):
+    """Mint an OAuth2 api token (SMART ``system/*.*``) for facade calls.
+
+    The FHIR facade is api-only (session JWTs are rejected). This mirrors what
+    a real integrator obtains from ``POST /oauth/token``; minting directly via
+    ``create_api_access_token`` keeps these conformance tests focused on
+    Condition search behavior (the OAuth client-credentials flow itself is
+    covered in ``test_oauth_client_credentials.py``)."""
+    from app.core.security import create_api_access_token
+
+    token, _ = create_api_access_token(
+        client_id=f"ci-test-{uuid.uuid4().hex[:12]}",
+        tenant_id=str(tenant_id),
+        scopes=["system/*.*"],
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 async def _make_patient(tenant_id):
     pid = uuid.uuid4()
     async with AsyncSessionLocal() as db:
@@ -322,7 +340,8 @@ async def _seed_two_conditions(tenant_id, patient_id):
 
 @pytest.mark.asyncio
 async def test_condition_search_patient_and_subject(async_client):
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
@@ -337,7 +356,8 @@ async def test_condition_search_patient_and_subject(async_client):
 
 @pytest.mark.asyncio
 async def test_condition_search_clinical_status(async_client):
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
@@ -360,7 +380,8 @@ async def test_condition_search_clinical_status(async_client):
 async def test_condition_search_code(async_client):
     """Condition.code is a String column on ClinicalEvent — must use direct
     equality, not the JSONB CodeableConcept containment path."""
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
@@ -384,7 +405,8 @@ async def test_condition_search_code(async_client):
 @pytest.mark.asyncio
 async def test_condition_search_category(async_client):
     """Condition.category maps to the event type's category concept slug."""
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
     cat_slug = f"reproductive-health-{str(tenant_id)[:8]}"
@@ -399,7 +421,8 @@ async def test_condition_search_category(async_client):
 
 @pytest.mark.asyncio
 async def test_condition_search_onset_date(async_client):
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
@@ -414,7 +437,8 @@ async def test_condition_search_onset_date(async_client):
 @pytest.mark.asyncio
 async def test_condition_search_encounter(async_client):
     """Condition.encounter maps through EventExaminationLink."""
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, exam_id = await _seed_two_conditions(tenant_id, patient_id)
 
@@ -778,7 +802,8 @@ async def test_anatomy_link_crud(async_client):
 async def test_episode_of_care_facade_search(async_client):
     """GET /fhir/R4/EpisodeOfCare projects ClinicalEvent rows as journeys and
     honors patient + status search."""
-    tenant_id, headers = await _tenant_and_headers()
+    tenant_id, _session = await _tenant_and_headers()
+    headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
     preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 

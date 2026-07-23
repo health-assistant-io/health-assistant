@@ -42,20 +42,26 @@ def client(app_with_facade):
 
 @pytest.fixture
 def fake_user():
-    """A TokenData mock for tests; bypass auth via dependency override."""
+    """A TokenData mock for tests; bypass auth via dependency override.
+
+    Carries a ``system/*.*`` scope so it passes the SMART scope gate
+    (``require_fhir_scopes``) exercised by every facade CRUD route.
+    """
     from app.schemas.user import TokenData
     return TokenData(
         user_id=uuid4(),
         tenant_id=uuid4(),
         role="USER",
         sub="test-user",
+        token_kind="api",
+        scope="system/*.*",
     )
 
 
 @pytest.fixture
 def override_auth(app_with_facade, fake_user):
-    from app.core.security import get_current_user_with_tenant_override
-    app_with_facade.dependency_overrides[get_current_user_with_tenant_override] = lambda: fake_user
+    from app.core.security import get_api_principal
+    app_with_facade.dependency_overrides[get_api_principal] = lambda: fake_user
     yield
     app_with_facade.dependency_overrides = {}
 
@@ -130,9 +136,8 @@ def test_search_returns_bundle_shape(client, override_auth, override_db, fake_us
 def test_search_no_auth_returns_401(client):
     """Without auth override, the endpoint should require auth."""
     # Note: this works because TestClient passes through to the real dependency.
-    # We don't have auth configured, so we expect 401.
+    # We don't have auth configured, so we expect 401 (get_api_principal → get_token).
     r = client.get("/api/v1/fhir/R4/Patient")
-    # Without dependency override, get_current_user raises — FastAPI returns 401 or 403.
     assert r.status_code in (401, 403)
 
 

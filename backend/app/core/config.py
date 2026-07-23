@@ -128,6 +128,18 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 
+    # OAuth2 / SMART-on-FHIR — the FHIR R4 facade is the public interop
+    # surface; external systems authenticate via the client-credentials grant
+    # (RFC 6749 §4.4) with SMART scopes. See docs/API_LAYERS.md.
+    OAUTH_ACCESS_TOKEN_TTL_MINUTES: int = 60
+    # Issuer claim stamped on api tokens. Falls back to APP_URL when empty so
+    # a single-instance deploy works without extra config.
+    OAUTH_ISSUER: str = ""
+    # Audience api tokens must carry. Session JWTs (frontend) have no ``aud``
+    # and are rejected on the facade; api tokens without this audience are
+    # rejected everywhere.
+    OAUTH_AUDIENCE: str = "health-assistant-api"
+
     # URLs
     FRONTEND_URL: str = "http://localhost:5173"
     APP_URL: str = "http://localhost:8000"
