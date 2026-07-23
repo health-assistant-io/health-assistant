@@ -306,6 +306,29 @@ async def execute_custom_action(self, integration, action_id, **kwargs):
 
 Available block builders (from `integrations.sdk`): `kv_block`, `list_block`, `table_block`, `json_block`, `text_block`, `code_block`, `action_result`. See `integrations/sdk/display.py` for the full API.
 
+#### Receiving input (action arguments)
+
+The action endpoint accepts an optional JSON body that is spread as keyword arguments into `execute_custom_action`. This lets an action take user input — a search query, a selected id, etc. — without a per-domain endpoint. Actions that take no input are sent with no body and receive no kwargs (fully backward compatible).
+
+```python
+async def execute_custom_action(self, integration, action_id, **kwargs):
+    if action_id == "search":
+        query = kwargs.get("query")  # sent as {"query": "smith"} in the request body
+        ...
+```
+
+#### Interactive modals (the `modal` hint)
+
+An action can declare `"modal": "<kind>"` in its `get_custom_actions()` entry. The frontend renders the named modal instead of firing the action and showing a read-only result — useful for interactive flows like a remote-search-and-pick. The current built-in kind is `"patient_picker"` (used by the `fhir_server` integration's **Find Patient** action). The action then supplies a pair of sub-actions (e.g. `find_patient` / `select_patient`) that the modal calls with input bodies (see above).
+
+```python
+def get_custom_actions(self):
+    return [
+        {"id": "find_patient", "label": "Find Patient", "style": "primary",
+         "modal": "patient_picker"},
+    ]
+```
+
 ### 3.6 Tool Exposure (for the Chat Assistant)
 
 Integrations can expose tools to the chat assistant by implementing two methods on the provider:
@@ -1045,7 +1068,46 @@ The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `in
 
 ---
 
-### 3.14 Webhook Signature Verification (Reusable Helpers)
+### 3.15 Medications, Allergies & Immunizations (Opt-in Treatment-Resource Pull)
+
+Mirrors §3.10–3.13 for the patient-instance treatment resources. A provider that can pull `MedicationStatement` / `MedicationRequest`, `AllergyIntolerance`, or `Immunization` from an upstream system overrides the matching `supports_*` / `pull_*` pair. The engine resolves a service-context actor once and writes each record through the canonical write service (`medication_service.add_patient_medication`, `allergy_service.add_patient_allergy`, `vaccine_service.add_patient_immunization`), which were refactored to the `TokenData` + dedup-kwargs shape shared with the events / exams / docs hooks.
+
+#### The three hook pairs
+
+```python
+from integrations.sdk import (
+    BaseHealthProvider, MedicationRecordCreate, AllergyIntoleranceCreate,
+    PatientImmunizationCreate,
+)
+
+class MyEhrProvider(BaseHealthProvider):
+    domain = "my_ehr"
+
+    def supports_medications(self) -> bool: return True
+    async def pull_medications(self, integration) -> List[MedicationRecordCreate]: ...
+
+    def supports_allergies(self) -> bool: return True
+    async def pull_allergies(self, integration) -> List[AllergyIntoleranceCreate]: ...
+
+    def supports_immunizations(self) -> bool: return True
+    async def pull_immunizations(self, integration) -> List[PatientImmunizationCreate]: ...
+```
+
+#### Dedup contract
+
+Same as §3.10: set `external_id` to the upstream's stable id on each payload; the engine stamps `source_integration_id` (= `integration.id`). Each model carries the provenance columns + a partial unique dedup index (migration `f1m2u3l4t5i6`) — a re-sync is a no-op, and the SELECT→INSERT race is handled with `IntegrityError` recovery.
+
+#### Medication intent
+
+`MedicationRecordCreate.intent` discriminates the single `fhir_medications` row: `statement` (default, from a `MedicationStatement`) or `order` (from a `MedicationRequest`). Each projects back to the right FHIR resource on the R4 facade. Set it explicitly when importing a request.
+
+#### What the engine does for you
+
+For each pulled record the engine resolves a `TokenData` actor via `resolve_integration_actor`, runs the patient-access check, the category/code resolution, the write-time FHIR validation gate, and the dedup — then logs per-record failures without aborting the sync (mirrors the events / exams / docs hooks). Records written are counted in the sync log's `records_synced`.
+
+---
+
+### 3.16 Webhook Signature Verification (Reusable Helpers)
 
 The platform provisions two tokenless routes per integration instance — a webhook receiver and a wildcard two-way API proxy. Both can require an HMAC signature when the integration configures a secret. Signature verification was previously inlined in two places (the platform endpoint layer + each provider that wanted to validate inside `handle_webhook`); the algorithm is now in one reusable SDK module.
 

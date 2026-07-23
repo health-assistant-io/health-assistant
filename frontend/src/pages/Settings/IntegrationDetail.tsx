@@ -10,6 +10,7 @@ import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
 import ActionResultModal from '../../components/integrations/ActionResultModal';
+import PatientPickerModal from '../../components/integrations/PatientPickerModal';
 import { DebugConsole } from '../../components/integrations/DebugConsole';
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 import type { ActionResult } from '../../services/integrationService';
@@ -25,6 +26,7 @@ const IntegrationDetail: React.FC = () => {
   const [showDocs, setShowDocs] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [actionResult, setActionResult] = useState<{ result: ActionResult; label: string } | null>(null);
+  const [showPatientPicker, setShowPatientPicker] = useState(false);
   // Per-integration notification types (null = not yet loaded; empty array =
   // provider declares none → tab stays hidden).
   const [notifTypes, setNotifTypes] = useState<IntegrationNotificationType[] | null>(null);
@@ -192,6 +194,11 @@ const IntegrationDetail: React.FC = () => {
 
   const handleCustomAction = async (action: CustomAction) => {
     if (!currentPatient || !id) return;
+    // Interactive actions open a dedicated modal instead of firing blind.
+    if (action.modal === 'patient_picker') {
+      setShowPatientPicker(true);
+      return;
+    }
     try {
       toast.info(`Executing ${action.label}...`);
       const response = await integrationService.executeAction(id, currentPatient.id, action.id);
@@ -782,6 +789,15 @@ const IntegrationDetail: React.FC = () => {
           result={actionResult.result}
           actionLabel={actionResult.label}
           onClose={() => setActionResult(null)}
+        />
+      )}
+
+      {showPatientPicker && id && currentPatient && (
+        <PatientPickerModal
+          integrationId={id}
+          patientId={currentPatient.id}
+          onClose={() => setShowPatientPicker(false)}
+          onSelected={() => loadDetails()}
         />
       )}
     </div>

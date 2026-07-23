@@ -180,6 +180,18 @@ class PatientImmunization(
     location = Column(String(255), nullable=True)
     note = Column(Text, nullable=True)
 
+    # Integration provenance (Phase 4 of the fhir-server multi-resource
+    # sync plan). Mirrors clinical_events / examinations / documents /
+    # medications / allergies. Partial unique index
+    # ``uq_patient_immunizations_integration_dedup`` (migration f1m2u3l4t5i6).
+    source_integration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String(255), nullable=True, index=True)
+
     __table_args__ = (
         Index("ix_patient_immunizations_administered_at", "administered_at"),
     )
@@ -205,6 +217,10 @@ class PatientImmunization(
             "manufacturer": self.manufacturer,
             "location": self.location,
             "note": self.note,
+            "source_integration_id": str(self.source_integration_id)
+            if self.source_integration_id
+            else None,
+            "external_id": self.external_id,
         }
 
     def to_fhir_dict(self) -> dict:

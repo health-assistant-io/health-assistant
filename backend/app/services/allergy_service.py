@@ -12,8 +12,10 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.access import check_patient_access
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
 from app.schemas.allergy import (
     AllergyCatalogCreate,
@@ -21,6 +23,7 @@ from app.schemas.allergy import (
     AllergyIntoleranceCreate,
     AllergyIntoleranceUpdate,
 )
+from app.schemas.user import TokenData
 from app.services.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
@@ -186,21 +189,104 @@ async def get_allergy(
 
 async def add_patient_allergy(
     db: AsyncSession,
-    patient_id: UUID,
-    tenant_id: UUID,
+    current_user: TokenData,
     data: AllergyIntoleranceCreate,
+    *,
+    source_integration_id: Optional[UUID] = None,
+    external_id: Optional[str] = None,
 ) -> AllergyIntolerance:
+    """Create a patient intolerance (allergy).
+
+    Refactored to the canonical write-chokepoint shape shared with
+    ``clinical_event_service.create_event`` /
+    ``examination_service.create_examination`` /
+    ``medication_service.add_patient_medication``: takes the request actor
+    (``TokenData``) so patient-access checks, tenant scoping, and
+    ``created_by`` audit provenance live here once. Called by the
+    ``POST /allergies/patient/{id}`` endpoint and the integration-sync
+    engine (Phase 4 of the fhir-server multi-resource sync plan, when a
+    provider opts into ``supports_allergies``).
+
+    Integration-sourced dedup: when **both** ``source_integration_id`` and
+    ``external_id`` are supplied, returns the existing row instead of
+    duplicating (mirrors events / exams / docs / meds / immunizations).
+    """
+    if data.patient_id is None:
+        raise ValueError("AllergyIntoleranceCreate.patient_id is required.")
+    await check_patient_access(data.patient_id, current_user, db)
+
+    effective_external_id = external_id or data.external_id
+
+    if source_integration_id is not None and effective_external_id is not None:
+        existing = await _find_integration_allergy(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=data.patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "add_patient_allergy: returning existing %s (dedup hit on "
+                "source_integration_id=%s external_id=%r)",
+                existing.id, source_integration_id, effective_external_id,
+            )
+            return existing
+
     new_record = AllergyIntolerance(
-        patient_id=patient_id,
-        tenant_id=tenant_id,
-        **data.model_dump(exclude_unset=True),
+        **data.model_dump(exclude={"external_id", "patient_id"}),
+        patient_id=data.patient_id,
+        tenant_id=current_user.tenant_id,
+        created_by=current_user.user_id,
+        source_integration_id=source_integration_id,
+        external_id=effective_external_id,
     )
     # Write-time FHIR gate (audit C13): invalid FHIR never persists.
     assert_valid_fhir(new_record)
     db.add(new_record)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Race window — the partial unique index
+        # ``uq_allergy_intolerance_integration_dedup`` caught a concurrent
+        # insert. Roll back and return the winner.
+        await db.rollback()
+        existing = await _find_integration_allergy(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=data.patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            return existing
+        raise
     await db.commit()
     await db.refresh(new_record)
     return new_record
+
+
+async def _find_integration_allergy(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    source_integration_id: UUID,
+    external_id: str,
+) -> Optional[AllergyIntolerance]:
+    """Look up an existing integration-sourced allergy by dedup key.
+
+    Backed by the partial unique index
+    ``uq_allergy_intolerance_integration_dedup`` (migration f1m2u3l4t5i6).
+    """
+    stmt = select(AllergyIntolerance).where(
+        AllergyIntolerance.tenant_id == tenant_id,
+        AllergyIntolerance.patient_id == patient_id,
+        AllergyIntolerance.source_integration_id == source_integration_id,
+        AllergyIntolerance.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 async def update_patient_allergy(

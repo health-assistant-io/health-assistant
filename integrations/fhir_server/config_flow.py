@@ -53,6 +53,18 @@ class FhirServerConfigFlow(BaseConfigFlow):
                         },
                         "default": "smart",
                     },
+                    "remote_patient_id": {
+                        "type": "string",
+                        "title": "Remote FHIR Patient ID (optional)",
+                        "description": (
+                            "The remote patient this integration syncs. Leave "
+                            "blank to use the patient resolved by SMART "
+                            "authorization, or after saving click 'Find "
+                            "Patient' to search the server by name or MRN and "
+                            "pick the match. Required for tokenless (None) "
+                            "servers that don't resolve a patient for you."
+                        ),
+                    },
                     "sync_direction": {
                         "type": "string",
                         "title": "Automatic Sync Direction",
@@ -82,7 +94,7 @@ class FhirServerConfigFlow(BaseConfigFlow):
                     },
                     "categories": {
                         "type": "string",
-                        "title": "Categories",
+                        "title": "Observation Categories",
                         "enum": ["both", "laboratory", "vital-signs"],
                         "enum_descriptions": {
                             "both": "Laboratory + vital signs",
@@ -90,6 +102,52 @@ class FhirServerConfigFlow(BaseConfigFlow):
                             "vital-signs": "Vital signs only",
                         },
                         "default": "both",
+                    },
+                    "pull_resources": {
+                        "type": "array",
+                        "title": "Record Types to Pull",
+                        "description": (
+                            "Which remote FHIR resources to ingest into the "
+                            "patient record. 'Observation' (labs / vitals) is "
+                            "always pulled and feeds the Biomarker Engine. "
+                            "The rest are pulled in addition — Conditions → "
+                            "Health Journeys, Encounters → Examinations, "
+                            "DocumentReference → OCR, Medication → meds, "
+                            "AllergyIntolerance → allergies, Immunization → "
+                            "vaccines. Remove a type to opt a specific "
+                            "instance out of ingesting it."
+                        ),
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "Observation",
+                                "Condition",
+                                "Encounter",
+                                "DocumentReference",
+                                "Medication",
+                                "AllergyIntolerance",
+                                "Immunization",
+                            ],
+                            "enum_descriptions": {
+                                "Observation": "Labs & vitals → Biomarker Engine",
+                                "Condition": "Problem list → Health Journeys",
+                                "Encounter": "Visits → Examinations",
+                                "DocumentReference": "Reports & PDFs → OCR extraction",
+                                "Medication": "MedicationStatement + Request → Medications",
+                                "AllergyIntolerance": "Allergies",
+                                "Immunization": "Vaccine doses → Immunizations",
+                            },
+                        },
+                        "uniqueItems": True,
+                        "default": [
+                            "Observation",
+                            "Condition",
+                            "Encounter",
+                            "DocumentReference",
+                            "Medication",
+                            "AllergyIntolerance",
+                            "Immunization",
+                        ],
                     },
                 },
                 "required": ["fhir_base_url", "instance_name", "auth_mode"],
@@ -109,6 +167,17 @@ class FhirServerConfigFlow(BaseConfigFlow):
         window = user_input.get("time_window_months")
         if window is not None and (not isinstance(window, int) or window < 1):
             raise ValueError("Initial Pull Window must be a positive integer.")
+        pull_resources = user_input.get("pull_resources")
+        if pull_resources is not None:
+            if not isinstance(pull_resources, list) or not pull_resources:
+                raise ValueError("Record Types to Pull must be a non-empty list.")
+            valid = {
+                "Observation", "Condition", "Encounter", "DocumentReference",
+                "Medication", "AllergyIntolerance", "Immunization",
+            }
+            invalid = [r for r in pull_resources if r not in valid]
+            if invalid:
+                raise ValueError(f"Unknown record type(s): {invalid}.")
         user_input["fhir_base_url"] = url.rstrip("/")
         user_input["auth_mode"] = auth_mode
         user_input["sync_direction"] = sync_direction

@@ -443,6 +443,113 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         """
         return []
 
+    # --- Medications (opt-in) -------------------------------------------
+    # Phase 4 (Route A) of the fhir-server multi-resource sync plan
+    # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Mirrors
+    # the supports_X / pull_X shape from B + E + F + G + C — providers
+    # that can pull patient medications (FHIR MedicationStatement /
+    # MedicationRequest) from an upstream system override
+    # ``supports_medications`` to return True and implement
+    # ``pull_medications``. The platform's ``run_sync`` pipeline calls
+    # the hook after the documents step, resolves a service-context
+    # actor via ``integration_actor.resolve_integration_actor``, and
+    # writes each medication via
+    # ``medication_service.add_patient_medication`` (refactored to the
+    # canonical TokenData + dedup-kwargs shape). Dedup contract: provider
+    # sets ``external_id`` on the payload to the upstream's stable
+    # medication id; the engine stamps ``source_integration_id``.
+
+    def supports_medications(self) -> bool:
+        """Return True if this provider pulls patient medications.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_medications`.
+        """
+        return False
+
+    async def pull_medications(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull patient medications (FHIR MedicationStatement/Request).
+
+        Returns a list of ``MedicationRecordCreate`` (re-exported from
+        :mod:`integrations.sdk`). Set ``external_id`` on each payload to
+        the upstream's stable medication id so the engine dedups across
+        syncs — without it, every sync creates fresh duplicates.
+        ``source_integration_id`` is supplied automatically by the engine
+        (the integration's own id); providers can't fake it. Set
+        ``intent`` to ``order`` when importing a MedicationRequest and
+        leave it unset (defaults to ``statement``) for a
+        MedicationStatement.
+
+        Default: ``[]``. Override on providers that opt in via
+        :meth:`supports_medications`. Swallow per-instance errors and
+        return ``[]`` on failure.
+        """
+        return []
+
+    # --- Allergies (opt-in) ---------------------------------------------
+    # Same shape as medications. Providers that can pull patient
+    # allergies (FHIR AllergyIntolerance) override
+    # ``supports_allergies`` to return True and implement
+    # ``pull_allergies``. Written via
+    # ``allergy_service.add_patient_allergy``.
+
+    def supports_allergies(self) -> bool:
+        """Return True if this provider pulls patient allergies.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_allergies`.
+        """
+        return False
+
+    async def pull_allergies(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull patient allergies (FHIR AllergyIntolerance).
+
+        Returns a list of ``AllergyIntoleranceCreate`` (re-exported from
+        :mod:`integrations.sdk`). Set ``external_id`` on each payload to
+        the upstream's stable allergy id so the engine dedups across
+        syncs. ``source_integration_id`` is supplied automatically by the
+        engine.
+
+        Default: ``[]``. Override on providers that opt in via
+        :meth:`supports_allergies`.
+        """
+        return []
+
+    # --- Immunizations (opt-in) -----------------------------------------
+    # Same shape as medications + allergies. Providers that can pull
+    # patient immunizations (FHIR Immunization) override
+    # ``supports_immunizations`` to return True and implement
+    # ``pull_immunizations``. Written via
+    # ``vaccine_service.add_patient_immunization``.
+
+    def supports_immunizations(self) -> bool:
+        """Return True if this provider pulls patient immunizations.
+
+        Default: ``False``. Opt in by overriding to ``True`` AND
+        implementing :meth:`pull_immunizations`.
+        """
+        return False
+
+    async def pull_immunizations(
+        self, integration: UserIntegration
+    ) -> List[Any]:
+        """Pull patient immunizations (FHIR Immunization / vaccine doses).
+
+        Returns a list of ``PatientImmunizationCreate`` (re-exported from
+        :mod:`integrations.sdk`). Set ``external_id`` on each payload to
+        the upstream's stable immunization id so the engine dedups across
+        syncs. ``source_integration_id`` is supplied automatically by the
+        engine.
+
+        Default: ``[]``. Override on providers that opt in via
+        :meth:`supports_immunizations`.
+        """
+        return []
+
     # --- Debugging ---
     
     async def log_debug_payload(self, integration: UserIntegration, title: str, payload: Any, level: str = "info"):

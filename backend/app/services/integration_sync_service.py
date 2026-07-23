@@ -214,6 +214,13 @@ class SyncResult:
     hitl_proposals_inserted: int = 0
     documents_pulled: int = 0
     documents_written: int = 0
+    # Phase 4 (Route A) treatment-resource pulls.
+    medications_pulled: int = 0
+    medications_written: int = 0
+    allergies_pulled: int = 0
+    allergies_written: int = 0
+    immunizations_pulled: int = 0
+    immunizations_written: int = 0
     # Carried from ``IntegrationRateLimitError.retry_after_seconds`` when
     # the upstream sent a ``Retry-After`` header. The caller (worker)
     # may use this to write a Redis cooldown key so the next beat skips
@@ -984,6 +991,153 @@ async def run_sync(
                         docs_pulled - docs_written,
                     )
 
+        # ---- medications (opt-in hook, Phase 4 Route A) ----
+        # Providers that declare ``supports_medications`` can pull patient
+        # medications (FHIR MedicationStatement / MedicationRequest). The
+        # engine resolves the actor (re-uses the one from the prior step
+        # if that ran) and writes each record via
+        # ``medication_service.add_patient_medication`` (refactored to the
+        # canonical TokenData + dedup-kwargs shape). Dedup on
+        # (tenant, patient, source_integration_id, external_id) when the
+        # provider sets ``external_id``. Failures are logged and don't
+        # abort the sync (mirrors the events / exams / docs hooks).
+        meds_pulled = 0
+        meds_written = 0
+        supports_meds = _opt_in(provider, "supports_medications")
+        if supports_meds:
+            try:
+                meds_data = await provider.pull_medications(integration)
+                meds_data = meds_data or []
+                meds_pulled = len(meds_data)
+                if meds_data:
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.medication_service import (
+                        add_patient_medication,
+                    )
+
+                    actor = await resolve_integration_actor(db, integration)
+                    for med_payload in meds_data:
+                        try:
+                            await add_patient_medication(
+                                db,
+                                actor,
+                                med_payload,
+                                source_integration_id=integration.id,
+                                external_id=getattr(
+                                    med_payload, "external_id", None
+                                ),
+                            )
+                            meds_written += 1
+                        except Exception as med_err:
+                            logger.warning(
+                                "add_patient_medication failed for "
+                                "integration %s med %r: %s",
+                                integration.id,
+                                getattr(med_payload, "external_id", None),
+                                med_err,
+                            )
+            except Exception as meds_pull_err:
+                logger.warning(
+                    "pull_medications failed for %s: %s",
+                    integration.provider, meds_pull_err,
+                )
+
+        # ---- allergies (opt-in hook, Phase 4 Route A) ----
+        # Same shape as medications. Providers that declare
+        # ``supports_allergies`` pull FHIR AllergyIntolerance resources;
+        # the engine writes each via ``allergy_service.add_patient_allergy``.
+        allergies_pulled = 0
+        allergies_written = 0
+        supports_allergies = _opt_in(provider, "supports_allergies")
+        if supports_allergies:
+            try:
+                allergy_data = await provider.pull_allergies(integration)
+                allergy_data = allergy_data or []
+                allergies_pulled = len(allergy_data)
+                if allergy_data:
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.allergy_service import (
+                        add_patient_allergy,
+                    )
+
+                    actor = await resolve_integration_actor(db, integration)
+                    for allergy_payload in allergy_data:
+                        try:
+                            await add_patient_allergy(
+                                db,
+                                actor,
+                                allergy_payload,
+                                source_integration_id=integration.id,
+                                external_id=getattr(
+                                    allergy_payload, "external_id", None
+                                ),
+                            )
+                            allergies_written += 1
+                        except Exception as allergy_err:
+                            logger.warning(
+                                "add_patient_allergy failed for integration "
+                                "%s allergy %r: %s",
+                                integration.id,
+                                getattr(allergy_payload, "external_id", None),
+                                allergy_err,
+                            )
+            except Exception as allergies_pull_err:
+                logger.warning(
+                    "pull_allergies failed for %s: %s",
+                    integration.provider, allergies_pull_err,
+                )
+
+        # ---- immunizations (opt-in hook, Phase 4 Route A) ----
+        # Same shape. Providers that declare ``supports_immunizations``
+        # pull FHIR Immunization resources; the engine writes each via
+        # ``vaccine_service.add_patient_immunization``.
+        immuns_pulled = 0
+        immuns_written = 0
+        supports_immuns = _opt_in(provider, "supports_immunizations")
+        if supports_immuns:
+            try:
+                immun_data = await provider.pull_immunizations(integration)
+                immun_data = immun_data or []
+                immuns_pulled = len(immun_data)
+                if immun_data:
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
+                    )
+                    from app.services.vaccine_service import (
+                        add_patient_immunization,
+                    )
+
+                    actor = await resolve_integration_actor(db, integration)
+                    for immun_payload in immun_data:
+                        try:
+                            await add_patient_immunization(
+                                db,
+                                actor,
+                                immun_payload,
+                                source_integration_id=integration.id,
+                                external_id=getattr(
+                                    immun_payload, "external_id", None
+                                ),
+                            )
+                            immuns_written += 1
+                        except Exception as immun_err:
+                            logger.warning(
+                                "add_patient_immunization failed for "
+                                "integration %s immunization %r: %s",
+                                integration.id,
+                                getattr(immun_payload, "external_id", None),
+                                immun_err,
+                            )
+            except Exception as immuns_pull_err:
+                logger.warning(
+                    "pull_immunizations failed for %s: %s",
+                    integration.provider, immuns_pull_err,
+                )
+
         # ---- push ----
         push_result: Optional[Dict[str, Any]] = None
         try:
@@ -1016,6 +1170,9 @@ async def run_sync(
                 + proposals_applied
                 + hitl_inserted
                 + docs_written
+                + meds_written
+                + allergies_written
+                + immuns_written
             ),
             started_at=started,
             completed_at=completed,
@@ -1039,6 +1196,12 @@ async def run_sync(
             hitl_proposals_inserted=hitl_inserted,
             documents_pulled=docs_pulled,
             documents_written=docs_written,
+            medications_pulled=meds_pulled,
+            medications_written=meds_written,
+            allergies_pulled=allergies_pulled,
+            allergies_written=allergies_written,
+            immunizations_pulled=immuns_pulled,
+            immunizations_written=immuns_written,
         )
         return result
 

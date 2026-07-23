@@ -1,8 +1,14 @@
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+import logging
+
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, delete
+
+from app.services.access import check_patient_access
 from app.models.fhir.medication import Medication, MedicationCatalog
+from app.schemas.user import TokenData
 from app.services.notification_manager import NotificationManager
 from app.schemas.medication import (
     MedicationCatalogCreate,
@@ -15,6 +21,8 @@ from app.schemas.medication import (
 from app.ai.processors.nlp import get_nlp_extractor_from_db
 from app.ai.schemas.nlp import UnknownMedicationExtract
 from app.services.fhir_helpers import assert_valid_fhir
+
+logger = logging.getLogger(__name__)
 
 
 async def get_medication_catalog(
@@ -158,8 +166,54 @@ async def get_patient_medications(
 
 
 async def add_patient_medication(
-    db: AsyncSession, patient_id: UUID, tenant_id: UUID, data: MedicationRecordCreate
+    db: AsyncSession,
+    current_user: TokenData,
+    data: MedicationRecordCreate,
+    *,
+    source_integration_id: Optional[UUID] = None,
+    external_id: Optional[str] = None,
 ) -> Medication:
+    """Create a patient medication (prescription).
+
+    Refactored to the canonical write-chokepoint shape shared with
+    ``clinical_event_service.create_event`` and
+    ``examination_service.create_examination``: takes the request actor
+    (``TokenData``) rather than a raw ``tenant_id`` so provenance +
+    ``created_by`` audit + patient-access checks live here once. The
+    ``POST /medications/patient/{id}`` endpoint and the integration-sync
+    engine (Phase 4 of the fhir-server multi-resource sync plan, when a
+    provider opts into ``supports_medications``) both call this.
+
+    Integration-sourced dedup: when **both** ``source_integration_id`` and
+    ``external_id`` are supplied, the service looks up an existing record
+    with that key for the same patient + tenant and returns it as-is
+    rather than creating a duplicate (mirrors the pattern on events /
+    exams / docs / allergies / immunizations). UI callers leave both
+    ``None`` and get the original create-always behavior.
+    """
+    patient_id = data.patient_id
+    if patient_id is None:
+        raise ValueError("MedicationRecordCreate.patient_id is required.")
+    await check_patient_access(patient_id, current_user, db)
+
+    effective_external_id = external_id or data.external_id
+
+    if source_integration_id is not None and effective_external_id is not None:
+        existing = await _find_integration_medication(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "add_patient_medication: returning existing %s (dedup hit on "
+                "source_integration_id=%s external_id=%r)",
+                existing.id, source_integration_id, effective_external_id,
+            )
+            return existing
+
     # Handle both schema field 'frequency' and internal 'timing'
     timing_data = getattr(data, "timing", None)
     if not timing_data and hasattr(data, "frequency"):
@@ -176,12 +230,25 @@ async def add_patient_medication(
                 }
             }
 
-    new_record = Medication(
-        patient_id=patient_id,
-        tenant_id=tenant_id,
-        subject={"reference": f"Patient/{patient_id}"},
-        **data.model_dump(exclude={"frequency", "timing"}),
+    # ``intent`` is Optional on the schema so the ORM column default
+    # (STATEMENT) applies when a caller doesn't specify it; pull it out
+    # of the spread to avoid passing ``intent=None`` (which would override
+    # the NOT NULL column default).
+    dump = data.model_dump(
+        exclude={"frequency", "timing", "external_id", "patient_id", "intent"}
     )
+    intent_value = data.intent
+    new_record = Medication(
+        **dump,
+        patient_id=patient_id,
+        tenant_id=current_user.tenant_id,
+        subject={"reference": f"Patient/{patient_id}"},
+        created_by=current_user.user_id,
+        source_integration_id=source_integration_id,
+        external_id=effective_external_id,
+    )
+    if intent_value is not None:
+        new_record.intent = intent_value
     if timing_data:
         new_record.frequency = timing_data
 
@@ -191,6 +258,23 @@ async def add_patient_medication(
     # catches invalid shapes before persisting.
     assert_valid_fhir(new_record)
     db.add(new_record)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Race window between the dedup SELECT and INSERT — the partial
+        # unique index ``uq_fhir_medications_integration_dedup`` caught a
+        # concurrent insert. Roll back and return the winner.
+        await db.rollback()
+        existing = await _find_integration_medication(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            return existing
+        raise
     await db.commit()
     await db.refresh(new_record)
 
@@ -201,10 +285,33 @@ async def add_patient_medication(
             medication_id=new_record.id,
             medication_name=new_record.code.get("text", "medication"),
             timing_data=timing_data,
-            tenant_id=tenant_id,
+            tenant_id=current_user.tenant_id,
         )
 
     return new_record
+
+
+async def _find_integration_medication(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    source_integration_id: UUID,
+    external_id: str,
+) -> Optional[Medication]:
+    """Look up an existing integration-sourced medication by dedup key.
+
+    The partial unique index ``uq_fhir_medications_integration_dedup``
+    (migration f1m2u3l4t5i6) backs this lookup.
+    """
+    stmt = select(Medication).where(
+        Medication.tenant_id == tenant_id,
+        Medication.patient_id == patient_id,
+        Medication.source_integration_id == source_integration_id,
+        Medication.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 async def update_patient_medication(

@@ -61,6 +61,7 @@ class VaccineCatalogResponse(VaccineCatalogBase):
 
 
 class PatientImmunizationBase(BaseModel):
+    patient_id: Optional[UUID] = None
     vaccine_catalog_id: Optional[UUID] = None
     examination_id: Optional[UUID] = None
     status: ImmunizationStatus = ImmunizationStatus.COMPLETED
@@ -76,7 +77,12 @@ class PatientImmunizationBase(BaseModel):
 
 
 class PatientImmunizationCreate(PatientImmunizationBase):
-    pass
+    # Integration dedup key (Phase 4 of the fhir-server multi-resource sync
+    # plan). Set by integration providers on the objects they return from
+    # ``pull_immunizations``; the engine reads it and forwards it to the
+    # service. ``source_integration_id`` is NOT on the schema — the engine
+    # always supplies it (= the integration's own id).
+    external_id: Optional[str] = None
 
 
 class PatientImmunizationUpdate(BaseModel):
@@ -94,6 +100,8 @@ class PatientImmunizationUpdate(BaseModel):
 class PatientImmunizationResponse(PatientImmunizationBase):
     id: UUID
     patient_id: UUID
+    source_integration_id: Optional[UUID] = None
+    external_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

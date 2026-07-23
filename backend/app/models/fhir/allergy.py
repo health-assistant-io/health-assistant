@@ -169,6 +169,20 @@ class AllergyIntolerance(
     # List of [{"manifestation": "Hives", "severity": "mild", "date": "..."}]
     reactions = Column(JSONB, nullable=True)
 
+    # Integration provenance (Phase 4 of the fhir-server multi-resource
+    # sync plan). Mirrors clinical_events / examinations / documents /
+    # medications: the engine stamps ``source_integration_id`` from the
+    # owning integration; the provider sets ``external_id`` to the remote
+    # FHIR resource id. Partial unique index
+    # ``uq_allergy_intolerance_integration_dedup`` (migration f1m2u3l4t5i6).
+    source_integration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String(255), nullable=True, index=True)
+
     def to_dict(self):
         return {
             "id": str(self.id),
@@ -188,6 +202,10 @@ class AllergyIntolerance(
             else None,
             "note": self.note,
             "reactions": self.reactions or [],
+            "source_integration_id": str(self.source_integration_id)
+            if self.source_integration_id
+            else None,
+            "external_id": self.external_id,
         }
 
     def to_fhir_dict(self) -> dict:

@@ -208,10 +208,8 @@ async def add_patient_allergy(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_patient_access(patient_id, current_user, db)
-    return await allergy_service.add_patient_allergy(
-        db, patient_id, current_user.tenant_id, data
-    )
+    data.patient_id = patient_id
+    return await allergy_service.add_patient_allergy(db, current_user, data)
 
 
 @router.get("/{allergy_id}", response_model=AllergyIntoleranceResponse)

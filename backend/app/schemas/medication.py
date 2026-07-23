@@ -4,7 +4,7 @@ from datetime import datetime, date
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-from app.models.enums import MedicationStatus
+from app.models.enums import MedicationIntent, MedicationStatus
 
 
 # --- Medication Catalog ---
@@ -83,6 +83,11 @@ class MedicationRecordBase(BaseModel):
     code: Dict[str, Any]  # {"text": "Aspirin", "catalog_id": "..."}
     patient_id: Optional[UUID] = None
     examination_id: Optional[UUID] = None
+    # Discriminator: MedicationStatement (default) vs MedicationRequest.
+    # Exposed so integration pulls can import a remote MedicationRequest as
+    # intent=order; UI callers leave it unset to keep the legacy statement
+    # default. ``None`` here means "let the ORM column default apply".
+    intent: Optional[MedicationIntent] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     dosage: Optional[str] = None
@@ -107,6 +112,12 @@ class MedicationRecordBase(BaseModel):
 
 class MedicationRecordCreate(MedicationRecordBase):
     timing: Optional[Dict[str, Any]] = None  # Direct FHIR timing object support
+    # Integration dedup key (Phase 4 of the fhir-server multi-resource sync
+    # plan). Set by integration providers on the objects they return from
+    # ``pull_medications``; the engine reads it and forwards it to the
+    # service. ``source_integration_id`` is NOT on the schema — the engine
+    # always supplies it (= the integration's own id).
+    external_id: Optional[str] = None
 
 
 class MedicationRecordUpdate(BaseModel):
@@ -125,6 +136,8 @@ class MedicationRecordResponse(MedicationRecordBase):
     id: UUID
     patient_id: UUID
     tenant_id: UUID
+    source_integration_id: Optional[UUID] = None
+    external_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

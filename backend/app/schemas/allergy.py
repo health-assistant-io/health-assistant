@@ -79,6 +79,7 @@ class AllergenCode(BaseModel):
 
 
 class AllergyIntoleranceBase(BaseModel):
+    patient_id: Optional[UUID] = None
     clinical_status: AllergyClinicalStatus = AllergyClinicalStatus.ACTIVE
     verification_status: str = "confirmed"
     category: Optional[AllergyCategory] = None
@@ -106,7 +107,12 @@ class AllergyIntoleranceBase(BaseModel):
 
 
 class AllergyIntoleranceCreate(AllergyIntoleranceBase):
-    pass
+    # Integration dedup key (Phase 4 of the fhir-server multi-resource sync
+    # plan). Set by integration providers on the objects they return from
+    # ``pull_allergies``; the engine reads it and forwards it to the
+    # service. ``source_integration_id`` is NOT on the schema — the engine
+    # always supplies it (= the integration's own id).
+    external_id: Optional[str] = None
 
 
 class AllergyIntoleranceUpdate(BaseModel):
@@ -127,6 +133,8 @@ class AllergyIntoleranceResponse(AllergyIntoleranceBase):
     patient_id: UUID
     tenant_id: UUID
     patient_name_display: Optional[str] = None
+    source_integration_id: Optional[UUID] = None
+    external_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

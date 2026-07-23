@@ -97,24 +97,31 @@ async def test_add_patient_allergy_calls_assert_valid_fhir(monkeypatch):
         return original(obj)
 
     monkeypatch.setattr(allergy_service, "assert_valid_fhir", spy)
+    # The canonical write path calls check_patient_access; bypass it here
+    # so the unit test stays focused on the FHIR gate (no real DB).
+    monkeypatch.setattr(allergy_service, "check_patient_access", AsyncMock())
 
     fake_db = AsyncMock()
     fake_db.add = MagicMock()
+    fake_db.flush = AsyncMock()
     fake_db.commit = AsyncMock()
     fake_db.refresh = AsyncMock()
 
     from app.schemas.allergy import AllergyIntoleranceCreate
+    from app.schemas.user import TokenData
 
+    patient_id = uuid4()
     payload = AllergyIntoleranceCreate(
+        patient_id=patient_id,
         clinical_status=AllergyClinicalStatus.ACTIVE,
         category=AllergyCategory.FOOD,
         criticality=AllergyCriticality.HIGH,
         code={"text": "Peanuts"},
     )
-
-    patient_id = uuid4()
-    tenant_id = uuid4()
-    await allergy_service.add_patient_allergy(fake_db, patient_id, tenant_id, payload)
+    actor = TokenData(
+        user_id=uuid4(), tenant_id=uuid4(), role="ADMIN", sub="admin@test",
+    )
+    await allergy_service.add_patient_allergy(fake_db, actor, payload)
 
     assert len(gate_calls) == 1
     assert isinstance(gate_calls[0], AllergyIntolerance)

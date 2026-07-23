@@ -173,6 +173,20 @@ class Medication(
     # For FHIR compatibility
     subject = Column(JSONB, nullable=True)
 
+    # Integration provenance (Phase 4 of the fhir-server multi-resource
+    # sync plan). Mirrors clinical_events / examinations / documents: the
+    # engine stamps ``source_integration_id`` from the owning integration;
+    # the provider sets ``external_id`` to the remote FHIR resource id.
+    # The partial unique index ``uq_fhir_medications_integration_dedup``
+    # (added by migration f1m2u3l4t5i6) dedups across syncs at the DB layer.
+    source_integration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user_integrations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    external_id = Column(String(255), nullable=True, index=True)
+
     __table_args__ = (
         # FHIR sort: MedicationStatement?_sort=startdate, MedicationRequest?_sort=authoredon
         Index("ix_fhir_medications_start_date", "start_date"),
@@ -192,6 +206,10 @@ class Medication(
             "frequency": self.frequency,
             "reason": self.reason,
             "note": self.note,
+            "source_integration_id": str(self.source_integration_id)
+            if self.source_integration_id
+            else None,
+            "external_id": self.external_id,
         }
 
     def to_fhir_dict(self) -> dict:

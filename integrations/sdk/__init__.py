@@ -23,6 +23,12 @@ from app.schemas.clinical_event import ClinicalEventCreate
 # ``ExaminationCreate`` similarly re-exported for ``pull_examinations``
 # (workstream E.3).
 from app.schemas.examination import ExaminationCreate
+# Phase 4 of the fhir-server multi-resource sync plan: the treatment-
+# resource pull hooks (supports_medications / supports_allergies /
+# supports_immunizations) return these typed payloads.
+from app.schemas.medication import MedicationRecordCreate
+from app.schemas.allergy import AllergyIntoleranceCreate
+from app.schemas.vaccine import PatientImmunizationCreate
 from .catalog import (
     CatalogProposal,
     CatalogProposalKind,
@@ -96,6 +102,9 @@ __all__ = [
     "parse_operation_outcome",
     "ClinicalEventCreate",
     "ExaminationCreate",
+    "MedicationRecordCreate",
+    "AllergyIntoleranceCreate",
+    "PatientImmunizationCreate",
     "CatalogProposal",
     "CatalogProposalKind",
     "biomarker_proposal",

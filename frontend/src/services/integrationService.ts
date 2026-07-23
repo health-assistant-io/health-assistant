@@ -32,6 +32,9 @@ export interface CustomAction {
   id: string;
   label: string;
   style: 'primary' | 'danger' | 'warning' | 'default';
+  /** Optional UI hint — e.g. ``"patient_picker"`` opens an interactive
+   * modal instead of firing the action and showing a read-only result. */
+  modal?: string;
 }
 
 // --- Structured display blocks for custom action results ---
@@ -180,8 +183,19 @@ export const integrationService = {
     await api.delete(`/integrations/instance/${integrationId}?patient_id=${patientId}`);
   },
 
-  executeAction: async (integrationId: string, patientId: string, actionId: string): Promise<any> => {
-    const response = await api.post(`/integrations/instance/${integrationId}/action/${actionId}?patient_id=${patientId}`);
+  executeAction: async (
+    integrationId: string,
+    patientId: string,
+    actionId: string,
+    input?: Record<string, any>,
+  ): Promise<any> => {
+    // ``input`` is spread as kwargs into the provider's execute_custom_action.
+    // Sent as the JSON body; omitted entirely when no input (backward compatible
+    // with actions that take no arguments).
+    const response = await api.post(
+      `/integrations/instance/${integrationId}/action/${actionId}?patient_id=${patientId}`,
+      input ?? {},
+    );
     return response.data;
   },
 

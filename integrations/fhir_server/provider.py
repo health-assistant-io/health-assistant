@@ -32,8 +32,10 @@ from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
 from integrations.sdk import (
     BaseHealthProvider,
+    DocumentPull,
     SmartOAuth,
     action_result,
+    biomarker_hitl_proposal,
     fhir_conditional_update,
     fhir_observation_to_create,
     fhir_search,
@@ -46,6 +48,15 @@ from integrations.sdk.exceptions import (
     IntegrationAuthError,
     IntegrationDataError,
     IntegrationError,
+)
+from integrations.fhir_server.mappers import (
+    allergy_intolerance_to_create,
+    condition_to_event,
+    document_reference_meta,
+    encounter_to_exam,
+    immunization_to_create,
+    medication_request_to_record,
+    medication_statement_to_record,
 )
 
 from app.models.enums import CodingSystem
@@ -60,6 +71,22 @@ _DIRECTION_DEFAULT = "both"
 _AUTO_PULL_DISABLED = {"push_only", "none"}
 _AUTO_PUSH_DISABLED = {"pull_only", "none"}
 _PUSH_BATCH_LIMIT = 500
+
+# Multi-resource pull (Phases 1–4 of the fhir-server multi-resource sync
+# plan). The config key ``pull_resources`` (a list of tokens, or ``"all"``)
+# selects which resource types an instance pulls. Tokens are deliberately
+# coarse-grained — a single "Medication" token covers both FHIR
+# MedicationStatement and MedicationRequest (both map to the same HA
+# ``fhir_medications`` row via the ``intent`` discriminator).
+_ALL_RESOURCES = "all"
+_RESOURCE_TOKENS = (
+    "Condition",          # → clinical events
+    "Encounter",          # → examinations
+    "DocumentReference",  # → documents + OCR
+    "Medication",         # → MedicationStatement + MedicationRequest
+    "AllergyIntolerance", # → allergies
+    "Immunization",       # → immunizations
+)
 
 
 class FhirServerProvider(BaseHealthProvider):
@@ -102,13 +129,158 @@ class FhirServerProvider(BaseHealthProvider):
         return self._config(integration).get("sync_direction", _DIRECTION_DEFAULT)
 
     def _remote_patient(self, integration: UserIntegration) -> Optional[str]:
+        """Resolve the remote FHIR patient id for this instance.
+
+        An explicit ``remote_patient_id`` in the config wins (set by the
+        Find Patient picker or manual entry) — it lets the operator
+        override the SMART-resolved patient or supply one for tokenless
+        servers. Falls back to the SMART launch token's patient for
+        ``smart`` mode; ``none`` mode with no explicit id returns None
+        (pulls unscoped — usually wrong, but the server's call).
+        """
         config = self._config(integration)
+        explicit = config.get("remote_patient_id")
+        if explicit:
+            return explicit
         if config.get("auth_mode", "smart") == "smart":
             try:
                 return self._smart.tokens.get_patient(integration)
             except Exception:
                 return None
-        return config.get("remote_patient_id")
+        return None
+
+    # --------------------------------------------------- remote patient picker
+
+    async def _search_remote_patients(
+        self,
+        integration: UserIntegration,
+        *,
+        query: Optional[str] = None,
+        identifier: Optional[str] = None,
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        """Search the remote FHIR server for Patient resources.
+
+        ``identifier`` searches by MRN/identifier (most precise);
+        ``query`` searches by name. Returns a flat list of summarized
+        patient dicts (see :meth:`_summarize_patient`). Degrades to
+        ``[]`` on auth/network failure so the picker UI never crashes.
+        """
+        config = self._config(integration)
+        auth_mode = config.get("auth_mode", "smart")
+        fhir_base_url = config.get("fhir_base_url")
+        if not fhir_base_url:
+            return []
+        if auth_mode == "smart" and not config.get("_oauth"):
+            return []  # PENDING — not authorized yet
+
+        params: Dict[str, str] = {"_count": str(limit)}
+        if identifier:
+            params["identifier"] = identifier
+        elif query:
+            params["name"] = query
+
+        try:
+            if auth_mode == "smart":
+                resources = await self._authorized_search(
+                    integration, fhir_base_url, "Patient", params, max_pages=1
+                )
+            else:
+                resources = await fhir_search(
+                    self._http_client, fhir_base_url, "Patient", params, max_pages=1
+                )
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            await self.log_debug_payload(
+                integration, "Patient search failed",
+                {"error": str(e), "params": params}, level="warning",
+            )
+            return []
+
+        return [
+            self._summarize_patient(r)
+            for r in resources
+            if isinstance(r, dict) and r.get("resourceType") == "Patient"
+        ]
+
+    @staticmethod
+    def _summarize_patient(fhir_patient: Dict[str, Any]) -> Dict[str, Any]:
+        """Reduce a FHIR Patient to the picker-relevant fields."""
+        def _name() -> str:
+            names = fhir_patient.get("name") or []
+            if isinstance(names, dict):
+                names = [names]
+            for n in names:
+                if not isinstance(n, dict):
+                    continue
+                if n.get("text"):
+                    return str(n["text"])
+                given = n.get("given") or []
+                family = n.get("family") or ""
+                if isinstance(given, list):
+                    given = " ".join(given)
+                full = f"{given} {family}".strip()
+                if full:
+                    return full
+            return "—"
+
+        def _mrn() -> Optional[str]:
+            for ident in fhir_patient.get("identifier") or []:
+                if isinstance(ident, dict) and ident.get("value"):
+                    sys = str(ident.get("system") or "").lower()
+                    if "mrn" in sys or not ident.get("type"):
+                        return str(ident["value"])
+            # fallback: first identifier value of any kind
+            for ident in fhir_patient.get("identifier") or []:
+                if isinstance(ident, dict) and ident.get("value"):
+                    return str(ident["value"])
+            return None
+
+        return {
+            "id": str(fhir_patient.get("id") or ""),
+            "name": _name(),
+            "mrn": _mrn(),
+            "birth_date": fhir_patient.get("birthDate"),
+            "gender": fhir_patient.get("gender"),
+        }
+
+    async def _local_patient_hint(self, integration: UserIntegration) -> Dict[str, Any]:
+        """Load the local patient's MRN + name to seed auto-suggest.
+
+        Returns ``{"mrn": str|None, "name": str|None}``. Never raises —
+        a lookup failure just means no auto-suggest.
+        """
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.fhir.patient import Patient
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db:
+                row = (
+                    await db.execute(
+                        select(Patient.mrn, Patient.name).where(
+                            Patient.id == integration.patient_id
+                        )
+                    )
+                ).first()
+            if not row:
+                return {"mrn": None, "name": None}
+            mrn = row[0]
+            raw_name = row[1]
+            name: Optional[str] = None
+            if isinstance(raw_name, dict):
+                given = raw_name.get("given") or []
+                if isinstance(given, list):
+                    given = " ".join(given)
+                name = f"{given} {raw_name.get('family') or ''}".strip() or raw_name.get("text")
+            elif isinstance(raw_name, list) and raw_name and isinstance(raw_name[0], dict):
+                n0 = raw_name[0]
+                given = n0.get("given") or []
+                if isinstance(given, list):
+                    given = " ".join(given)
+                name = f"{given} {n0.get('family') or ''}".strip() or n0.get("text")
+            return {"mrn": str(mrn) if mrn else None, "name": name}
+        except Exception:
+            return {"mrn": None, "name": None}
 
     # -------------------------------------------------------------- pull (PULL)
 
@@ -132,55 +304,40 @@ class FhirServerProvider(BaseHealthProvider):
     async def _run_pull(
         self, integration: UserIntegration, *, persist: bool
     ) -> List[ObservationCreate]:
+        """Pull remote Observations and (optionally) persist them locally.
+
+        Delegates the bounded FHIR search + per-resource cursor to the
+        generic :meth:`_search_resource`; the Observation-specific work
+        here is the FHIR→``ObservationCreate`` mapping and the optional
+        direct persist (used by the ``pull_now`` action).
+        """
         config = self._config(integration)
         auth_mode = config.get("auth_mode", "smart")
-        fhir_base_url = config.get("fhir_base_url")
-        if not fhir_base_url:
-            return []
         if auth_mode == "smart" and not config.get("_oauth"):
             return []  # PENDING (not yet authorized)
+        if not config.get("fhir_base_url"):
+            return []
 
-        time_window_months = int(config.get("time_window_months") or 12)
         category_choice = config.get("categories") or "both"
-        cursor = self._initial_cursor(integration, time_window_months)
-        remote_patient = self._remote_patient(integration)
-
-        params: Dict[str, str] = {
-            "_sort": "_lastUpdated",
-            "_count": str(_PAGE_SIZE),
-            "_lastUpdated": f"gt{cursor}",
-        }
-        if remote_patient:
-            params["patient"] = remote_patient
+        extra_params: Optional[Dict[str, str]] = None
         if category_choice in _CATEGORY_FILTER:
-            params["category"] = _CATEGORY_FILTER[category_choice]
-
-        await self.log_debug_payload(
-            integration,
-            "FHIR pull search",
-            {"url": f"{fhir_base_url}/Observation", "params": params, "auth_mode": auth_mode},
-        )
+            extra_params = {"category": _CATEGORY_FILTER[category_choice]}
 
         try:
-            if auth_mode == "smart":
-                resources = await self._authorized_search(
-                    integration, fhir_base_url, "Observation", params
-                )
-            else:
-                resources = await fhir_search(
-                    self._http_client, fhir_base_url, "Observation", params, max_pages=50
-                )
-        except (IntegrationAuthError, IntegrationDataError) as e:
-            await self.log_debug_payload(
+            resources = await self._search_resource(
                 integration,
-                "FHIR pull search failed",
-                {"error": str(e), "params": params},
-                level="error",
+                "Observation",
+                extra_params=extra_params,
+                cursor_key="last_updated",
             )
-            raise
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.error("fhir_server %s pull failed: %s", integration.id, e)
+            await self.log_debug_payload(
+                integration, "Pull error", {"error": str(e)}, level="error"
+            )
+            return []
 
         observations: List[ObservationCreate] = []
-        latest = cursor
         skipped = 0
         for fhir_obs in resources:
             if fhir_obs.get("resourceType") != "Observation":
@@ -195,22 +352,11 @@ class FhirServerProvider(BaseHealthProvider):
                 observations.append(created)
             else:
                 skipped += 1
-            updated = fhir_obs.get("meta", {}).get("lastUpdated")
-            if updated and updated > latest:
-                latest = updated
-
-        if latest > cursor:
-            self.set_sync_cursor(integration, "last_updated", latest)
 
         await self.log_debug_payload(
             integration,
             f"FHIR pull -> {len(observations)} mapped ({skipped} skipped)",
-            {
-                "mapped": len(observations),
-                "skipped": skipped,
-                "latest": latest,
-                "persist": persist,
-            },
+            {"mapped": len(observations), "skipped": skipped, "persist": persist},
         )
 
         if persist and observations:
@@ -255,14 +401,15 @@ class FhirServerProvider(BaseHealthProvider):
         return {"fhir": len(orm_obs), "telemetry": 0}
 
     async def _authorized_search(
-        self, integration: UserIntegration, base_url: str, resource_type: str, params: dict
+        self, integration: UserIntegration, base_url: str, resource_type: str,
+        params: dict, *, max_pages: int = 50,
     ) -> list:
         """SMART search: get a live token, refresh once on a 401 race."""
         token = await self._smart.get_live_token(integration)
         try:
             return await fhir_search(
                 self._http_client, base_url, resource_type, params,
-                access_token=token, max_pages=50,
+                access_token=token, max_pages=max_pages,
             )
         except IntegrationAuthError:
             logger.info("401 on %s search; force-refreshing token and retrying once.", resource_type)
@@ -274,16 +421,559 @@ class FhirServerProvider(BaseHealthProvider):
             token = await self._smart.force_refresh(integration)
             return await fhir_search(
                 self._http_client, base_url, resource_type, params,
-                access_token=token, max_pages=50,
+                access_token=token, max_pages=max_pages,
             )
 
-    def _initial_cursor(self, integration: UserIntegration, time_window_months: int) -> str:
+    async def _search_resource(
+        self,
+        integration: UserIntegration,
+        resource_type: str,
+        *,
+        extra_params: Optional[Dict[str, str]] = None,
+        cursor_key: Optional[str] = None,
+        max_pages: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Generic bounded FHIR search with a per-resource ``_lastUpdated`` cursor.
+
+        The multi-resource counterpart to the Observation-specific search
+        that used to live inline in ``_run_pull``. Used by every
+        ``pull_*`` hook (Conditions, Encounters, DocumentReference,
+        MedicationStatement/Request, AllergyIntolerance, Immunization).
+
+        - Builds ``_sort=_lastUpdated`` + ``_count`` + ``_lastUpdated=gt<cursor>``
+          + ``patient=<remote_patient>`` (when known) + any ``extra_params``.
+        - SMART mode: token-aware search with a single 401-race retry
+          (delegates to :meth:`_authorized_search`). ``none`` mode:
+          tokenless. Returns ``[]`` early for PENDING (smart, no token
+          yet) or unconfigured instances.
+        - Advances a per-resource cursor keyed ``cursor_key`` (defaults
+          to ``f"last_updated:{resource_type}"``) so each resource type
+          has its own delta window and a single slow resource can't
+          starve the others.
+
+        Returns the flat list of resource dicts (the Bundle entries are
+        unwrapped by :func:`fhir_search`). Raises
+        ``IntegrationAuthError`` / ``IntegrationDataError`` on failure —
+        callers wrap those to return ``[]`` (hook contract: never raise).
+        """
+        config = self._config(integration)
+        auth_mode = config.get("auth_mode", "smart")
+        fhir_base_url = config.get("fhir_base_url")
+        if not fhir_base_url:
+            return []
+        if auth_mode == "smart" and not config.get("_oauth"):
+            return []  # PENDING (not yet authorized)
+
+        effective_cursor_key = (
+            cursor_key if cursor_key is not None
+            else f"last_updated:{resource_type}"
+        )
+        time_window_months = int(config.get("time_window_months") or 12)
+        cursor = self._initial_cursor(
+            integration, time_window_months, effective_cursor_key
+        )
+        remote_patient = self._remote_patient(integration)
+
+        params: Dict[str, str] = {
+            "_sort": "_lastUpdated",
+            "_count": str(_PAGE_SIZE),
+            "_lastUpdated": f"gt{cursor}",
+        }
+        if remote_patient:
+            params["patient"] = remote_patient
+        if extra_params:
+            params.update(extra_params)
+
+        await self.log_debug_payload(
+            integration,
+            f"FHIR search {resource_type}",
+            {
+                "url": f"{fhir_base_url}/{resource_type}",
+                "params": params,
+                "auth_mode": auth_mode,
+                "cursor_key": effective_cursor_key,
+            },
+        )
+
+        try:
+            if auth_mode == "smart":
+                resources = await self._authorized_search(
+                    integration, fhir_base_url, resource_type, params,
+                    max_pages=max_pages,
+                )
+            else:
+                resources = await fhir_search(
+                    self._http_client, fhir_base_url, resource_type, params,
+                    max_pages=max_pages,
+                )
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            await self.log_debug_payload(
+                integration,
+                f"FHIR search {resource_type} failed",
+                {"error": str(e), "params": params},
+                level="error",
+            )
+            raise
+
+        # Advance the per-resource cursor past the newest row we saw.
+        latest = cursor
+        for r in resources:
+            updated = (r.get("meta") or {}).get("lastUpdated")
+            if updated and updated > latest:
+                latest = updated
+        if latest > cursor:
+            self.set_sync_cursor(integration, effective_cursor_key, latest)
+
+        await self.log_debug_payload(
+            integration,
+            f"FHIR search {resource_type} -> {len(resources)} resource(s)",
+            {"count": len(resources), "latest": latest},
+        )
+        return resources
+
+    async def _fetch_attachment(
+        self, integration: UserIntegration, url: str, *, access_token: Optional[str] = None
+    ) -> bytes:
+        """Fetch a DocumentReference attachment as raw bytes.
+
+        Handles three URL shapes a remote FHIR server may use:
+
+        - Absolute ``http(s)://...`` — fetched directly.
+        - ``<base>/Binary/{id}`` (relative path) — resolved against the
+          configured ``fhir_base_url``.
+        - ``urn:ha-document:<id>`` — the HA-internal scheme; not produced
+          by remote servers, so treated as unreachable (returns ``b""``).
+
+        SMART-mode attachments are fetched with the live bearer token
+        (best-effort refresh on 401). Failures return ``b""`` so the
+        caller can skip the document rather than abort the whole pull —
+        a single unreachable attachment must not break the sync.
+        """
+        if not url:
+            return b""
+        config = self._config(integration)
+        fhir_base_url = (config.get("fhir_base_url") or "").rstrip("/")
+        auth_mode = config.get("auth_mode", "smart")
+
+        if url.startswith("urn:ha-document:"):
+            # Internal scheme — remote servers never use it; nothing to fetch.
+            return b""
+
+        if url.lower().startswith(("http://", "https://")):
+            fetch_url = url
+        else:
+            fetch_url = f"{fhir_base_url}/{url.lstrip('/')}"
+
+        headers: Dict[str, str] = {"Accept": "application/fhir+json, application/octet-stream, application/json"}
+        if auth_mode == "smart":
+            try:
+                token = access_token or await self._smart.get_live_token(integration)
+                headers["Authorization"] = f"Bearer {token}"
+            except IntegrationAuthError:
+                pass
+
+        try:
+            response = await self._http_client.get(fetch_url, headers=headers)
+        except Exception as e:
+            await self.log_debug_payload(
+                integration, "Attachment fetch failed (network)",
+                {"url": fetch_url, "error": str(e)}, level="warning",
+            )
+            return b""
+        if response.status_code == 401 and auth_mode == "smart":
+            # 401 race — force-refresh and retry once.
+            try:
+                token = await self._smart.force_refresh(integration)
+                headers["Authorization"] = f"Bearer {token}"
+                response = await self._http_client.get(fetch_url, headers=headers)
+            except Exception as e:
+                await self.log_debug_payload(
+                    integration, "Attachment fetch failed after refresh",
+                    {"url": fetch_url, "error": str(e)}, level="warning",
+                )
+                return b""
+        if response.status_code >= 400:
+            await self.log_debug_payload(
+                integration, "Attachment fetch failed (HTTP)",
+                {"url": fetch_url, "status": response.status_code}, level="warning",
+            )
+            return b""
+        return response.content
+
+    def _initial_cursor(
+        self, integration: UserIntegration, time_window_months: int, key: str = "last_updated"
+    ) -> str:
         """The ``_lastUpdated`` floor: saved cursor, else now - time_window."""
-        saved = self.get_sync_cursor(integration, "last_updated")
+        saved = self.get_sync_cursor(integration, key)
         if saved:
             return str(saved)
         cutoff = datetime.now(timezone.utc) - timedelta(days=30 * time_window_months)
         return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # --------------------------------------------------- multi-resource pull
+    # Phases 1–4 of the fhir-server multi-resource sync plan
+    # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Every hook
+    # below mirrors the established supports_X / pull_X opt-in shape. Each
+    # ``pull_*`` honours ``sync_direction`` (no-op when auto-pull is
+    # disabled, like ``pull_data``) and the per-instance ``pull_resources``
+    # selection so operators can opt a specific instance out of, say,
+    # allergy ingest without disabling the whole integration.
+
+    def _resource_enabled(self, integration: UserIntegration, token: str) -> bool:
+        """Is ``token`` in this instance's ``pull_resources`` selection?"""
+        selected = self._config(integration).get("pull_resources")
+        if not selected or selected == _ALL_RESOURCES:
+            return True
+        if isinstance(selected, list):
+            return token in selected or _ALL_RESOURCES in selected
+        return False
+
+    def _can_pull(self, integration: UserIntegration, token: str) -> bool:
+        """Gate: sync_direction allows pulling AND the resource is selected."""
+        if self._direction(integration) in _AUTO_PULL_DISABLED:
+            return False
+        return self._resource_enabled(integration, token)
+
+    # ---- Phase 1: clinical events (Condition) ----
+
+    def supports_clinical_events(self) -> bool:
+        return True
+
+    async def pull_clinical_events(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "Condition"):
+            return []
+        try:
+            resources = await self._search_resource(integration, "Condition")
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s conditions pull failed: %s", integration.id, e)
+            return []
+        out = []
+        for res in resources:
+            try:
+                ev = condition_to_event(res, patient_id=integration.patient_id)
+            except Exception as map_err:
+                logger.debug("condition map failed for %s: %s", integration.id, map_err)
+                ev = None
+            if ev is not None:
+                out.append(ev)
+        await self.log_debug_payload(
+            integration, "FHIR Condition -> events", {"mapped": len(out), "raw": len(resources)},
+        )
+        return out
+
+    # ---- Phase 1: examinations (Encounter) ----
+
+    def supports_examinations(self) -> bool:
+        return True
+
+    async def pull_examinations(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "Encounter"):
+            return []
+        try:
+            resources = await self._search_resource(integration, "Encounter")
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s encounters pull failed: %s", integration.id, e)
+            return []
+        out = []
+        for res in resources:
+            try:
+                exam = encounter_to_exam(res, patient_id=integration.patient_id)
+            except Exception as map_err:
+                logger.debug("encounter map failed for %s: %s", integration.id, map_err)
+                exam = None
+            if exam is not None:
+                out.append(exam)
+        await self.log_debug_payload(
+            integration, "FHIR Encounter -> exams", {"mapped": len(out), "raw": len(resources)},
+        )
+        return out
+
+    # ---- Phase 2: documents (DocumentReference) ----
+
+    def supports_documents(self) -> bool:
+        return True
+
+    async def pull_documents(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "DocumentReference"):
+            return []
+        try:
+            resources = await self._search_resource(integration, "DocumentReference")
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s docrefs pull failed: %s", integration.id, e)
+            return []
+
+        # Resolve a live token once (SMART mode) so repeated attachment
+        # fetches reuse it instead of re-refreshing per file.
+        token: Optional[str] = None
+        if self._config(integration).get("auth_mode", "smart") == "smart":
+            try:
+                token = await self._smart.get_live_token(integration)
+            except IntegrationAuthError:
+                token = None
+
+        out: List[DocumentPull] = []
+        for res in resources:
+            try:
+                meta = document_reference_meta(res)
+            except Exception as map_err:
+                logger.debug("docref map failed for %s: %s", integration.id, map_err)
+                continue
+            if meta is None:
+                continue
+            for att in meta.attachments:
+                try:
+                    content = await self._fetch_attachment(
+                        integration, att.get("url") or "", access_token=token
+                    )
+                except Exception as fetch_err:
+                    logger.debug("attachment fetch failed for %s: %s", integration.id, fetch_err)
+                    content = b""
+                if not content:
+                    # An unreachable attachment shouldn't abort the pull;
+                    # the engine's byte cap + per-doc handling already
+                    # tolerate empty content gracefully.
+                    continue
+                out.append(
+                    DocumentPull(
+                        filename=att.get("filename") or "document",
+                        content=content,
+                        content_type=att.get("content_type"),
+                        examination_external_id=meta.examination_external_id,
+                        category_concept_slug=meta.category_concept_slug,
+                        external_id=meta.external_id,
+                        include_in_extraction=True,
+                    )
+                )
+        await self.log_debug_payload(
+            integration, "FHIR DocumentReference -> pulls", {"mapped": len(out), "raw": len(resources)},
+        )
+        return out
+
+    # ---- Phase 3: HITL catalog proposals (unmapped LOINC/SNOMED codes) ----
+
+    def supports_hitl_proposals(self) -> bool:
+        return True
+
+    async def pull_hitl_proposals(self, integration: UserIntegration) -> List[Any]:
+        """Propose biomarker definitions for remote codes the local catalog lacks.
+
+        Scans recently-arrived remote Observations (using its own cursor so
+        it doesn't fight the main pull), collects LOINC/SNOMED codes, and
+        for any code absent from the local ``BiomarkerDefinition`` catalog
+        AND not already proposed (the ``hitl:seen_codes`` cursor) emits a
+        ``biomarker_hitl_proposal`` carrying the code, display, and unit
+        gleaned from the remote resource. Re-syncs are no-ops for already-
+        seen codes; ``handle_proposal_resolution`` suppresses re-proposal
+        of resolved codes regardless of outcome.
+        """
+        # Gated on sync_direction only (not pull_resources) — this scans
+        # the core Observation stream, which is always pulled when the
+        # direction allows it.
+        if self._direction(integration) in _AUTO_PULL_DISABLED:
+            return []
+        # Only propose from standard-coded observations — custom biomarkers
+        # have no hospital terminology worth contributing.
+        try:
+            resources = await self._search_resource(
+                integration, "Observation",
+                cursor_key="hitl:codes_scanned",
+            )
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s hitl scan failed: %s", integration.id, e)
+            return []
+
+        # code_key -> {display, unit, category, system}
+        observed: Dict[str, Dict[str, Any]] = {}
+        for res in resources:
+            code = res.get("code") if isinstance(res, dict) else None
+            if not isinstance(code, dict):
+                continue
+            for coding in code.get("coding") or []:
+                if not isinstance(coding, dict):
+                    continue
+                system = coding.get("system") or ""
+                if "loinc.org" not in system and "snomed" not in system:
+                    continue
+                c = coding.get("code")
+                if not c:
+                    continue
+                observed[str(c)] = {
+                    "display": coding.get("display") or code.get("text") or str(c),
+                    "system": "loinc" if "loinc" in system else "snomed",
+                    "unit": None,
+                    "category": None,
+                }
+            vq = res.get("valueQuantity") if isinstance(res, dict) else None
+            if isinstance(vq, dict):
+                # Attach the unit to the most-recently-seen code (best-effort).
+                for info in reversed(observed.values()):
+                    if info.get("unit") is None:
+                        info["unit"] = vq.get("unit") or vq.get("code")
+
+        if not observed:
+            return []
+
+        known_codes = await self._known_biomarker_codes(integration)
+        seen_codes = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+
+        proposals = []
+        newly_seen = list(seen_codes)
+        for code, info in observed.items():
+            if code in known_codes or code in seen_codes:
+                continue
+            proposals.append(
+                biomarker_hitl_proposal(
+                    title=f"Define Biomarker: {info['display']}",
+                    name=info["display"],
+                    coding_system=info["system"],
+                    code=code,
+                    preferred_unit_symbol=info.get("unit"),
+                    context={
+                        "source": "fhir_server",
+                        "remote_code": code,
+                        "remote_display": info["display"],
+                    },
+                )
+            )
+            newly_seen.append(code)
+
+        # Record seen codes (known + newly proposed) so future syncs skip
+        # them even if the proposal is still pending.
+        if newly_seen != list(seen_codes):
+            self.set_sync_cursor(integration, "hitl:seen_codes", newly_seen)
+
+        await self.log_debug_payload(
+            integration, "FHIR HITL proposals",
+            {"observed": len(observed), "unknown": len(proposals), "known": len(known_codes)},
+        )
+        return proposals
+
+    async def handle_proposal_resolution(
+        self, integration: UserIntegration, proposal_id, outcome
+    ) -> None:
+        """Suppress re-proposal of a resolved code regardless of outcome.
+
+        The biomarker ``proposed_payload`` carries the remote code; we add
+        it to the ``hitl:seen_codes`` cursor so the next scan treats it as
+        resolved (approved → it's now in the catalog anyway; rejected →
+        the user explicitly declined, don't nag).
+        """
+        try:
+            payload = getattr(outcome, "final_payload", {}) or {}
+            code = payload.get("code")
+            if not code:
+                return
+            seen = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+            seen.add(str(code))
+            self.set_sync_cursor(integration, "hitl:seen_codes", list(seen))
+        except Exception as e:
+            logger.debug("handle_proposal_resolution failed for %s: %s", integration.id, e)
+
+    async def _known_biomarker_codes(self, integration: UserIntegration) -> set:
+        """Load the set of LOINC/SNOMED codes already in the local catalog."""
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.biomarker_model import BiomarkerDefinition
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(BiomarkerDefinition.code).where(
+                        BiomarkerDefinition.tenant_id == integration.tenant_id,
+                        BiomarkerDefinition.code.isnot(None),
+                        BiomarkerDefinition.coding_system.in_(
+                            [CodingSystem.LOINC, CodingSystem.SNOMED]
+                        ),
+                    )
+                )
+                return {str(row[0]) for row in result.all() if row[0]}
+        except Exception:
+            return set()
+
+    # ---- Phase 4: medications (MedicationStatement + MedicationRequest) ----
+
+    def supports_medications(self) -> bool:
+        return True
+
+    async def pull_medications(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "Medication"):
+            return []
+        out = []
+        for rtype, mapper in (
+            ("MedicationStatement", medication_statement_to_record),
+            ("MedicationRequest", medication_request_to_record),
+        ):
+            try:
+                resources = await self._search_resource(integration, rtype)
+            except (IntegrationAuthError, IntegrationDataError) as e:
+                logger.warning("fhir_server %s %s pull failed: %s", integration.id, rtype, e)
+                continue
+            for res in resources:
+                try:
+                    rec = mapper(res, patient_id=integration.patient_id)
+                except Exception as map_err:
+                    logger.debug("%s map failed for %s: %s", rtype, integration.id, map_err)
+                    rec = None
+                if rec is not None:
+                    out.append(rec)
+        await self.log_debug_payload(
+            integration, "FHIR Medications -> records", {"mapped": len(out)},
+        )
+        return out
+
+    # ---- Phase 4: allergies (AllergyIntolerance) ----
+
+    def supports_allergies(self) -> bool:
+        return True
+
+    async def pull_allergies(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "AllergyIntolerance"):
+            return []
+        try:
+            resources = await self._search_resource(integration, "AllergyIntolerance")
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s allergies pull failed: %s", integration.id, e)
+            return []
+        out = []
+        for res in resources:
+            try:
+                rec = allergy_intolerance_to_create(res, patient_id=integration.patient_id)
+            except Exception as map_err:
+                logger.debug("allergy map failed for %s: %s", integration.id, map_err)
+                rec = None
+            if rec is not None:
+                out.append(rec)
+        await self.log_debug_payload(
+            integration, "FHIR AllergyIntolerance -> records", {"mapped": len(out), "raw": len(resources)},
+        )
+        return out
+
+    # ---- Phase 4: immunizations (Immunization) ----
+
+    def supports_immunizations(self) -> bool:
+        return True
+
+    async def pull_immunizations(self, integration: UserIntegration) -> List[Any]:
+        if not self._can_pull(integration, "Immunization"):
+            return []
+        try:
+            resources = await self._search_resource(integration, "Immunization")
+        except (IntegrationAuthError, IntegrationDataError) as e:
+            logger.warning("fhir_server %s immunizations pull failed: %s", integration.id, e)
+            return []
+        out = []
+        for res in resources:
+            try:
+                rec = immunization_to_create(res, patient_id=integration.patient_id)
+            except Exception as map_err:
+                logger.debug("immunization map failed for %s: %s", integration.id, map_err)
+                rec = None
+            if rec is not None:
+                out.append(rec)
+        await self.log_debug_payload(
+            integration, "FHIR Immunization -> records", {"mapped": len(out), "raw": len(resources)},
+        )
+        return out
 
     # -------------------------------------------------------------- push (PUSH)
 
@@ -729,6 +1419,8 @@ class FhirServerProvider(BaseHealthProvider):
     def get_custom_actions(self) -> List[Dict[str, str]]:
         return [
             {"id": "check_connection", "label": "Check Connection", "style": "default"},
+            {"id": "find_patient", "label": "Find Patient", "style": "primary",
+             "modal": "patient_picker"},
             {"id": "pull_now", "label": "Pull Now", "style": "primary"},
             {"id": "push_now", "label": "Push Now", "style": "primary"},
             {"id": "push_preview", "label": "Push Preview", "style": "default"},
@@ -740,6 +1432,10 @@ class FhirServerProvider(BaseHealthProvider):
     ) -> Dict[str, Any]:
         if action_id == "check_connection":
             return await self._action_check_connection(integration)
+        if action_id == "find_patient":
+            return await self._action_find_patient(integration, **kwargs)
+        if action_id == "select_patient":
+            return await self._action_select_patient(integration, **kwargs)
         if action_id == "pull_now":
             return await self._action_pull_now(integration)
         if action_id == "push_now":
@@ -749,6 +1445,62 @@ class FhirServerProvider(BaseHealthProvider):
         if action_id == "reset_cursors":
             return await self._action_reset_cursors(integration)
         raise NotImplementedError(f"Action '{action_id}' is not implemented by {self.domain}.")
+
+    async def _action_find_patient(
+        self, integration: UserIntegration, *, query: Optional[str] = None,
+        identifier: Optional[str] = None, **_extra,
+    ) -> Dict[str, Any]:
+        """Search the remote server for a patient; auto-suggests by local MRN.
+
+        Called by the patient-picker modal (``query`` from the search
+        box). When called with no query (modal just opened), seeds the
+        search from the local patient's MRN, falling back to their name —
+        so the most likely match surfaces automatically. Returns a dict
+        the picker consumes directly: ``{query, auto_suggested, matches}``.
+        """
+        auto_suggested = False
+        if not query and not identifier:
+            hint = await self._local_patient_hint(integration)
+            if hint.get("mrn"):
+                identifier = hint["mrn"]
+                auto_suggested = "MRN"
+            elif hint.get("name"):
+                query = hint["name"]
+                auto_suggested = "name"
+
+        matches = await self._search_remote_patients(
+            integration, query=query, identifier=identifier
+        )
+        await self.log_debug_payload(
+            integration, "Find Patient",
+            {"query": query, "identifier": identifier, "auto_suggested": auto_suggested,
+             "matches": len(matches)},
+        )
+        return {
+            "query": query,
+            "identifier": identifier,
+            "auto_suggested": auto_suggested or False,
+            "matches": matches,
+            "current": self._remote_patient(integration),
+        }
+
+    async def _action_select_patient(
+        self, integration: UserIntegration, *, patient_id: Optional[str] = None,
+        **_extra,
+    ) -> Dict[str, Any]:
+        """Set ``remote_patient_id`` on the instance (the picker's select step)."""
+        if not patient_id:
+            return {"message": "No patient selected."}
+        new_config = dict(integration.user_config or {})
+        new_config["remote_patient_id"] = str(patient_id)
+        integration.user_config = new_config
+        await self.log_debug_payload(
+            integration, "Selected remote patient", {"remote_patient_id": patient_id},
+        )
+        return action_result(
+            message=f"Linked remote patient {patient_id}.",
+            results=[kv_block("Remote patient", {"id": patient_id})],
+        )
 
     async def _action_check_connection(self, integration) -> Dict[str, Any]:
         info = await self._check_connection(integration)
@@ -851,23 +1603,24 @@ class FhirServerProvider(BaseHealthProvider):
         )
 
     async def _action_reset_cursors(self, integration) -> Dict[str, Any]:
+        """Reset every sync cursor (Observation, per-resource pull, push, HITL).
+
+        Clears the whole ``_sync_state`` dict so the next sync re-pulls /
+        re-pushes the full configured window for every resource type. The
+        per-resource cursors (``last_updated:Condition``, ...) and the
+        HITL seen-codes set (``hitl:seen_codes``) are cleared too — a
+        reset is an operator's "start over" switch.
+        """
         new_config = dict(integration.user_config or {})
         new_state = dict(new_config.get("_sync_state") or {})
-        cleared = [
-            key for key in ("last_updated", "last_pushed_at", "last_push_result") if key in new_state
-        ]
-        for key in cleared:
-            new_state.pop(key, None)
-        new_config["_sync_state"] = new_state
+        cleared = sorted(new_state.keys())
+        new_config["_sync_state"] = {}
         integration.user_config = new_config
         await self.log_debug_payload(integration, "Cursors reset", {"cleared": cleared})
         return action_result(
             message=f"Reset {len(cleared)} cursor(s). Next sync re-pulls/re-pushes the full window.",
             results=[
-                kv_block(
-                    "Cleared",
-                    {k: "yes" for k in cleared} if cleared else {"none": "—"},
-                )
+                list_block("Cleared", cleared) if cleared else kv_block("Cleared", {"none": "—"}),
             ],
         )
 

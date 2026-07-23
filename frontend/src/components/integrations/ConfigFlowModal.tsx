@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
+import { X, Plus, Trash2, Eye, EyeOff, Check } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { integrationService, ConfigFlowSchema } from '../../services/integrationService';
 import { Portal } from '../ui/Portal';
@@ -16,6 +16,13 @@ interface Props {
 // Fields whose value is an array of strings (rendered as a tag/chip editor).
 function isArrayField(prop: any): boolean {
   return prop?.type === 'array' && prop?.items?.type === 'string';
+}
+
+// Array-of-strings fields constrained to a known set (``items.enum``) —
+// rendered as a toggle-card multi-select instead of the free-text chip
+// editor. ``items.enum_descriptions`` optionally annotates each option.
+function isArrayEnumField(prop: any): boolean {
+  return isArrayField(prop) && Array.isArray(prop?.items?.enum) && prop.items.enum.length > 0;
 }
 
 // Fields whose value is a key-value map (rendered as dynamic rows).
@@ -258,6 +265,48 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
                         >
                           <Plus className="w-3.5 h-3.5" /> Add row
                         </button>
+                      </div>
+                    ) : isArrayEnumField(prop) ? (
+                      <div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {prop.items.enum.map((opt: string) => {
+                            const current: string[] = Array.isArray(formData[key]) ? formData[key] : [];
+                            const selected = current.includes(opt);
+                            const desc = prop.items.enum_descriptions?.[opt];
+                            return (
+                              <button
+                                type="button"
+                                key={opt}
+                                onClick={() => {
+                                  const next = selected
+                                    ? current.filter((v: string) => v !== opt)
+                                    : [...current, opt];
+                                  // Preserve enum order so the stored value is deterministic.
+                                  const ordered = prop.items.enum.filter((v: string) => next.includes(v));
+                                  setFormData((prev) => ({ ...prev, [key]: ordered }));
+                                }}
+                                className={`flex items-start gap-2 text-left rounded-xl border p-3 transition-colors ${
+                                  selected
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20'
+                                    : 'border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-dark-bg'
+                                }`}
+                              >
+                                <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded flex items-center justify-center ${selected ? 'bg-blue-600 text-white' : 'border border-gray-300 dark:border-gray-600'}`}>
+                                  {selected && <Check className="w-3 h-3" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 dark:text-dark-text">{opt}</div>
+                                  {desc && <div className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{desc}</div>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {(formData[key] || []).length === 0 && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                            Select at least one record type.
+                          </p>
+                        )}
                       </div>
                     ) : isArrayField(prop) ? (
                       <div className="space-y-2 rounded-xl border border-gray-200 dark:border-dark-border p-3 bg-gray-50 dark:bg-dark-bg">

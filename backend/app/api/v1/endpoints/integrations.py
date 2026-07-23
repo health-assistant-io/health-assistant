@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 import os
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
@@ -780,10 +780,18 @@ async def execute_custom_action(
     integration_id: str,
     action_id: str,
     patient_id: str,
+    payload: Optional[Dict[str, Any]] = Body(default=None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    """Execute a custom action defined by the integration provider."""
+    """Execute a custom action defined by the integration provider.
+
+    ``payload`` is an optional JSON body of action inputs (e.g.
+    ``{"query": "Smith"}`` for a patient-search action). It is spread as
+    keyword arguments into ``provider.execute_custom_action``. Actions
+    that take no input (the historical behaviour) are sent with no body
+    and receive no kwargs — fully backward compatible.
+    """
     try:
         integration_uuid = UUID(integration_id)
     except ValueError:
@@ -811,7 +819,9 @@ async def execute_custom_action(
         )
 
     try:
-        response = await provider.execute_custom_action(integration, action_id)
+        response = await provider.execute_custom_action(
+            integration, action_id, **(payload or {})
+        )
         # Commit any changes to user_config (like cursors) made by the action
         from sqlalchemy.orm.attributes import flag_modified
 

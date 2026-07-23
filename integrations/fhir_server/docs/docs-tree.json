@@ -1,0 +1,59 @@
+[
+  {
+    "category": "Getting Started",
+    "items": [
+      {
+        "id": "overview",
+        "file": "overview.md",
+        "title": "Overview",
+        "description": "FHIR Server integration for Health Assistant, the self-hosted, open-source health records platform. Two-way sync with an external FHIR R4 server — a hospital (Epic/Cerner), a personal health record, or a local HAPI — pulling the full patient record in and pushing observations back out."
+      },
+      {
+        "id": "connection",
+        "file": "connection.md",
+        "title": "Authorization & Connection",
+        "description": "Connect a FHIR server to Health Assistant. SMART-on-FHIR standalone launch with Dynamic Client Registration for hospitals, or tokenless mode for a local HAPI server. Scopes, the Authorize flow, and the Check Connection action."
+      }
+    ]
+  },
+  {
+    "category": "Sync",
+    "items": [
+      {
+        "id": "pull",
+        "file": "pull.md",
+        "title": "Pull (Full Patient Record)",
+        "description": "Multi-resource pull from a FHIR server into Health Assistant. Ingest observations, conditions, encounters, documents, medications, allergies, and immunizations through the canonical write services with per-resource cursors and dedup."
+      },
+      {
+        "id": "push",
+        "file": "push.md",
+        "title": "Push (Outbound Observations)",
+        "description": "Push local Health Assistant observations back to a FHIR server via conditional update. Idempotent per local UUID, subject rewriting, echo exclusion, best-effort Provenance, and insufficient-scope detection."
+      },
+      {
+        "id": "patient-selection",
+        "file": "patient-selection.md",
+        "title": "Selecting the Remote Patient",
+        "description": "How Health Assistant maps a local patient to a remote FHIR patient. The Find Patient picker with MRN auto-suggest, manual remote patient ID entry, and the SMART launch-token fallback."
+      }
+    ]
+  },
+  {
+    "category": "Advanced",
+    "items": [
+      {
+        "id": "catalog-proposals",
+        "file": "catalog-proposals.md",
+        "title": "Catalog Proposals",
+        "description": "Human-in-the-loop biomarker proposals from a FHIR server. Unmapped LOINC and SNOMED codes observed remotely queue for review; approving one defines the biomarker so future pulls map cleanly. AI proposes, you approve."
+      },
+      {
+        "id": "troubleshooting",
+        "file": "troubleshooting.md",
+        "title": "Troubleshooting",
+        "description": "Diagnose a FHIR server integration in Health Assistant. Resolve a stuck PENDING status, insufficient-scope write errors, 401 token races, empty pulls, and connection failures against HAPI or SMART endpoints."
+      }
+    ]
+  }
+]
