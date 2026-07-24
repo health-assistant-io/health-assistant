@@ -33,6 +33,14 @@ class PatientBase(BaseModel):
     dashboard_layout: Optional[Dict[str, Any]] = Field(
         None, description="Custom dashboard layout"
     )
+    extensions: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Local-keyed FHIR R4 extensions map (race / ethnicity / "
+            "preferred_language / insurance_provider). Validated against the "
+            "registry in app.services.fhir_extensions."
+        ),
+    )
 
 
 class PatientCreate(PatientBase):
@@ -57,6 +65,13 @@ class PatientUpdate(BaseModel):
     emergency_contact: Optional[Dict[str, Any]] = None
     address: Optional[List[Dict[str, Any]]] = None
     telecom: Optional[List[Dict[str, Any]]] = None
+    extensions: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Replacement FHIR R4 extensions map (see PatientBase). The whole "
+            "object is replaced on update; partial-merge is not supported."
+        ),
+    )
 
 
 class PatientResponse(PatientBase):

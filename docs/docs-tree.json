@@ -28,6 +28,12 @@
         "description": "End-user guide to Health Assistant, a self-hosted, open-source health records platform. Sign in, add a person, upload a lab report, read biomarker trends, configure the AI assistant, connect a wearable, and start a health journey."
       },
       {
+        "id": "setup-wizard",
+        "file": "SETUP_WIZARD.md",
+        "title": "Setup Wizard (Guided Onboarding)",
+        "description": "Health Assistant guides every user through setup — first-run role checklists (System Admin, Tenant Admin, User) and a per-patient advanced profile wizard (demographics, contacts, allergies, medications, race/ethnicity, preferred language, insurance). Backend-derived completion, no onboarding-state table; reopenable any time."
+      },
+      {
         "id": "architecture",
         "file": "ARCHITECTURE.md",
         "title": "Architecture Overview",

@@ -31,6 +31,7 @@ from app.services.fhir_helpers import (
     build_fhir_resource,
     build_meta,
 )
+from app.services.fhir_extensions import to_fhir_extension_list as _patient_fhir_extension_list
 
 
 class Patient(
@@ -63,6 +64,13 @@ class Patient(
     mrn = Column(String, nullable=True)  # Medical Record Number (per-tenant unique via index)
     emergency_contact = Column(JSONB, nullable=True)
     dashboard_layout = Column(JSONB, nullable=True)  # Custom dashboard layout
+
+    # FHIR R4 extensions stored as a local-keyed JSONB map (see
+    # app/services/fhir_extensions.py for the registry + canonical
+    # FHIR conversion). Holds race / ethnicity / preferred language /
+    # insurance provider and any future US Core-ish demographic
+    # extensions without bloating the relational schema.
+    extensions = Column(JSONB, nullable=True)
 
     # Indexes for common queries
     __table_args__ = (
@@ -108,6 +116,7 @@ class Patient(
             "mrn": self.mrn,
             "emergency_contact": self.emergency_contact,
             "dashboard_layout": self.dashboard_layout,
+            "extensions": self.extensions,
         }
 
     def to_fhir_dict(self) -> dict:
@@ -132,6 +141,7 @@ class Patient(
                 else None,
                 "address": self.address,
                 "telecom": self.telecom,
+                "extension": _patient_fhir_extension_list(self.extensions),
                 "meta": build_meta(str(self.id)),
             },
         )

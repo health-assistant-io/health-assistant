@@ -37,6 +37,7 @@ from app.api.v1.endpoints.concepts import (
 )
 from app.api.v1.endpoints.catalogs import router as catalogs_router
 from app.api.v1.endpoints.settings import router as settings_router
+from app.api.v1.endpoints.setup_checklist import router as setup_checklist_router
 from app.api.v1.endpoints.websockets import router as websockets_router
 from app.api.v1.endpoints.oauth import router as oauth_router
 from app.core.security import require_session_token
@@ -96,6 +97,7 @@ session_gated_router.include_router(concepts_router)
 session_gated_router.include_router(concept_edges_router)
 session_gated_router.include_router(catalogs_router)
 session_gated_router.include_router(settings_router)
+session_gated_router.include_router(setup_checklist_router)
 
 api_router.include_router(session_gated_router)
 api_router.include_router(websockets_router)

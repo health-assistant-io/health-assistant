@@ -13,6 +13,7 @@ from app.services.fhir_helpers import (
 )
 from app.services.notification_manager import NotificationManager
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.services.fhir_extensions import validate_patient_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,12 @@ async def create_patient(
 
     mrn = (patient_data.get("mrn") or "").strip() or None
 
+    try:
+        extensions = validate_patient_extensions(patient_data.get("extensions"))
+    except ValueError as exc:
+        logger.warning("rejecting patient.extensions on create: %s", exc)
+        raise
+
     new_patient = Patient(
         tenant_id=tenant_id,
         user_id=patient_data.get("user_id"),
@@ -81,6 +88,7 @@ async def create_patient(
         mrn=mrn,
         address=patient_data.get("address"),
         telecom=patient_data.get("telecom"),
+        extensions=extensions,
     )
     assert_valid_fhir(new_patient)
 
@@ -190,6 +198,17 @@ async def update_patient(
 
             if "telecom" in patient_data:
                 patient.telecom = patient_data["telecom"]
+
+            if "extensions" in patient_data:
+                try:
+                    patient.extensions = validate_patient_extensions(
+                        patient_data["extensions"]
+                    )
+                except ValueError as exc:
+                    logger.warning(
+                        "rejecting patient.extensions on update: %s", exc
+                    )
+                    raise
 
             assert_valid_fhir(patient)
             await session.commit()
