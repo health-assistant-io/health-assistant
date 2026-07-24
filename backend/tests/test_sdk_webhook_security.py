@@ -19,6 +19,7 @@ from integrations.sdk.webhook_security import (
     get_signature_header,
     verify_canonical_signature,
     verify_hmac_signature,
+    verify_stripe_signature,
 )
 
 
@@ -203,6 +204,75 @@ def test_get_signature_header_handles_non_mapping():
 # ---------------------------------------------------------------------------
 # Contract — both helpers are constant-time on length-mismatch
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# verify_stripe_signature (replay-protected t=<epoch>,v1=<hex>)
+# ---------------------------------------------------------------------------
+
+
+def _stripe_header(body: bytes, secret: str, *, ts: int | None = None) -> str:
+    ts = int(time.time()) if ts is None else ts
+    signed = f"{ts}.".encode() + body
+    v1 = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return f"t={ts},v1={v1}"
+
+
+def test_verify_stripe_signature_accepts_valid():
+    header = _stripe_header(BODY, SECRET)
+    assert verify_stripe_signature(SECRET, BODY, header) is True
+
+
+def test_verify_stripe_signature_accepts_with_extra_pairs():
+    """Stripe may include extra v0/v1 pairs and trailing whitespace."""
+    header = _stripe_header(BODY, SECRET) + ",v1=deadbeef, "
+    assert verify_stripe_signature(SECRET, BODY, header) is True
+
+
+def test_verify_stripe_signature_rejects_replay_outside_tolerance():
+    too_old = int(time.time()) - 1000
+    header = _stripe_header(BODY, SECRET, ts=too_old)
+    assert verify_stripe_signature(SECRET, BODY, header, tolerance=300) is False
+
+
+def test_verify_stripe_signature_rejects_wrong_secret():
+    header = _stripe_header(BODY, SECRET)
+    assert verify_stripe_signature("wrong-secret", BODY, header) is False
+
+
+def test_verify_stripe_signature_rejects_tampered_body():
+    header = _stripe_header(BODY, SECRET)
+    assert verify_stripe_signature(SECRET, BODY + b"!", header) is False
+
+
+def test_verify_stripe_signature_rejects_malformed_header():
+    assert verify_stripe_signature(SECRET, BODY, "garbage") is False
+    assert verify_stripe_signature(SECRET, BODY, "v1=abc") is False  # no t
+    assert verify_stripe_signature(SECRET, BODY, "t=now,v1=abc") is False  # non-int t
+    assert verify_stripe_signature(SECRET, BODY, "t=123") is False  # no v1
+
+
+def test_verify_stripe_signature_rejects_empty_inputs():
+    assert verify_stripe_signature("", BODY, _stripe_header(BODY, SECRET)) is False
+    assert verify_stripe_signature(SECRET, BODY, "") is False
+
+
+# ---------------------------------------------------------------------------
+# Non-ASCII safety (compare_digest would otherwise raise TypeError -> 500)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "impl",
+    [
+        lambda: verify_hmac_signature(SECRET, BODY, "★" * 10),
+        lambda: verify_canonical_signature(SECRET, "POST", "/foo", BODY, "★" * 10),
+        lambda: verify_stripe_signature(SECRET, BODY, f"t={int(time.time())},v1={'★' * 10}"),
+    ],
+)
+def test_signature_helpers_return_false_on_non_ascii(impl):
+    """A non-ASCII signature must return False, not raise TypeError."""
+    assert impl() is False
 
 
 @pytest.mark.parametrize(

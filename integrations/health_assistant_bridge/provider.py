@@ -1,8 +1,9 @@
 import logging
 import datetime
 from typing import List, Any, Dict, Optional, Literal
-from integrations.sdk import BaseHealthProvider
+from integrations.sdk import BaseHealthProvider, BaseConfigFlow
 from integrations.sdk.observation_builder import ObservationBuilder
+from integrations.sdk.webhook_security import verify_canonical_signature
 from app.schemas.fhir.observation import ObservationCreate
 from app.ai.schemas.nlp import MapResponsePayload, MetricMappingRequest
 from app.models.user_integration import UserIntegration
@@ -10,6 +11,11 @@ from pydantic import BaseModel, Field
 import json
 
 logger = logging.getLogger(__name__)
+
+# Endpoints that require HMAC verification when an ``api_secret`` is set.
+# ``status`` is left unsigned so a client can probe connectivity / discover SDK
+# versions without a secret handshake; only mutating/data endpoints are gated.
+_HMAC_PROTECTED_PATHS = {"map", "sync"}
 
 # --- Payloads for Two-Way Contract ---
 
@@ -56,16 +62,87 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         # This is a bridge integration driven by the client. It does not actively pull data on a schedule.
         return []
 
+    # --- HMAC verification (Phase 5.6) ----------------------------------
+
+    def _get_api_secret(self, integration: UserIntegration) -> Optional[str]:
+        """Return the plaintext ``api_secret`` for this instance, or ``None``.
+
+        Reads via the config flow's ``decrypt_for_use`` so the secret is
+        decrypted from its Fernet-at-rest form. Returns ``None`` when no
+        secret is configured (UUID-only mode) or it's the masked ``"***"``
+        placeholder (a read-after-write path should never see that here, but
+        defended against for safety).
+        """
+        config = integration.user_config or {}
+        secret = config.get("api_secret")
+        if not secret or secret == "***":
+            return None
+        # Already-encrypted at rest; decrypt for use only.
+        try:
+            from integrations.health_assistant_bridge.config_flow import HealthAssistantBridgeConfigFlow
+            flow = HealthAssistantBridgeConfigFlow()
+            decrypted = flow.decrypt_for_use(config)
+            val = decrypted.get("api_secret")
+            return val if val and val != "***" else None
+        except Exception as e:
+            logger.warning("Could not decrypt api_secret for %s: %s", integration.id, e)
+            return None
+
+    async def _require_hmac(
+        self,
+        integration: UserIntegration,
+        method: str,
+        path: str,
+        request: Any,
+        api_secret: str,
+    ) -> None:
+        """Verify an HMAC-SHA256 signature on the current request.
+
+        Raises ``ValueError`` (→ HTTP 400 via the endpoint) on a missing or
+        invalid signature. The signed canonical string is
+        ``METHOD\\n<path>\\n<timestamp>\\n<raw_body>`` — exactly the form
+        :func:`verify_canonical_signature` expects.
+
+        Reads the raw body via ``await request.body()`` once — FastAPI/Starlette
+        caches the bytes, so the route's later ``await request.json()`` reuses
+        the cached body and isn't broken by this read.
+        """
+        headers = request.headers if hasattr(request, "headers") else {}
+        provided_sig = headers.get("x-api-signature") or headers.get("X-Api-Signature")
+        provided_ts = headers.get("x-api-timestamp") or headers.get("X-Api-Timestamp")
+        if not provided_sig:
+            raise ValueError(
+                "api_secret is configured but the request carries no "
+                "X-Api-Signature header."
+            )
+        # Read + cache the raw body so the later await request.json() works.
+        raw_body = await request.body()
+        ok = verify_canonical_signature(
+            api_secret, method, f"/{path}", raw_body, provided_sig,
+            provided_timestamp=provided_ts, max_skew_seconds=300,
+        )
+        if not ok:
+            logger.info("Rejected HMAC for integration %s on %s /%s", integration.id, method, path)
+            raise ValueError("Invalid or expired request signature.")
+
     async def handle_api_request(self, integration: UserIntegration, path: str, method: str, request: Any) -> Dict[str, Any]:
         """Handle two-way API requests from headless clients."""
         config = integration.user_config or {}
         
         # Log the request details for debugging
         await self.log_debug_payload(
-            integration, 
-            f"API Request: {method} /{path}", 
+            integration,
+            f"API Request: {method} /{path}",
             {"path": path, "method": method}
         )
+
+        # HMAC verification when an api_secret is configured (Phase 5.6).
+        # When unset the bridge runs UUID-as-secret only (acceptable for a
+        # self-hosted box on a trusted/LAN). When set, /map and /sync require
+        # X-Api-Signature + X-Api-Timestamp (±5 min replay window).
+        api_secret = self._get_api_secret(integration)
+        if api_secret and path in _HMAC_PROTECTED_PATHS:
+            await self._require_hmac(integration, method, path, request, api_secret)
 
         if path == "status" and method == "GET":
             # Load the manifest to get the latest SDK versions
@@ -134,6 +211,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, integration_id: str, instance_name: str, examination_id: Optional[str] = None) -> List[ObservationCreate]:
         observations = []
         for record in records:
+            # The ObservationBuilder is stateful and mutated in place by every
+            # set_* call (each returns ``self``). Reset per record so a
+            # conditionally-set field (reference range, interpretation, value)
+            # from the previous record doesn't leak into the next — the
+            # documented gotcha (SDK skill §10.4).
+            builder.reset()
             dt = datetime.datetime.now(datetime.timezone.utc)
             if record.timestamp:
                 try:

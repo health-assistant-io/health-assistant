@@ -49,18 +49,68 @@ STATE_TTL_SECONDS = 600
 DEFAULT_SCOPES = "openid fhirUser launch patient/*.read offline_access"
 PUSH_SCOPES = "openid fhirUser launch patient/*.read patient/*.write offline_access"
 
+# Fields whose values must never appear in an exception message or log line —
+# a partial ``access_token`` or a freshly-issued ``client_secret`` would
+# otherwise leak when interpolated into ``f"…: {token}"``.
+_SECRET_FIELDS = (
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "client_secret",
+    "code_verifier",
+    "code",
+)
+
+
+def _redact(obj: Any) -> str:
+    """Return a log/exception-safe summary of an OAuth/DCR response.
+
+    Replaces secret-field values with ``<redacted>`` and truncates long
+    strings so a token/registration blob can be included in an error message
+    for debugging without leaking credentials.
+    """
+    if isinstance(obj, dict):
+        safe: Dict[str, Any] = {}
+        for k, v in obj.items():
+            if k in _SECRET_FIELDS:
+                safe[k] = "<redacted>"
+            else:
+                safe[k] = _redact(v)
+        return repr(safe)
+    if isinstance(obj, str):
+        return obj[:80] + ("…" if len(obj) > 80 else "")
+    return repr(obj)[:120]
+
 
 # ---------------------------------------------------------------------------
 # PKCE (RFC 7636)
 # ---------------------------------------------------------------------------
 
-def generate_pkce(verifier_length: int = 64) -> Tuple[str, str, str]:
+def generate_pkce(verifier_bytes: int = 48) -> Tuple[str, str, str]:
     """Return ``(code_verifier, code_challenge, "S256")``.
 
     ``code_verifier`` is a high-entropy URL-safe string of 43-128 chars;
     ``code_challenge`` is the base64url(SHA256) of it (padding stripped).
+
+    Args:
+        verifier_bytes: Number of random **bytes** to draw (``secrets.
+            token_urlsafe`` returns ~``ceil(4n/3)`` chars). The resulting
+            verifier is bounds-checked against RFC 7636 §4.1 (43-128 chars).
+            Default 48 → a 64-char verifier. Values that would produce an
+            out-of-spec verifier (>96 bytes → >128 chars) raise ``ValueError``.
     """
-    verifier = secrets.token_urlsafe(verifier_length)
+    if verifier_bytes < 32 or verifier_bytes > 96:
+        raise ValueError(
+            f"verifier_bytes must be in [32, 96] to satisfy RFC 7636's "
+            f"43-128 char verifier range; got {verifier_bytes}."
+        )
+    verifier = secrets.token_urlsafe(verifier_bytes)
+    # Belt-and-braces: assert the RFC 7636 §4.1 char-length contract.
+    if not 43 <= len(verifier) <= 128:
+        raise ValueError(
+            f"Generated PKCE verifier length {len(verifier)} is outside the "
+            "RFC 7636 §4.1 range (43-128)."
+        )
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     return verifier, challenge, "S256"
@@ -102,8 +152,25 @@ async def _request_json(
         max_retries=max_retries,
     )
     if response.status_code >= 400:
-        # 401/403 already raised by _retry_request; remaining 4xx are
-        # non-retryable OAuth / DCR errors.
+        # 401/403 already raised by _retry_request. A 4xx whose body carries
+        # an RFC 6749 §5.2 ``error`` field (``invalid_grant`` /
+        # ``invalid_client`` / ``unauthorized_client`` / ``invalid_request``)
+        # is an OAuth auth failure — the token is rejected, the code expired,
+        # the PKCE verifier is wrong, etc. The sync worker routes
+        # IntegrationAuthError → instance ERROR + "reconnect" prompt, which is
+        # the right action; mapping it to IntegrationDataError would leave the
+        # instance ACTIVE and silently fail every sync.
+        try:
+            body = response.json()
+        except (ValueError, TypeError):
+            body = None
+        if isinstance(body, dict) and body.get("error"):
+            err = body.get("error")
+            desc = body.get("error_description") or body.get("error_uri") or ""
+            raise IntegrationAuthError(
+                f"{method} {url} -> {response.status_code}: OAuth error "
+                f"{err!r}" + (f" ({desc[:200]})" if desc else "")
+            )
         raise IntegrationDataError(
             f"{method} {url} -> {response.status_code}: {response.text[:300]}"
         )
@@ -165,7 +232,7 @@ async def register_client(
         http, "POST", registration_endpoint, headers=headers, json_body=body
     )
     if not reg.get("client_id"):
-        raise IntegrationDataError(f"DCR response missing client_id: {reg}")
+        raise IntegrationDataError(f"DCR response missing client_id: {_redact(reg)}")
     return reg
 
 
@@ -228,7 +295,9 @@ async def exchange_code(
         http, "POST", token_endpoint, headers={"Accept": "application/json"}, data=form
     )
     if not token.get("access_token"):
-        raise IntegrationAuthError(f"Token endpoint returned no access_token: {token}")
+        raise IntegrationAuthError(
+            f"Token endpoint returned no access_token: {_redact(token)}"
+        )
     return _normalize_token(token)
 
 
@@ -252,7 +321,9 @@ async def refresh_token(
         http, "POST", token_endpoint, headers={"Accept": "application/json"}, data=form
     )
     if not token.get("access_token"):
-        raise IntegrationAuthError(f"Refresh returned no access_token: {token}")
+        raise IntegrationAuthError(
+            f"Refresh returned no access_token: {_redact(token)}"
+        )
     return _normalize_token(token)
 
 

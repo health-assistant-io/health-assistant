@@ -37,6 +37,75 @@ from .display import action_result  # noqa: F401  (re-exported)
 VALID_ACTION_STYLES = {"primary", "danger", "ghost", "default"}
 VALID_ACTION_TYPES = {"link", "post"}
 
+# Scheme allowlist for ``NotificationAction.url`` — defends against stored-XSS
+# via ``javascript:``, ``data:``, and protocol-relative ``//evil.com`` URLs.
+# Absolute links must be http(s); relative links must start with ``/``.
+_SAFE_URL_SCHEMES = ("http", "https")
+
+
+def _validate_action_url(url: Optional[str]) -> Optional[str]:
+    """Return ``url`` if its scheme is safe, else raise ``ValueError``.
+
+    Accepts:
+
+    * Absolute ``http(s)://host/...`` URLs.
+    * Relative app paths starting with ``/`` (e.g. ``/patients/{id}``).
+
+    Rejects ``javascript:``, ``data:``, ``file:``, protocol-relative ``//host``,
+    and backslash-based tricks (which browsers normalize to ``//``).
+    """
+    if url is None:
+        return url
+    if not isinstance(url, str) or not url:
+        raise ValueError("NotificationAction.url must be a non-empty string")
+    # Reject protocol-relative URLs and backslash tricks — browsers treat
+    # ``//evil.com`` and ``/\evil.com`` as scheme-relative (→ external host),
+    # so they must not pass the "starts with /" relative-path check below.
+    if url.startswith("//") or url.startswith("/\\") or url.startswith("\\"):
+        raise ValueError(
+            "NotificationAction.url must not be protocol-relative ('//…')."
+        )
+    if url.startswith("/"):
+        # Relative in-app path.
+        return url
+    # Absolute URL — must carry an explicit safe scheme (http/https).
+    scheme = url.split(":", 1)[0].lower() if ":" in url else ""
+    # Guard against schemes containing whitespace or odd chars (browsers
+    # strip leading control chars before parsing, so a leading space is a
+    # known bypass attempt — the regex rejects it).
+    import re
+
+    if not re.match(r"^[a-z][a-z0-9+.\-]*$", scheme) or scheme not in _SAFE_URL_SCHEMES:
+        raise ValueError(
+            f"NotificationAction.url scheme {scheme!r} is not allowed "
+            f"(use one of {_SAFE_URL_SCHEMES} or a relative '/…' path)."
+        )
+    return url
+
+
+def _validate_action_endpoint(endpoint: Optional[str]) -> Optional[str]:
+    """Return ``endpoint`` if it's a safe server path, else raise.
+
+    POST action endpoints are routed by the platform, so they must be
+    absolute in-app paths starting with ``/`` (no scheme/host) — that way a
+    compromised provider can't redirect a click to an external URL.
+    """
+    if endpoint is None:
+        return endpoint
+    if not isinstance(endpoint, str) or not endpoint:
+        raise ValueError("NotificationAction.endpoint must be a non-empty string")
+    if "://" in endpoint or endpoint.startswith("//"):
+        raise ValueError(
+            "NotificationAction.endpoint must be an in-app path starting with "
+            "'/' (no scheme/host)."
+        )
+    if not endpoint.startswith("/"):
+        raise ValueError(
+            "NotificationAction.endpoint must start with '/' (got "
+            f"{endpoint!r})."
+        )
+    return endpoint
+
 
 @dataclass
 class NotificationAction:
@@ -81,6 +150,9 @@ class NotificationAction:
             raise ValueError("NotificationAction with type='link' requires a url")
         if self.type == "post" and not self.endpoint:
             raise ValueError("NotificationAction with type='post' requires an endpoint")
+        # Scheme/path validation — stored-XSS defense (Phase 3.1).
+        _validate_action_url(self.url)
+        _validate_action_endpoint(self.endpoint)
 
 
 # ---------------------------------------------------------------------------

@@ -171,15 +171,21 @@ def test_bridge_categorical_workaround_no_longer_silently_drops():
     fixed_obs = fixed.build()
     assert fixed_obs.value_string == record_value_string
 
-    # Old (buggy) bridge path — emulate it to prove it would have lost data:
+    # Old (buggy) bridge path — the original bug wrote the value into an
+    # internal dict (``_data["value_string"]``) that ``build()`` ignored, so
+    # the value was silently dropped. That dict no longer exists (Phase 3.4
+    # split the builder into individual attributes), so the bug class is
+    # structurally impossible: ``build()`` reads ``_value_string`` directly.
+    # Emulate a caller bypassing the public setter and confirm build() picks
+    # the value up via the canonical attribute.
     buggy = (
         ObservationBuilder(TENANT, PATIENT)
         .set_biomarker("9b4c8f", "SARS-CoV-2 PCR")
         .set_effective_date(_a_tz())
     )
-    buggy._data["value_string"] = record_value_string  # the old workaround
+    buggy._value_string = record_value_string  # bypass set_value_string()
     buggy_obs = buggy.build()
-    assert buggy_obs.value_string is None, (
-        "If the old workaround now survives, build() is reading _data directly "
-        "and the public set_value_string() method is no longer the canonical path."
+    assert buggy_obs.value_string == record_value_string, (
+        "build() must read the canonical _value_string attribute — if this "
+        "regresses, set_value_string() is no longer the path build() honors."
     )

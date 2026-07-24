@@ -277,6 +277,36 @@ async def test_conditional_update_sends_if_match_header():
     assert seen["if_none_match"] == "*"
 
 
+@pytest.mark.asyncio
+async def test_conditional_update_sends_if_none_exist_header():
+    """FHIR R4 §2.1.1.5 'create only if none matches' — the If-None-Exist
+    header carries a search query string applied to the PUT target."""
+    seen = {}
+
+    def handler(request):
+        seen["if_none_exist"] = request.headers.get("if-none-exist")
+        return httpx.Response(201, json=_obs_body())
+
+    async with _client(handler) as http:
+        await fhir_conditional_update(
+            http, "https://ehr/fhir", "Observation", _obs_body(),
+            search_params={"identifier": "urn:x|abc"},
+            if_none_exist="identifier=urn:ha|local-uuid",
+        )
+    assert seen["if_none_exist"] == "identifier=urn:ha|local-uuid"
+
+
+def test_parse_operation_outcome_does_not_dump_phi_resource():
+    """A non-OperationOutcome dict (e.g. a returned Patient carrying PHI) must
+    not be stringified into the error message — surface the resourceType only."""
+    patient = {"resourceType": "Patient", "id": "123", "name": [{"text": "John Doe"}]}
+    msg = parse_operation_outcome(patient)
+    assert "John Doe" not in msg
+    assert "Patient" in msg  # the type is still diagnosable
+    assert parse_operation_outcome(None) == "no response body"
+    assert parse_operation_outcome({}) == "unrecognized response"
+
+
 # ---------------------------------------------------------------------------
 # fhir_create (POST /{Resource}) — was previously implemented but not
 # re-exported from integrations.sdk. These tests lock in the public export

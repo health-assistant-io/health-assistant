@@ -30,8 +30,10 @@ from typing import Iterable, Mapping, Optional
 __all__ = [
     "verify_hmac_signature",
     "verify_canonical_signature",
+    "verify_stripe_signature",
     "get_signature_header",
     "DEFAULT_WEBHOOK_SIGNATURE_HEADERS",
+    "STRIPE_SIGNATURE_HEADERS",
 ]
 
 
@@ -43,6 +45,25 @@ DEFAULT_WEBHOOK_SIGNATURE_HEADERS: tuple[str, ...] = (
     "X-Webhook-Signature-256",
     "X-Hub-Signature-256",  # GitHub
 )
+
+# Stripe's signed-event header carries ``t=<epoch>,v1=<hex>`` and is
+# replay-protected by folding the timestamp into the MAC.
+STRIPE_SIGNATURE_HEADERS: tuple[str, ...] = ("Stripe-Signature",)
+
+
+def _safe_compare(a: str, b: str) -> bool:
+    """``hmac.compare_digest`` that returns ``False`` instead of raising on
+    non-ASCII input.
+
+    ``compare_digest`` raises ``TypeError`` when either argument contains
+    non-ASCII characters (it only accepts ASCII strings, falling back to
+    bytes). A client sending a garbage non-ASCII signature would otherwise
+    turn into an uncaught 500 — treat it as "not verified".
+    """
+    try:
+        return hmac.compare_digest(a, b)
+    except TypeError:
+        return False
 
 
 def get_signature_header(
@@ -79,9 +100,17 @@ def verify_hmac_signature(
 
     Supported conventions:
 
-    * Bare hex digest (Stripe, generic): ``<hex>``
+    * Bare hex digest (generic): ``<hex>``
     * Prefixed hex digest (GitHub, Slack): ``sha256=<hex>`` /
       ``sha256:<hex>`` — the prefix is stripped before comparison.
+
+    .. note::
+
+        This bare-MAC form has **no replay protection** — any captured valid
+        payload (from logs, a proxy, a misconfigured CDN) can be replayed
+        indefinitely. Use :func:`verify_stripe_signature` (Stripe's
+        ``t=<epoch>,v1=<hex>`` scheme) or :func:`verify_canonical_signature`
+        (timestamped) when you need replay defense.
 
     Returns ``True`` iff the computed HMAC matches ``provided_signature``
     (after prefix stripping + case normalisation) using
@@ -104,7 +133,7 @@ def verify_hmac_signature(
             provided = provided[len(prefix):]
             break
 
-    return hmac.compare_digest(computed, provided.strip())
+    return _safe_compare(computed, provided.strip())
 
 
 def verify_canonical_signature(
@@ -162,4 +191,62 @@ def verify_canonical_signature(
     canonical = b"".join(canonical_parts)
 
     computed = hmac.new(secret.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(computed, provided_signature.strip().lower())
+    return _safe_compare(computed, provided_signature.strip().lower())
+
+
+def verify_stripe_signature(
+    secret: str,
+    payload: bytes,
+    header_value: str,
+    *,
+    tolerance: int = 300,
+) -> bool:
+    """Verify a Stripe-style ``t=<epoch>,v1=<hex>`` webhook signature.
+
+    Stripe's ``Stripe-Signature`` header is a comma-separated list of
+    ``key=value`` pairs; the two that matter are:
+
+    * ``t``   — the integer epoch second when Stripe signed the payload.
+    * ``v1``  — ``HMAC-SHA256(secret, "{t}.{payload}")`` (hex).
+
+    The timestamp is folded into the MAC **and** checked against a skew
+    window (``tolerance`` seconds, default 300 = 5 min) so a captured
+    signature can't be replayed after the window closes. This is the
+    replay-protected counterpart to the bare :func:`verify_hmac_signature`.
+
+    Returns ``True`` iff the header parses, the timestamp is within
+    ``tolerance`` of now, and ``v1`` matches the recomputed MAC. Returns
+    ``False`` on any malformation (missing ``t``/``v1``, non-integer ``t``,
+    out-of-window timestamp, or an empty ``secret``).
+    """
+    if not secret or not header_value:
+        return False
+
+    timestamp: Optional[str] = None
+    signatures: list[str] = []
+    for part in header_value.split(","):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        key, _, value = part.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key == "t":
+            timestamp = value
+        elif key == "v1" and value:
+            signatures.append(value)
+
+    if timestamp is None or not signatures:
+        return False
+    try:
+        ts_int = int(timestamp)
+    except (ValueError, TypeError):
+        return False
+    if abs(int(time.time()) - ts_int) > tolerance:
+        return False
+
+    signed = f"{timestamp}.".encode("utf-8") + payload
+    computed = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+    # Constant-time compare against every supplied v1 (Stripe may send
+    # multiple for key rotation); accept if any matches.
+    return any(_safe_compare(computed, sig.lower()) for sig in signatures)

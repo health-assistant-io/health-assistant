@@ -18,7 +18,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 > This reference documents every router module mounted under
 > `backend/app/api/v1/endpoints/`. Each section mirrors the FastAPI tag/grouping.
-> 300+ HTTP/WS handlers across 37 modules (incl. `oauth` client management). For
+> 298 HTTP/WS handlers across 36 modules (incl. `oauth` client management). For
 > the always-current OpenAPI rendering, visit `http://localhost:8000/docs` while
 > the server is running.
 
@@ -35,7 +35,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 - [AI](#ai) — `ai-config`, `ai-assistance`
 - [Integrations](#integrations) — discovery, OAuth, instances, inbound webhooks / API proxy
 - [Operations](#operations) — `task-monitor`, `ws`, `export`, `import`, `doctors`, `organizations`
-- [FHIR R4 facade](#fhir-r4-facade) — canonical interop surface (15 resource types)
+- [FHIR R4 facade](#fhir-r4-facade) — canonical interop surface (19 resource types)
 - [Error handling](#error-handling) — domain exceptions, status code table
 - [See also](#see-also)
 
@@ -953,7 +953,7 @@ Catalog write proposals queued for human review by providers that opt into `supp
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/integrations/{domain}/webhook/{integration_id}` | HMAC via `webhook_secret` (optional) | raw Request body | `{message, metrics_synced}` | Verifies HMAC-SHA256 over raw body if `webhook_secret` is set. Supported signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` prefix tolerated). Without a configured secret the integration UUID is the only credential (legacy mode). Verification delegates to `integrations.sdk.webhook_security.verify_hmac_signature` — the same helper provider `handle_webhook` implementations use (see [INTEGRATIONS_SDK.md §3.14](INTEGRATIONS_SDK.md#314-webhook-signature-verification-reusable-helpers)). Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
+| `POST` | `/integrations/{domain}/webhook/{integration_id}` | HMAC via `webhook_secret` (optional) | raw Request body | `{message, metrics_synced}` | Verifies HMAC-SHA256 over raw body if `webhook_secret` is set. Supported signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` prefix tolerated). Without a configured secret the integration UUID is the only credential (legacy mode). Verification delegates to `integrations.sdk.webhook_security.verify_hmac_signature` — the same helper provider `handle_webhook` implementations use (see [INTEGRATIONS_SDK.md §3.16](INTEGRATIONS_SDK.md#316-webhook-signature-verification-reusable-helpers)). Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
 | `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | HMAC via `api_secret` (optional) | raw Request body | provider-defined | Generic two-way API proxy. With `api_secret` set, request MUST carry `X-Api-Signature` (HMAC-SHA256 of `METHOD\n<path>\n[<timestamp>\n]<raw_body>`) + optional `X-Api-Timestamp` (±5-min skew window). Without `api_secret`, UUID-only legacy mode with a logged warning (audit B8). |
 
 See [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable)

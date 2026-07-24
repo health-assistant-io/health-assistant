@@ -171,6 +171,11 @@ class Settings(BaseSettings):
     # MCP Client integration (see integrations/mcp_client/)
     # Pydantic-read (audit C7) — same rationale as SECRET_KEY above.
     INTEGRATION_SECRET_KEY: Optional[str] = None
+    # Previous keys accepted for decryption during rotation (comma-separated
+    # Fernet keys). The primary ``INTEGRATION_SECRET_KEY`` is always used to
+    # *encrypt*; these are only tried on decrypt so existing ciphertext keeps
+    # working after a key rotation. See integrations/sdk/secrets.py.
+    INTEGRATION_SECRET_KEY_PREVIOUS: str = ""
 
     @model_validator(mode="after")
     def _validate_integration_secret_key(self) -> "Settings":

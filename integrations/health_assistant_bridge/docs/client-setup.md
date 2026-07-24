@@ -1,0 +1,150 @@
+# Client SDK Setup
+
+The Bridge ships two strictly-typed client SDKs in the repository — you don't need to hand-roll the HTTP calls. Both support timeouts, bounded retry with full-jitter backoff, and HMAC signing when an `api_secret` is configured.
+
+| SDK | Location | Package | Use cases |
+|---|---|---|---|
+| Python (sync + async) | `integrations/health_assistant_bridge/python-sdk/` | `health-assistant-bridge-sdk` | backend scrapers, cron jobs, data-science notebooks |
+| TypeScript | `integrations/health_assistant_bridge/ts-sdk/` | `@health-assistant/bridge-client` | browser extensions, React Native, Node.js scripts |
+
+Both SDKs are versioned (`SDK_VERSION`) and the `/status` endpoint returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
+
+## Python
+
+```bash
+pip install -e integrations/health_assistant_bridge/python-sdk
+```
+
+### Synchronous client (`requests`)
+
+```python
+from health_assistant_bridge import HealthAssistantBridgeClient
+
+client = HealthAssistantBridgeClient(
+    base_url="https://ha.example",
+    integration_id="00000000-0000-0000-0000-000000000000",
+    api_secret="a-very-long-random-secret",  # omit for UUID-only mode
+    timeout=30.0,                            # default 30s per request
+)
+
+status = client.get_status()                 # → BridgeStatus
+mapped = client.request_mapping([            # → MapResponsePayload
+    {"name": "Natrium (Na)"},
+])
+resp = client.sync_data(payload)             # → SyncResponse
+```
+
+### Asynchronous client (`httpx`, pooled)
+
+```python
+from health_assistant_bridge import AsyncHealthAssistantBridgeClient
+
+async with AsyncHealthAssistantBridgeClient(
+    base_url="https://ha.example",
+    integration_id="00000000-0000-0000-0000-000000000000",
+    api_secret="a-very-long-random-secret",
+    timeout=httpx.Timeout(30.0, connect=10.0),
+    max_retries=3,
+) as client:
+    status = await client.get_status()
+    mapped = await client.request_mapping(metrics)
+    resp = await client.sync_data(payload)
+```
+
+The async client uses one pooled `httpx.AsyncClient` for the whole session (created in the constructor, closed in `aclose()` / the context-manager exit) — re-use the same client across calls; a new client per call defeats pooling.
+
+### Constructor options
+
+| Argument | Required | Default | Notes |
+|---|---|---|---|
+| `base_url` | ✅ | — | Backend base URL, no trailing slash. |
+| `integration_id` | ✅ | — | The bridge instance UUID. |
+| `api_secret` | ❌ | `None` | When set, auto-signs `/map` and `/sync`. Omit for UUID-only mode. |
+| `timeout` | ❌ | `30.0` / `httpx.Timeout(30.0)` | Per-request timeout (sync: seconds float; async: `httpx.Timeout`). |
+| `max_retries` | ❌ | `3` (async only) | Max attempts on transient network/5xx errors. |
+
+### The signing helper
+
+```python
+from health_assistant_bridge import sign_request
+
+headers = sign_request(
+    secret="a-very-long-random-secret",
+    method="POST",
+    path="/sync",
+    raw_body=b'{"records":[]}',   # the exact bytes you'll send
+    # timestamp=...               # override for tests
+)
+# → {"X-Api-Signature": "<hex>", "X-Api-Timestamp": "<epoch>"}
+```
+
+The helper is exported so a custom client can produce the same canonical form the server's `verify_canonical_signature` accepts — use it instead of inlining the MAC so you stay compatible across SDK releases.
+
+### Interactive example
+
+`python-sdk/examples/interactive_sync.py` is a runnable script that exercises the full `status → map → sync` loop against a live instance. Read it as a reference implementation of the recommended workflow.
+
+## TypeScript
+
+```bash
+npm install @health-assistant/bridge-client
+# or, from the repo:
+cd integrations/health_assistant_bridge/ts-sdk && npm run build
+```
+
+```typescript
+import { HealthAssistantBridgeClient } from "@health-assistant/bridge-client";
+
+const client = new HealthAssistantBridgeClient(
+  "https://ha.example",
+  "00000000-0000-0000-0000-000000000000",
+  {
+    apiSecret: "a-very-long-random-secret",  // optional
+    timeoutMs: 30_000,                       // default 30s
+    maxRetries: 3,                            // default 3
+  },
+);
+
+const status = await client.getStatus();      // → BridgeStatus
+const mapped  = await client.requestMapping(m);  // → MapResponsePayload
+const resp    = await client.syncData(payload);  // → SyncResponse
+```
+
+### Constructor options (`BridgeClientOptions`)
+
+| Field | Default | Notes |
+|---|---|---|
+| `apiSecret` | `undefined` | When set, auto-signs `/map` and `/sync`. Omit for UUID-only. |
+| `timeoutMs` | `30000` | Per-request timeout via `AbortController`. |
+| `maxRetries` | `3` | Max attempts on transient network errors + 429/5xx. |
+
+### The signing helper
+
+```typescript
+import { signRequest } from "@health-assistant/bridge-client";
+
+const headers = signRequest(
+  secret, "POST", "/sync", Buffer.from(JSON.stringify(payload)),
+);
+// → { "X-Api-Signature": "<hex>", "X-Api-Timestamp": "<epoch>" }
+```
+
+## How signing works in the clients
+
+When an `api_secret`/`apiSecret` is set, the client:
+
+1. Serializes the payload to bytes **once** (`model_dump_json().encode()` / `Buffer.from(JSON.stringify(...))`).
+2. Signs those exact bytes.
+3. Sends those exact bytes as the request body (never lets `requests`/`fetch` re-serialize the JSON) — so the MAC the server recomputes over the body always matches.
+
+This is why both clients pass `data=`/`body=` (raw bytes) rather than `json=` — a re-serialization could change whitespace or key order and invalidate the signature.
+
+## TypeScript needs the Node stdlib
+
+The TS SDK uses Node's `crypto` module for HMAC. It targets Node 18+ (uses global `fetch` + `AbortController`). If you run it in a pure-browser context without Node `crypto` polyfilled, import a `crypto` polyfill or use the Python SDK from a small backend.
+
+## See also
+
+- [Authentication & Security](authentication.md) — the canonical form + replay window the signing helper reproduces.
+- [API Reference](api-reference.md) — the three endpoints and the payload schemas.
+- [Troubleshooting](troubleshooting.md) — signing failures, timeout, skew-window errors.

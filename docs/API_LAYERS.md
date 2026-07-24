@@ -24,7 +24,7 @@ can evolve without breaking the others.
                        └──────────────────────────────────────────────┘
                        ┌──────────────────────────────────────────────┐
    3rd-party systems ─▶│  Layer 2 — FHIR R4 facade (PUBLIC)            │
-   EHR / HL7 / labs ──▶│  /api/v1/fhir/R4/*  (canonical FHIR, 20 res)  │
+   EHR / HL7 / labs ──▶│  /api/v1/fhir/R4/*  (canonical FHIR, 19 res)  │
    (OAuth2 + SMART)    │  token_kind=api, aud=health-assistant-api     │
                        │  SMART scope-enforced per interaction         │
                        └──────────────────────────────────────────────┘

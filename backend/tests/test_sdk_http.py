@@ -256,8 +256,8 @@ async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatch):
-    """When the upstream sends no ``Retry-After`` header (or a non-numeric
-    one), ``retry_after_seconds`` stays ``None`` — the worker falls back
+    """When the upstream sends no ``Retry-After`` header at all,
+    ``retry_after_seconds`` stays ``None`` — the worker falls back
     to the per-instance ``sync_interval`` throttle."""
 
     async def _no_sleep(_d):
@@ -266,8 +266,8 @@ async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatc
     monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
 
     def handler(request):
-        # Non-numeric Retry-After (HTTP date form) — not parseable as seconds.
-        return httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})
+        # No Retry-After header at all.
+        return httpx.Response(429)
 
     async with _client(handler) as http:
         with pytest.raises(IntegrationRateLimitError) as exc_info:
@@ -276,6 +276,42 @@ async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatc
             )
 
     assert exc_info.value.retry_after_seconds is None
+
+
+@pytest.mark.asyncio
+async def test_http_request_429_http_date_retry_after_is_parsed(monkeypatch):
+    """RFC 7231 allows ``Retry-After`` as an HTTP-date. The SDK now parses
+    both forms (audit Phase 3.5) — a date in the future surfaces as a
+    positive ``retry_after_seconds`` (not ``None`` as the digit-only parser
+    previously left it). A date already in the past clamps to 0."""
+    from integrations.sdk.http import _parse_retry_after
+
+    async def _no_sleep(_d):
+        return
+
+    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+
+    # Unit-test the parser directly.
+    assert _parse_retry_after("Wed, 21 Oct 2099 07:28:00 GMT") is not None
+    assert _parse_retry_after("Wed, 21 Oct 2099 07:28:00 GMT") > 0
+    # Past date clamps to 0 (don't sleep a negative amount).
+    assert _parse_retry_after("Wed, 21 Oct 2000 07:28:00 GMT") == 0.0
+    assert _parse_retry_after("garbage") is None
+    assert _parse_retry_after(None) is None
+    # Integer form still works.
+    assert _parse_retry_after("120") == 120.0
+
+    # End-to-end: a future HTTP-date surfaces on the exception.
+    def handler(request):
+        return httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"})
+
+    async with _client(handler) as http:
+        with pytest.raises(IntegrationRateLimitError) as exc_info:
+            await http_request(
+                http, "GET", "https://ehr/x", access_token="T", max_retries=2
+            )
+    assert exc_info.value.retry_after_seconds is not None
+    assert exc_info.value.retry_after_seconds > 0
 
 
 def test_integration_rate_limit_error_legacy_call_shape_still_works():

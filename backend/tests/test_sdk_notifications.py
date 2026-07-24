@@ -111,3 +111,58 @@ def test_type_spec_defaults_and_to_dict():
     assert d["id"] == "threshold-heart-rate"
     assert d["default_enabled"] is True
     assert d["channels"] == ["IN_APP", "PUSH"]
+
+
+# ---------------------------------------------------------------------------
+# NotificationAction URL/endpoint scheme validation (Phase 3.1 — stored-XSS)
+# ---------------------------------------------------------------------------
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/patients/abc/biomarkers/heart_rate",  # relative app path
+        "https://example.com/path",
+        "http://localhost:3000/app",
+    ],
+)
+def test_action_url_accepts_safe_urls(url):
+    a = NotificationAction(id="x", label="x", type="link", url=url)
+    assert a.url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(document.cookie)",
+        "data:text/html,<script>alert(1)</script>",
+        "//evil.com/path",            # protocol-relative
+        "/\\evil.com/path",           # backslash trick -> browser treats as //
+        "file:///etc/passwd",
+        "vbscript:msgbox",
+        " JavaScript:alert(1)",       # leading space
+    ],
+)
+def test_action_url_rejects_unsafe_urls(url):
+    with pytest.raises(ValueError):
+        NotificationAction(id="x", label="x", type="link", url=url)
+
+
+def test_action_post_endpoint_must_be_in_app_path():
+    # Safe: in-app path.
+    a = NotificationAction(
+        id="x", label="x", type="post", endpoint="/integrations/foo/action/bar"
+    )
+    assert a.endpoint.startswith("/")
+
+    # Unsafe: absolute URL / external host.
+    for bad in [
+        "https://evil.com/steal",
+        "//evil.com/steal",
+        "javascript:alert(1)",
+        "relative/path",  # missing leading slash
+    ]:
+        with pytest.raises(ValueError):
+            NotificationAction(id="x", label="x", type="post", endpoint=bad)

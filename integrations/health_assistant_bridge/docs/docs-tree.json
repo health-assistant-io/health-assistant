@@ -1,12 +1,52 @@
 [
   {
-    "category": "Overview",
+    "category": "Getting Started",
     "items": [
       {
         "id": "overview",
         "file": "overview.md",
-        "title": "Bridge Overview",
+        "title": "Overview",
         "description": "Health Assistant Bridge — a universal adapter integration for the self-hosted, open-source health records platform. Connect browser extensions and mobile apps to ingest scraped medical data from portals without open APIs, with AI-powered ontology mapping and TypeScript/Python SDKs."
+      },
+      {
+        "id": "authentication",
+        "file": "authentication.md",
+        "title": "Authentication & Security",
+        "description": "How a bridge client authenticates. UUID-as-secret (default, for a trusted LAN self-hosted box) vs optional HMAC api_secret (recommended for internet-exposed instances) — the X-Api-Signature canonical form, replay window, and which endpoints are signed."
+      },
+      {
+        "id": "client-setup",
+        "file": "client-setup.md",
+        "title": "Client SDK Setup",
+        "description": "Install and configure the official Python (sync + async) and TypeScript client SDKs. Constructor options, timeouts, retry/backoff, HMAC signing, and the signing helpers for building your own client."
+      }
+    ]
+  },
+  {
+    "category": "Using the Bridge",
+    "items": [
+      {
+        "id": "api-reference",
+        "file": "api-reference.md",
+        "title": "API Reference",
+        "description": "The three bridge endpoints fully documented: /status (connectivity + cursor + SDK versions), /map (AI ontology mapping), and /sync (push observations + examinations). Request/response schemas, the Universal Data Contract, cursor handling, and dedup rules."
+      },
+      {
+        "id": "mapping",
+        "file": "mapping.md",
+        "title": "AI Ontology Mapping",
+        "description": "The /map workflow — when and why to map raw metric names before syncing. How the LLM resolves localized portal terms (Natrium, HCT) to standardized biomarker definitions, map_to_existing vs create_new, and coding systems."
+      }
+    ]
+  },
+  {
+    "category": "Help",
+    "items": [
+      {
+        "id": "troubleshooting",
+        "file": "troubleshooting.md",
+        "title": "Troubleshooting",
+        "description": "Diagnose a bridge client. Resolve signed-request rejections, skew-window failures, a stuck cursor, the SDK version-mismatch warning, 400/422 on a malformed payload, and how to reset the sync cursor from the UI."
       }
     ]
   }

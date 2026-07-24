@@ -240,8 +240,9 @@ self.set_sync_cursor(integration, "last_timestamp", new_timestamp)
 
 ### 3.3 Managed Exceptions & UI Feedback
 Throw specific exceptions from `integrations.sdk.exceptions` to instruct the core engine.
-- `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by the SDK HTTP helpers (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, `_request_json`) on 401/403 responses.
-- `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted. Carries an optional `retry_after_seconds: Optional[float]` field (sourced from the last seen `Retry-After` header). When set, the worker writes a Redis cooldown key `sync_cooldown:{integration_id}` with TTL clamped to `[60s, 1h]` so subsequent beats skip the integration until it expires — defending against the 60-second beat re-stampeding a closed window. Degrades gracefully when Redis is down (logs + falls back to the per-instance `sync_interval` throttle). Legacy `raise IntegrationRateLimitError("msg")` callers are unaffected (the field defaults to `None`).
+- `IntegrationAuthError`: Pauses the integration (changes status to `ERROR`) and alerts the user in the UI. Automatically raised by the SDK HTTP helpers (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, `_request_json`) on 401/403 responses, and on OAuth-shaped 4xx (RFC 6749 §5.2 `error` field: `invalid_grant`, `invalid_client`, …).
+- `IntegrationRateLimitError`: Skips the current sync cycle gracefully. Automatically raised if 429 retries are exhausted. Carries an optional `retry_after_seconds: Optional[float]` field (sourced from the last seen `Retry-After` header — both integer-seconds and HTTP-date forms per RFC 7231). When set, the worker writes a Redis cooldown key `sync_cooldown:{integration_id}` with TTL clamped to `[60s, 1h]` so subsequent beats skip the integration until it expires — defending against the 60-second beat re-stampeding a closed window. Degrades gracefully when Redis is down (logs + falls back to the per-instance `sync_interval` throttle). Legacy `raise IntegrationRateLimitError("msg")` callers are unaffected (the field defaults to `None`).
+- `IntegrationConfigError`: Raised when the integration's configuration is invalid and the user must **reconfigure** (a malformed SMART discovery, a DCR rejection, a secret key that can't decrypt a stored value). Distinct from `IntegrationAuthError` (reconnect) and `IntegrationDataError` (bad upstream payload).
 
 ```python
 from integrations.sdk import IntegrationRateLimitError
@@ -367,6 +368,10 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 ```
 
 If the key is missing, saving config with secret fields fails fast with a 400 — no plaintext secrets are ever stored. Integrations with no secret fields are unaffected.
+
+**Key rotation** (non-disruptive): set `INTEGRATION_SECRET_KEY` to the new key and `INTEGRATION_SECRET_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB.
+
+**SSRF defense**: every outbound SDK HTTP call (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, OAuth discovery/token calls) passes through `integrations.sdk.net_guard.assert_safe_url` — which rejects cloud-metadata (`169.254.169.254`), loopback, link-local, private, and reserved addresses before the request leaves the process. Default is deny-private; set `INTEGRATION_ALLOWED_HOSTS` or `INTEGRATION_BLOCK_PRIVATE_RANGES=false` for a trusted self-hosted target on the LAN.
 
 ### 3.8 OAuth / SMART-on-FHIR (Cloud Integrations)
 
@@ -1119,14 +1124,17 @@ Three pure functions, stdlib-only (no `app.*` imports — the SDK must not depen
 from integrations.sdk import (
     verify_hmac_signature,
     verify_canonical_signature,
+    verify_stripe_signature,
     get_signature_header,
     DEFAULT_WEBHOOK_SIGNATURE_HEADERS,
+    STRIPE_SIGNATURE_HEADERS,
 )
 ```
 
 | Function | Purpose |
 |---|---|
-| `verify_hmac_signature(secret, raw_body, provided_signature, *, accepted_prefixes=("sha256=", "sha256:"))` | Constant-time HMAC-SHA256 of `raw_body`. Strips the conventional GitHub/Slack/Stripe `sha256=` / `sha256:` prefixes before comparing. Returns `False` on empty inputs (callers should treat as "not verified" and reject). |
+| `verify_hmac_signature(secret, raw_body, provided_signature, *, accepted_prefixes=("sha256=", "sha256:"))` | Constant-time HMAC-SHA256 of `raw_body`. Strips the conventional GitHub/Slack `sha256=` / `sha256:` prefixes before comparing. Returns `False` on empty or non-ASCII inputs. **No replay protection** — captured payloads can be replayed; use `verify_stripe_signature` or `verify_canonical_signature` when you need replay defense. |
+| `verify_stripe_signature(secret, payload, header_value, *, tolerance=300)` | Parses Stripe's `t=<epoch>,v1=<hex>` header, folds the timestamp into the MAC (`HMAC-SHA256(secret, "{t}.{payload}")`), and checks a ±`tolerance` skew window (default 300s) so captured signatures can't be replayed after the window closes. The replay-protected counterpart to `verify_hmac_signature`. |
 | `verify_canonical_signature(secret, method, path, raw_body, provided_signature, *, provided_timestamp=None, max_skew_seconds=300)` | Constant-time HMAC-SHA256 over `METHOD\n<path>\n[<timestamp>\n]<raw_body>`. When `provided_timestamp` is set, the timestamp is folded into the signed payload (so a captured signature can't be replayed) and the request is rejected if skew exceeds `max_skew_seconds`. Used by the two-way API proxy when `user_config["api_secret"]` is set. |
 | `get_signature_header(headers, *, names=DEFAULT_WEBHOOK_SIGNATURE_HEADERS)` | Case-insensitive lookup over the conventional header names (`X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256`). Providers with their own header convention (e.g. dev_dummy's `X-DevDummy-Signature`) pass `names=` explicitly. |
 

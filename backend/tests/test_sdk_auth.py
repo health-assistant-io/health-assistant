@@ -403,3 +403,89 @@ async def test_smart_oauth_complete_with_unknown_state_raises_auth():
         )
         with pytest.raises(IntegrationAuthError):
             await oauth.complete_connect(_integration(), {}, "CODE")  # empty pending
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 hardening: PKCE bounds, OAuth 400 mapping, secret redaction
+# ---------------------------------------------------------------------------
+
+
+def test_pkce_rejects_out_of_range_bytes():
+    """A caller asking for too few/many random bytes must fail loudly rather
+    than produce an out-of-spec verifier (RFC 7636 §4.1: 43-128 chars)."""
+    with pytest.raises(ValueError):
+        generate_pkce(verifier_bytes=8)   # too short
+    with pytest.raises(ValueError):
+        generate_pkce(verifier_bytes=200)  # would exceed 128 chars
+
+
+def test_pkce_default_is_in_spec():
+    v, c, m = generate_pkce()
+    assert m == "S256"
+    assert 43 <= len(v) <= 128
+    assert "=" not in c
+
+
+@pytest.mark.asyncio
+async def test_request_json_maps_oauth_400_to_auth_error():
+    """A token-endpoint 400 with an RFC 6749 ``error`` field (invalid_grant,
+    invalid_client, …) must surface as IntegrationAuthError so the worker
+    flips the instance to ERROR + prompts reconnect — not a silent
+    IntegrationDataError that leaves it ACTIVE and failing every sync."""
+    from integrations.sdk.auth import _request_json
+
+    def handler(request):
+        return httpx.Response(
+            400,
+            json={"error": "invalid_grant", "error_description": "bad code"},
+        )
+
+    async with _mock_client(handler) as http:
+        with pytest.raises(IntegrationAuthError, match="invalid_grant"):
+            await _request_json(http, "POST", "https://ehr/token", data={"x": 1})
+
+
+@pytest.mark.asyncio
+async def test_request_json_non_oauth_400_still_data_error():
+    """A 4xx without an OAuth ``error`` field stays IntegrationDataError."""
+    from integrations.sdk.auth import _request_json
+
+    async with _mock_client(lambda r: httpx.Response(422, text="bad shape")) as http:
+        with pytest.raises(IntegrationDataError):
+            await _request_json(http, "POST", "https://ehr/register", json_body={})
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_redacts_token_in_error():
+    """A token response missing access_token must not leak a partial token
+    value into the exception string (logs/exc-info)."""
+    def handler(request):
+        # No access_token key, but a refresh_token that must be redacted.
+        return httpx.Response(200, json={"refresh_token": "rt-secret", "scope": "x"})
+
+    async with _mock_client(handler) as http:
+        with pytest.raises(IntegrationAuthError) as ei:
+            await exchange_code(
+                "https://ehr/token", "CODE", "VVV", "https://app/cb", "CID", http=http
+            )
+    msg = str(ei.value)
+    assert "rt-secret" not in msg
+    assert "redacted" in msg  # structure present, value masked
+
+
+@pytest.mark.asyncio
+async def test_register_client_redacts_secret_in_error():
+    """A DCR response missing client_id must not leak a client_secret."""
+    def handler(request):
+        return httpx.Response(
+            200, json={"client_secret": "DCR-SECRET-XYZ", "client_name": "ha"}
+        )
+
+    async with _mock_client(handler) as http:
+        with pytest.raises(IntegrationDataError) as ei:
+            await register_client(
+                "https://ehr/register", ["https://app/cb"], "ha", http=http
+            )
+    msg = str(ei.value)
+    assert "DCR-SECRET-XYZ" not in msg
+    assert "client_secret" in msg or "redacted" in msg

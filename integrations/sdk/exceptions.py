@@ -60,3 +60,19 @@ class IntegrationRateLimitError(IntegrationError):
 
 class IntegrationDataError(IntegrationError):
     """Raised when the third-party API returns malformed or unexpected data."""
+
+
+class IntegrationConfigError(IntegrationError):
+    """Raised when an integration's configuration is invalid or incomplete.
+
+    Distinct from :class:`IntegrationAuthError` (invalid/expired credentials →
+    "reconnect") and :class:`IntegrationDataError` (bad upstream payload →
+    "sync failed"). Use this when the user needs to **reconfigure** the
+    integration: a malformed OAuth ``redirect_uri``, a SMART discovery that
+    didn't return required endpoints, a DCR rejection, or a secret key that
+    can't decrypt a stored value.
+
+    The sync worker treats this like :class:`IntegrationDataError` (sync
+    failed, logged) by default; callers that want a distinct UI surface
+    ("Fix configuration" vs "Reconnect") can branch on the type.
+    """

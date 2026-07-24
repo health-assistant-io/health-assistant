@@ -57,6 +57,11 @@ def parse_operation_outcome(obj: Any) -> str:
 
     Returns the first issue's ``diagnostics``/``details.text``/``code``/``severity``,
     or a generic message if the shape isn't recognized.
+
+    Deliberately does **not** stringify a non-OperationOutcome dict (e.g. a
+    returned ``Patient``/``Observation``) — that would dump PHI into an error
+    string. Only the ``OperationOutcome`` arm (or a bare ``text.div``) is
+    surfaced; everything else gets a generic placeholder.
     """
     if isinstance(obj, dict):
         if obj.get("resourceType") == "OperationOutcome" or "issue" in obj:
@@ -73,7 +78,13 @@ def parse_operation_outcome(obj: Any) -> str:
                     sev = issue.get("severity")
                     return f"{sev}: {msg}" if sev else str(msg)
             return "OperationOutcome with no parseable issue."
-        return str(obj.get("text", {}).get("div") or obj)[:500]
+        # A non-OperationOutcome dict (e.g. a returned resource) — don't dump
+        # its body (may carry PHI). Surface the resourceType if present so
+        # the error is still diagnosable.
+        rt = obj.get("resourceType")
+        return f"unexpected FHIR resource {rt}" if rt else "unrecognized response"
+    if obj is None:
+        return "no response body"
     return str(obj)[:500]
 
 
@@ -81,7 +92,9 @@ def _parse_fhir_datetime(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
     try:
-        cleaned = value.replace("Z", "+00:00")
+        # Replace only a TRAILING 'Z' (UTC designator). Replacing every 'Z'
+        # would corrupt a datetime whose value happened to contain one.
+        cleaned = value[:-1] + "+00:00" if value.endswith("Z") else value
         return datetime.fromisoformat(cleaned)
     except ValueError:
         return None
@@ -157,7 +170,19 @@ def fhir_observation_to_create(
     try:
         return ObservationCreate(**kwargs)
     except Exception as e:
-        logger.warning("Skipping FHIR observation (failed to build ObservationCreate): %s", e)
+        # Surface the offending observation's id + code so a silent drop is
+        # triageable (the engine counts dropped observation downstream). Log
+        # the FHIR id + first coding code only — no PHI/value in the message.
+        obs_id = fhir_obs.get("id")
+        first_code = ""
+        codings = (code.get("coding") or []) if isinstance(code, dict) else []
+        if codings and isinstance(codings[0], dict):
+            first_code = codings[0].get("code") or ""
+        logger.warning(
+            "Skipping FHIR observation id=%s code=%s (failed to build "
+            "ObservationCreate): %s",
+            obs_id, first_code, e,
+        )
         return None
 
 
@@ -224,6 +249,7 @@ async def fhir_conditional_update(
     access_token: Optional[str] = None,
     if_none_match: Optional[str] = None,
     if_match: Optional[str] = None,
+    if_none_exist: Optional[str] = None,
     max_retries: int = 3,
 ) -> Tuple[int, Optional[Dict[str, Any]]]:
     """FHIR conditional update: ``PUT /{Resource}?{search_params}`` with a body.
@@ -236,6 +262,17 @@ async def fhir_conditional_update(
     Retry / error semantics are delegated to
     :func:`integrations.sdk.http._retry_request` (full-jitter exponential
     backoff on 429/5xx/network errors; immediate raise on 401/403).
+
+    Conditional-update headers (FHIR R4 §2.1.1.5):
+
+    - ``if_match`` (``If-Match``) — version-aware update (``W/"123"`` or ``ETag``).
+    - ``if_none_match`` (``If-None-Match``) — ``*`` to update unconditionally
+      only if no version exists at the id, or an ETag for optimistic locking.
+    - ``if_none_exist`` (``If-None-Exist``) — a search query string *applied
+      to the PUT target*. The server creates the resource **only if no
+      resource matches** that search; otherwise it updates the matching one.
+      This is the common EHR "create-if-not-already-there" upsert idiom
+      (e.g. ``If-None-Exist: identifier=urn:ha|{uuid}``).
 
     Returns ``(status_code, response_dict_or_None)`` so the caller can apply its
     own policy:
@@ -263,6 +300,10 @@ async def fhir_conditional_update(
         headers["If-None-Match"] = if_none_match
     if if_match is not None:
         headers["If-Match"] = if_match
+    if if_none_exist is not None:
+        # FHIR R4 §2.1.1.5: a search query string applied to the PUT target —
+        # "create only if none matches"; otherwise update the match.
+        headers["If-None-Exist"] = if_none_exist
 
     response = await _retry_request(
         lambda: http_client.request(

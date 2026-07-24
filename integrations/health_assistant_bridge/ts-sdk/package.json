@@ -16,8 +16,11 @@
   ],
   "author": "Health Assistant",
   "license": "Apache-2.0",
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
-    "@types/node": "^25.9.3",
-    "typescript": "^6.0.3"
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.1"
   }
 }

@@ -269,3 +269,175 @@ def test_bridge_routes_examinations_through_canonical_service():
         "category_concept_id; the old bridge silently dropped the category "
         f"on every exam it created (found at offset {stale_category_id.start()})"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.1 — stateful-builder leak regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_parse_records_does_not_leak_reference_range_across_records(provider, integration_mock):
+    """The original bug: ``_parse_records`` reused one stateful
+    ``ObservationBuilder`` across loop iterations, so a record that set a
+    reference range leaked it into the following record (which intended to
+    have none). The fix resets the builder per iteration (SDK skill §10.4)."""
+    from integrations.health_assistant_bridge.provider import ClientRecord
+    from integrations.sdk.observation_builder import ObservationBuilder
+
+    builder = provider.create_observation_builder(integration_mock)
+    records = [
+        ClientRecord(
+            type="quantitative", name="Heart rate", code="8867-4",
+            value=72.0, unit="bpm", timestamp="2026-07-23T10:00:00Z",
+            reference_range={"low": 60.0, "high": 100.0},
+        ),
+        ClientRecord(
+            type="quantitative", name="Glucose", code="2345-7",
+            value=5.5, unit="mmol/L", timestamp="2026-07-23T10:05:00Z",
+            # NO reference_range on this record.
+        ),
+    ]
+    obs = provider._parse_records(
+        records, builder, str(integration_mock.id), "Test Bridge"
+    )
+    assert len(obs) == 2
+    # Record 1 explicitly set a range.
+    assert obs[0].lab_reference_range == {"low": 60.0, "high": 100.0}
+    # Record 2 must NOT inherit record 1's range (the bug).
+    assert obs[1].lab_reference_range is None
+
+
+@pytest.mark.asyncio
+async def test_parse_records_does_not_leak_interpretation(provider, integration_mock):
+    """Same leak, for the interpretation field."""
+    from integrations.health_assistant_bridge.provider import ClientRecord
+
+    builder = provider.create_observation_builder(integration_mock)
+    records = [
+        ClientRecord(
+            type="quantitative", name="A", code="a",
+            value=1.0, unit="u", timestamp="2026-07-23T10:00:00Z",
+            interpretation="high",
+        ),
+        ClientRecord(
+            type="quantitative", name="B", code="b",
+            value=2.0, unit="u", timestamp="2026-07-23T10:01:00Z",
+            # NO interpretation on this record.
+        ),
+    ]
+    obs = provider._parse_records(
+        records, builder, str(integration_mock.id), "Test Bridge"
+    )
+    assert obs[0].interpretation == "high"
+    assert obs[1].interpretation is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.6 — HMAC api_secret end-to-end
+# ---------------------------------------------------------------------------
+
+import hashlib
+import hmac
+import time
+
+
+def _sign(secret: str, method: str, path: str, body: bytes, ts: str) -> str:
+    """Reproduce verify_canonical_signature's canonical form for a valid sig."""
+    canonical = method.upper().encode() + b"\n" + path.encode() + b"\n" + ts.encode() + b"\n" + body
+    return hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()
+
+
+def _signed_request(method: str, body: dict, secret: str, *, signed: bool = True, bad_sig: bool = False):
+    """Build an AsyncMock request with headers + cached body for HMAC tests."""
+    import json as _json
+    raw = _json.dumps(body).encode()
+    ts = str(int(time.time()))
+    sig = _sign(secret, method, "/sync", raw, ts)
+    if bad_sig:
+        sig = "0" * 64
+    headers = {}
+    if signed:
+        headers["x-api-signature"] = sig
+        headers["x-api-timestamp"] = ts
+    req = AsyncMock()
+    req.headers = headers
+    req.body = AsyncMock(return_value=raw)
+    req.json = AsyncMock(return_value=body)
+    return req
+
+
+@pytest.mark.asyncio
+@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data")
+async def test_hmac_valid_signature_allows_sync(mock_save, provider, integration_mock, monkeypatch):
+    """When api_secret is set AND the request is validly signed, /sync succeeds."""
+    SECRET = "a" * 40
+    monkeypatch.setattr(provider, "_get_api_secret", lambda integ: SECRET)
+    mock_save.return_value = 3
+
+    body = {
+        "client_version": "1.0", "source_system": "test",
+        "records": [{"type": "quantitative", "name": "X", "value": 1.0, "unit": "u"}],
+    }
+    req = _signed_request("POST", body, SECRET)
+
+    result = await provider.handle_api_request(integration_mock, "sync", "POST", req)
+    assert result["success"] is True
+    assert result["metrics_synced"] == 3
+
+
+@pytest.mark.asyncio
+async def test_hmac_missing_signature_rejected(provider, integration_mock, monkeypatch):
+    """api_secret set + unsigned /sync → ValueError (→ HTTP 400)."""
+    SECRET = "a" * 40
+    monkeypatch.setattr(provider, "_get_api_secret", lambda integ: SECRET)
+
+    body = {"client_version": "1.0", "source_system": "test", "records": []}
+    req = _signed_request("POST", body, SECRET, signed=False)
+
+    with pytest.raises(ValueError, match="no X-Api-Signature"):
+        await provider.handle_api_request(integration_mock, "sync", "POST", req)
+
+
+@pytest.mark.asyncio
+async def test_hmac_bad_signature_rejected(provider, integration_mock, monkeypatch):
+    """api_secret set + wrongly-signed /sync → ValueError (→ HTTP 400)."""
+    SECRET = "a" * 40
+    monkeypatch.setattr(provider, "_get_api_secret", lambda integ: SECRET)
+
+    body = {"client_version": "1.0", "source_system": "test", "records": []}
+    req = _signed_request("POST", body, SECRET, bad_sig=True)
+
+    with pytest.raises(ValueError, match="Invalid or expired"):
+        await provider.handle_api_request(integration_mock, "sync", "POST", req)
+
+
+@pytest.mark.asyncio
+async def test_hmac_status_not_gated_even_with_secret(provider, integration_mock, monkeypatch):
+    """The /status endpoint is never HMAC-gated (a client probes connectivity
+    + discovers SDK versions without a secret handshake)."""
+    SECRET = "a" * 40
+    monkeypatch.setattr(provider, "_get_api_secret", lambda integ: SECRET)
+
+    req = MagicMock()  # no headers/body needed for status
+    result = await provider.handle_api_request(integration_mock, "status", "GET", req)
+    assert result["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_hmac_skipped_when_no_secret(provider, integration_mock):
+    """No api_secret = UUID-only mode; /sync proceeds without HMAC (a real
+    request body is used here to prove no signature check runs)."""
+    # integration_mock has no api_secret in user_config → _get_api_secret None.
+    body = {"client_version": "1.0", "source_system": "test", "records": []}
+    req = AsyncMock()
+    req.headers = {}
+    req.json = AsyncMock(return_value=body)
+    req.body = AsyncMock(return_value=b"{}")
+    # _process_and_save_sync_data will run; patch it to avoid DB.
+    with patch(
+        "integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data",
+        return_value=0,
+    ):
+        result = await provider.handle_api_request(integration_mock, "sync", "POST", req)
+    assert result["success"] is True

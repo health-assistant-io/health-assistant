@@ -17,15 +17,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional
 
 import httpx
 
 from .exceptions import IntegrationAuthError, IntegrationDataError, IntegrationRateLimitError
+from .net_guard import assert_safe_url
 
 logger = logging.getLogger(__name__)
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+# Statuses whose Retry-After header we honor (RFC 7231 allows it on 429/503/5xx).
+_RETRY_AFTER_STATUS = {429, 500, 502, 503, 504}
 
 # Default upper bound on Bundle pagination. ``paginate_bundle`` and
 # ``fhir_search`` accept ``max_pages=None`` to opt out (truly unbounded), but
@@ -57,6 +62,36 @@ def _backoff_delay(attempt: int, base: float = 1.0) -> float:
     return random.uniform(0.0, cap)
 
 
+def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
+    """Parse a ``Retry-After`` header into seconds.
+
+    RFC 7231 §7.1.3 allows two forms:
+
+    * a non-negative integer (``Retry-After: 120`` → seconds to wait);
+    * an HTTP-date (``Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`` → wait
+      until that absolute time).
+
+    Returns ``None`` for a missing/malformed header (the caller falls back to
+    full-jitter backoff). Negative deltas (a date already in the past) clamp
+    to 0 so a misconfigured upstream clock doesn't trigger a long sleep.
+    """
+    if not header_value:
+        return None
+    value = header_value.strip()
+    if value.isdigit():
+        return float(value)
+    # HTTP-date form.
+    try:
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return max(0.0, (dt - datetime.now(timezone.utc)).total_seconds())
+
+
 async def _retry_request(
     do_request: Callable[[], Awaitable[httpx.Response]],
     *,
@@ -86,6 +121,13 @@ async def _retry_request(
         caller, which decides what to do (e.g. ``fhir_conditional_update``
         treats 412 as a non-error precondition-not-met tuple).
     """
+    # SSRF gate: validate the URL once before the request leaves the process.
+    # ``assert_safe_url`` may do a blocking DNS lookup, so run it off the
+    # event loop. Done once (not per attempt) — the URL is constant across
+    # retries. ``SSRFBlockedError`` is an ``IntegrationDataError`` subclass,
+    # so the worker treats a block as a bad-upstream error.
+    await asyncio.to_thread(assert_safe_url, url)
+
     attempt = 0
     # Track the last-seen Retry-After so we can surface it on the
     # exhausted-rate-limit exception. Cleared on a successful response.
@@ -108,39 +150,35 @@ async def _retry_request(
             raise IntegrationAuthError(
                 f"{url} returned {response.status_code} (token rejected)."
             )
-        if response.status_code == 429:
+        if response.status_code in _RETRY_AFTER_STATUS:
             attempt += 1
             retry_after_header = response.headers.get("Retry-After")
             # Retry-After overrides our computed backoff when present (server
-            # knows best); otherwise fall back to full-jitter exponential.
-            if retry_after_header and retry_after_header.isdigit():
-                wait = float(retry_after_header)
+            # knows best) — both the integer-seconds and HTTP-date forms per
+            # RFC 7231 §7.1.3. Otherwise fall back to full-jitter exponential.
+            wait = _parse_retry_after(retry_after_header)
+            if wait is not None and response.status_code == 429:
                 last_retry_after = wait
-            else:
+            elif wait is None:
                 wait = _backoff_delay(attempt)
             if attempt >= max_retries:
-                # Surface the captured hint so the worker can write a
-                # cooldown key; falls back to None when the upstream
-                # never sent one (legacy behaviour preserved).
-                raise IntegrationRateLimitError(
-                    f"Rate limited by {url} after {max_retries} attempts.",
-                    retry_after_seconds=last_retry_after,
-                )
-            logger.warning("Rate limited by %s. Waiting %.2fs.", url, wait)
-            await asyncio.sleep(wait)
-            continue
-        if response.status_code >= 500:
-            attempt += 1
-            if attempt >= max_retries:
+                if response.status_code == 429:
+                    # Surface the captured hint so the worker can write a
+                    # cooldown key; falls back to None when the upstream
+                    # never sent one (legacy behaviour preserved).
+                    raise IntegrationRateLimitError(
+                        f"Rate limited by {url} after {max_retries} attempts.",
+                        retry_after_seconds=last_retry_after,
+                    )
                 raise IntegrationDataError(
                     f"{method} {url} -> {response.status_code}: "
                     f"{_response_detail(response)}"
                 )
             logger.warning(
-                "Server error %s %s -> %d (attempt %d/%d)",
-                method, url, response.status_code, attempt, max_retries,
+                "%s %s -> %d (attempt %d/%d); waiting %.2fs",
+                method, url, response.status_code, attempt, max_retries, wait,
             )
-            await asyncio.sleep(_backoff_delay(attempt))
+            await asyncio.sleep(wait)
             continue
 
         return response
@@ -231,7 +269,6 @@ async def paginate_bundle(
                 yield resource
         next_url = _next_link(bundle)
         next_params = None  # the next URL already carries the pagination offset
-    return
 
 
 def _next_link(bundle: Dict[str, Any]) -> Optional[str]:

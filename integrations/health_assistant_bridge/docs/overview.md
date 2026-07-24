@@ -1,167 +1,51 @@
-# Health Assistant Bridge
+# Bridge Overview
 
-The **Health Assistant Bridge** is a robust, general-purpose integration designed to connect headless clients—such as browser extensions or mobile applications—to the Health Assistant platform.
+The **Health Assistant Bridge** is a general-purpose integration that connects headless clients — browser extensions, mobile apps, backend scrapers — to a Health Assistant instance. It's the documented surface for ingesting medical data scraped from portals that don't offer open APIs.
 
 ## Why this exists
-In many scenarios, you need to scrape medical data from third-party portals (like National Health Systems, e.g., NHS, or proprietary hospital portals) that do not offer open APIs. The bridge acts as a universal adapter. The browser extension handles the scraping and parsing of unstructured, proprietary HTML/JSON, while the Bridge provides a secure, unified pipeline to map and store that data into your clinical records.
+
+Many national health systems (NHS, …) and proprietary hospital portals expose a web UI but no API. The browser extension handles the scraping and parsing of unstructured HTML/JSON; the Bridge provides a secure, unified pipeline to map and store that data into the local clinical record. The backend requires **zero hardcoded logic or parsers for specific portals** — the client is responsible for converting data into the Bridge's [Universal Data Contract](api-reference.md).
 
 ## Features
-- **Adapter Pattern Architecture**: The backend requires zero hardcoded logic or parsers for specific portals. The client extension is responsible for scraping and converting data into the bridge's Universal Data Contract.
-- **AI-Powered Ontology Mapping**: Not sure if a localized term like "Natrium" matches an existing catalog entry? The bridge provides an AI mapping endpoint to automatically align raw strings from the portal with your existing standard Biomarker definitions using LLMs.
-- **Multiple Profiles**: Configure multiple bridge instances (e.g., one for yourself, one for a child). Each instance generates a unique URL containing the `integration_id`. This ID is securely bound to a specific Patient profile in Health Assistant. The extension simply pushes data to this URL, and the backend handles routing it to the correct patient without needing external identifiers like national ID numbers.
 
-## Client Developer Guide
+- **Adapter-pattern architecture** — no per-portal backend code; the client owns the scraping and shaping.
+- **AI-powered ontology mapping** — the `/map` endpoint aligns raw portal terms ("Natrium", "HCT") to standardized biomarker definitions via an LLM, so a push lands on the right history. See [AI Ontology Mapping](mapping.md).
+- **Multiple profiles** — one bridge instance per patient (yourself, a child, …). Each gets a unique instance URL whose `integration_id` is bound to a specific patient — the client never needs national IDs.
+- **Official SDKs** — strictly-typed [Python](client-setup.md#python) (sync + async) and [TypeScript](client-setup.md#typescript) clients with timeout, retry, and HMAC signing built in.
+- **HMAC security** — optional per-instance `api_secret` signs `/map` and `/sync` with a replay-protected HMAC. See [Authentication](authentication.md).
 
-To build a client (Browser Extension/App), you need the base URL of the Health Assistant instance and the unique `integration_id` generated during the user's setup.
+## The client workflow at a glance
 
-> **💡 Developer Tip: Official SDKs Available!**
-> You do not need to implement the REST HTTP calls manually. We provide strictly typed, ready-to-use SDKs for this integration located directly inside the Health Assistant repository at `integrations/health_assistant_bridge/`:
-> - **TypeScript SDK (`ts-sdk/`)**: Ideal for building Browser Extensions, React Native apps, or Node.js scripts.
-> - **Python SDK (`python-sdk/`)**: Includes both synchronous (`requests`) and asynchronous (`httpx`) clients. Ideal for backend scrapers, data science scripts, or chron jobs. Includes an interactive AI mapping example script.
-
-### The Recommended Workflow
-
-1.  **Check Status**: `GET /status` to retrieve the `cursor` (last synced timestamp).
-2.  **Scrape & Extract**: Extract data newer than the `cursor`.
-3.  **Map New Metrics**: Use `POST /map` to ask the AI to map raw names (e.g., "Natrium") to standardized definitions. Ask the user to confirm the mapping in the extension UI, and save the mappings locally.
-    > **Why is Mapping Important?**
-    > Different health portals use different naming conventions (e.g., "Natrium", "Sodium (Na)", "Na"). If you push these raw names directly, the system might create duplicate, disconnected biomarker definitions. By using the `/map` endpoint first, the AI aligns these terms to standard IDs. When you subsequently `/sync` data containing the `biomarker_id`, the backend perfectly links the new data to the patient's existing history.
-4.  **Sync Data**: Apply the mappings and send the Universal Client Payload to `POST /sync`.
-
----
-
-### Deduplication & Idempotency
-
-The `/sync` endpoint is designed to be **idempotent**. You can safely push the same historical data multiple times without creating duplicates.
-
-**For Grouped Examinations (e.g., Lab Reports):**
-To ensure deduplication, you **must** provide the `id` field in your `ClientExaminationRecord`. This should be the unique identifier from the source system (e.g., a `reportId` or `encounterId` from the medical portal). The backend checks if an examination with this `id` already exists for the specific integration instance and patient. If it does, the backend will **skip** processing that examination entirely, preventing duplicate lab reports and duplicate nested biomarker records.
-
-**For Flat Records (e.g., Wearable Telemetry):**
-Flat records rely on backend heuristics for deduplication (matching timestamps and exact values). If you are scraping structured laboratory reports, it is highly recommended to use grouped examinations with explicit `id`s instead of flat records.
-
----
-
-### 1. Check Status
-`GET /api/v1/integrations/health_assistant_bridge/api/<integration_id>/status`
-
-Returns the current configuration and the last sync cursor.
-```json
-{
-  "status": "active",
-  "integration_id": "uuid-here",
-  "last_synced_at": "2024-06-15T12:00:00Z",
-  "cursor": "2024-06-15T12:00:00Z"
-}
+```
+1. GET /status      → retrieve the sync cursor (last timestamp ingested)
+2. Scrape & extract → pull data newer than the cursor from the portal
+3. POST /map         → ask the AI to resolve raw metric names to biomarker IDs
+4. (user confirms)   → the client caches the mappings locally
+5. POST /sync         → push the mapped records (flat or grouped examinations)
+                     → update the cursor for the next cycle
 ```
 
-### 2. Request AI Mapping
-`POST /api/v1/integrations/health_assistant_bridge/api/<integration_id>/map`
+The whole loop is idempotent — re-pushing the same history is a no-op as long as you pass the upstream's stable ids. See [Deduplication & Idempotency](api-reference.md#deduplication--idempotency).
 
-Send a list of raw, unrecognized metric names. The backend uses its LLM to map them against the patient's existing catalog or proposes a new standardized LOINC/Custom definition.
+## What the bridge does and doesn't do
 
-**Request:**
-```json
-{
-  "unmapped_metrics": [
-    {"name": "Natrium (Na)", "code": null},
-    {"name": "HCT", "code": null}
-  ]
-}
-```
+| Capability | Supported | Notes |
+|---|---|---|
+| Push (client → HA) | ✅ | `/sync` — observations + examinations |
+| Pull (HA ← client) | ❌ | `pull_data` returns `[]`; the bridge is push-only |
+| Custom actions | ✅ | "Connection Details", "Reset Sync Cursor" |
+| AI mapping | ✅ | `/map` — LLM maps raw metric names to biomarkers |
+| HMAC auth | ✅ | Optional `api_secret` config field |
+| Notifications | ❌ | Not opted into `supports_notifications` |
+| Tools (chat) | ❌ | Not opted into `supports_tools` |
+| Clinical events | ❌ | Not opted into `supports_clinical_events` |
+| Catalog proposals | ❌ | Not opted into `supports_catalog_proposals` |
+| Documents | ❌ | Not opted into `supports_documents` |
 
-**Response:**
-```json
-{
-  "mappings": [
-    {
-      "original_name": "Natrium (Na)",
-      "action": "map_to_existing",
-      "existing_biomarker_id": "uuid-of-sodium-record",
-      "new_biomarker_name": null,
-      "new_biomarker_code": null,
-      "new_biomarker_coding_system": "loinc"
-    },
-    {
-      "original_name": "HCT",
-      "action": "create_new",
-      "existing_biomarker_id": null,
-      "new_biomarker_name": "Hematocrit",
-      "new_biomarker_code": "20570-8",
-      "new_biomarker_coding_system": "loinc"
-    }
-  ]
-}
-```
-*Note: The client should present these mappings to the user for confirmation and cache them locally.*
+## See also
 
-### 3. Push Data (The Universal Contract)
-`POST /api/v1/integrations/health_assistant_bridge/api/<integration_id>/sync`
-
-Send the transformed payload. You can push flat `records` (ideal for telemetry like smartwatches) or grouped `examinations` (ideal for medical portal scrapers that fetch full laboratory reports).
-
-**Request (Flat Records Example):**
-```json
-{
-  "client_version": "1.2.0",
-  "source_system": "smartwatch_extension",
-  "cursor": "2024-12-29T15:01:48Z",
-  "records": [
-    {
-      "type": "quantitative",
-      "code": "8867-4", 
-      "coding_system": "loinc",
-      "name": "Heart Rate",
-      "value": 75.0,
-      "unit": "bpm",
-      "timestamp": "2024-08-10T12:00:00Z",
-      "performer": "Apple Watch"
-    }
-  ]
-}
-```
-
-**Request (Grouped Examinations Example):**
-```json
-{
-  "client_version": "1.2.0",
-  "source_system": "health_portal_extension",
-  "cursor": "2024-12-29T15:01:48Z",
-  "examinations": [
-    {
-      "id": "report-12345", // CRITICAL: Provide the original report ID here to prevent duplicate syncs
-      "date": "2024-08-10T00:00:00Z",
-      "lab_name": "City General Hospital Laboratory",
-      "category": "Biochemical Tests",
-      "diagnoses": ["Hypertension"],
-      "records": [
-        {
-          "type": "quantitative",
-          "biomarker_id": "uuid-of-sodium-record",
-          "code": "2951-2", 
-          "coding_system": "loinc",
-          "name": "Sodium",
-          "value": 145.0,
-          "unit": "mmol/L",
-          "timestamp": "2024-08-10T00:00:00Z",
-          "reference_range": {
-            "low": 137.0,
-            "high": 147.0
-          },
-          "interpretation": "INSIDE_LIMIT",
-          "performer": "City General Hospital Laboratory"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "metrics_synced": 2,
-  "message": "Data synchronized successfully"
-}
-```
+- [Authentication & Security](authentication.md)
+- [Client SDK Setup](client-setup.md)
+- [API Reference](api-reference.md)
+- [AI Ontology Mapping](mapping.md)
+- [Troubleshooting](troubleshooting.md)
