@@ -127,9 +127,10 @@ async def lifespan(app: FastAPI):
             _abort_or_warn(e, "Integration registry initialization")
 
         # First-run setup token. If the system is uninitialized (zero
-        # users), generate a one-time token and print it to the logs so
-        # the operator can complete the browser setup wizard. Skipped
-        # silently once any user exists. See app/core/setup_token.py.
+        # users), prepare the setup token per SETUP_TOKEN_MODE and log
+        # mode-specific guidance. The wizard reads the mode + URL hint via
+        # /auth/setup-status. See app/core/setup_token.py +
+        # dev/audits/setup-token-modes.md.
         try:
             from sqlalchemy import func, select
 
@@ -144,20 +145,73 @@ async def lifespan(app: FastAPI):
                 user_count = count_result.scalar() or 0
 
             if user_count == 0:
-                token = setup_token.generate()
-                logger.info(
-                    "\n══════════════════════════════════════════════════════\n"
-                    " FIRST-RUN SETUP REQUIRED\n"
-                    " Open the app in your browser and complete the setup\n"
-                    " wizard to create your administrator account.\n"
-                    " Setup token (required if accessing remotely):\n"
-                    "   %s\n"
-                    " Retrieve later: docker compose ... logs backend"
-                    " | grep -i 'setup token'\n"
-                    " Localhost / dev access does not need the token.\n"
-                    "══════════════════════════════════════════════════════",
-                    token,
-                )
+                mode = setup_token.current_mode()
+                if mode == "env":
+                    if setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN):
+                        logger.info(
+                            "\n══════════════════════════════════════════════════════\n"
+                            " FIRST-RUN SETUP REQUIRED (token mode: env)\n"
+                            " Open the launcher URL supplied by your installer — the\n"
+                            " setup token is injected via ?token= and the wizard\n"
+                            " auto-fills it. No log-grep needed.\n"
+                            "══════════════════════════════════════════════════════"
+                        )
+                    else:
+                        # config.py already downgraded to 'log' with a warning,
+                        # but be defensive in case the env var was unset after boot.
+                        logger.warning(
+                            "SETUP_TOKEN_MODE=env but SETUP_BOOTSTRAP_TOKEN is empty — "
+                            "falling back to 'log' mode for this boot."
+                        )
+                        token = setup_token.generate()
+                        logger.info(
+                            "\n══════════════════════════════════════════════════════\n"
+                            " FIRST-RUN SETUP REQUIRED\n"
+                            " Setup token (required if accessing remotely):\n"
+                            "   %s\n"
+                            " Retrieve later: docker compose ... logs backend"
+                            " | grep -i 'setup token'\n"
+                            " Localhost / dev access does not need the token.\n"
+                            "══════════════════════════════════════════════════════",
+                            token,
+                        )
+                elif mode == "time":
+                    setup_token.mark_boot_time()
+                    logger.info(
+                        "\n══════════════════════════════════════════════════════\n"
+                        " FIRST-RUN SETUP REQUIRED (token mode: time)\n"
+                        " The setup wizard is tokenless for the first %d minute(s).\n"
+                        " Complete first-run setup within that window, or a one-time\n"
+                        " token will be minted and logged after it expires.\n"
+                        " Localhost / dev access never needs the token.\n"
+                        "══════════════════════════════════════════════════════",
+                        settings.SETUP_TOKEN_GRACE_MINUTES,
+                    )
+                elif mode == "disabled":
+                    logger.warning(
+                        "\n══════════════════════════════════════════════════════\n"
+                        " FIRST-RUN SETUP REQUIRED (token mode: disabled)\n"
+                        " WARNING: SETUP_TOKEN_MODE=disabled skips the first-claim\n"
+                        " guard entirely. Anyone who reaches /setup before the\n"
+                        " operator can claim this instance. Only safe when the\n"
+                        " deployment is firewalled / VPN-gated / bound to 127.0.0.1.\n"
+                        "══════════════════════════════════════════════════════"
+                    )
+                else:  # "log"
+                    token = setup_token.generate()
+                    logger.info(
+                        "\n══════════════════════════════════════════════════════\n"
+                        " FIRST-RUN SETUP REQUIRED\n"
+                        " Open the app in your browser and complete the setup\n"
+                        " wizard to create your administrator account.\n"
+                        " Setup token (required if accessing remotely):\n"
+                        "   %s\n"
+                        " Retrieve later: docker compose ... logs backend"
+                        " | grep -i 'setup token'\n"
+                        " Localhost / dev access does not need the token.\n"
+                        "══════════════════════════════════════════════════════",
+                        token,
+                    )
             else:
                 # Already initialized — ensure no stale token lingers.
                 setup_token.clear()

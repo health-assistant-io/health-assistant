@@ -188,6 +188,34 @@ if setup_mode == "1":
         worker_concurrency = "2"
     config["CELERY_WORKER_CONCURRENCY"] = worker_concurrency
 
+    # First-run setup-token mode (see dev/audits/setup-token-modes.md).
+    print("\nFirst-run setup wizard — how should the first admin account be bootstrapped?")
+    print("  1) log     (default) — backend prints a one-time token to the container logs;")
+    print("                          you retrieve it with `docker compose logs backend | grep`.")
+    print("  2) env     — store/automated installs. A bootstrap token is generated here and")
+    print("                injected into the container env; the launcher URL carries it as")
+    print("                ?token=<value> for a one-click wizard (no log-grep).")
+    print("  3) time    — tokenless for the first N minutes after boot, then required.")
+    print("                Best when only the operator can reach the app in that window.")
+    print("  4) disabled — never require a token. ONLY safe behind a firewall / VPN / 127.0.0.1.")
+    mode_choice = prompt("Select setup-token mode", default="1", options=["1", "2", "3", "4"])
+    mode_map = {"1": "log", "2": "env", "3": "time", "4": "disabled"}
+    config["SETUP_TOKEN_MODE"] = mode_map[mode_choice]
+    if mode_choice == "2":
+        bootstrap_token = secrets.token_urlsafe(24)
+        config["SETUP_BOOTSTRAP_TOKEN"] = bootstrap_token
+        print("\n✨ Generated SETUP_BOOTSTRAP_TOKEN. Compose your launcher URL as:")
+        print(f"   {config['APP_URL']}/setup?token={bootstrap_token}")
+        print("   The wizard auto-fills the token; the user clicks once and is done.")
+    elif mode_choice == "3":
+        grace = prompt(
+            "Tokenless grace window (minutes)", default="30"
+        )
+        if not grace.isdigit() or int(grace) < 1:
+            print("Invalid number provided, defaulting to 30.")
+            grace = "30"
+        config["SETUP_TOKEN_GRACE_MINUTES"] = grace
+
 print("\nGenerating .env file...")
 
 try:

@@ -69,7 +69,17 @@ class UserRegister(BaseModel):
 
 class SetupStatus(BaseModel):
     """First-run status — tells the frontend whether to show the setup
-    wizard or the login screen."""
+    wizard or the login screen.
+
+    ``token_mode`` lets the wizard tailor the token hint per deployment
+    (log-grep for ``log``, one-click launcher URL for ``env``, a time
+    window hint for ``time``, hidden field for ``disabled``).
+
+    ``setup_url_hint`` is non-null only in ``env`` mode when the wizard
+    can autofill the token from the launcher URL — it contains the
+    ``/setup?token=<value>`` ready to be handed to the user. The launcher
+    uses this when it doesn't already compose the URL itself.
+    """
 
     initialized: bool = Field(
         ..., description="True once at least one user exists in the system."
@@ -79,6 +89,17 @@ class SetupStatus(BaseModel):
         description=(
             "True when the setup wizard must present the one-time setup "
             "token (non-localhost, non-dev). False for local Docker/dev."
+        ),
+    )
+    token_mode: str = Field(
+        ...,
+        description="Resolved SETUP_TOKEN_MODE: 'log' | 'env' | 'time' | 'disabled'.",
+    )
+    setup_url_hint: Optional[str] = Field(
+        None,
+        description=(
+            "Only set in 'env' mode when uninitialized + token still "
+            "active: the '/setup?token=<value>' one-click URL."
         ),
     )
 

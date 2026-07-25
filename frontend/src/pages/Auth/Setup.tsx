@@ -5,9 +5,13 @@ import { useSettingsStore } from '../../store/slices/settingsSlice';
 import api from '../../api/axios';
 import AppVersion from '../../components/ui/AppVersion';
 
+type SetupTokenMode = 'log' | 'env' | 'time' | 'disabled';
+
 interface SetupStatus {
   initialized: boolean;
   setup_token_required: boolean;
+  token_mode: SetupTokenMode;
+  setup_url_hint?: string | null;
 }
 
 /**
@@ -45,13 +49,24 @@ function Setup() {
   const [tenantName, setTenantName] = useState('');
   const [setupToken, setSetupToken] = useState('');
   const [tokenRequired, setTokenRequired] = useState(false);
+  const [tokenMode, setTokenMode] = useState<SetupTokenMode>('log');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // If the system is already initialized, there's nothing to set up —
   // bounce to login. This also guards against someone bookmarking /setup.
+  // The status response carries token_mode + setup_url_hint so we can
+  // tailor the hint per deployment (see dev/audits/setup-token-modes.md).
   useEffect(() => {
+    // Pre-fill the token from ?token=... — the launcher URL in env mode
+    // carries the bootstrap token so the user clicks once and is done.
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      setSetupToken(urlToken);
+    }
+
     const checkStatus = async () => {
       try {
         const res = await api.get('/auth/setup-status');
@@ -61,6 +76,9 @@ function Setup() {
           return;
         }
         setTokenRequired(!!status.setup_token_required);
+        if (status.token_mode) {
+          setTokenMode(status.token_mode);
+        }
       } catch {
         // If the status endpoint is unreachable, let the user try anyway —
         // the backend will return a precise error on submit.
@@ -232,8 +250,30 @@ function Setup() {
                 placeholder="xxxx-xxxx"
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-dark-muted">
-                Find it in the backend container logs:{' '}
-                <code className="text-xs">docker compose logs backend | grep -i "setup token"</code>
+                {tokenMode === 'env' && (
+                  <>
+                    The token was passed via the launcher URL (<code>?token=…</code>).
+                    If the field is empty, copy it from the launcher or ask your installer operator.
+                  </>
+                )}
+                {tokenMode === 'time' && (
+                  <>
+                    The tokenless grace window has expired. Find the one-time token in the backend
+                    container logs: <code className="text-xs">docker compose logs backend | grep -i "setup token"</code>
+                  </>
+                )}
+                {tokenMode === 'log' && (
+                  <>
+                    Find it in the backend container logs:{' '}
+                    <code className="text-xs">docker compose logs backend | grep -i "setup token"</code>
+                  </>
+                )}
+                {tokenMode === 'disabled' && (
+                  <>
+                    Token mode is disabled — this field should not appear. If it does, set
+                    <code className="text-xs"> SETUP_TOKEN_MODE</code> in the backend env.
+                  </>
+                )}
               </p>
             </div>
           )}

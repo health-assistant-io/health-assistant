@@ -35,6 +35,8 @@ Response:
 }
 ```
 
+> **First-run wizard + setup-token modes.** This `/api/v1/setup/checklist` endpoint powers the *role* checklist that runs **after** the first admin account is created. The very first step — creating that admin — is handled by the `/auth/setup` wizard described in [INSTALL.md](./INSTALL.md) (and the four `SETUP_TOKEN_MODE`s in `dev/audits/setup-token-modes.md`). Store bundlers can use `SETUP_TOKEN_MODE=env` + `SETUP_BOOTSTRAP_TOKEN=<generated>` and a launcher URL carrying `?token=<value>` for a one-click first-run; once the admin exists, this setup-checklist endpoint takes over for everything else.
+
 - **`role`** — the role portion of the checklist (always returned). The `USER` role gets the smallest set (set language + link self-patient); `ADMIN`/`MANAGER` get tenant-buildout steps; `SYSTEM_ADMIN` gets cross-tenant steps.
 - **`entity` / `entity_id`** — when supplied, extra steps for that specific entity (today: `patient`) are merged in.
 - **`steps[].kind`** drives the UI step component:

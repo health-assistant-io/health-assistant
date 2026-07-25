@@ -107,6 +107,49 @@ class Settings(BaseSettings):
     # inconsistent with how VAPID keys are handled (audit C7).
     SECRET_KEY: Optional[str] = None
 
+    # First-run setup-token guard — see dev/audits/setup-token-modes.md.
+    # ``log``     (default) — print one-time token to container logs; required
+    #                          for non-localhost, non-dev requests.
+    # ``env``     — seed the token from SETUP_BOOTSTRAP_TOKEN (no random mint);
+    #                the launcher URL is then composed with ?token=<value> so
+    #                storefronts get a one-click flow with no log-grep.
+    # ``time``    — tokenless for SETUP_TOKEN_GRACE_MINUTES after first boot,
+    #                then required (lazy-falls-back to ``log`` if no env token).
+    # ``disabled`` — never require; only safe behind a firewall / VPN / 127.0.0.1
+    #                bind. Logs a security warning on every fresh boot.
+    SETUP_TOKEN_MODE: str = "log"
+    SETUP_BOOTSTRAP_TOKEN: Optional[str] = None
+    SETUP_TOKEN_GRACE_MINUTES: int = 30
+
+    @model_validator(mode="after")
+    def _validate_setup_token_mode(self) -> "Settings":
+        """Resolve + sanity-check the first-run setup-token mode.
+
+        - Rejects unknown mode names early so a typo doesn't silently fall
+          through to a dangerous default.
+        - ``env`` with an empty SETUP_BOOTSTRAP_TOKEN falls back to ``log``
+          with a warning (instead of refusing to boot — keeps stores safe
+          against launcher-side misconfiguration).
+        """
+        import logging
+
+        allowed = {"log", "env", "time", "disabled"}
+        if self.SETUP_TOKEN_MODE not in allowed:
+            raise ValueError(
+                f"SETUP_TOKEN_MODE must be one of {sorted(allowed)}; "
+                f"got {self.SETUP_TOKEN_MODE!r}."
+            )
+        if self.SETUP_TOKEN_MODE == "env" and not self.SETUP_BOOTSTRAP_TOKEN:
+            logging.warning(
+                "SETUP_TOKEN_MODE=env but SETUP_BOOTSTRAP_TOKEN is empty — "
+                "falling back to 'log' mode. Set SETUP_BOOTSTRAP_TOKEN or "
+                "choose another mode."
+            )
+            self.SETUP_TOKEN_MODE = "log"
+        if self.SETUP_TOKEN_GRACE_MINUTES < 1:
+            raise ValueError("SETUP_TOKEN_GRACE_MINUTES must be >= 1 minute.")
+        return self
+
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
         """Ensure a valid SECRET_KEY is provided, falling back to an ephemeral one in dev only."""

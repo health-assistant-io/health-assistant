@@ -22,6 +22,7 @@ fixed: invite-token verification + the advisory-lock bootstrap (now in
 """
 
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -84,15 +85,35 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     ``initialized`` reflects whether a SYSTEM_ADMIN has been created (via
     the wizard, the CLI script, or the legacy register path).
     ``setup_token_required`` tells the wizard whether to collect the
-    one-time setup token printed in the backend logs (skipped for
-    localhost / dev).
+    one-time setup token (per-mode: see ``app/core/setup_token.py``).
+    ``token_mode`` + ``setup_url_hint`` surface the resolved mode + an
+    optional one-click URL hint so the wizard + launcher can tailor UX
+    without re-reading env vars.
     """
     initialized = await _is_initialized(db)
+    mode = setup_token.current_mode()
+    token_required = (
+        False if initialized else setup_token.is_setup_token_required(request)
+    )
+    setup_url_hint: Optional[str] = None
+    # Only surface the URL hint in env mode, while uninitialized, and while
+    # the active token still exists (before /auth/setup cleared it).
+    if (
+        not initialized
+        and mode == "env"
+        and setup_token.get() is not None
+    ):
+        scheme = request.url.scheme if request.url.scheme else "http"
+        host_header = request.headers.get("host") or "localhost"
+        token = setup_token.get() or ""
+        from urllib.parse import quote
+
+        setup_url_hint = f"{scheme}://{host_header}/setup?token={quote(token)}"
     return SetupStatus(
         initialized=initialized,
-        setup_token_required=(
-            False if initialized else setup_token.is_setup_token_required(request)
-        ),
+        setup_token_required=token_required,
+        token_mode=mode,
+        setup_url_hint=setup_url_hint,
     )
 
 

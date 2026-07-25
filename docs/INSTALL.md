@@ -55,6 +55,22 @@ Docker is the fastest way to get Health Assistant — a self-hosted, open-source
 
    On submit, the wizard creates your `SYSTEM_ADMIN` account + tenant and logs you straight in.
 
+   > **Setup-token modes (`SETUP_TOKEN_MODE`)** — for stores, automation, and LAN/firewalled installs you don't have to use the log-grep flow. Pick one of four modes (see `dev/audits/setup-token-modes.md`):
+   >
+   > | Mode | Behaviour | Recommended deploy |
+   > |---|---|---|
+   > | `log` (default) | Backend prints a one-time token to container logs; wizard requires it for non-localhost / non-dev. | Manual Docker installs behind an internet-exposed reverse proxy. The default — existing installs behave identically. |
+   > | `env` | Seed the token from `SETUP_BOOTSTRAP_TOKEN`; the launcher composes the wizard URL with `?token=<value>`. One-click, no log-grep. | Store bundlers (Umbrel/Runtipi/CasaOS/Cosmos) + Ansible/Terraform provisioning. `setup_env.py` Full Setup mode prompts for this and prints the ready-to-use launcher URL. |
+   > | `time` | Tokenless for `SETUP_TOKEN_GRACE_MINUTES` (default 30) after first boot, then required (lazy-falls-back to `log` if no env token was set). | LAN/firewalled installs where the operator is the only one who can reach the app in the first half hour. |
+   > | `disabled` | Never require. Logs a security warning on every fresh boot. | Only behind a firewall / VPN / `127.0.0.1` bind — opt-in only. |
+   >
+   > Localhost requests and dev/test envs always skip the token in every mode. Store-bundle recipe (env mode):
+   > ```env
+   > SETUP_TOKEN_MODE=env
+   > SETUP_BOOTSTRAP_TOKEN=<generated 24-char secret>
+   > ```
+   > Launch URL: `https://<your-host>/setup?token=<same value>`. The wizard auto-fills and the user clicks one button.
+
    > **There are no default login credentials.** The email and password you enter in the wizard are the ones you sign in with from then on.
 
    **Headless / automation alternative.** If you're provisioning via Docker/Ansible and can't use a browser, create the admin from the CLI instead:
