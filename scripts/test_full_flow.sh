@@ -1,7 +1,42 @@
 #!/bin/bash
+#
+# scripts/test_full_flow.sh
+#
+# End-to-end smoke test of the document lifecycle: login → upload → fetch →
+# read extraction status (initial) → trigger extraction → read status again
+# (expecting 'processing'). Parses JSON with grep rather than jq so it runs
+# on minimal systems. Manual sanity check — NOT a replacement for pytest.
+#
+# Prerequisites:
+#   - Backend running on http://localhost:8000 (./scripts/run-dev.sh).
+#   - Demo admin: admin@health-assistant.local / admin123 (created by
+#     ./scripts/run-dev.sh's bootstrap step, or backend/scripts/create_system_admin.py).
+#   - ``test_documents/test1.png`` at the project root (the upload fixture).
+#
+# Usage:
+#   ./scripts/test_full_flow.sh             # run the smoke test
+#   ./scripts/test_full_flow.sh -h | --help # print this help and exit
+#
+# Exits non-zero on login or upload failure. No flags are accepted.
 
 API_URL="http://localhost:8000"
 TEST_FILE="test_documents/test1.png"
+
+print_help() {
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo "Unknown parameter: $1 (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "Full Document Flow Test"

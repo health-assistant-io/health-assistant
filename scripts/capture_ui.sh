@@ -11,12 +11,32 @@
 # started. Override per-run by exporting the same vars or passing --base/--api.
 #
 # Usage:
-#   ./scripts/capture_ui.sh                 # all scenes, both viewports
+#   ./scripts/capture_ui.sh                   # all scenes, both viewports
 #   ./scripts/capture_ui.sh --scene dashboard
 #   ./scripts/capture_ui.sh --viewport desktop
-#   ./scripts/capture_ui.sh --gallery-only   # just rebuild docs/SCREENSHOTS.md
-#   ./scripts/capture_ui.sh --strict         # fail fast on broken pages
+#   ./scripts/capture_ui.sh --gallery-only     # just rebuild docs/SCREENSHOTS.md
+#   ./scripts/capture_ui.sh --strict           # fail fast on broken pages
+#   ./scripts/capture_ui.sh -h | --help        # print this help and exit
+#
+# Other flags (e.g. --base, --api) are forwarded verbatim to the Playwright
+# capture script (``frontend/tests-e2e/ui-capture/capture.mjs``); see
+# ``npx playwright --help`` and that script's own ``--help`` for the full
+# surface. This wrapper only intercepts ``-h``/``--help`` for its own usage.
 set -euo pipefail
+
+print_help() {
+  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Pre-scan args for -h/--help before any side-effectful work (.env load, npm
+# install, etc.). Other flags are forwarded to the node capture script — we
+# don't intercept them here.
+for _arg in "$@"; do
+  case "$_arg" in
+    -h|--help) print_help ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND="$ROOT/frontend"

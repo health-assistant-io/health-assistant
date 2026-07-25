@@ -1,7 +1,40 @@
 #!/bin/bash
+#
+# scripts/test_document_status.sh
+#
+# Smoke test the upload + status-check pair: login → upload a document →
+# verify a document id comes back → query the status endpoint. Confirms the
+# upload→status introspection path works against a running backend.
+#
+# Prerequisites:
+#   - Backend running on http://localhost:8000 (./scripts/run-dev.sh).
+#   - Demo admin: admin@health-assistant.local / admin123.
+#   - ``test_documents/test1.png`` at the project root.
+#
+# Usage:
+#   ./scripts/test_document_status.sh             # run the test
+#   ./scripts/test_document_status.sh -h | --help # print this help and exit
+#
+# Exits non-zero on login or upload failure. No flags are accepted.
 
 API_URL="http://localhost:8000"
 TEST_FILE="test_documents/test1.png"
+
+print_help() {
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo "Unknown parameter: $1 (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "Testing Document Upload and Status Check..."
 echo ""

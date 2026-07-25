@@ -1,10 +1,78 @@
 #!/usr/bin/env python3
+"""Interactive environment-setup wizard for Health Assistant.
+
+Copies ``.env.example`` to ``.env`` and writes auto-generated secure
+values into it: ``SECRET_KEY``, ``INTEGRATION_SECRET_KEY`` (Fernet),
+``POSTGRES_PASSWORD``, ``FLOWER_PASSWORD``, a VAPID P-256 key pair
+for Web Push, and (in Full Setup mode) ``VAPID_ADMIN_EMAIL`` plus the
+first-run ``SETUP_TOKEN_MODE`` + ``SETUP_BOOTSTRAP_TOKEN``.
+
+Usage:
+    python scripts/setup_env.py             # interactive (full or keys-only)
+    python scripts/setup_env.py --help      # print this help and exit
+
+Modes (chosen interactively unless ``--mode`` is given):
+    1) Full Setup       — prompts for environment, URLs, workers, VAPID email,
+                          setup-token mode. Generates all keys.
+    2) Keys Only Setup  — generates keys, leaves everything else at defaults
+                          in the generated .env.
+
+Idempotent guard: refuses to overwrite an existing .env. Delete .env first
+to regenerate. Run from the project root.
+
+Exit codes:
+    0   success or --help
+    1   missing .env.example, or .env already exists
+"""
 import os
 import sys
 import secrets
 import base64
 from datetime import datetime
 from urllib.parse import urlparse
+
+
+_HELP_TEXT = __doc__ or ""
+
+
+def _print_help_and_exit() -> None:
+    sys.stdout.write(_HELP_TEXT + "\n")
+    sys.exit(0)
+
+
+if any(arg in ("-h", "--help") for arg in sys.argv[1:]):
+    _print_help_and_exit()
+
+
+def _parse_mode_arg() -> str | None:
+    """Return the mode number chosen via ``--mode=1|2`` or ``None`` if not set.
+
+    Accepts ``--mode=1`` and ``--mode 1``. Rejects unknown values by exiting
+    with a usage hint. Non-``--mode`` args are left untouched for the
+    interactive flow (this script is interactive by design).
+    """
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-h", "--help"):
+            _print_help_and_exit()
+        if a.startswith("--mode="):
+            value = a.split("=", 1)[1]
+            if value not in ("1", "2"):
+                print(f"Invalid --mode value: {value!r}. Use 1 (Full) or 2 (Keys Only).")
+                sys.exit(1)
+            return value
+        if a == "--mode":
+            if i + 1 >= len(args) or args[i + 1] not in ("1", "2"):
+                print("--mode requires a value: 1 (Full) or 2 (Keys Only).")
+                sys.exit(1)
+            return args[i + 1]
+        i += 1
+    return None
+
+
+_PRESET_MODE = _parse_mode_arg()
 
 
 def _derive_email_default(app_url: str) -> str:
@@ -126,7 +194,7 @@ print("How would you like to configure the rest of the environment?")
 print("  1) Full Setup (Interactively configure environments, URLs, and workers)")
 print("  2) Keys Only Setup (Just generate keys, I'll manually configure the rest later)")
 
-setup_mode = prompt("\nSelect setup mode", default="1", options=["1", "2"])
+setup_mode = _PRESET_MODE or prompt("\nSelect setup mode", default="1", options=["1", "2"])
 
 # Default configs
 config = {

@@ -1,8 +1,44 @@
 #!/bin/bash
+#
+# scripts/test_api.sh
+#
+# Smoke test the backend REST API: login → upload a document → import a CSV
+# (synthesised in /tmp) → import via OCR → /health probe. Pretty-prints the
+# curl responses with ``jq``. Used as a manual sanity check during dev —
+# NOT a replacement for the pytest suite.
+#
+# Prerequisites:
+#   - Backend running on http://localhost:8000 (./scripts/run-dev.sh).
+#   - Demo admin: admin@health-assistant.local / admin123 (created by
+#     ./scripts/run-dev.sh's bootstrap step, or backend/scripts/create_system_admin.py).
+#   - ``test_documents/test1.png`` at the project root (the upload fixture).
+#   - ``jq`` installed.
+#
+# Usage:
+#   ./scripts/test_api.sh                  # run the smoke test
+#   ./scripts/test_api.sh -h | --help      # print this help and exit
+#
+# Exits non-zero on login or upload failure. No flags are accepted.
 
 # Test configuration
 API_URL="http://localhost:8000"
 TEST_FILE="test_documents/test1.png"
+
+print_help() {
+  sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo "Unknown parameter: $1 (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "Health Assistant API Testing"

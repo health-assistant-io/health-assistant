@@ -1,7 +1,43 @@
 #!/bin/bash
+#
+# scripts/test_extraction.sh
+#
+# Smoke test the document extraction pipeline: login → upload → read the
+# initial extraction status → trigger extraction → poll the status endpoint.
+# Exercises the OCR/CSV extraction background-task kickoff against a running
+# backend + Celery worker.
+#
+# Prerequisites:
+#   - Backend + Celery worker running (./scripts/run-dev.sh starts both).
+#   - Demo admin: admin@health-assistant.local / admin123.
+#   - ``test_documents/test1.png`` at the project root.
+#   - OCR requires an AI provider configured (see Settings → AI Config, or
+#     OPENAI_API_KEY in .env).
+#
+# Usage:
+#   ./scripts/test_extraction.sh                  # run the test
+#   ./scripts/test_extraction.sh -h | --help      # print this help and exit
+#
+# Exits non-zero on login or upload failure. No flags are accepted.
 
 API_URL="http://localhost:8000"
 TEST_FILE="test_documents/test1.png"
+
+print_help() {
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo "Unknown parameter: $1 (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "Testing Document Extraction..."
 echo ""

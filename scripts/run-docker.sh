@@ -1,14 +1,46 @@
 #!/bin/bash
 
 # Health Assistant Docker Startup Script
-
-echo "Starting Health Assistant with Docker..."
+#
+# Build and launch the dev Docker stack defined in
+# ``docker/docker-compose.dev.yml`` using the root ``.env`` (auto-detects
+# ``docker compose`` vs the legacy ``docker-compose`` standalone binary).
+# This is the dev-flavor stack (frontend served by Vite, hot reload, debug
+# logging). For production see docs/INSTALL.md and use
+# ``docker/docker-compose.standalone.yml`` / ``docker-compose.prod.yml``
+# directly.
+#
+# Usage:
+#   ./scripts/run-docker.sh             # build + up the dev stack
+#   ./scripts/run-docker.sh -h|--help   # print this help and exit
+#
+# Run from the Health Assistant project root. Requires a populated ``.env``
+# (run ``python scripts/setup_env.py`` first if missing). Exits non-zero on
+# missing deps, a stopped Docker daemon, or a missing project layout.
 
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+print_help() {
+  sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo -e "${RED}Unknown parameter: $1 (try --help)${NC}" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "Starting Health Assistant with Docker..."
 
 # Check if we're in the right directory
 if [ ! -d "backend" ] || [ ! -d "frontend" ]; then

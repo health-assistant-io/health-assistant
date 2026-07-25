@@ -7,14 +7,29 @@
 # flower + frontend. A single Ctrl+C cleanly stops everything, and if any
 # process crashes honcho exits loud — no more "celery silently not running"
 # surprises with jobs stuck in PENDING.
-
-echo "Starting Health Assistant Development Environment..."
+#
+# Usage:
+#   ./scripts/run-dev.sh                  # bootstrap + start the honcho group
+#   ./scripts/run-dev.sh --no-admin       # skip create_system_admin so the
+#                                         # browser first-run setup wizard fires
+#   ./scripts/run-dev.sh --force-stop     # kill every HA dev process and exit
+#   ./scripts/run-dev.sh --force-celery   # deprecated (honcho owns celery),
+#                                         # accepted for backward compatibility
+#   ./scripts/run-dev.sh -h | --help      # print this help and exit
+#
+# Run from the Health Assistant project root. Reads the root .env for ports +
+# secrets. Exits non-zero on any failure during bootstrap.
 
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+print_help() {
+  sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
 
 # Default values
 FORCE_STOP=false
@@ -23,7 +38,7 @@ NO_ADMIN=false
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --force-stop) FORCE_STOP=true ;;
+        --force-stop)    FORCE_STOP=true ;;
         --no-admin)
             # Skip the create_system_admin step so the first-run setup wizard
             # can be exercised (the wizard only appears when zero users exist).
@@ -33,10 +48,16 @@ while [[ "$#" -gt 0 ]]; do
             # Accepted for backward compat; honcho owns the worker lifecycle now.
             echo -e "${YELLOW}--force-celery is deprecated (honcho owns celery now); ignoring.${NC}"
             ;;
-        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+        -h|--help)      print_help ;;
+        *)
+            echo -e "${RED}Unknown parameter: $1 (try --help)${NC}" >&2
+            exit 1
+            ;;
     esac
     shift
 done
+
+echo "Starting Health Assistant Development Environment..."
 
 if [ "$FORCE_STOP" = true ]; then
     echo -e "${YELLOW}Force stopping all Health Assistant services...${NC}"

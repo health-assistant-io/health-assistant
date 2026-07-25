@@ -1,4 +1,38 @@
 #!/bin/bash
+#
+# scripts/test_database_integration.sh
+#
+# Smoke test the documents + biomarkers DB-backed endpoints: login → list
+# documents (initial) → upload → list again → fetch by id. Verifies the
+# document record round-trips through the database (not just the cache).
+#
+# Prerequisites:
+#   - Backend running on http://localhost:8000 with the dev Postgres
+#     (./scripts/run-dev.sh spins up docker/docker-compose.dev-db.yml).
+#   - Demo admin: admin@health-assistant.local / admin123.
+#   - ``test_documents/test1.png`` at the project root.
+#
+# Usage:
+#   ./scripts/test_database_integration.sh             # run the test
+#   ./scripts/test_database_integration.sh -h | --help # print this help and exit
+#
+# Exits non-zero on login or upload failure. No flags are accepted.
+
+print_help() {
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_help ;;
+        *)
+            echo "Unknown parameter: $1 (try --help)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "Testing Database Integration"
