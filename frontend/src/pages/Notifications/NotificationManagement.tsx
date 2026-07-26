@@ -12,6 +12,7 @@ import {
   Info,
   Smartphone,
   ShieldAlert,
+  Settings,
   Inbox as InboxIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -289,6 +290,13 @@ export default function NotificationManagement() {
       <StickyToolbar
         actions={
           <>
+            <button
+              onClick={() => navigate('/settings/notifications')}
+              className="flex items-center px-3 py-2 border rounded-lg text-xs font-bold transition-colors bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted border-gray-200 dark:border-dark-border hover:text-blue-600 dark:hover:text-blue-400 shadow-sm"
+            >
+              <Settings className="w-3.5 h-3.5 mr-1.5" />
+              {t('notifications.settings_link', { defaultValue: 'Notification settings' })}
+            </button>
             <button
               onClick={handleFixPush}
               className={`flex items-center px-3 py-2 border rounded-lg text-xs font-bold transition-colors ${
