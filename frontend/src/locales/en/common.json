@@ -70,7 +70,6 @@
     "no_patient_create_action": "Create a New Patient",
     "no_patient_manage": "Manage Patients",
     "no_patient_settings": "Profile Settings",
-    "no_patient_setup_hint": "A guided setup wizard is coming soon.",
     "language": "Language",
     "english": "English",
     "greek": "Greek",
@@ -162,7 +161,8 @@
     "clear_all": "Clear all",
     "max_items_reached": "Maximum of {{n}} items.",
     "add_time": "Add time",
-    "clear": "Clear"
+    "clear": "Clear",
+    "no_patient_setup_action": "Run setup wizard"
   },
   "dashboard": {
     "title": "Patient Health Overview",
@@ -2095,5 +2095,136 @@
     "copied": "Copied",
     "copy_failed": "Copy failed",
     "copy": "Copy"
+  },
+  "setup": {
+    "patient": {
+      "title": "Patient setup",
+      "description": "Complete the patient profile step by step.",
+      "group_label": "Patient profile"
+    },
+    "role": {
+      "title": "Setup",
+      "group_label": "Your account"
+    },
+    "completion_pct": "{{count}}% complete",
+    "completion_required": "required steps",
+    "next": "Next",
+    "previous": "Previous",
+    "finish": "Finish",
+    "finish_hint": "You can reopen this wizard any time from the patient detail page.",
+    "open_wizard": "Open setup wizard",
+    "all_complete": "All required steps complete",
+    "next_step_hint": "Next: {{step}}",
+    "card_title": "Patient setup",
+    "card_complete": "Setup complete",
+    "steps": {
+      "patient": {
+        "birth_date": "Date of birth",
+        "address": "Address",
+        "telecom": "Phone & email",
+        "emergency_contact": "Emergency contact",
+        "race_or_ethnicity": "Race & ethnicity",
+        "preferred_language": "Preferred language",
+        "insurance_provider": "Insurance provider",
+        "allergies": "Allergies",
+        "current_medications": "Current medications",
+        "current_events": "Clinical events & pains"
+      },
+      "user": {
+        "preferences_language": "Set your language",
+        "linked_self_patient": "Link your patient record"
+      },
+      "tenant": {
+        "first_org": "Create an organization",
+        "first_patient": "Create a patient",
+        "first_doctor": "Add a doctor",
+        "ai_config": "Configure AI",
+        "member_invited": "Invite a member"
+      },
+      "system": {
+        "first_tenant": "Create a tenant",
+        "catalog_seeded": "Seed the catalog",
+        "ai_config": "Configure system AI",
+        "first_user": "Add a user",
+        "integrations_review": "Review integrations"
+      },
+      "error": "Step unavailable"
+    },
+    "action_open": "Open",
+    "action_manage": "Manage",
+    "optional": "optional",
+    "redirect_hint_complete": "Completed — you can review or change these settings anytime.",
+    "redirect_hint_incomplete": "Complete this step on the target page — it will be detected here automatically.",
+    "recheck": "Recheck",
+    "back_to_wizard": "Back to full wizard",
+    "minimize": "Minimize",
+    "subwizard": {
+      "patient": {
+        "title": "Create a patient",
+        "description": "Set up a patient record step by step. You can fill optional sections later.",
+        "basic": "Basic info",
+        "contacts": "Contacts",
+        "demographics": "Demographics",
+        "create": "Create patient",
+        "create_first": "Create the patient first to continue.",
+        "done": "Done"
+      },
+      "ai": {
+        "title": "Configure AI",
+        "description": "Set up an AI provider, add a model, then assign it to tasks.",
+        "provider": "Provider",
+        "model": "Model",
+        "assignment": "Tasks",
+        "done": "Done"
+      }
+    },
+    "step_desc": {
+      "user.preferences_language": "Choose your preferred language for the interface.",
+      "user.linked_self_patient": "Create your personal health record so you can view your own dashboard.",
+      "tenant.first_org": "Create an organization (household, clinic, or department) to group your data.",
+      "tenant.first_patient": "Create your first patient record to start tracking health data.",
+      "tenant.first_doctor": "Add a doctor who can be linked to examinations.",
+      "tenant.ai_config": "Set up an AI provider, add a model, then assign it to tasks. Three guided sub-steps.",
+      "tenant.member_invited": "Invite another member to your organization.",
+      "system.first_tenant": "The initial tenant was auto-created during setup. Manage or create more here.",
+      "system.catalog_seeded": "The clinical catalog (biomarkers, medications, etc.) is seeded automatically on startup.",
+      "system.ai_config": "Configure system-wide AI: add a provider, a model, and assign them to tasks. Three guided sub-steps.",
+      "system.first_user": "Add another user account. Currently only the admin exists.",
+      "system.integrations_review": "Review the available integrations and disable any you don't want available to users.",
+      "patient.birth_date": "Set the patient's date of birth.",
+      "patient.address": "Add the patient's home address.",
+      "patient.telecom": "Add phone and email contact details.",
+      "patient.emergency_contact": "Add an emergency contact person.",
+      "patient.race_or_ethnicity": "Record race and ethnicity (US Core demographics).",
+      "patient.preferred_language": "Set the patient's preferred communication language.",
+      "patient.insurance_provider": "Record the patient's insurance provider.",
+      "patient.allergies": "Record known allergies.",
+      "patient.current_medications": "Add current active medications.",
+      "patient.current_events": "Track ongoing clinical events and conditions."
+    },
+    "exit_wizard": "Exit wizard",
+    "open_full_wizard": "Open full wizard",
+    "sub_steps_progress": "{{done}} of {{total}} done",
+    "derived_hint": "This step is checked automatically.",
+    "manual_complete": "Mark as complete",
+    "manual_undo": "Mark as not done",
+    "manually_completed_hint": "Marked manually as complete"
+  },
+  "patient_form": {
+    "steps": {
+      "basic": "Basic info",
+      "contacts": "Contacts",
+      "demographics": "Demographics"
+    },
+    "address": "Address",
+    "phone_email": "Phone & email",
+    "emergency_contact": "Emergency contact",
+    "race": "Race",
+    "ethnicity": "Ethnicity",
+    "preferred_language": "Preferred language",
+    "insurance": "Insurance provider",
+    "insurance_hint": "Free text for now; a proper FHIR Coverage resource is roadmap.",
+    "add": "Add",
+    "skip_finish": "Skip & finish"
   }
 }

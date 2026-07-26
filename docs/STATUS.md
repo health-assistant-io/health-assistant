@@ -92,6 +92,7 @@ What's implemented, what's in progress, and what's planned for the self-hosted, 
 - Document gallery and clinical timeline
 - **Export & Import UI** (`/settings/export-import`, admin-only) — create exports, restore from ZIP/JSON, live job polling, download
 - **0.3.0 PWA fixes**: manifest shortcut `/examinations/new` → `/examinations/upload`; PWA runtime caches now use same-origin predicates (no longer hardcoded to `localhost:8000`).
+- **In-app guided setup wizard** — a modular, backend-derived, always-reopenable onboarding system. Two surfaces: a **role wizard** (`/setup/wizard`) with a persistent popup drawer (accordion cards, minimize-to-badge, floating reopen) + a **per-patient wizard** (`/patients/:id/setup`). Steps guide users to the real settings pages (no duplicated forms); the wizard tracks completion via live-data-derived checklists. AI config is a guided 3-sub-step redirect (provider → model → tasks). See [SETUP_WIZARD.md](SETUP_WIZARD.md).
 
 ### ⚠️ In Progress
 - Advanced anomaly detection algorithms (Statistical)

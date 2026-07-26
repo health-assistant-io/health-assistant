@@ -64,6 +64,69 @@ async def test_integration_registry_initialize():
         mock_load_int.assert_called_once_with("dev_dummy", system_config={})
 
 
+@pytest.mark.asyncio
+async def test_integration_registry_default_enabled_when_no_db_row():
+    """Integrations are ENABLED BY DEFAULT: a discovered domain with no
+    SystemIntegration row must still be loaded. Only an explicit
+    is_enabled=False row hides it."""
+    registry = IntegrationRegistry()
+    registry._manifests = {"dev_dummy": {}, "other": {}}
+
+    # DB returns an empty set of SystemIntegration rows — nothing has been
+    # touched by an admin yet.
+    mock_result = MagicMock()
+    mock_result.scalars().all.return_value = []
+
+    async def mock_execute(*args, **kwargs):
+        return mock_result
+
+    mock_db = MagicMock()
+    mock_db.execute = mock_execute
+
+    loaded: list[str] = []
+
+    async def _capture(domain, *, system_config=None):
+        loaded.append(domain)
+
+    with patch.object(registry, "_load_manifests", lambda: None), \
+         patch.object(registry, "_load_integration", _capture):
+        await registry.initialize(mock_db)
+
+    assert sorted(loaded) == ["dev_dummy", "other"], (
+        "discovered domains with no DB row must load by default"
+    )
+
+
+@pytest.mark.asyncio
+async def test_integration_registry_skips_explicitly_disabled():
+    """An is_enabled=False row is the ONLY way to hide a discovered domain."""
+    registry = IntegrationRegistry()
+    registry._manifests = {"dev_dummy": {}, "other": {}}
+
+    disabled_si = MagicMock(domain="dev_dummy", is_enabled=False, global_config=None)
+    enabled_si = MagicMock(domain="other", is_enabled=True, global_config=None)
+    mock_result = MagicMock()
+    mock_result.scalars().all.return_value = [disabled_si, enabled_si]
+
+    async def mock_execute(*args, **kwargs):
+        return mock_result
+
+    mock_db = MagicMock()
+    mock_db.execute = mock_execute
+
+    loaded: list[str] = []
+
+    async def _capture(domain, *, system_config=None):
+        loaded.append(domain)
+
+    with patch.object(registry, "_load_manifests", lambda: None), \
+         patch.object(registry, "_load_integration", _capture):
+        await registry.initialize(mock_db)
+
+    assert loaded == ["other"], "only the disabled domain must be skipped"
+
+
+
 # ---------------------------------------------------------------------------
 # Legacy OAuth stubs removed from the core base
 # ---------------------------------------------------------------------------

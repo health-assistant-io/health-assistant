@@ -3,6 +3,7 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import TenantSwitchBanner from './TenantSwitchBanner';
 import { AIDrawer } from './AIDrawer';
+import { SetupWizardDrawer } from '../setup/SetupWizardDrawer';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import { SearchLauncher } from '../ui/SearchLauncher';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -108,6 +109,7 @@ function Layout() {
         onClose={() => setAIDrawerOpen(false)} 
       />
       <SearchLauncher />
+      <SetupWizardDrawer />
       <ConfirmationModal />
     </div>
   );

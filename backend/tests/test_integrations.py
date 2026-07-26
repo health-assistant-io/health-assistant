@@ -20,87 +20,123 @@ async def test_list_available_integrations(async_client: AsyncClient):
         mock_registry.get_all_manifests.return_value = [
             {"domain": "dev_dummy", "name": "Dev Dummy", "version": "1.0.0"}
         ]
-        
+
         from app.core.security import get_current_user
         from app.main import app
         from app.core.database import get_db
-        
-        # We need to mock the DB result for SystemIntegration check
-        mock_result = MagicMock()
-        mock_system_integration = MagicMock()
-        mock_system_integration.domain = "dev_dummy"
-        mock_result.scalars.return_value.all.return_value = [mock_system_integration]
 
-        async def override_get_db():
-            class MockDB:
-                async def execute(self, *args, **kwargs):
-                    return mock_result
-            yield MockDB()
+        # Integrations are enabled by default — the endpoint now excludes only
+        # explicitly-disabled domains. Patch the helper to return none disabled
+        # so dev_dummy stays available.
+        with patch(
+            "app.api.v1.endpoints.integrations.get_disabled_domains",
+            new=AsyncMock(return_value=set()),
+        ):
+            async def override_get_db():
+                class MockDB:
+                    pass
+                yield MockDB()
 
-        app.dependency_overrides[get_current_user] = override_get_current_user
-        app.dependency_overrides[get_db] = override_get_db
-        
-        response = await async_client.get("/api/v1/integrations/available")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["domain"] == "dev_dummy"
-        
-        app.dependency_overrides.clear()
+            app.dependency_overrides[get_current_user] = override_get_current_user
+            app.dependency_overrides[get_db] = override_get_db
+
+            response = await async_client.get("/api/v1/integrations/available")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["domain"] == "dev_dummy"
+
+            app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_available_integrations_hides_disabled(async_client: AsyncClient):
+    """A domain a SYSTEM_ADMIN has explicitly disabled must not be listed."""
+    with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
+        mock_registry.get_all_manifests.return_value = [
+            {"domain": "dev_dummy", "name": "Dev Dummy", "version": "1.0.0"},
+            {"domain": "other", "name": "Other", "version": "1.0.0"},
+        ]
+
+        from app.core.security import get_current_user
+        from app.main import app
+        from app.core.database import get_db
+
+        with patch(
+            "app.api.v1.endpoints.integrations.get_disabled_domains",
+            new=AsyncMock(return_value={"dev_dummy"}),
+        ):
+            async def override_get_db():
+                class MockDB:
+                    pass
+                yield MockDB()
+
+            app.dependency_overrides[get_current_user] = override_get_current_user
+            app.dependency_overrides[get_db] = override_get_db
+
+            response = await async_client.get("/api/v1/integrations/available")
+            assert response.status_code == 200
+            data = response.json()
+            assert [d["domain"] for d in data] == ["other"]
+
+            app.dependency_overrides.clear()
+
 
 @pytest.mark.asyncio
 async def test_get_config_flow_not_enabled(async_client: AsyncClient):
     from app.core.security import get_current_user
     from app.main import app
     app.dependency_overrides[get_current_user] = override_get_current_user
-    
-    # Attempting to get a config flow that hasn't been enabled by system should 400
-    response = await async_client.get("/api/v1/integrations/some_random_domain/config-flow")
-    assert response.status_code == 400
-    assert "not enabled" in response.json()["detail"]
-    
+
+    # Integrations are enabled by default; the only way to be "not enabled" is
+    # an explicit admin disable. Simulate that via the helper.
+    with patch(
+        "app.api.v1.endpoints.integrations.is_domain_disabled",
+        new=AsyncMock(return_value=True),
+    ):
+        response = await async_client.get("/api/v1/integrations/some_random_domain/config-flow")
+        assert response.status_code == 400
+        assert "not enabled" in response.json()["detail"]
+
     app.dependency_overrides.clear()
     
 @pytest.mark.asyncio
 async def test_get_config_flow_success(async_client: AsyncClient):
     from app.core.security import get_current_user
     from app.main import app
-    
-    # Need to mock the database query for SystemIntegration to return true
-    with patch("app.api.v1.endpoints.integrations.AsyncSession") as mock_session:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = True # Simulate enabled integration
-        
-        async def mock_execute(*args, **kwargs):
-            return mock_result
-            
-        with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
-            mock_flow = MagicMock()
-            
-            async def get_schema():
-                return {"step_id": "test"}
-                
-            mock_flow.get_schema = get_schema
-            mock_registry.get_config_flow.return_value = mock_flow
-            
-            app.dependency_overrides[get_current_user] = override_get_current_user
-            
-            # Since Depends(get_db) returns an actual DB session in the test app by default,
-            # We mock the session.execute via dependency override
-            async def override_get_db():
-                class MockDB:
-                    async def execute(self, *args, **kwargs):
-                        return mock_result
-                yield MockDB()
-                
-            from app.core.database import get_db
-            app.dependency_overrides[get_db] = override_get_db
-            
-            response = await async_client.get("/api/v1/integrations/dev_dummy/config-flow")
-            assert response.status_code == 200
-            assert response.json()["step_id"] == "test"
-            
-            app.dependency_overrides.clear()
+
+    # The endpoint gates on is_domain_disabled (enabled-by-default). Patch it
+    # to False so the success path proceeds to the registry lookup.
+    with patch(
+        "app.api.v1.endpoints.integrations.is_domain_disabled",
+        new=AsyncMock(return_value=False),
+    ), \
+         patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
+        mock_flow = MagicMock()
+
+        async def get_schema():
+            return {"step_id": "test"}
+
+        mock_flow.get_schema = get_schema
+        mock_registry.get_config_flow.return_value = mock_flow
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+        # DB session is not actually consulted on the success path now, but
+        # keep a harmless override for parity with the rest of the suite.
+        async def override_get_db():
+            class MockDB:
+                pass
+            yield MockDB()
+
+        from app.core.database import get_db
+        app.dependency_overrides[get_db] = override_get_db
+
+        response = await async_client.get("/api/v1/integrations/dev_dummy/config-flow")
+        assert response.status_code == 200
+        assert response.json()["step_id"] == "test"
+
+        app.dependency_overrides.clear()
 
 @pytest.mark.asyncio
 async def test_get_integration_details(async_client: AsyncClient):

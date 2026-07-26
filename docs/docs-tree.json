@@ -31,7 +31,7 @@
         "id": "setup-wizard",
         "file": "SETUP_WIZARD.md",
         "title": "Setup Wizard (Guided Onboarding)",
-        "description": "Health Assistant guides every user through setup — first-run role checklists (System Admin, Tenant Admin, User) and a per-patient advanced profile wizard (demographics, contacts, allergies, medications, race/ethnicity, preferred language, insurance). Backend-derived completion, no onboarding-state table; reopenable any time."
+        "description": "How Health Assistant's guided setup wizard works — role checklists, per-patient wizards, the persistent popup drawer, guided AI config sub-steps, how to add steps, and how to reopen/reconfigure later. Backend-derived completion; no onboarding-state table."
       },
       {
         "id": "architecture",

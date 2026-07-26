@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { User, Users, Plus, Settings, type LucideIcon } from 'lucide-react';
+import { User, Users, Plus, Settings, Sparkles, type LucideIcon } from 'lucide-react';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
 interface NoPatientStateProps {
@@ -30,9 +30,9 @@ interface NoPatientStateProps {
  *  - patients exist  → primary "Select a Patient" (navigates to /patients)
  *  - no patients yet → primary "Create a New Patient" (navigates to /patients?new=patient)
  *
- * A secondary "Manage Patients" action plus a forward-looking hint about an
- * upcoming guided setup wizard are always offered, so new instances get a
- * clear, consistent onboarding cue across every page.
+ * A secondary "Manage Patients" action plus a "Run setup wizard" CTA that
+ * opens the role-aware guided checklist (/setup/wizard) are always offered,
+ * so new instances get a clear, consistent onboarding cue across every page.
  */
 export const NoPatientState: React.FC<NoPatientStateProps> = ({
   icon: Icon = User,
@@ -98,6 +98,13 @@ export const NoPatientState: React.FC<NoPatientStateProps> = ({
             {t('common.no_patient_manage')}
           </button>
           <button
+            onClick={() => navigate('/setup/wizard')}
+            className="w-full py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 rounded-2xl font-bold hover:from-blue-100 hover:to-indigo-100 transition-all inline-flex items-center justify-center gap-2"
+          >
+            <Sparkles className="w-4 h-4" />
+            {t('common.no_patient_setup_action')}
+          </button>
+          <button
             onClick={() => navigate('/settings')}
             className="w-full py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text rounded-2xl font-bold hover:bg-gray-50 transition-all inline-flex items-center justify-center gap-2"
           >
@@ -106,10 +113,6 @@ export const NoPatientState: React.FC<NoPatientStateProps> = ({
           </button>
         </div>
       )}
-
-      <p className="text-[11px] text-gray-300 dark:text-dark-muted/60 italic">
-        {t('common.no_patient_setup_hint')}
-      </p>
     </div>
   );
 };

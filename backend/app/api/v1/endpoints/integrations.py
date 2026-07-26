@@ -10,11 +10,14 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.user_integration import UserIntegration
-from app.models.system_integration import SystemIntegration
 from app.models.user_model import UserModel
 from app.models.fhir.patient import Patient
 from app.models.enums import IntegrationStatus
 from app.core.integration_registry import integration_registry
+from app.services.system_integration_service import (
+    get_disabled_domains,
+    is_domain_disabled,
+)
 from integrations.sdk.auth import OAuthStateStore
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 
@@ -34,17 +37,15 @@ async def list_available_integrations(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
-    List all available integrations discovered in the system that are explicitly enabled.
+    List all available integrations discovered in the system.
 
-    Requires an authenticated user (any role).
+    Integrations are enabled by default; only domains a SYSTEM_ADMIN has
+    explicitly disabled are hidden. Requires an authenticated user (any role).
     """
     manifests = integration_registry.get_all_manifests()
+    disabled_domains = await get_disabled_domains(db)
 
-    stmt = select(SystemIntegration).where(SystemIntegration.is_enabled == True)
-    result = await db.execute(stmt)
-    enabled_domains = {i.domain for i in result.scalars().all()}
-
-    return [m for m in manifests if m.get("domain") in enabled_domains]
+    return [m for m in manifests if m.get("domain") not in disabled_domains]
 
 
 @router.get("/active", response_model=List[Dict[str, Any]])
@@ -166,12 +167,8 @@ async def get_config_flow(
     """
     Get the configuration UI schema for an integration.
     """
-    # Check if system has enabled it
-    stmt = select(SystemIntegration).where(
-        SystemIntegration.domain == domain, SystemIntegration.is_enabled == True
-    )
-    result = await db.execute(stmt)
-    if not result.scalar_one_or_none():
+    # Integrations are enabled by default — only an explicit admin disable blocks this.
+    if await is_domain_disabled(db, domain):
         raise HTTPException(
             status_code=400, detail="Integration is not enabled by system admin."
         )
@@ -195,12 +192,8 @@ async def submit_config_flow(
     """
     Submit configuration data and setup the integration.
     """
-    # Check if system has enabled it
-    stmt = select(SystemIntegration).where(
-        SystemIntegration.domain == domain, SystemIntegration.is_enabled == True
-    )
-    result = await db.execute(stmt)
-    if not result.scalar_one_or_none():
+    # Integrations are enabled by default — only an explicit admin disable blocks this.
+    if await is_domain_disabled(db, domain):
         raise HTTPException(
             status_code=400, detail="Integration is not enabled by system admin."
         )
@@ -315,11 +308,8 @@ async def submit_config_flow(
 
 async def _load_enabled_oauth(domain: str, db: AsyncSession):
     """Resolve the enabled system integration + provider + config_flow for an OAuth domain."""
-    stmt = select(SystemIntegration).where(
-        SystemIntegration.domain == domain, SystemIntegration.is_enabled == True
-    )
-    result = await db.execute(stmt)
-    if not result.scalar_one_or_none():
+    # Integrations are enabled by default — only an explicit admin disable blocks this.
+    if await is_domain_disabled(db, domain):
         raise HTTPException(
             status_code=400, detail="Integration is not enabled by system admin."
         )

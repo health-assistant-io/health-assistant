@@ -40,17 +40,25 @@ class IntegrationRegistry:
             si.domain: dict(si.global_config or {})
             for si in system_integrations
         }
-        enabled_domains = {si.domain for si in system_integrations if si.is_enabled}
+
+        # Integrations are ENABLED BY DEFAULT: a domain is only skipped
+        # when a SYSTEM_ADMIN has explicitly written an is_enabled=False
+        # row via the admin console. Missing row == available.
+        disabled_domains = {
+            si.domain for si in system_integrations if not si.is_enabled
+        }
 
         for domain, manifest in self._manifests.items():
-            if domain in enabled_domains:
-                await self._load_integration(
-                    domain, system_config=system_config_by_domain.get(domain, {})
-                )
-            else:
+            if domain in disabled_domains:
                 logger.debug(
-                    f"Integration {domain} is discovered but not enabled in system_integrations."
+                    f"Integration {domain} is discovered but explicitly "
+                    "disabled in system_integrations."
                 )
+                continue
+
+            await self._load_integration(
+                domain, system_config=system_config_by_domain.get(domain, {})
+            )
 
     def _load_manifests(self):
         # Scan built-in integrations

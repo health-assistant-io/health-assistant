@@ -2,18 +2,19 @@
 """
 Enable or disable a system integration domain.
 
-Integrations are invisible until a SYSTEM_ADMIN enables them. This script is a
-headless equivalent of the Admin UI toggle (``/admin/system/integrations``) —
-useful for dev/CI where you want to turn on an integration (e.g. ``fhir_server``)
-without a browser.
+Integrations are ENABLED BY DEFAULT the moment they are discovered on the
+filesystem — a SYSTEM_ADMIN only needs to act on them to DISABLE one (or to
+re-enable a previously disabled one). This script is the headless equivalent
+of the Admin UI toggle (``/admin/system/integrations``) — useful for dev/CI
+where you want to flip a domain (e.g. ``fhir_server``) without a browser.
 
 Usage:
     python scripts/enable_integration.py <domain> [--disable]
-    python scripts/enable_integration.py fhir_server
     python scripts/enable_integration.py fhir_server --disable
+    python scripts/enable_integration.py fhir_server
 
-After enabling, restart the backend (or hit POST /admin/system/integrations/<domain>/enable)
-so the registry reloads the provider.
+After disabling, restart the backend (or hit POST /admin/system/integrations/<domain>/disable
+or .../enable) so the registry reloads.
 """
 import argparse
 import asyncio
@@ -47,7 +48,7 @@ async def toggle(domain: str, enable: bool) -> None:
         await db.commit()
 
     state = "enabled" if enable else "disabled"
-    print(f"Integration '{domain}' is now {state}. Restart the backend to load the provider.")
+    print(f"Integration '{domain}' is now {state}. Restart the backend to apply.")
 
 
 def main() -> None:

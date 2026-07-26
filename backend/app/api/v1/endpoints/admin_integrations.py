@@ -33,7 +33,8 @@ async def list_system_integrations(
 
     response = []
 
-    # First, list all discovered integrations (combining DB state if it exists)
+    # First, list all discovered integrations (combining DB state if it exists).
+    # Integrations are ENABLED BY DEFAULT: a missing DB row means enabled.
     discovered_domains = set()
     for manifest in manifests:
         domain = manifest.get("domain")
@@ -45,7 +46,7 @@ async def list_system_integrations(
                     "domain": domain,
                     "name": manifest.get("name", domain),
                     "version": manifest.get("version", "Unknown"),
-                    "is_enabled": db_record.is_enabled if db_record else False,
+                    "is_enabled": db_record.is_enabled if db_record else True,
                 }
             )
 
@@ -97,13 +98,25 @@ async def disable_system_integration(
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
     db: AsyncSession = Depends(get_db),
 ):
-    """Disable an integration globally across the system."""
+    """Disable an integration globally across the system.
+
+    Integrations are enabled by default; disabling persists an explicit
+    ``is_enabled=False`` row so the registry/user-facing endpoints hide it.
+    """
     stmt = select(SystemIntegration).where(SystemIntegration.domain == domain)
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
 
     if existing:
         existing.is_enabled = False
-        await db.commit()
+    else:
+        db.add(SystemIntegration(domain=domain, is_enabled=False))
+
+    await db.commit()
+
+    # Trigger a registry reload so the provider is unloaded immediately.
+    from app.core.integration_registry import integration_registry
+
+    await integration_registry.initialize(db)
 
     return {"message": f"Integration {domain} disabled successfully."}

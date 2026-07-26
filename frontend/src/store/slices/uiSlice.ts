@@ -33,6 +33,14 @@ interface UIState {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
   aiDrawerOpen: boolean;
+  setupDrawerOpen: boolean;
+  setupDrawerCollapsed: boolean;
+  /** When set, the drawer fetches + shows entity steps (e.g. 'patient') instead of role steps. */
+  setupDrawerEntity: string | null;
+  setupDrawerEntityId: string | null;
+  /** True only after the user explicitly opens the wizard. Controls whether
+   *  the floating badge is offered (so it doesn't nag users who never started). */
+  setupWizardActive: boolean;
   
   // Search properties
   isSearchLauncherOpen: boolean;
@@ -57,6 +65,10 @@ interface UIState {
   toggleSidebarCollapse: () => void;
   toggleAIDrawer: () => void;
   setAIDrawerOpen: (open: boolean) => void;
+  setSetupDrawerOpen: (open: boolean) => void;
+  setSetupDrawerCollapsed: (collapsed: boolean) => void;
+  setSetupDrawerEntity: (entity: string | null, entityId: string | null) => void;
+  setSetupWizardActive: (active: boolean) => void;
   
   setSearchLauncherOpen: (open: boolean) => void;
   toggleSearchLauncher: () => void;
@@ -79,6 +91,11 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: false,
   sidebarCollapsed: false,
   aiDrawerOpen: false,
+  setupDrawerOpen: false,
+  setupDrawerCollapsed: false,
+  setupDrawerEntity: null,
+  setupDrawerEntityId: null,
+  setupWizardActive: false,
 
   isSearchLauncherOpen: false,
   searchMode: 'page',
@@ -102,6 +119,10 @@ export const useUIStore = create<UIState>((set) => ({
   toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   toggleAIDrawer: () => set((state) => ({ aiDrawerOpen: !state.aiDrawerOpen })),
   setAIDrawerOpen: (open) => set({ aiDrawerOpen: open }),
+  setSetupDrawerOpen: (open) => set({ setupDrawerOpen: open }),
+  setSetupDrawerCollapsed: (collapsed) => set({ setupDrawerCollapsed: collapsed }),
+  setSetupDrawerEntity: (entity, entityId) => set({ setupDrawerEntity: entity, setupDrawerEntityId: entityId }),
+  setSetupWizardActive: (active) => set({ setupWizardActive: active }),
 
   setSearchLauncherOpen: (open) => set({ isSearchLauncherOpen: open }),
   toggleSearchLauncher: () => set((state) => ({ isSearchLauncherOpen: !state.isSearchLauncherOpen })),

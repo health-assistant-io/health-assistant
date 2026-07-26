@@ -117,8 +117,10 @@ async def test_system_admin_role_has_system_steps():
     assert {
         "system.first_tenant",
         "system.catalog_seeded",
+        "tenant.first_patient",
         "system.ai_config",
         "system.first_user",
+        "system.integrations_review",
     } <= ids
 
     await _cleanup(("users", user_id), ("tenants", tenant_id))
@@ -555,3 +557,348 @@ async def test_setup_endpoint_rejects_unsupported_entity(async_client):
 
 def test_supported_entities_is_patient_only():
     assert SUPPORTED_ENTITIES == ("patient",)
+
+
+# ---------- Extension catalog ----------
+
+
+@pytest.mark.asyncio
+async def test_extension_catalog_returns_four_patient_extensions():
+    tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        catalog = await service.get_extension_catalog()
+    keys = {e.key for e in catalog.extensions}
+    assert keys == {"race", "ethnicity", "preferred_language", "insurance_provider"}
+    assert catalog.entity == "patient"
+    by_key = {e.key: e for e in catalog.extensions}
+    assert by_key["race"].value_type == "omb_category"
+    assert by_key["ethnicity"].value_type == "omb_category"
+    assert by_key["preferred_language"].value_type == "code"
+    assert by_key["insurance_provider"].value_type == "string"
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_extension_catalog_omb_race_options_present():
+    tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        catalog = await service.get_extension_catalog()
+    race = next(e for e in catalog.extensions if e.key == "race")
+    ethnicity = next(e for e in catalog.extensions if e.key == "ethnicity")
+    language = next(e for e in catalog.extensions if e.key == "preferred_language")
+    insurance = next(e for e in catalog.extensions if e.key == "insurance_provider")
+    # OMB race: 5 OMB minimum categories
+    assert race.options is not None and len(race.options) == 5
+    assert {o.code for o in race.options} == {
+        "1002-5", "2028-9", "2054-5", "2076-8", "2106-3"
+    }
+    # Ethnicity: 2 OMB categories
+    assert ethnicity.options is not None and len(ethnicity.options) == 2
+    # Languages: non-empty picklist
+    assert language.options is not None and len(language.options) > 0
+    # Free-text insurance has no options
+    assert insurance.options is None
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_extension_catalog_rejects_unsupported_entity():
+    tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
+    from app.core.errors import ValidationError
+
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        with pytest.raises(ValidationError):
+            await service.get_extension_catalog(entity="doctor")
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_extension_catalog_endpoint_returns_catalog(async_client):
+    from app.main import app
+    from app.core.security import get_current_user
+    from unittest.mock import MagicMock
+
+    tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
+    token = MagicMock()
+    token.user_id = user_id
+    token.tenant_id = tenant_id
+    token.role = Role.ADMIN.value
+    app.dependency_overrides[get_current_user] = lambda: token
+    try:
+        r = await async_client.get("/api/v1/setup/extension-catalog")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["entity"] == "patient"
+        keys = {e["key"] for e in body["extensions"]}
+        assert "race" in keys and "insurance_provider" in keys
+    finally:
+        app.dependency_overrides = {}
+        await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+# ---------- payload_hint route correctness (regression guard) ----------
+
+# Every redirect / external_config role-step route must match a real
+# frontend route in App.tsx. A wrong route falls through to the catch-all
+# `*` → <Dashboard/> which shows "no patient selected" — the exact bug this
+# test guards against. Update BOTH sides together if a route moves.
+EXPECTED_ROLE_ROUTES = {
+    "user.preferences_language": "/settings/preferences",
+    "user.linked_self_patient": "/patients?new=patient",
+    "tenant.first_org": "/organizations?new",
+    "tenant.first_patient": "/patients?new=patient",
+    "tenant.first_doctor": "/doctors?new=doctor",
+    "tenant.member_invited": "/admin/tenant/users",
+    "system.first_tenant": "/admin/system/tenants",
+    "system.first_user": "/admin/system/users",
+    "system.integrations_review": "/admin/system/integrations",
+}
+
+
+@pytest.mark.asyncio
+async def test_redirect_and_external_config_steps_carry_correct_routes():
+    """Every redirect/external_config step's payload_hint.route must point
+    at a real frontend route. The ``*.ai_config`` steps are ``external_config``
+    with ``sub_steps`` (guided redirect) so they're checked separately."""
+    checked = {}
+    for role in (Role.USER, Role.ADMIN, Role.SYSTEM_ADMIN):
+        tenant_id, user_id = await _make_tenant_and_user(role)
+        token = _make_token(role, user_id, tenant_id)
+        async with AsyncSessionLocal() as session:
+            service = SetupChecklistService(session)
+            steps = await service.get_role_checklist(token)
+        for s in steps:
+            if s.kind in ("redirect", "external_config") and s.id in EXPECTED_ROLE_ROUTES:
+                checked[s.id] = s.payload_hint
+                assert s.payload_hint is not None, f"{s.id} missing payload_hint"
+                assert s.payload_hint.get("route") == EXPECTED_ROLE_ROUTES[s.id], (
+                    f"{s.id} route mismatch: got {s.payload_hint.get('route')!r}, "
+                    f"expected {EXPECTED_ROLE_ROUTES[s.id]!r}"
+                )
+        await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+    missing = set(EXPECTED_ROLE_ROUTES) - set(checked)
+    assert not missing, f"these expected steps were never returned: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_ai_config_step_has_sub_steps_payload():
+    """The AI config step carries per-sub-step completion + route in
+    payload_hint so the frontend guided checklist can deep-link to the
+    right AI config tab."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
+    async with AsyncSessionLocal() as session:
+        token = _make_token(Role.ADMIN, user_id, tenant_id)
+        service = SetupChecklistService(session)
+        steps = await service.get_role_checklist(token)
+    ai_step = next((s for s in steps if s.id == "tenant.ai_config"), None)
+    assert ai_step is not None
+    assert ai_step.kind == "external_config"
+    assert ai_step.payload_hint is not None
+    sub = ai_step.payload_hint.get("sub_steps")
+    assert isinstance(sub, list) and len(sub) == 3
+    ids = [s["id"] for s in sub]
+    assert ids == ["provider", "model", "assignment"]
+    # With no AI config, all sub-steps should be False.
+    assert all(s["done"] is False for s in sub)
+    # Each carries a route to the right AI config tab.
+    assert all("route" in s and "tab=" in s["route"] for s in sub)
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+# ---------- system.integrations_review step ----------
+
+
+@pytest.mark.asyncio
+async def test_system_integrations_review_step_default_state():
+    """Integrations are enabled by default, so the review step is incomplete
+    until the admin has toggled at least one SystemIntegration row, and it is
+    optional so it never counts against the completion ratio."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.SYSTEM_ADMIN)
+    token = _make_token(Role.SYSTEM_ADMIN, user_id, tenant_id)
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        steps = await service.get_role_checklist(token)
+    step = next(s for s in steps if s.id == "system.integrations_review")
+    assert step.kind == "redirect"
+    assert step.optional is True
+    assert step.completed is False
+    assert step.payload_hint == {"route": "/admin/system/integrations"}
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_system_integrations_review_completes_when_admin_acts():
+    """Once any SystemIntegration row exists, the step flips to complete."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.SYSTEM_ADMIN)
+    token = _make_token(Role.SYSTEM_ADMIN, user_id, tenant_id)
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                "INSERT INTO system_integrations (domain, is_enabled) "
+                "VALUES ('dev_dummy', false)"
+            )
+        )
+        await session.commit()
+        service = SetupChecklistService(session)
+        steps = await service.get_role_checklist(token)
+    step = next(s for s in steps if s.id == "system.integrations_review")
+    assert step.completed is True
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("DELETE FROM system_integrations WHERE domain = 'dev_dummy'")
+        )
+        await session.commit()
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+# ---------- manual-completion override ----------
+
+
+@pytest.mark.asyncio
+async def test_manual_complete_marks_step_done_and_persists():
+    """set_manual_complete flips the step's effective completed state and
+    persists the override in user.settings so the next read agrees."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.USER)
+    token = _make_token(Role.USER, user_id, tenant_id)
+
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        before = await service.get_checklist(token)
+        lang_step = next(s for s in before.steps if s.id == "user.preferences_language")
+        assert lang_step.completed is False
+        assert lang_step.manually_completed is False
+
+        updated = await service.set_manual_complete(
+            token, "user.preferences_language", True
+        )
+        assert updated.completed is True
+        assert updated.manually_completed is True
+
+        after = await service.get_checklist(token)
+        after_step = next(s for s in after.steps if s.id == "user.preferences_language")
+        assert after_step.completed is True
+        assert after_step.manually_completed is True
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_manual_complete_clears_override():
+    """Toggling back to False removes the override; the step reverts to its
+    evaluator-derived state."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.USER)
+    token = _make_token(Role.USER, user_id, tenant_id)
+
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        await service.set_manual_complete(token, "user.preferences_language", True)
+        await service.set_manual_complete(token, "user.preferences_language", False)
+        after = await service.get_checklist(token)
+        step = next(s for s in after.steps if s.id == "user.preferences_language")
+        assert step.completed is False
+        assert step.manually_completed is False
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_manual_complete_does_not_flag_when_evaluator_already_complete():
+    """When the evaluator already says complete, the manually_completed flag
+    must stay False so the UI doesn't show a spurious 'undo' affordance."""
+    tenant_id, user_id = await _make_tenant_and_user(Role.USER)
+    patient_id = uuid.uuid4()
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                "INSERT INTO fhir_patients "
+                "(id, tenant_id, user_id, name, gender) "
+                "VALUES (:id, :tid, :uid, :name, 'MALE')"
+            ),
+            {
+                "id": patient_id,
+                "tid": tenant_id,
+                "uid": user_id,
+                "name": '{"family": "Test"}',
+            },
+        )
+        await session.commit()
+    token = _make_token(Role.USER, user_id, tenant_id)
+
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        # Step is genuinely complete (patient linked). Set a manual override
+        # anyway — it should not flip manually_completed to True.
+        await service.set_manual_complete(
+            token, "user.linked_self_patient", True
+        )
+        after = await service.get_checklist(token)
+        step = next(s for s in after.steps if s.id == "user.linked_self_patient")
+        assert step.completed is True  # evaluator-derived
+        assert step.manually_completed is False
+
+    await _cleanup(
+        ("fhir_patients", patient_id), ("users", user_id), ("tenants", tenant_id)
+    )
+
+
+@pytest.mark.asyncio
+async def test_manual_complete_rejects_unknown_step():
+    """The step id must belong to the caller's checklist scope — arbitrary
+    writes for unrelated step ids are rejected."""
+    from app.core.errors import ValidationError
+
+    tenant_id, user_id = await _make_tenant_and_user(Role.USER)
+    token = _make_token(Role.USER, user_id, tenant_id)
+    async with AsyncSessionLocal() as session:
+        service = SetupChecklistService(session)
+        with pytest.raises(ValidationError):
+            await service.set_manual_complete(
+                token, "tenant.first_org", True  # not a USER-role step
+            )
+
+    await _cleanup(("users", user_id), ("tenants", tenant_id))
+
+
+@pytest.mark.asyncio
+async def test_manual_complete_endpoint_roundtrip(async_client):
+    """The POST endpoint persists the override and returns the updated step."""
+    from app.main import app
+    from app.core.security import get_current_user
+    from unittest.mock import MagicMock
+
+    tenant_id, user_id = await _make_tenant_and_user(Role.USER)
+    token = MagicMock()
+    token.user_id = user_id
+    token.tenant_id = tenant_id
+    token.role = Role.USER.value
+    app.dependency_overrides[get_current_user] = lambda: token
+    try:
+        r = await async_client.post(
+            "/api/v1/setup/checklist/manual-complete",
+            json={"step_id": "user.preferences_language", "completed": True},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["completed"] is True
+        assert body["manually_completed"] is True
+
+        # A fresh GET reflects the override.
+        r2 = await async_client.get("/api/v1/setup/checklist")
+        step = next(
+            s for s in r2.json()["steps"] if s["id"] == "user.preferences_language"
+        )
+        assert step["completed"] is True
+        assert step["manually_completed"] is True
+    finally:
+        app.dependency_overrides = {}
+        await _cleanup(("users", user_id), ("tenants", tenant_id))

@@ -15,6 +15,7 @@ import './features/instances/details';
 import Layout from './components/layout/Layout';
 import Login from './pages/Auth/Login';
 import Setup from './pages/Auth/Setup';
+import RoleSetupWizard from './pages/Setup/RoleSetupWizard';
 import Dashboard from './pages/Dashboard/Dashboard';
 import AllergyList from './pages/Allergies/AllergyList';
 import AllergyDetail from './pages/Allergies/AllergyDetail';
@@ -30,6 +31,7 @@ import ClinicalEventDetail from './pages/Events/ClinicalEventDetail';
 import TaskManager from './pages/TaskManager';
 import Patients from './pages/Patients/PatientList';
 import PatientDetail from './pages/Patients/PatientDetail';
+import PatientSetupWizard from './pages/Patients/PatientSetupWizard';
 import Doctors from './pages/Doctors/DoctorList';
 import MedicationList from './pages/Medications/MedicationList';
 import MedicationDetail from './pages/Medications/MedicationDetail';
@@ -248,6 +250,7 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/setup/wizard" element={<RoleSetupWizard />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/alerts" element={<Navigate to="/allergies" replace />} />
@@ -277,6 +280,7 @@ function App() {
           <Route path="/task-monitor" element={<TaskManager />} />
           <Route path="/patients" element={<Patients />} />
           <Route path="/patients/:patientId" element={<PatientDetail />} />
+          <Route path="/patients/:patientId/setup" element={<PatientSetupWizard />} />
           <Route path="/patients/:patientId/:activeTab" element={<PatientDetail />} />
           <Route path="/events" element={<ClinicalEventList />} />
           <Route path="/events/:eventId" element={<ClinicalEventDetail />} />

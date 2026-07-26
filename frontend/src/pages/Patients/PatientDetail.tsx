@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getPatient, updatePatient, deletePatient } from '../../services/patientService';
+import { getPatient, deletePatient } from '../../services/patientService';
 import { Patient } from '../../types/patient';
 import { Edit2, Trash2, Fingerprint, User } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { AllergySummary } from '../../components/patients/AllergySummary';
 import { MedicationSummary } from '../../components/patients/MedicationSummary';
+import { PatientFormWizard } from '../../components/patients/PatientFormWizard';
 import BiomarkerSummary from '../../components/patients/BiomarkerSummary';
 import ExaminationSummary from '../../components/patients/ExaminationSummary';
 import ClinicalEventSummary from '../../components/patients/ClinicalEventSummary';
@@ -17,6 +18,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { DatePicker } from '../../components/ui/DatePicker';
 import { FormModal } from '../../components/ui/FormModal';
+import { SetupChecklistCard } from '../../components/setup/SetupChecklistCard';
 
 function PatientDetail() {
   const { t } = useTranslation();
@@ -36,15 +38,6 @@ function PatientDetail() {
 
   // Edit state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    gender: 'unknown',
-    birthDate: '',
-    mrn: ''
-  });
 
   useEffect(() => {
     if (patientId) {
@@ -65,41 +58,7 @@ function PatientDetail() {
   };
 
   const handleOpenEditModal = () => {
-    if (!patient) return;
-    setFormData({
-      firstName: patient.name?.given?.[0] || '',
-      lastName: patient.name?.family || '',
-      gender: patient.gender || 'unknown',
-      birthDate: patient.birth_date || '',
-      mrn: patient.mrn || ''
-    });
-    setError(null);
     setIsModalOpen(true);
-  };
-
-  const handleEditSubmit = async () => {
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const payload: any = {
-        name: {
-          given: [formData.firstName],
-          family: formData.lastName
-        },
-        gender: formData.gender,
-        birth_date: formData.birthDate,
-        mrn: formData.mrn
-      };
-
-      await updatePatient(patientId!, payload);
-      await loadData();
-      setIsModalOpen(false);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || t('patients.failed_save'));
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   const handleDeletePatient = () => {
@@ -229,96 +188,20 @@ function PatientDetail() {
               </div>
             </div>
           </div>
+
+          {/* Setup completion card — backend-derived checklist */}
+          <div className="mt-4">
+            <SetupChecklistCard patientId={patient.id} />
+          </div>
         </div>
       </div>
 
-      <FormModal
+      <PatientFormWizard
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={t('patients.update_profile_title')}
-        icon={
-          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-            <User className="w-5 h-5 text-blue-600" />
-          </div>
-        }
-        onSubmit={handleEditSubmit}
-        submitting={submitting}
-        submitDisabled={!formData.firstName.trim() || !formData.lastName.trim()}
-        submitLabel={t('common.save')}
-        cancelLabel={t('common.cancel')}
-        size="sm"
-        bodyClassName="p-6 space-y-4"
-      >
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl flex items-start space-x-2">
-            <Fingerprint className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.first_name')} *</label>
-            <input
-              type="text"
-              required
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-              value={formData.firstName}
-              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.last_name')} *</label>
-            <input
-              type="text"
-              required
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-              value={formData.lastName}
-              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.dob')}</label>
-          <DatePicker
-            value={formData.birthDate}
-            onChange={(date) => setFormData({ ...formData, birthDate: date })}
-            placeholder={t('patients.dob_placeholder', 'Select Date of Birth')}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.gender')} *</label>
-          <div className="grid grid-cols-2 gap-2">
-            {['male', 'female', 'other', 'unknown'].map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setFormData({ ...formData, gender: g as any })}
-                className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                  formData.gender?.toLowerCase() === g
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
-                    : 'bg-white dark:bg-dark-bg border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-50'
-                }`}
-              >
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1.5">{t('patients.mrn')}</label>
-          <input
-            type="text"
-            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
-            value={formData.mrn}
-            onChange={(e) => setFormData({ ...formData, mrn: e.target.value })}
-            placeholder="e.g. PAT-123456"
-          />
-        </div>
-      </FormModal>
+        patient={patient}
+        onSaved={(updated) => { setPatient(updated); setIsModalOpen(false); }}
+      />
     </div>
   );
 }

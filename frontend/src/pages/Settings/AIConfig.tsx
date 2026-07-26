@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ProviderManager } from '../../components/settings/ProviderManager';
 import { ModelsPage } from '../../components/settings/ModelsPage';
 import { TaskAssignment } from '../../components/settings/TaskAssignment';
@@ -9,6 +10,8 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Cpu } from 'lucide-react';
 
+type AITab = 'providers' | 'models' | 'tasks' | 'agent';
+
 interface AIConfigProps {
   scope?: 'global' | 'tenant' | 'user';
   tenantId?: string;
@@ -16,15 +19,36 @@ interface AIConfigProps {
   embedded?: boolean;
 }
 
-export const AIConfig: React.FC<AIConfigProps> = ({ 
-  scope = 'user', 
-  tenantId, 
-  userId, 
-  embedded = false 
+export const AIConfig: React.FC<AIConfigProps> = ({
+  scope = 'user',
+  tenantId,
+  userId,
+  embedded = false
 }) => {
   const { loadConfigSummary, isLoading } = useAIConfigStore();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'tasks' | 'agent'>('providers');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab') as AITab | null;
+  const [activeTab, setActiveTabState] = useState<AITab>(
+    (tabFromUrl && ['providers', 'models', 'tasks', 'agent'].includes(tabFromUrl))
+      ? tabFromUrl
+      : 'providers',
+  );
+
+  // Keep the URL ?tab= in sync so the setup wizard can deep-link to a tab
+  // and so the tab survives a page refresh.
+  const setActiveTab = (tab: AITab) => {
+    setActiveTabState(tab);
+    setSearchParams(tab !== 'providers' ? { tab } : {}, { replace: true });
+  };
+
+  // If the URL ?tab changes externally (e.g. the wizard redirects to
+  // ?tab=models while this page is already mounted), follow it.
+  useEffect(() => {
+    if (tabFromUrl && ['providers', 'models', 'tasks', 'agent'].includes(tabFromUrl) && tabFromUrl !== activeTab) {
+      setActiveTabState(tabFromUrl);
+    }
+  }, [tabFromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const targetUserId = userId || (scope === 'user' ? user?.id : undefined);
   const targetTenantId = tenantId || (scope === 'tenant' ? user?.tenant_id : undefined);

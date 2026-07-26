@@ -9,6 +9,25 @@
  * and the export/import path).
  */
 
+export interface OmbCategory {
+  system?: string;
+  code: string;
+  display?: string;
+}
+
+/**
+ * Local-keyed FHIR R4 extensions map stored on `Patient.extensions`
+ * (validated against the backend registry in `fhir_extensions.py`).
+ * Mirrors the shape the backend stores + returns via `to_dict()`.
+ */
+export interface PatientExtensions {
+  race?: { ombCategory?: OmbCategory; text?: string };
+  ethnicity?: { ombCategory?: OmbCategory; text?: string };
+  /** ISO/BCP-47 language code, e.g. 'en', 'el'. */
+  preferred_language?: string;
+  insurance_provider?: string;
+}
+
 export interface Patient {
   id: string;
   tenant_id?: string;
@@ -24,4 +43,6 @@ export interface Patient {
   mrn?: string;
   emergency_contact?: any;
   dashboard_layout?: any;
+  /** FHIR R4 extensions (race / ethnicity / preferred_language / insurance_provider). */
+  extensions?: PatientExtensions | null;
 }
