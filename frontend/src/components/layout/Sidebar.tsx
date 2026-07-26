@@ -300,24 +300,27 @@ function Sidebar() {
                   </button>
                   
                   {isExpanded && (
-                    <div className="ml-10 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                    <div className="ml-10 space-y-0.5 animate-in slide-in-from-top-2 duration-200">
                       {item.subItems.map((subItem) => (
                         <Fragment key={subItem.path}>
                           {subItem.section && (
-                            <div className="px-4 pt-3 pb-1 text-[9px] font-black text-gray-300 dark:text-dark-border uppercase tracking-widest">
-                              {t(subItem.section)}
+                            <div className="flex items-center gap-2 px-3 pt-5 pb-1.5">
+                              <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                                {t(subItem.section)}
+                              </span>
+                              <span className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
                             </div>
                           )}
                           <Link
                             to={resolveSubPath(subItem.path)}
                             aria-current={isSubActive(subItem) ? 'page' : undefined}
-                            className={`block px-4 py-2 text-sm rounded-xl transition-all duration-200 ${
+                            className={`flex items-center px-3 py-2 text-sm rounded-lg transition-all duration-200 border-l-2 ${
                               isSubActive(subItem)
-                                ? 'text-brand-cyan dark:text-blue-400 font-black'
-                                : 'text-gray-400 hover:text-gray-600 dark:text-dark-muted dark:hover:text-dark-text'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-semibold border-brand-cyan dark:border-blue-400'
+                                : 'text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-dark-text border-transparent'
                             }`}
                           >
-                            {t(subItem.labelKey)}
+                            <span className="truncate">{t(subItem.labelKey)}</span>
                           </Link>
                         </Fragment>
                       ))}
@@ -403,21 +406,24 @@ function Sidebar() {
               {hoveredMenu.items.map((subItem) => (
                 <Fragment key={subItem.path}>
                   {subItem.section && (
-                    <div className="px-3 pt-2 pb-1 text-[9px] font-black text-gray-300 dark:text-dark-border uppercase tracking-widest">
-                      {t(subItem.section)}
+                    <div className="flex items-center gap-2 px-2 pt-4 pb-1.5">
+                      <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                        {t(subItem.section)}
+                      </span>
+                      <span className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
                     </div>
                   )}
                   <Link
                     to={resolveSubPath(subItem.path)}
                     aria-current={isSubActive(subItem) ? 'page' : undefined}
-                    className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
+                    className={`flex items-center px-3 py-2 text-sm rounded-lg transition-colors border-l-2 ${
                       isSubActive(subItem)
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-bold'
-                        : 'text-gray-600 hover:bg-gray-50 dark:text-dark-text dark:hover:bg-dark-border hover:text-gray-900'
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-brand-cyan dark:text-blue-400 font-semibold border-brand-cyan dark:border-blue-400'
+                        : 'text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 border-transparent'
                     }`}
                     onClick={() => setHoveredMenu(null)}
                   >
-                    {t(subItem.labelKey)}
+                    <span className="truncate">{t(subItem.labelKey)}</span>
                   </Link>
                 </Fragment>
               ))}

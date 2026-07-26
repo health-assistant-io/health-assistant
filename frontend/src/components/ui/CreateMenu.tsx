@@ -305,8 +305,11 @@ const CreateMenu: React.FC<CreateMenuProps> = ({
             {groupedItems.map((group, gi) => (
               <div key={group.category}>
                 {gi > 0 && <div className="h-px bg-gray-50 dark:bg-dark-border my-1 mx-2" />}
-                <div className="px-4 pt-2 pb-1 text-[9px] font-black text-gray-300 dark:text-dark-border uppercase tracking-widest">
-                  {t(CATEGORY_LABELS[group.category] || group.category)}
+                <div className="flex items-center gap-2 px-4 pt-3 pb-1.5">
+                  <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    {t(CATEGORY_LABELS[group.category] || group.category)}
+                  </span>
+                  <span className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
                 </div>
                 {group.items.map(item => {
                   const Icon = item.icon;
