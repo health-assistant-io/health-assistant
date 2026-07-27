@@ -891,7 +891,6 @@ async def create(
 
     db.add(obj)
     await db.flush()  # assign id without committing
-    fhir_response = _project(obj, entry)
 
     # Best-effort Provenance.
     if entry.resource_type != "Provenance":

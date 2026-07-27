@@ -550,7 +550,7 @@ async def trigger_full_examination_extraction(
     doc_result = await db.execute(
         select(DocumentModel).where(
             DocumentModel.examination_id == UUID(examination_id),
-            DocumentModel.include_in_extraction == True,
+            DocumentModel.include_in_extraction.is_(True),
         )
     )
     docs = doc_result.scalars().all()
@@ -782,7 +782,7 @@ async def delete_document(
     if examination_id and trigger_cumulative:
         try:
             await trigger_cumulative_extraction(str(examination_id), db)
-        except:
+        except Exception:
             pass
 
     return True

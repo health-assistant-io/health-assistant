@@ -96,11 +96,11 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
         "fastapi",
         "celery",
     ]:
-        l = logging.getLogger(logger_name)
-        l.propagate = True
+        logger = logging.getLogger(logger_name)
+        logger.propagate = True
         # Remove their own handlers to avoid double logging
-        for h in l.handlers[:]:
-            l.removeHandler(h)
+        for h in logger.handlers[:]:
+            logger.removeHandler(h)
 
     logging.info(f"--- Application started (Level: {'DEBUG' if debug else 'INFO'}) ---")
 

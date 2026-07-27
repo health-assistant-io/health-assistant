@@ -42,7 +42,7 @@ async def get_active_layout(
                 and_(
                     PatientLayoutModel.user_id == user_id,
                     PatientLayoutModel.patient_id == patient_id,
-                    PatientLayoutModel.is_default == True,
+                    PatientLayoutModel.is_default.is_(True),
                 )
             )
         )

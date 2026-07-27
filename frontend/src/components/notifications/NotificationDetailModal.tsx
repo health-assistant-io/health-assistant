@@ -8,6 +8,7 @@ import type { NotificationInboxItem, NotificationAction } from '../../services/n
 import axios from '../../api/axios';
 import DisplayBlockRenderer from '../integrations/displayBlocks';
 import { CategoryIcon, SourceBadge, SeverityDot, actionHandlerFor, actionClassName } from './notificationUi';
+import { MuteKindButton } from './MuteKindButton';
 import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface Props {
@@ -204,6 +205,14 @@ export function NotificationDetailModal({ item, dateLocale, onClose, onMarkRead 
                   {action.label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Per-kind mute + manage controls (driven by the backend-stamped
+              payload.preferences hint — see NotificationKindRegistry). */}
+          {n.payload?.preferences && (
+            <div className="pt-2">
+              <MuteKindButton hint={n.payload.preferences} onMuted={onClose} />
             </div>
           )}
         </div>

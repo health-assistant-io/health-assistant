@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 import os
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
@@ -10,7 +11,6 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.user_integration import UserIntegration
-from app.models.user_model import UserModel
 from app.models.fhir.patient import Patient
 from app.models.enums import IntegrationStatus
 from app.core.integration_registry import integration_registry
@@ -494,7 +494,7 @@ async def get_integration_details(
                 == f"Integration/{integration.id}",
                 Observation.performer[0]["display"].astext == domain,
             ),
-            Observation.biomarker_id != None,
+            Observation.biomarker_id.isnot(None),
         )
         .group_by(Observation.biomarker_id)
     )
@@ -536,7 +536,7 @@ async def get_integration_details(
                 == f"Integration/{integration.id}",
                 Observation.performer[0]["display"].astext == domain,
             ),
-            Observation.biomarker_id != None,
+            Observation.biomarker_id.isnot(None),
         )
         .order_by(desc(Observation.effective_datetime))
         .limit(30)
@@ -762,9 +762,6 @@ async def remove_integration(
     return {"message": "Integration removed successfully."}
 
 
-import datetime
-
-
 @router.post("/instance/{integration_id}/action/{action_id}")
 async def execute_custom_action(
     integration_id: str,
@@ -823,141 +820,6 @@ async def execute_custom_action(
     except Exception as e:
         logger.error(f"Custom action {action_id} failed for {domain}: {e}")
         raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
-
-
-@router.get("/notification-types")
-async def list_notification_types(
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> Any:
-    """Aggregate every enabled integration's declared notification types.
-
-    Returns a list of ``{domain, instance_name, types: [{id, label,
-    description, category, severity, default_enabled, channels, enabled}]}``
-    for every UserIntegration the caller has, where ``enabled`` reflects
-    the caller's per-type pref (defaults to ``default_enabled`` when the
-    user hasn't set an explicit override). Used by both the central
-    ``/settings/notifications`` rollup AND the per-integration tab (the
-    latter filters client-side by domain).
-    """
-    stmt = select(UserIntegration).where(
-        UserIntegration.user_id == current_user.user_id,
-    )
-    integrations = (await db.execute(stmt)).scalars().all()
-
-    # Load the caller's settings once.
-    user_row = (
-        await db.execute(
-            select(UserModel.settings).where(UserModel.id == current_user.user_id)
-        )
-    ).scalar_one_or_none()
-    user_settings = dict(user_row or {})
-
-    out = []
-    for integration in integrations:
-        provider = integration_registry.get_provider(integration.provider)
-        if provider is None:
-            continue
-        getter = getattr(provider, "get_notification_types", None)
-        if getter is None:
-            continue
-        try:
-            types = getter() or []
-        except Exception:
-            logger.exception(
-                "get_notification_types failed for %s", integration.provider
-            )
-            continue
-        if not types:
-            continue
-        out.append(
-            {
-                "domain": integration.provider,
-                "instance_name": integration.instance_name,
-                "integration_id": str(integration.id),
-                "types": [
-                    {
-                        **t.to_dict(),
-                        "enabled": _resolve_type_enabled(
-                            user_settings, integration.provider, t
-                        ),
-                    }
-                    for t in types
-                ],
-            }
-        )
-    return {"integrations": out}
-
-
-@router.put("/{domain}/notification-types/{type_id}")
-async def update_notification_type_pref(
-    domain: str,
-    type_id: str,
-    payload: Dict[str, Any],
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> Any:
-    """Set the caller's per-type preference for an integration's notification kind.
-
-    Body: ``{"enabled": bool}``. Stored at
-    ``user.settings["notifications.integration.{domain}.{type_id}"]``.
-    The integration must be one the caller has enabled (404 otherwise).
-    """
-    enabled = payload.get("enabled")
-    if not isinstance(enabled, bool):
-        raise HTTPException(status_code=400, detail="`enabled` (bool) is required")
-
-    # Confirm the caller owns an integration of this domain.
-    stmt = (
-        select(UserIntegration.id)
-        .where(
-            UserIntegration.user_id == current_user.user_id,
-            UserIntegration.provider == domain,
-        )
-        .limit(1)
-    )
-    has_integration = (await db.execute(stmt)).first() is not None
-    if not has_integration:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No enabled integration for domain '{domain}'",
-        )
-
-    key = f"notifications.integration.{domain}.{type_id}"
-    user = (
-        await db.execute(select(UserModel).where(UserModel.id == current_user.user_id))
-    ).scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    settings = dict(user.settings or {})
-    if enabled:
-        # Remove the override so it falls back to default_enabled.
-        # (Storing True is also fine but explicit-removal keeps the JSONB tidy.)
-        settings.pop(key, None)
-    else:
-        settings[key] = False
-    user.settings = settings
-    from sqlalchemy.orm.attributes import flag_modified
-
-    flag_modified(user, "settings")
-    await db.commit()
-    return {
-        "status": "success",
-        "domain": domain,
-        "type_id": type_id,
-        "enabled": enabled,
-    }
-
-
-def _resolve_type_enabled(
-    user_settings: Dict[str, Any], domain: str, type_decl: Any
-) -> bool:
-    """USER setting wins; otherwise the provider's default_enabled; else True."""
-    key = f"notifications.integration.{domain}.{type_decl.id}"
-    if key in user_settings:
-        return bool(user_settings[key])
-    return getattr(type_decl, "default_enabled", True)
 
 
 @router.post("/{domain}/notification-action/{integration_id}/{action_id}")
@@ -1183,7 +1045,7 @@ async def resolve_integration_proposal(
 
     Re-resolve from a terminal state returns 409 (idempotent contract).
     """
-    from app.models.enums import HitlTaskStatus, Role
+    from app.models.enums import Role
     from app.services import integration_proposal_service as proposal_svc
     from app.schemas.integration_proposal import (
         IntegrationProposalResolveRequest,
@@ -1315,9 +1177,6 @@ async def sync_integration(
         "status": result.status,
         "last_synced_at": integration.last_synced_at,
     }
-
-
-from fastapi import Request
 
 
 def _verify_webhook_signature(

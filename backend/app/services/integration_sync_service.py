@@ -1313,8 +1313,10 @@ async def _filter_specs_by_owner_type_prefs(
 ) -> list[Any]:
     """Drop specs whose declared ``type_id`` the integration owner has muted.
 
-    Per-integration-type preferences live at
-    ``user.settings["notifications.integration.{domain}.{type_id}"] = False``.
+    Per-integration-instance preferences live at
+    ``user.settings["notifications.integration.{integration_id}.{type_id}"]
+    = False``. The key is scoped to the integration **instance** (not the
+    provider domain) so users can mute one Fitbit without muting another.
     Specs without a ``type_id`` always pass through. Loads the owner's
     settings once (single query); returns the input list unchanged on any
     error so a settings-lookup failure can never suppress notifications.
@@ -1344,19 +1346,19 @@ async def _filter_specs_by_owner_type_prefs(
         )
         return specs
 
-    domain = integration.provider
+    integration_id = integration.id
     out: list[Any] = []
     for spec in specs:
         tid = getattr(spec, "type_id", None)
         if not tid:
             out.append(spec)
             continue
-        key = f"notifications.integration.{domain}.{tid}"
+        key = f"notifications.integration.{integration_id}.{tid}"
         if user_settings.get(key, True) is False:
             logger.debug(
-                "Filtering integration notification (user=%s domain=%s type_id=%s — muted)",
+                "Filtering integration notification (user=%s integration=%s type_id=%s — muted)",
                 integration.user_id,
-                domain,
+                integration_id,
                 tid,
             )
             continue
@@ -1522,6 +1524,13 @@ async def _emit_provider_notifications(
             source_ref = dict(spec.source_ref)
             source_ref.setdefault("integration_id", str(integration.id))
             source_ref.setdefault("provider", integration.provider)
+            # Propagate the spec's declared type_id so the kind registry can
+            # stamp ``integration:{iid}:{type_id}`` into payload.preferences
+            # at emit time (drives the per-instance "Turn off this kind"
+            # button). Only set when present; un-typed specs fall through to
+            # the source-level INTEGRATION kind.
+            if getattr(spec, "type_id", None):
+                source_ref.setdefault("type_id", spec.type_id)
 
             await emit(
                 source=NotificationSource.INTEGRATION,

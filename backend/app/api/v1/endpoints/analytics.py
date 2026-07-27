@@ -10,6 +10,7 @@ from app.services.analytics_service import (
     get_biomarker_trends,
     get_dashboard_data,
     get_biomarker_anomalies,
+    get_category_analytics,
 )
 
 from app.schemas.user import TokenData
@@ -139,9 +140,6 @@ async def get_reference_ranges_endpoint(
         for slug, rmin, rmax, unit in result.all()
         if rmin is not None or rmax is not None
     }
-
-
-from app.services.analytics_service import get_category_analytics
 
 
 @router.get("/category/{category_name}")

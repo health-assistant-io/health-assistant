@@ -111,32 +111,8 @@ export interface IntegrationDocumentation {
   tree?: IntegrationDocsTreeCategory[];
 }
 
-// ---------------------------------------------------------------------------
-// Per-integration notification types
-// ---------------------------------------------------------------------------
-
-export interface IntegrationNotificationType {
-  id: string;
-  label: string;
-  description: string;
-  category: string;
-  severity: string;
-  default_enabled: boolean;
-  channels: string[];
-  /** Caller's resolved preference (USER > default_enabled). */
-  enabled: boolean;
-}
-
-export interface IntegrationNotificationGroup {
-  domain: string;
-  instance_name: string | null;
-  integration_id: string;
-  types: IntegrationNotificationType[];
-}
-
-export interface IntegrationNotificationTypesResponse {
-  integrations: IntegrationNotificationGroup[];
-}
+// Per-integration notification preferences now live in notificationService
+// (GET/PUT /notifications/preferences) — the unified kind-based contract.
 
 export const integrationService = {
   getAvailable: async (): Promise<IntegrationManifest[]> => {
@@ -214,16 +190,5 @@ export const integrationService = {
       `/integrations/${domain}/oauth/start?integration_id=${integrationId}&patient_id=${patientId}`
     );
     return response.data;
-  },
-
-  // --- Notification types (per-integration, per-type user prefs) -----------
-
-  getNotificationTypes: async (): Promise<IntegrationNotificationTypesResponse> => {
-    const response = await api.get<IntegrationNotificationTypesResponse>('/integrations/notification-types');
-    return response.data;
-  },
-
-  updateNotificationTypePref: async (domain: string, typeId: string, enabled: boolean): Promise<void> => {
-    await api.put(`/integrations/${domain}/notification-types/${typeId}`, { enabled });
   },
 };

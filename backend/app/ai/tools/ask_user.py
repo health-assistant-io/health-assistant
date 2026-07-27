@@ -409,15 +409,6 @@ async def _snapshot_catalog_candidates(
     try:
         from app.services.catalog_search_service import search_catalogs
 
-        kind = None
-        if "kind" in prefilter and question.catalog_type == "concept":
-            try:
-                from app.models.enums import ConceptKind
-
-                kind = ConceptKind(prefilter["kind"])
-            except Exception:
-                kind = None
-
         hits = await search_catalogs(
             ctx.db,
             ctx.tenant_id,

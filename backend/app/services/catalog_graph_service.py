@@ -463,10 +463,6 @@ async def _load_catalog_ids(
     """Load all item IDs for a catalog type (tenant-scoped, not deleted)."""
     from app.models.enums import ConceptStatus
 
-    tenant_filter = or_(
-        # tenant_id is on each model; we reference it via the model class
-    )
-
     if etype == EdgeEndpointType.CONCEPT:
         from app.models.concept_model import Concept
 

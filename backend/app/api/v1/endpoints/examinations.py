@@ -24,9 +24,10 @@ from app.models.enums import Role
 from app.services.access import check_patient_access, check_examination_access
 import logging
 
-logger = logging.getLogger(__name__)
-
 from app.schemas.user import TokenData
+from app.schemas.task_log import TaskLogResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/examinations", tags=["examinations"])
 
@@ -430,9 +431,6 @@ async def extract_examination_data(
         raise HTTPException(
             status_code=500, detail=f"Failed to trigger extraction: {e}"
         )
-
-
-from app.schemas.task_log import TaskLogResponse
 
 
 @router.get("/{examination_id}/logs", response_model=List[TaskLogResponse])

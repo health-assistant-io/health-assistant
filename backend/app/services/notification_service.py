@@ -48,6 +48,7 @@ from app.models.notification import (
     NotificationSubscription,
 )
 from app.models.user_model import UserModel
+from app.services.notification_kind_registry import resolve_kind
 from app.services.notification_targets import resolve_targets
 
 logger = logging.getLogger(__name__)
@@ -215,6 +216,31 @@ async def emit(
                 sender_uuid,
             )
 
+        # Stamp the per-kind preferences hint so the frontend can render a
+        # "Turn off this kind" button + "Notification settings" link inline
+        # on the notification without deriving semantics itself. Best-effort:
+        # a registry failure logs and the notification still emits (the modal
+        # just shows no mute button).
+        #
+        # NOTE: a distinct local name (``effective_payload``) is used because
+        # rebinding ``payload`` here would make Python treat the outer
+        # ``payload`` parameter as local for the whole closure (UnboundLocalError
+        # on the earlier ``_create_communication`` reference).
+        effective_payload = dict(payload or {})
+        try:
+            kind_meta = await resolve_kind(s, source, type, source_ref, severity)
+            if kind_meta is not None:
+                effective_payload["preferences"] = {
+                    "kind_id": kind_meta.kind_id,
+                    "label": kind_meta.label,
+                    "manage_url": kind_meta.manage_url,
+                    "mutable": kind_meta.mutable,
+                }
+        except Exception:
+            logger.exception(
+                "Failed to resolve notification kind preferences; skipping hint"
+            )
+
         notification = Notification(
             tenant_id=tenant_uuid,
             patient_id=patient_uuid,
@@ -226,7 +252,7 @@ async def emit(
             severity=severity,
             title=title,
             body=body,
-            payload=payload or {},
+            payload=effective_payload,
             source_ref=source_ref or {},
             sender_user_id=sender_uuid,
             dedup_key=dedup_key,

@@ -666,20 +666,21 @@ spec = (
 )
 ```
 
-**Filtering** — the platform drops specs whose `type_id` the integration owner has muted, before dispatching. Prefs live at `user.settings["notifications.integration.{domain}.{type_id}"] = False`. Specs without a `type_id` always pass through (backwards-compatible — providers that don't declare types are unaffected).
+**Filtering** — the platform drops specs whose `type_id` the integration owner has muted, before dispatching. Prefs live at `user.settings["notifications.integration.{integration_id}.{type_id}"] = False` (keyed per **instance**, not per provider domain). Specs without a `type_id` always pass through (backwards-compatible — providers that don't declare types are unaffected).
 
 **Default-on convention**: providers SHOULD set `default_enabled=True` for every type. Users opt OUT, not IN. The platform baseline is already opt-in (`supports_notifications()` returns `False` by default) — once a provider opts in, the types should default ON. Otherwise nobody discovers the feature. Reserve `default_enabled=False` for types that are genuinely noisy in practice (rare).
 
-**Storage**: prefs are keyed by `(domain, type_id)`, NOT by integration instance. A user with two Fitbit accounts shares the same per-type prefs across both. This avoids state explosion; per-instance prefs are a power-user feature for later.
+**Storage**: prefs are keyed by `(integration_id, type_id)` — **per instance**, not per provider domain. A user with two Fitbit accounts can mute one without affecting the other. The kind is addressable as `integration:{integration_id}:{type_id}` via the unified `GET/PUT /notifications/preferences` endpoints. The `emit()` pipeline auto-stamps a `payload.preferences` hint (kind_id, label, manage_url, mutable) onto each notification so the frontend can render an inline "Turn off this kind" button without deriving semantics itself.
 
 **UI surfaces** (auto-rendered by the platform; no per-domain code):
-1. **IntegrationDetail → "Notifications" tab** (conditional — only renders when `get_notification_types()` returns ≥1 type). Each type shown with label, description, category/severity badges, channels hint, and a toggle switch. Deep-links to the central settings page.
-2. **`/settings/notifications` → "Per-integration notification types" collapsible** (under "Advanced"; auto-hidden when no integrations declare types). Aggregates every enabled integration's types in one place. Deep-links back into each integration's tab.
+1. **Each notification** (modal + bell dropdown) carries an inline "Turn off this kind" button + "Notification settings" link — driven by the `payload.preferences` hint stamped at emit time.
+2. **IntegrationDetail → "Notifications" tab** (conditional — only renders when `get_notification_types()` returns ≥1 type). Each type shown with label + a toggle switch. Calls `GET /notifications/preferences?integration_id=…` (scoped view of the same unified data).
+3. **`/notifications/settings`** (a Settings tab in the Notification Center) — the single preferences hub: master toggle, push setup, every source/channel kind, and every integration instance's types grouped per-instance with deep-links to `/settings/integrations/:id?tab=notifications`.
 
 **Three filter layers compose cleanly** — all enforced server-side at `emit()` / `_emit_provider_notifications` time:
 - **Per-source** (global): "mute all INTEGRATION notifications" — `notifications.sources.INTEGRATION = false`
 - **Per-channel** (global): "no PUSH, only IN_APP" — `notifications.channels.PUSH = false`
-- **Per-integration-type** (specific): "mute dev_dummy daily summaries" — `notifications.integration.dev_dummy.daily_summary = false`
+- **Per-integration-instance-type** (specific): "mute this Fitbit's daily summaries" — `notifications.integration.{integration_id}.{type_id} = false`
 
 A notification fires only if it passes ALL three layers.
 

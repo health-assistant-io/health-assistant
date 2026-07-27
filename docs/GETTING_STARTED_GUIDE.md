@@ -280,8 +280,9 @@ review, edit, and approve.
   the layout per person.
 - **Appearance** — `/settings/appearance` for theme and visualization
   options.
-- **Notifications** — `/settings/notifications` for medication
-  reminders, follow-ups, and out-of-range biomarker alerts.
+- **Notifications** — `/notifications/settings` for medication
+  reminders, follow-ups, out-of-range biomarker alerts, and per-kind
+  mute preferences.
 - **Languages** — English and Greek, switchable in preferences.
 - **Backups** — admins can export a FHIR R4B Bundle + ZIP from
   `/settings/export-import`.

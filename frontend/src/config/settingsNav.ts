@@ -6,7 +6,6 @@ import {
   Palette,
   Cpu,
   Plug,
-  Bell,
   Download,
   Building2,
   Globe,
@@ -59,7 +58,6 @@ export const userSettingsNav: SettingsNavItem[] = [
   { to: '/settings/appearance', icon: Palette, labelKey: 'settings.appearance_short', labelFallback: 'Appearance & Visualization' },
   { to: '/settings/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
   { to: '/settings/integrations', icon: Plug, labelKey: 'common.integrations', labelFallback: 'Integrations' },
-  { to: '/settings/notifications', icon: Bell, labelKey: 'settings.nav_notifications', labelFallback: 'Notifications' },
   { to: '/settings/export-import', icon: Download, labelKey: 'backup.title', labelFallback: 'Export & Import', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
 ];
 

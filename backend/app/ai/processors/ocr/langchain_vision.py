@@ -4,11 +4,12 @@ import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-logger = logging.getLogger(__name__)
 from .base import OCRProcessor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainOCRProcessor(OCRProcessor):

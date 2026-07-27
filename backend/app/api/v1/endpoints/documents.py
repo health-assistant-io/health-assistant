@@ -31,10 +31,11 @@ from app.workers.ai_tasks import ocr_document  # noqa: F401
 import logging
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
-
 from app.models.enums import Role
 from app.schemas.user import TokenData
+from app.schemas.document import DocumentUpdate, DocumentResponse, DocumentEdit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -116,7 +117,6 @@ async def list_documents(
     """List all documents"""
     user_id = current_user.user_id
     tenant_id = current_user.tenant_id
-    role = current_user.role
 
     # Admins can see all documents in tenant, users only see their own
     owner_id = (
@@ -156,7 +156,6 @@ async def get_document_endpoint(
 
     # Check permissions
     user_id = current_user.user_id
-    role = current_user.role
 
     is_admin = current_user.role in [
         Role.ADMIN.value,
@@ -171,9 +170,6 @@ async def get_document_endpoint(
     from app.services.document_service import enrich_document_entities
 
     return await enrich_document_entities(document.to_dict(), db)
-
-
-from app.schemas.document import DocumentUpdate, DocumentResponse, DocumentEdit
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
@@ -194,9 +190,8 @@ async def update_document_endpoint(
         raise HTTPException(status_code=404, detail="Document not found")
 
     user_id = current_user.user_id
-    role = current_user.role
 
-    if role not in [
+    if current_user.role not in [
         Role.ADMIN.value,
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,
@@ -254,9 +249,8 @@ async def edit_document_endpoint(
 
     # Check permissions
     user_id = current_user.user_id
-    role = current_user.role
 
-    if role not in [
+    if current_user.role not in [
         Role.ADMIN.value,
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,
@@ -286,7 +280,6 @@ async def get_presigned_url_endpoint(
         raise HTTPException(status_code=404, detail="Document not found")
 
     user_id = current_user.user_id
-    role = current_user.role
 
     is_admin = current_user.role in [
         Role.ADMIN.value,
@@ -376,9 +369,8 @@ async def trigger_extraction_endpoint(
             raise HTTPException(status_code=404, detail="Document not found")
 
         user_id = current_user.user_id
-        role = current_user.role
-
-        if role not in [
+    
+        if current_user.role not in [
             Role.ADMIN.value,
             Role.MANAGER.value,
             Role.SYSTEM_ADMIN.value,
@@ -416,22 +408,21 @@ async def get_extraction_status_endpoint(
 
     # Check permissions
     user_id = current_user.user_id
-    role = current_user.role
 
     # Convert to string for comparison (handle both UUID and string types)
     doc_owner_id = str(document.owner_id) if document.owner_id is not None else None
     current_user_id = str(user_id) if user_id else None
 
     logger.info(
-        f"Checking permissions: user={current_user_id}, role={role}, doc_owner={doc_owner_id}"
+        f"Checking permissions: user={current_user_id}, role={current_user.role}, doc_owner={doc_owner_id}"
     )
 
     if (
-        role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+        current_user.role not in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
         and doc_owner_id != current_user_id
     ):
         logger.warning(
-            f"Permission denied: user {current_user_id} (role: {role}) tried to access document owned by {doc_owner_id}"
+            f"Permission denied: user {current_user_id} (role: {current_user.role}) tried to access document owned by {doc_owner_id}"
         )
         raise HTTPException(
             status_code=403, detail="Not authorized to view extraction status"
@@ -525,7 +516,6 @@ async def get_dicom_metadata_endpoint(
 
     # Check permissions
     user_id = current_user.user_id
-    role = current_user.role
     is_admin = current_user.role in [
         Role.ADMIN.value,
         Role.MANAGER.value,
@@ -732,9 +722,8 @@ async def delete_document_endpoint(
 
     # Check permissions (only owner or admin can delete)
     user_id = current_user.user_id
-    role = current_user.role
 
-    if role not in [
+    if current_user.role not in [
         Role.ADMIN.value,
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,

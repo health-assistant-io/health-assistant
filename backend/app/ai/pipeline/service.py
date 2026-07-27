@@ -86,7 +86,7 @@ class MedicalProcessingService:
         result = await self.db.execute(
             select(DocumentModel).where(
                 DocumentModel.examination_id == examination_id,
-                DocumentModel.include_in_extraction == True,
+                DocumentModel.include_in_extraction.is_(True),
                 DocumentModel.status.in_(["completed", "failed"]),
             )
         )

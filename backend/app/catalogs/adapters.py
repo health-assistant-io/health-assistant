@@ -37,7 +37,7 @@ from app.catalogs.policy import (
 )
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.concept_model import Concept, ConceptKindTag
-from app.models.enums import ConceptKind
+from app.models.enums import CatalogScope, ConceptKind
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.anatomy_model import AnatomyStructure

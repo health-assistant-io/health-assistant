@@ -1853,7 +1853,16 @@
     "debug_title": "Παράδοση σε πραγματικό χρόνο",
     "debug_body": "Οι ειδοποιήσεις ρέουν μέσω ζωντανού WebSocket ανά χρήστη. Η παράδοση push χρησιμοποιεί Web Push (VAPID) — ενεργοποιήστε την παραπάνω.",
     "rules_tab": "Κανόνες Βιοδεικτών",
-    "admin_tab": "Διαχείριση"
+    "admin_tab": "Διαχείριση",
+    "settings_tab": "Ρυθμίσεις",
+    "sources_label": "Πηγές",
+    "channels_label": "Κανάλια",
+    "per_integration_label": "Ανά ενσωμάτωση",
+    "per_integration_desc": "Κάθε παρουσία ενσωμάτωσης μπορεί να σιωπηθεί ανεξάρτητα.",
+    "turn_off_kind": "Απενεργοποίηση «{{label}}»",
+    "manage_settings": "Ρυθμίσεις ειδοποιήσεων",
+    "muted_toast": "Απενεργοποιήθηκε το «{{label}}»",
+    "mute_failed": "Δεν ήταν δυνατή η ενημέρωση της προτίμησης ειδοποιήσεων"
   },
   "catalogs": {
     "search_placeholder": "Αναζήτηση {{type}}...",

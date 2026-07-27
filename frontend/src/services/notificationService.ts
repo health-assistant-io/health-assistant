@@ -37,11 +37,22 @@ export interface NotificationEvent {
   payload?: Record<string, unknown> & {
     actions?: NotificationAction[];
     display_blocks?: any[];
+    /** Per-kind preferences hint, stamped by the backend at emit time.
+     * Drives the inline "Turn off this kind" + "Notification settings" controls. */
+    preferences?: NotificationPreferencesHint;
   };
   source_ref?: Record<string, unknown>;
   sender_user_id?: string | null;
   tenant_id?: string | null;
   created_at?: string | null;
+}
+
+/** The per-kind preferences hint stamped into ``payload.preferences``. */
+export interface NotificationPreferencesHint {
+  kind_id: string;
+  label: string;
+  manage_url: string;
+  mutable: boolean;
 }
 
 export interface NotificationInboxItem {
@@ -322,4 +333,46 @@ export const notificationService = {
     const response = await axios.post(`/notification-rules/${ruleId}/test`);
     return response.data;
   },
+
+  // --- Notification preferences (unified per-kind mute/manage) ------------
+
+  /** All addressable notification kinds for the caller + their enabled state.
+   * Pass ``integrationId`` to scope to one integration instance's tab. */
+  async getPreferences(integrationId?: string) {
+    const response = await axios.get<NotificationPreferencesResponse>(
+      '/notifications/preferences',
+      { params: integrationId ? { integration_id: integrationId } : {} }
+    );
+    return response.data.preferences;
+  },
+
+  /** Enable or disable one notification kind. ``kindId`` is the canonical id
+   * (e.g. ``source:SYSTEM``, ``integration:{iid}:{tid}``, ``channel:PUSH``). */
+  async setPreference(kindId: string, enabled: boolean) {
+    const response = await axios.put(
+      `/notifications/preferences/${encodeURIComponent(kindId)}`,
+      { enabled }
+    );
+    return response.data as { status: string; kind_id: string; enabled: boolean };
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Preferences types (mirror backend app/schemas/notification.py)
+// ---------------------------------------------------------------------------
+
+export type NotificationKindGroup = 'source' | 'channel' | 'integration';
+
+export interface NotificationKindState {
+  kind_id: string;
+  label: string;
+  group: NotificationKindGroup;
+  manage_url: string;
+  mutable: boolean;
+  default_enabled: boolean;
+  enabled: boolean;
+}
+
+export interface NotificationPreferencesResponse {
+  preferences: NotificationKindState[];
+}

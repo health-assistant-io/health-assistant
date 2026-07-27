@@ -2,7 +2,10 @@ import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
+from typing import List, Optional
 from app.core.config import settings
+from app.models.enums import Role
+from app.schemas.user import TokenData
 from fastapi import HTTPException, status, Header, Depends, Request
 
 
@@ -136,11 +139,6 @@ def get_token(request: Request, authorization: str = Header(None)):
         detail="Missing authentication token",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
-
-from app.schemas.user import TokenData
-from typing import List, Optional
-from app.models.enums import Role
 
 
 def get_current_user(token: str = Depends(get_token)):

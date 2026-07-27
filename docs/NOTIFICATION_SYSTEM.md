@@ -47,7 +47,7 @@ Beyond the baseline "synced N records / sync failed" notification that fires for
 | Hook | Default | When called |
 |---|---|---|
 | `supports_notifications() → bool` | `False` | Feature gate. Returning True opts the provider in. |
-| `get_notification_types() → list[NotificationTypeSpec]` | `[]` | Static declaration — called by the platform whenever it needs to render per-type prefs UI (IntegrationDetail tab + `/settings/notifications` rollup). |
+| `get_notification_types() → list[NotificationTypeSpec]` | `[]` | Static declaration — called by the platform to enumerate the integration's addressable notification kinds (surfaced via `GET /notifications/preferences` and rendered in the IntegrationDetail "Notifications" tab + the `/notifications/settings` hub). |
 | `get_notifications(integration, *, observations, context) → list[NotificationSpec]` | `[]` | After every successful pull sync (`run_sync`) AND after every successful webhook that persists ≥1 observation. |
 | `handle_notification_action(integration, action_id, payload) → ActionResult` | `NotImplementedError` | When a user clicks an action button of `type="post"` on one of the provider's notifications. Routed via `POST /integrations/{domain}/notification-action/{iid}/{action_id}`. |
 
@@ -99,15 +99,32 @@ A notification fires only if it passes **all three** layers. All enforced server
 |---|---|---|---|
 | **Per-source** | Global (all integrations + the platform) | "Mute all INTEGRATION notifications" | `notifications.sources.INTEGRATION = false` (USER > TENANT > SYSTEM) |
 | **Per-channel** | Global (every source on this channel) | "No PUSH, only IN_APP" | `notifications.channels.PUSH = false` (USER > TENANT > SYSTEM) |
-| **Per-integration-type** | Specific (one kind from one integration domain) | "Mute dev_dummy's daily summaries" | `notifications.integration.dev_dummy.daily_summary = false` (USER only) |
+| **Per-integration-instance-type** | Specific (one kind from one integration instance) | "Mute dev_dummy instance A's daily summaries" | `notifications.integration.{integration_id}.{type_id} = false` (USER only) |
 
-**Per-integration-type** is the only one provider-specific. It activates only when a provider declares `NotificationTypeSpec`s AND tags runtime `NotificationSpec`s with the matching `type_id`. Specs without a `type_id` always pass through (backwards-compatible). Prefs are keyed by `(domain, type_id)`, NOT by integration instance — two instances of the same domain share the same per-type prefs (avoids state explosion).
+**Per-integration-instance-type** is the only provider-specific layer. It activates only when a provider declares `NotificationTypeSpec`s AND tags runtime `NotificationSpec`s with the matching `type_id`. Specs without a `type_id` always pass through. Prefs are keyed by `(integration_id, type_id)` — **per instance**, not per provider domain, so two integrations of the same provider can be muted independently.
 
-**Limitation**: the per-type filter is keyed on the **integration owner's** prefs. If a spec broadcasts beyond the owner (via `targets_override`), recipients past the owner still receive it — they're filtered only by the per-source + per-channel layers.
+### The unified kind model (single source of truth)
 
-**UI surfaces** (auto-rendered; no per-domain code):
-1. Each `IntegrationDetail` page gets a "Notifications" tab (conditional — hidden when the provider declares zero types).
-2. `/settings/notifications` gets a collapsible "Per-integration notification types" section under "Advanced" (auto-hidden when no integrations declare types).
+All three layers are exposed through one abstraction — the **notification kind** — owned by `backend/app/services/notification_kind_registry.py`. Every kind carries `kind_id` / `label` / `manage_url` / `mutable` / `default_enabled`:
+
+- `source:{SOURCE}` — the 6 per-source toggles.
+- `channel:{CHANNEL}` — the per-channel toggles (EMAIL is `mutable=false` until SMTP lands).
+- `integration:{integration_id}:{type_id}` — one per declared type per enabled integration instance.
+
+`emit()` stamps the resolved kind into `payload.preferences` automatically (best-effort, non-blocking) so the frontend can render an inline "Turn off this kind" button + "Notification settings" link on each notification without deriving semantics itself.
+
+**Immutable kinds** (safety-critical): `SYSTEM_ERROR` type, and `severity=critical` for `SYSTEM`/`CLINICAL` sources. The mute button is hidden; the manage link remains.
+
+**Unified endpoints** (`backend/app/api/v1/endpoints/notifications.py`):
+- `GET /notifications/preferences[?integration_id=X]` — all addressable kinds + their current `enabled` state. Optional `integration_id` scopes to one instance (the per-instance tab).
+- `PUT /notifications/preferences/{kind_id}` — enable/disable any kind. Routes the write to the right store (tiered settings or per-instance JSONB). 404 unknown kind; 400 on disabling an immutable kind.
+
+These replace the former `GET /integrations/notification-types` + `PUT /integrations/{domain}/notification-types/{type_id}` endpoints (removed).
+
+**UI surfaces**:
+1. Each notification (modal + bell) carries an inline "Turn off this kind" button + "Notification settings" link — driven by `payload.preferences`.
+2. `/notifications/settings` (a Settings tab in the Notification Center) — the single preferences hub: master toggle, push setup, every source/channel kind, and every integration instance's types grouped per-instance with deep-links to `/settings/integrations/:id?tab=notifications`.
+3. Each `IntegrationDetail` page's "Notifications" tab — reads `/notifications/preferences?integration_id=...` (scoped view of the same data).
 
 Full SDK guide: [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable).
 

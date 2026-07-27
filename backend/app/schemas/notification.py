@@ -209,3 +209,49 @@ class SubscribeRequest(BaseModel):
     subscription: dict[str, Any]
     device_id: Optional[str] = None
     user_agent: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Notification preferences (unified per-kind mute/manage model)
+# ---------------------------------------------------------------------------
+
+
+class NotificationKindState(BaseModel):
+    """One addressable kind with its current enabled state.
+
+    Returned by ``GET /notifications/preferences``. The ``kind_id`` is the
+    single contract — the frontend never derives it from source/type.
+    """
+
+    kind_id: str
+    label: str
+    group: str
+    manage_url: str
+    mutable: bool
+    default_enabled: bool = True
+    enabled: bool
+
+
+class NotificationPreferencesResponse(BaseModel):
+    preferences: list[NotificationKindState]
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    """Body for ``PUT /notifications/preferences/{kind_id}``."""
+
+    enabled: bool
+
+
+class NotificationPreferencesHint(BaseModel):
+    """The hint stamped into ``payload.preferences`` at emit time.
+
+    Read by the notification detail modal / bell dropdown to render a
+    per-notification "Turn off this kind" button + "Notification settings"
+    link. Absent on emissions whose kind couldn't be resolved (the frontend
+    then hides the controls — graceful degradation).
+    """
+
+    kind_id: str
+    label: str
+    manage_url: str
+    mutable: bool

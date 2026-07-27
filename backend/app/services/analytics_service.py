@@ -371,22 +371,6 @@ async def get_dashboard_data(
     labs_result = await db.execute(labs_query)
     all_labs = labs_result.all()
 
-    # Standard reference ranges for common biomarkers
-    STANDARD_RANGES = {
-        "glucose": {"min": 3.9, "max": 5.6},
-        "cholesterol": {"min": 0, "max": 5.2},
-        "hdl": {"min": 1.0, "max": 999},
-        "ldl": {"min": 0, "max": 3.0},
-        "hemoglobin": {"min": 120, "max": 180},
-        "white_blood_cells": {"min": 4.0, "max": 11.0},
-        "platelets": {"min": 150, "max": 450},
-        "creatinine": {"min": 60, "max": 110},
-        "tsh": {"min": 0.4, "max": 4.0},
-        "vitamin_d": {"min": 50, "max": 125},
-        "systolic": {"min": 90, "max": 130},
-        "diastolic": {"min": 60, "max": 85},
-    }
-
     unique_labs = {}
     for obs, b_info in all_labs:
         name = obs.code.get("text", "Unknown")

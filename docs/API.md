@@ -681,6 +681,8 @@ Vaccines also appear in the unified catalog endpoints (`/catalogs/vaccine`,
 | `GET` | `/notifications/triggers` | any | `patient_id?` | list | Without `patient_id`: tenant-wide (for the Notification Center "Reminders" tab). |
 | `DELETE` | `/notifications/triggers/{trigger_id}` | any | — | — | Tenant-scoped; cross-tenant is a no-op. |
 | `POST` | `/notifications/triggers/{trigger_id}/test` | any | — | `{status, message}` | Fire immediately for testing. |
+| `GET` | `/notifications/preferences` | any | `integration_id?` | `NotificationPreferencesResponse` | All addressable notification kinds (sources + channels + per-integration-instance types) + their current `enabled` state. Optional `integration_id` scopes to one instance (the per-instance tab). Each kind carries `manage_url` + `mutable`. |
+| `PUT` | `/notifications/preferences/{kind_id}` | any | `{enabled: bool}` | `{status, kind_id, enabled}` | Enable/disable any kind. `kind_id` is `source:{SOURCE}`, `channel:{CHANNEL}`, or `integration:{integration_id}:{type_id}`. Routes to the right store (tiered settings or per-instance JSONB). 404 unknown kind; 400 on disabling an immutable kind (safety-critical). |
 
 ### `notification-rules` — biomarker threshold alerts
 
@@ -941,12 +943,12 @@ Catalog write proposals queued for human review by providers that opt into `supp
 | `GET` | `/integrations/instance/{integration_id}/proposals/{proposal_id}` | owner | — | `IntegrationProposalResponse` | 404 if proposal doesn't exist or belongs to another integration. |
 | `POST` | `/integrations/instance/{integration_id}/proposals/{proposal_id}/resolve` | ADMIN+ for `action=approve`; USER can `reject`/`cancel` | `{action: "approve"\|"reject"\|"cancel", payload?: Dict, note?: str}` | `IntegrationProposalResponse` (+ `applied_entity_id`, `error`) | 409 if proposal is already in a terminal state. On `approve`, the resolver runs `apply_proposal` server-side; `applied_entity_id` is the created/updated catalog row's UUID. `payload` overrides `proposed_payload` (user edits in the review modal). |
 
-### Notifications (per-integration preferences + actionable push)
+### Notifications (actionable push)
+
+Per-integration-instance notification preferences are managed via the unified [`/notifications/preferences`](#notifications) endpoints — not integration-scoped endpoints. Each integration instance's kinds are addressable as `integration:{integration_id}:{type_id}`.
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/integrations/notification-types` | any | — | `{integrations: [{domain, instance_name, integration_id, types: [...]}]}` | Aggregates every enabled integration's declared notification types + the caller's per-type prefs. `enabled` resolves as USER setting wins → provider's `default_enabled` → `true`. |
-| `PUT` | `/integrations/{domain}/notification-types/{type_id}` | any | `{enabled: bool}` | `{status, domain, type_id, enabled}` | 404 if caller has no integration of that domain. Prefs keyed by `(domain, type_id)`, not by instance. |
 | `POST` | `/integrations/{domain}/notification-action/{integration_id}/{action_id}` | any (tenant-scoped; caller must own the integration) | JSON passthrough | provider ActionResult | Dispatches a clicked action button (`type="post"`) on an integration-authored notification to `provider.handle_notification_action`. 400 if provider lacks `supports_notifications`. |
 
 ### Inbound routes (tokenless)

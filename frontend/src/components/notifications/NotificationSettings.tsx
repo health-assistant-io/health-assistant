@@ -1,39 +1,52 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bell, ShieldAlert, RefreshCw, Smartphone, Wifi, WifiOff, CheckCircle2, XCircle, SlidersHorizontal } from 'lucide-react';
+import {
+  Bell,
+  ShieldAlert,
+  RefreshCw,
+  Smartphone,
+  Wifi,
+  WifiOff,
+  CheckCircle2,
+  XCircle,
+  SlidersHorizontal,
+  ExternalLink,
+} from 'lucide-react';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useNotificationStore } from '../../store/notificationStore';
-import { settingsService } from '../../services/settingsService';
-import { integrationService, type IntegrationNotificationGroup } from '../../services/integrationService';
-import { PageHeader } from '../../components/ui/PageHeader';
+import { useNotificationPreferences } from '../../hooks/useNotificationPreferences';
+import type { NotificationKindState } from '../../services/notificationService';
 
-type PushStatus = 'Subscribed' | 'Not Subscribed' | 'Not Registered' | 'Not Supported' | 'Checking...' | 'Error';
+/**
+ * The canonical notification-preferences surface.
+ *
+ * Replaces the old ``pages/Settings/Notifications.tsx`` (deleted). Renders
+ * under the Notification Center's Settings tab at ``/notifications/settings``
+ * and is the single source of truth for:
+ *
+ * - Browser permission / push subscription / real-time status
+ * - The master enable toggle + push setup actions
+ * - Every addressable notification kind (sources + channels + per-integration-
+ *   instance types), read from the unified ``GET /notifications/preferences``
+ *   endpoint and mutated via ``PUT /notifications/preferences/{kind_id}``.
+ */
+type PushStatus =
+  | 'Subscribed'
+  | 'Not Subscribed'
+  | 'Not Registered'
+  | 'Not Supported'
+  | 'Checking...'
+  | 'Error';
 
-const SOURCES = ['SYSTEM', 'SCHEDULED', 'RULE', 'AGENT', 'INTEGRATION', 'CLINICAL'] as const;
-const CHANNELS = ['IN_APP', 'PUSH', 'EMAIL'] as const;
-type SourceKey = (typeof SOURCES)[number];
-type ChannelKey = (typeof CHANNELS)[number];
-
-const SOURCE_DESCRIPTIONS: Record<SourceKey, string> = {
-  SYSTEM: 'System-wide notices and admin broadcasts',
-  SCHEDULED: 'Medication + examination reminders',
-  RULE: 'Biomarker threshold alerts (e.g. out-of-range lab value)',
-  AGENT: 'AI agent proposals needing your review (HITL tasks)',
-  INTEGRATION: 'Wearable/lab sync outcomes + sync failures',
-  CLINICAL: 'Clinical-event lifecycle (care team updates)',
-};
-
-const CHANNEL_DESCRIPTIONS: Record<ChannelKey, string> = {
-  IN_APP: 'Inbox (always available; no setup needed)',
-  PUSH: 'Web Push notifications on this device (requires browser permission)',
-  EMAIL: 'Email (requires SMTP setup; off by default)',
-};
-
-function Notifications() {
+export function NotificationSettings() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { notificationsEnabled, setNotificationsEnabled } = useSettingsStore();
   const connected = useNotificationStore((s) => s.connected);
+  const { preferences, loading: prefsLoading, setKind } = useNotificationPreferences({
+    autoFetch: true,
+  });
 
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
@@ -42,16 +55,7 @@ function Notifications() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-
-  // Per-source/channel preferences (server-side tiered)
-  const [sourcePrefs, setSourcePrefs] = useState<Record<SourceKey, boolean>>(
-    () => Object.fromEntries(SOURCES.map((s) => [s, true])) as Record<SourceKey, boolean>
-  );
-  const [channelPrefs, setChannelPrefs] = useState<Record<ChannelKey, boolean>>(
-    () => Object.fromEntries(CHANNELS.map((c) => [c, c === 'EMAIL' ? false : true])) as Record<ChannelKey, boolean>
-  );
-  const [prefsLoading, setPrefsLoading] = useState(true);
-  const [prefsSaving, setPrefsSaving] = useState<string | null>(null); // key being saved
+  const [savingKind, setSavingKind] = useState<string | null>(null);
 
   const refreshPushStatus = useCallback(async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -75,70 +79,6 @@ function Notifications() {
   useEffect(() => {
     refreshPushStatus();
   }, [refreshPushStatus]);
-
-  // Load per-source/channel preferences from /settings/effective
-  useEffect(() => {
-    (async () => {
-      setPrefsLoading(true);
-      try {
-        const { settings } = await settingsService.getEffective();
-        const nextSources = {} as Record<SourceKey, boolean>;
-        for (const s of SOURCES) {
-          const key = `notifications.sources.${s}`;
-          nextSources[s] = settings[key] !== false; // default true
-        }
-        const nextChannels = {} as Record<ChannelKey, boolean>;
-        for (const c of CHANNELS) {
-          const key = `notifications.channels.${c}`;
-          // Default: IN_APP + PUSH true, EMAIL false
-          const def = c === 'EMAIL' ? false : true;
-          if (key in settings) nextChannels[c] = !!settings[key];
-          else nextChannels[c] = def;
-        }
-        setSourcePrefs(nextSources);
-        setChannelPrefs(nextChannels);
-      } catch (err) {
-        // effective settings may not be reachable; fall back to defaults
-      } finally {
-        setPrefsLoading(false);
-      }
-    })();
-  }, []);
-
-  const savePref = useCallback(async (key: string, value: boolean) => {
-    setPrefsSaving(key);
-    try {
-      await settingsService.updateOverride('user', key, value);
-    } catch (err: any) {
-      setError(err?.message ?? `Failed to save ${key}`);
-      // Best-effort: revert by reloading
-      try {
-        const { settings } = await settingsService.getEffective();
-        if (key.startsWith('notifications.sources.')) {
-          const s = key.split('.')[2] as SourceKey;
-          setSourcePrefs((p) => ({ ...p, [s]: settings[key] !== false }));
-        } else if (key.startsWith('notifications.channels.')) {
-          const c = key.split('.')[2] as ChannelKey;
-          setChannelPrefs((p) => ({ ...p, [c]: !!settings[key] }));
-        }
-      } catch {
-        // noop
-      }
-    } finally {
-      setPrefsSaving(null);
-    }
-  }, []);
-
-  const toggleSourcePref = (s: SourceKey) => {
-    const next = !sourcePrefs[s];
-    setSourcePrefs((p) => ({ ...p, [s]: next }));
-    savePref(`notifications.sources.${s}`, next);
-  };
-  const toggleChannelPref = (c: ChannelKey) => {
-    const next = !channelPrefs[c];
-    setChannelPrefs((p) => ({ ...p, [c]: next }));
-    savePref(`notifications.channels.${c}`, next);
-  };
 
   const handleRequestPermission = useCallback(async () => {
     setError(null);
@@ -221,7 +161,8 @@ function Notifications() {
       setNotificationsEnabled(false);
       setInfo(
         t('settings.push_unsubscribed', {
-          defaultValue: 'Unsubscribed. The backend subscription will be pruned on the next delivery attempt.',
+          defaultValue:
+            'Unsubscribed. The backend subscription will be pruned on the next delivery attempt.',
         })
       );
     } catch (err: any) {
@@ -236,11 +177,11 @@ function Notifications() {
     setInfo(null);
     setBusy(true);
     try {
-      // Trigger a system broadcast to ourselves by re-using the admin broadcast
-      // endpoint when available; otherwise just show a local notification.
       if (Notification.permission === 'granted') {
         new Notification(t('settings.test_local_title', { defaultValue: 'Local test' }), {
-          body: t('settings.test_local_body', { defaultValue: 'If you see this, the SW + permission are working.' }),
+          body: t('settings.test_local_body', {
+            defaultValue: 'If you see this, the SW + permission are working.',
+          }),
           icon: '/icon.svg',
         });
         setInfo(
@@ -257,19 +198,39 @@ function Notifications() {
     }
   }, [t]);
 
+  // Unified kind-toggle handler (optimistic via the hook; surfaces errors).
+  const toggleKind = useCallback(
+    async (kind: NotificationKindState) => {
+      setSavingKind(kind.kind_id);
+      try {
+        await setKind(kind.kind_id, !kind.enabled);
+      } catch (err: any) {
+        setError(err?.response?.data?.detail ?? 'Could not update preference');
+      } finally {
+        setSavingKind(null);
+      }
+    },
+    [setKind]
+  );
+
+  const sources = useMemo(
+    () => (preferences ?? []).filter((p) => p.group === 'source'),
+    [preferences]
+  );
+  const channels = useMemo(
+    () => (preferences ?? []).filter((p) => p.group === 'channel'),
+    [preferences]
+  );
+  const integrationGroups = useMemo(
+    () => groupIntegrationKindsByInstance((preferences ?? []).filter((p) => p.group === 'integration')),
+    [preferences]
+  );
+
   const isPushReady =
     pushStatus === 'Subscribed' && permission === 'granted' && notificationsEnabled;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t('settings.nav_notifications', { defaultValue: 'Notifications' })}
-        subtitle={t('settings.notifications_subtitle', {
-          defaultValue: 'Browser permissions, push delivery, and real-time status',
-        })}
-        icon={<Bell className="w-8 h-8" />}
-      />
-
       {/* Status cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <StatusCard
@@ -287,12 +248,16 @@ function Notifications() {
         <StatusCard
           icon={connected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
           label={t('settings.notifications_realtime', { defaultValue: 'Real-time Stream' })}
-          value={connected ? t('common.live', { defaultValue: 'Live' }) : t('common.reconnecting', { defaultValue: 'Reconnecting' })}
+          value={
+            connected
+              ? t('common.live', { defaultValue: 'Live' })
+              : t('common.reconnecting', { defaultValue: 'Reconnecting' })
+          }
           tone={connected ? 'ok' : 'warn'}
         />
       </div>
 
-      {/* Master toggle + actions */}
+      {/* Master toggle + push setup */}
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
@@ -314,7 +279,9 @@ function Notifications() {
                 : 'bg-gray-200 dark:bg-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-300'
             }`}
           >
-            {notificationsEnabled ? t('admin.active', { defaultValue: 'Enabled' }) : t('common.inactive', { defaultValue: 'Disabled' })}
+            {notificationsEnabled
+              ? t('admin.active', { defaultValue: 'Enabled' })
+              : t('common.inactive', { defaultValue: 'Disabled' })}
           </button>
         </div>
 
@@ -376,236 +343,195 @@ function Notifications() {
           <p className="text-xs text-gray-400 dark:text-dark-muted leading-relaxed">
             {t('settings.push_setup_hint', {
               defaultValue:
-                'Push delivery requires: (1) browser permission granted, (2) a service worker registration, (3) a VAPID subscription registered with the backend. Enable each in turn above. If your OS is in Do-Not-Disturb mode, notifications may be suppressed even when fully subscribed.',
+                'Push delivery requires: (1) browser permission granted, (2) a service worker registration, (3) a VAPID subscription registered with the backend. Enable each in turn above.',
             })}
           </p>
         )}
       </div>
 
-      {/* Per-source + per-channel preferences */}
+      {/* Unified kind preferences (sources + channels + per-integration types) */}
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
         <div className="flex items-center gap-2 mb-1">
           <SlidersHorizontal className="w-4 h-4 text-gray-400" />
           <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text">
-            {t('settings.notifications_per_source', { defaultValue: 'Per-source & channel preferences' })}
+            {t('settings.notifications_per_source', {
+              defaultValue: 'Notification preferences',
+            })}
           </h3>
         </div>
         <p className="text-xs text-gray-500 dark:text-dark-muted mb-5">
           {t('settings.notifications_per_source_desc', {
             defaultValue:
-              'Choose which notification sources you receive, and on which channels. Saved to your account (USER > TENANT > SYSTEM).',
+              'Choose which notifications you receive. Muting a kind here or directly from a notification has the same effect.',
           })}
         </p>
 
-        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2">Sources</p>
+        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2">
+          {t('notifications.sources_label', { defaultValue: 'Sources' })}
+        </p>
         <div className="space-y-2 mb-6">
-          {SOURCES.map((s) => (
-            <PrefToggle
-              key={s}
-              label={s}
-              description={SOURCE_DESCRIPTIONS[s]}
-              checked={sourcePrefs[s]}
-              disabled={prefsLoading}
-              saving={prefsSaving === `notifications.sources.${s}`}
-              onChange={() => toggleSourcePref(s)}
-            />
-          ))}
+          {prefsLoading && sources.length === 0 ? (
+            <PrefSkeleton />
+          ) : (
+            sources.map((k) => (
+              <KindToggle
+                key={k.kind_id}
+                kind={k}
+                saving={savingKind === k.kind_id}
+                onChange={() => toggleKind(k)}
+              />
+            ))
+          )}
         </div>
 
         <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-2 mt-6 pt-4 border-t border-gray-100 dark:border-dark-border">
-          Channels
+          {t('notifications.channels_label', { defaultValue: 'Channels' })}
         </p>
         <div className="space-y-2">
-          {CHANNELS.map((c) => (
-            <PrefToggle
-              key={c}
-              label={c === 'IN_APP' ? 'In-app' : c === 'PUSH' ? 'Push' : 'Email'}
-              description={CHANNEL_DESCRIPTIONS[c]}
-              checked={channelPrefs[c]}
-              disabled={prefsLoading || c === 'EMAIL'} // EMAIL disabled until SMTP wired
-              saving={prefsSaving === `notifications.channels.${c}`}
-              onChange={() => toggleChannelPref(c)}
-            />
-          ))}
+          {prefsLoading && channels.length === 0 ? (
+            <PrefSkeleton />
+          ) : (
+            channels.map((k) => (
+              <KindToggle
+                key={k.kind_id}
+                kind={k}
+                saving={savingKind === k.kind_id}
+                onChange={() => toggleKind(k)}
+              />
+            ))
+          )}
         </div>
 
-        {/* Per-integration notification-type rollup */}
-        <IntegrationNotifTypesRollup />
+        {integrationGroups.length > 0 && (
+          <div className="border-t border-gray-100 dark:border-dark-border pt-5 mt-6">
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
+              {t('notifications.per_integration_label', { defaultValue: 'Per integration' })}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-dark-muted mb-4">
+              {t('notifications.per_integration_desc', {
+                defaultValue: 'Each integration instance can be muted independently.',
+              })}
+            </p>
+            <div className="space-y-4">
+              {integrationGroups.map((g) => (
+                <IntegrationInstanceCard key={g.manageUrl} group={g} savingKind={savingKind} onToggle={toggleKind} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Per-integration rollup: aggregates every enabled integration's declared
-// notification types in one collapsible section. Conditional on the user
-// having at least one integration that exposes types.
+// Integration instance grouping
 // ---------------------------------------------------------------------------
 
-function IntegrationNotifTypesRollup() {
+interface IntegrationInstanceGroup {
+  manageUrl: string;
+  instanceName: string;
+  kinds: NotificationKindState[];
+}
+
+/** Group integration kinds by their instance (one group per manage_url). */
+function groupIntegrationKindsByInstance(
+  kinds: NotificationKindState[]
+): IntegrationInstanceGroup[] {
+  const byUrl = new Map<string, IntegrationInstanceGroup>();
+  for (const k of kinds) {
+    // The label is "{typeLabel} — {instanceName}"; extract the instance name.
+    const instanceName = k.label.split(' — ').pop() ?? k.label;
+    if (!byUrl.has(k.manage_url)) {
+      byUrl.set(k.manage_url, { manageUrl: k.manage_url, instanceName, kinds: [] });
+    }
+    byUrl.get(k.manage_url)!.kinds.push(k);
+  }
+  return Array.from(byUrl.values());
+}
+
+function IntegrationInstanceCard({
+  group,
+  savingKind,
+  onToggle,
+}: {
+  group: IntegrationInstanceGroup;
+  savingKind: string | null;
+  onToggle: (k: NotificationKindState) => void;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [groups, setGroups] = useState<IntegrationNotificationGroup[]>([]);
-  const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null); // `${domain}:${typeId}`
-
-  useEffect(() => {
-    integrationService
-      .getNotificationTypes()
-      .then((res) => setGroups(res.integrations ?? []))
-      .catch(() => setGroups([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const totalTypes = groups.reduce((sum, g) => sum + g.types.length, 0);
-
-  // Don't render anything until loaded; if no integrations declare types, hide.
-  if (loading) return null;
-  if (totalTypes === 0) return null;
-
-  const handleToggle = async (domain: string, typeId: string, next: boolean) => {
-    setBusy(`${domain}:${typeId}`);
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.domain === domain
-          ? { ...g, types: g.types.map((tt) => (tt.id === typeId ? { ...tt, enabled: next } : tt)) }
-          : g
-      )
-    );
-    try {
-      await integrationService.updateNotificationTypePref(domain, typeId, next);
-    } catch (err: any) {
-      // Revert
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.domain === domain
-            ? { ...g, types: g.types.map((tt) => (tt.id === typeId ? { ...tt, enabled: !next } : tt)) }
-            : g
-        )
-      );
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
-    <div className="border-t border-gray-100 dark:border-dark-border pt-5 mt-6">
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between text-left mb-2"
-      >
-        <div>
-          <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">
-            Advanced
-          </p>
-          <p className="text-sm font-bold text-gray-900 dark:text-dark-text">
-            {t('settings.notifications_per_integration', {
-              defaultValue: 'Per-integration notification types',
-            })}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-dark-muted">
-            {totalTypes} type{totalTypes === 1 ? '' : 's'} across {groups.length} integration{groups.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <span className={`text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-      </button>
-
-      {expanded && (
-        <div className="space-y-4 mt-4">
-          {groups.map((g) => (
-            <div
-              key={g.domain}
-              className="border border-gray-100 dark:border-dark-border rounded-xl p-4"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-bold text-gray-900 dark:text-dark-text capitalize">
-                  {g.domain.replace(/_/g, ' ')}
-                </p>
-                <button
-                  onClick={() => navigate(`/settings/integrations/${g.integration_id}?tab=notifications`)}
-                  className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Open integration →
-                </button>
-              </div>
-              <div className="space-y-2">
-                {g.types.map((tt) => {
-                  const key = `${g.domain}:${tt.id}`;
-                  return (
-                    <div
-                      key={key}
-                      className="flex items-start justify-between gap-3 py-1.5"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{tt.label}</p>
-                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-gray-500 dark:text-dark-muted">
-                            {tt.category}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-dark-muted">{tt.description}</p>
-                      </div>
-                      <button
-                        onClick={() => handleToggle(g.domain, tt.id, !tt.enabled)}
-                        disabled={busy === key}
-                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors mt-1 disabled:opacity-50 ${
-                          tt.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-dark-border'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 bg-white rounded-full shadow transform transition-transform mt-0.5 ${
-                            tt.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="border border-gray-100 dark:border-dark-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-bold text-gray-900 dark:text-dark-text">
+          {group.instanceName}
+        </p>
+        <button
+          onClick={() => navigate(group.manageUrl)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {t('common.open', { defaultValue: 'Open' })}
+        </button>
+      </div>
+      <div className="space-y-2">
+        {group.kinds.map((k) => (
+          <KindToggle
+            key={k.kind_id}
+            kind={k}
+            saving={savingKind === k.kind_id}
+            onChange={() => onToggle(k)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-function PrefToggle({
-  label,
-  description,
-  checked,
-  disabled,
+// ---------------------------------------------------------------------------
+// Presentational helpers
+// ---------------------------------------------------------------------------
+
+function KindToggle({
+  kind,
   saving,
   onChange,
 }: {
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled: boolean;
+  kind: NotificationKindState;
   saving: boolean;
   onChange: () => void;
 }) {
+  const disabled = !kind.mutable;
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5">
+    <div className="flex items-start justify-between gap-3 py-1.5">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{label}</p>
-        <p className="text-xs text-gray-500 dark:text-dark-muted">{description}</p>
+        <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">{kind.label}</p>
       </div>
       <button
         onClick={onChange}
         disabled={disabled || saving}
         className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
-          checked ? 'bg-blue-600' : 'bg-gray-300 dark:bg-dark-border'
+          kind.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-dark-border'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        title={disabled ? 'Not configurable' : undefined}
+        title={disabled ? 'Cannot be disabled' : undefined}
       >
         <span
           className={`inline-block h-4 w-4 bg-white rounded-full shadow transform transition-transform mt-0.5 ${
-            checked ? 'translate-x-4' : 'translate-x-0.5'
+            kind.enabled ? 'translate-x-4' : 'translate-x-0.5'
           }`}
         />
       </button>
+    </div>
+  );
+}
+
+function PrefSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="h-8 bg-gray-100 dark:bg-dark-bg rounded-lg animate-pulse" />
+      ))}
     </div>
   );
 }
@@ -637,5 +563,3 @@ function StatusCard({
     </div>
   );
 }
-
-export default Notifications;

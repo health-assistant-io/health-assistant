@@ -159,7 +159,7 @@ async def _check_trigger_cumulative(db, document_id: UUID):
     pending_res = await db.execute(
         select(DocumentModel).where(
             DocumentModel.examination_id == doc.examination_id,
-            DocumentModel.include_in_extraction == True,
+            DocumentModel.include_in_extraction.is_(True),
             DocumentModel.status.in_(["processing", "uploaded"]),
         )
     )
@@ -174,7 +174,7 @@ async def _check_trigger_cumulative(db, document_id: UUID):
     text_docs_res = await db.execute(
         select(DocumentModel).where(
             DocumentModel.examination_id == doc.examination_id,
-            DocumentModel.include_in_extraction == True,
+            DocumentModel.include_in_extraction.is_(True),
             DocumentModel.status.in_(["completed", "failed"]),
         )
     )
@@ -261,7 +261,7 @@ async def cumulative_extraction(
         if task_logger:
             try:
                 await task_logger.log_error(e, "cumulative_extraction")
-            except:
+            except Exception:
                 pass
         await progress_tracker.mark_failed(str(e))
         raise

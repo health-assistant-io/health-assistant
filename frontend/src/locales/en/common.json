@@ -1914,7 +1914,16 @@
     "debug_title": "Real-time delivery",
     "debug_body": "Notifications stream over a live per-user WebSocket. Push delivery to your devices uses Web Push (VAPID) — enable it above.",
     "rules_tab": "Biomarker Rules",
-    "admin_tab": "Admin"
+    "admin_tab": "Admin",
+    "settings_tab": "Settings",
+    "sources_label": "Sources",
+    "channels_label": "Channels",
+    "per_integration_label": "Per integration",
+    "per_integration_desc": "Each integration instance can be muted independently.",
+    "turn_off_kind": "Turn off “{{label}}”",
+    "manage_settings": "Notification settings",
+    "muted_toast": "Turned off “{{label}}”",
+    "mute_failed": "Could not update notification preference"
   },
   "catalogs": {
     "search_placeholder": "Search {{type}}...",

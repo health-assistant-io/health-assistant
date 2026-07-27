@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_, func
-from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from pathlib import Path

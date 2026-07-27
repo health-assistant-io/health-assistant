@@ -39,7 +39,7 @@ import logging
 from typing import Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 

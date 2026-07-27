@@ -46,7 +46,6 @@ import AboutPage from './pages/About/AboutPage';
 import MyAccount from './pages/Account/MyAccount';
 import AppearanceSettings from './pages/Settings/AppearanceSettings';
 import Preferences from './pages/Settings/Preferences';
-import Notifications from './pages/Settings/Notifications';
 import Security from './pages/Settings/Security';
 import TenantSettingsPage from './pages/Admin/TenantSettings';
 import SystemSettingsPage from './pages/Admin/SystemSettings';
@@ -342,7 +341,6 @@ function App() {
           <Route path="/settings" element={<SettingsShell nav={userSettingsNav} header={userSettingsHeader} />}>
             <Route index element={<Navigate to="/settings/appearance" replace />} />
             <Route path="preferences" element={<Preferences />} />
-            <Route path="notifications" element={<Notifications />} />
             <Route path="security" element={<Security />} />
             <Route path="appearance" element={<AppearanceSettings />} />
             <Route path="ai-config" element={<AIConfig scope="user" />} />

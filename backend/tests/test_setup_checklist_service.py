@@ -692,6 +692,17 @@ async def test_ai_config_step_has_sub_steps_payload():
     """The AI config step carries per-sub-step completion + route in
     payload_hint so the frontend guided checklist can deep-link to the
     right AI config tab."""
+    # Other tests in the suite (test_ai_config_simple, test_api_key_encryption)
+    # create SYSTEM-scope AI providers/models and don't clean up. The
+    # _tenant_ai_config evaluator falls back to SYSTEM scope, so leaked rows
+    # would flip ``done=True`` here. Wipe the AI tables to make this test
+    # independent of execution order.
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("DELETE FROM ai_task_assignments"))
+        await session.execute(text("DELETE FROM ai_models"))
+        await session.execute(text("DELETE FROM ai_providers"))
+        await session.commit()
+
     tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
     async with AsyncSessionLocal() as session:
         token = _make_token(Role.ADMIN, user_id, tenant_id)

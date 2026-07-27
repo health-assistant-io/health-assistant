@@ -86,7 +86,7 @@ class TaskLogger:
             self.logger.error(f"Failed to persist log to DB: {e}")
             try:
                 await self.db.rollback()
-            except:
+            except Exception:
                 pass
 
     def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:

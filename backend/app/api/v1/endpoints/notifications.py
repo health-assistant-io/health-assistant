@@ -35,6 +35,8 @@ from app.models.enums import (
 from app.schemas.notification import (
     InboxResponse,
     AdminFeedResponse,
+    NotificationPreferencesResponse,
+    NotificationPreferenceUpdate,
     SubscribeRequest,
     TriggerCreate,
     UnreadCountResponse,
@@ -42,6 +44,10 @@ from app.schemas.notification import (
 from app.schemas.user import TokenData
 from app.services import notification_service
 from app.services.notification_manager import NotificationManager
+from app.services.notification_preferences_service import (
+    NotificationPreferencesService,
+)
+from app.core.errors import DomainError
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +345,64 @@ async def test_trigger(
     if not ok:
         raise HTTPException(status_code=404, detail="Trigger not found")
     return {"status": "success", "message": "Notification queued for delivery"}
+
+
+# ---------------------------------------------------------------------------
+# Preferences (unified per-kind mute/manage)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/preferences")
+async def get_preferences(
+    integration_id: Optional[str] = Query(
+        None,
+        description="Restrict to one integration instance (per-instance tab).",
+    ),
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NotificationPreferencesResponse:
+    """All addressable notification kinds for the caller (+ enabled state).
+
+    Grouped by ``group`` ∈ ``source | channel | integration``. Each kind
+    carries a ``manage_url`` deep link and a ``mutable`` flag (False for
+    safety-critical kinds — the UI hides their mute control).
+    """
+    service = NotificationPreferencesService(db)
+    prefs = await service.get_all(
+        current_user.user_id, current_user.tenant_id, integration_id
+    )
+    return NotificationPreferencesResponse(preferences=prefs)  # type: ignore[arg-type]
+
+
+@router.put("/preferences/{kind_id}")
+async def set_preference(
+    kind_id: str,
+    payload: NotificationPreferenceUpdate,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enable or disable one notification kind for the caller.
+
+    ``kind_id`` is the canonical id (``source:INTEGRATION``,
+    ``integration:{iid}:{tid}``, ``channel:PUSH``). Routes the write to the
+    right store (tiered settings or per-instance JSONB). Returns 404 for an
+    unknown kind and 400 when attempting to disable an immutable kind.
+    """
+    service = NotificationPreferencesService(db)
+    try:
+        meta = await service.set(
+            current_user.user_id,
+            current_user.tenant_id,
+            kind_id,
+            payload.enabled,
+        )
+    except DomainError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    return {
+        "status": "success",
+        "kind_id": meta.kind_id,
+        "enabled": payload.enabled,
+    }
 
 
 # ---------------------------------------------------------------------------

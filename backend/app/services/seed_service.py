@@ -251,7 +251,6 @@ class SeedService:
 
         slug_to_id = {}
         nodes = data.get("nodes", [])
-        edges = data.get("edges", [])
 
         for item in nodes:
             try:

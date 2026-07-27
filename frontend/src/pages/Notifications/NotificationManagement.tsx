@@ -31,12 +31,13 @@ import { NotificationRules } from '../../components/notifications/NotificationRu
 import { AdminNotificationCenter } from '../../components/notifications/AdminNotificationCenter';
 import { NotificationItem } from '../../components/notifications/NotificationItem';
 import { NotificationDetailModal } from '../../components/notifications/NotificationDetailModal';
+import { NotificationSettings } from '../../components/notifications/NotificationSettings';
 import { BulkActionBar } from '../../components/notifications/BulkActionBar';
 import { useAuthStore } from '../../store/slices/authSlice';
 
-type Tab = 'inbox' | 'all' | 'rules' | 'triggers' | 'admin';
+type Tab = 'inbox' | 'all' | 'rules' | 'triggers' | 'admin' | 'settings';
 
-const VALID_TABS: Tab[] = ['inbox', 'all', 'rules', 'triggers', 'admin'];
+const VALID_TABS: Tab[] = ['inbox', 'all', 'rules', 'triggers', 'admin', 'settings'];
 
 export default function NotificationManagement() {
   const { t, i18n } = useTranslation();
@@ -253,6 +254,7 @@ export default function NotificationManagement() {
     { id: 'all', label: t('notifications.all', { defaultValue: 'All' }) },
     { id: 'rules', label: t('notifications.rules_tab', { defaultValue: 'Biomarker Rules' }) },
     { id: 'triggers', label: t('notifications.triggers', { defaultValue: 'Reminders' }) },
+    { id: 'settings', label: t('notifications.settings_tab', { defaultValue: 'Settings' }) },
     ...(isAdmin ? [{ id: 'admin' as Tab, label: t('notifications.admin_tab', { defaultValue: 'Admin' }) }] : []),
   ];
 
@@ -287,11 +289,12 @@ export default function NotificationManagement() {
         showBackButton={true}
       />
 
+      {activeTab !== 'settings' && (
       <StickyToolbar
         actions={
           <>
             <button
-              onClick={() => navigate('/settings/notifications')}
+              onClick={() => navigate('/notifications/settings')}
               className="flex items-center px-3 py-2 border rounded-lg text-xs font-bold transition-colors bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted border-gray-200 dark:border-dark-border hover:text-blue-600 dark:hover:text-blue-400 shadow-sm"
             >
               <Settings className="w-3.5 h-3.5 mr-1.5" />
@@ -320,6 +323,7 @@ export default function NotificationManagement() {
           </>
         }
       />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1 p-1 bg-gray-100 dark:bg-dark-border rounded-xl w-fit">
@@ -433,6 +437,8 @@ export default function NotificationManagement() {
         />
       ) : activeTab === 'rules' ? (
         <NotificationRules />
+      ) : activeTab === 'settings' ? (
+        <NotificationSettings />
       ) : activeTab === 'admin' ? (
         <AdminNotificationCenter />
       ) : (
