@@ -170,7 +170,7 @@ async def lifespan(app: FastAPI):
                             " Setup token (required if accessing remotely):\n"
                             "   %s\n"
                             " Retrieve later: docker compose ... logs backend"
-                            " | grep -i 'setup token'\n"
+                            " | grep -i -A 1 'setup token'\n"
                             " Localhost / dev access does not need the token.\n"
                             "══════════════════════════════════════════════════════",
                             token,
@@ -207,7 +207,7 @@ async def lifespan(app: FastAPI):
                         " Setup token (required if accessing remotely):\n"
                         "   %s\n"
                         " Retrieve later: docker compose ... logs backend"
-                        " | grep -i 'setup token'\n"
+                        " | grep -i -A 1 'setup token'\n"
                         " Localhost / dev access does not need the token.\n"
                         "══════════════════════════════════════════════════════",
                         token,

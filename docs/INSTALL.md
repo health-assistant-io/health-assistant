@@ -50,7 +50,7 @@ Docker is the fastest way to get Health Assistant — a self-hosted, open-source
    Retrieve the token with:
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i "setup token"
+   docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"
    ```
 
    On submit, the wizard creates your `SYSTEM_ADMIN` account + tenant and logs you straight in.

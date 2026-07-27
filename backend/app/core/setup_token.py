@@ -172,7 +172,7 @@ def _ensure_post_grace_token() -> None:
         " required to complete first-run setup.\n"
         "   %s\n"
         " Retrieve later: docker compose ... logs backend"
-        " | grep -i 'setup token'\n"
+        " | grep -i -A 1 'setup token'\n"
         "══════════════════════════════════════════════════════",
         settings.SETUP_TOKEN_GRACE_MINUTES,
         token,

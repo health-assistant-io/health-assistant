@@ -259,13 +259,13 @@ function Setup() {
                 {tokenMode === 'time' && (
                   <>
                     The tokenless grace window has expired. Find the one-time token in the backend
-                    container logs: <code className="text-xs">docker compose logs backend | grep -i "setup token"</code>
+                    container logs: <code className="text-xs">docker compose -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"</code>
                   </>
                 )}
                 {tokenMode === 'log' && (
                   <>
                     Find it in the backend container logs:{' '}
-                    <code className="text-xs">docker compose logs backend | grep -i "setup token"</code>
+                    <code className="text-xs">docker compose -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"</code>
                   </>
                 )}
                 {tokenMode === 'disabled' && (

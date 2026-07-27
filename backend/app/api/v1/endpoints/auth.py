@@ -152,7 +152,7 @@ async def setup(
                 detail=(
                     "A setup token is required for first-run setup. Retrieve it "
                     "from the backend container logs: "
-                    "`docker compose ... logs backend | grep -i 'setup token'`."
+                    "`docker compose ... logs backend | grep -i -A 1 'setup token'`."
                 ),
             )
 
