@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - test
   workflow_dispatch:
 
 # One pipeline per branch at a time; a newer push cancels any stale run so a
@@ -23,7 +24,20 @@ env:
   # Completely secure: these values are pulled from Gitea Secrets at runtime
   REGISTRY: ${{ secrets.REGISTRY_HOST }}
   REPOSITORY: ${{ github.repository_owner }}
-  DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/home/deploy/health_assistant' }}
+  # Branch-aware deployment topology. The `test` branch deploys a fully
+  # separate stack on the same host: distinct deploy path, host ports,
+  # container-name prefix (STACK_NAME), and floating image tag. TEST_*
+  # secrets supply the test topology; the production stack is untouched.
+  # Fallbacks are distinct per branch so a missing secret can't silently
+  # reuse a production port and collide.
+  STACK_NAME: ${{ github.ref_name == 'test' && 'health-assistant-test' || 'health-assistant' }}
+  IMAGE_TAG_FLOATING: ${{ github.ref_name == 'test' && 'test' || 'latest' }}
+  DEPLOY_PATH: ${{ github.ref_name == 'test' && (secrets.TEST_DEPLOY_PATH || '/home/deploy/health_assistant_test') || (secrets.DEPLOY_PATH || '/home/deploy/health_assistant') }}
+  BACKEND_PORT: ${{ github.ref_name == 'test' && (secrets.TEST_BACKEND_PORT || '8001') || (secrets.BACKEND_PORT || '8000') }}
+  FRONTEND_PORT: ${{ github.ref_name == 'test' && (secrets.TEST_FRONTEND_PORT || '3001') || (secrets.FRONTEND_PORT || '3000') }}
+  FLOWER_PORT: ${{ github.ref_name == 'test' && (secrets.TEST_FLOWER_PORT || '5556') || (secrets.FLOWER_PORT || '5555') }}
+  POSTGRES_PORT: ${{ github.ref_name == 'test' && (secrets.TEST_POSTGRES_PORT || '5433') || (secrets.POSTGRES_PORT || '5432') }}
+  REDIS_PORT: ${{ github.ref_name == 'test' && (secrets.TEST_REDIS_PORT || '6380') || (secrets.REDIS_PORT || '6379') }}
 
 jobs:
   test-backend:
@@ -136,14 +150,14 @@ jobs:
 
       - name: Build and Push Backend
         run: |
-          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ github.sha }} -f docker/Dockerfile .
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:latest
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ env.IMAGE_TAG_FLOATING }} -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ github.sha }} -f docker/Dockerfile .
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ env.IMAGE_TAG_FLOATING }}
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-backend:${{ github.sha }}
 
       - name: Build and Push Frontend
         run: |
-          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:latest -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }} -f docker/Dockerfile.frontend .
-          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:latest
+          docker build -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ env.IMAGE_TAG_FLOATING }} -t ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }} -f docker/Dockerfile.frontend .
+          docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ env.IMAGE_TAG_FLOATING }}
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }}
 
   deploy:
@@ -204,6 +218,7 @@ jobs:
             REGISTRY=${{ env.REGISTRY_LOWER }}
             REPOSITORY=${{ env.REPOSITORY_LOWER }}
             IMAGE_TAG=${{ github.sha }}
+            STACK_NAME=${{ env.STACK_NAME }}
             
             # Application
             APP_ENV=production
@@ -216,15 +231,15 @@ jobs:
             POSTGRES_DB=${{ secrets.POSTGRES_DB || 'health_assistant' }}
             POSTGRES_USER=${{ secrets.POSTGRES_USER || 'admin' }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            POSTGRES_PORT=${{ secrets.POSTGRES_PORT || '5432' }}
+            POSTGRES_PORT=${{ env.POSTGRES_PORT }}
             
             # Redis Secrets
-            REDIS_PORT=${{ secrets.REDIS_PORT || '6379' }}
+            REDIS_PORT=${{ env.REDIS_PORT }}
             
             # Ports exposed by container
-            BACKEND_PORT=${{ secrets.BACKEND_PORT || '8000' }}
-            FRONTEND_PORT=${{ secrets.FRONTEND_PORT || '3000' }}
-            FLOWER_PORT=${{ secrets.FLOWER_PORT || '5555' }}
+            BACKEND_PORT=${{ env.BACKEND_PORT }}
+            FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+            FLOWER_PORT=${{ env.FLOWER_PORT }}
             FLOWER_USER=${{ secrets.FLOWER_USER || 'admin' }}
             FLOWER_PASSWORD=${{ secrets.FLOWER_PASSWORD }}
             

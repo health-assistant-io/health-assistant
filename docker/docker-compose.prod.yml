@@ -16,7 +16,13 @@
 #   BACKEND_PORT, FRONTEND_PORT, FLOWER_PORT,
 #   CELERY_WORKER_CONCURRENCY, CELERY_MAX_TASKS_PER_CHILD,
 #   BACKEND_MEMORY, WORKER_MEMORY, BACKEND_CPUS, WORKER_CPUS,
-#   LOG_MAX_SIZE, LOG_MAX_FILE
+#   LOG_MAX_SIZE, LOG_MAX_FILE,
+#   STACK_NAME (container-name prefix; defaults to "health-assistant". Set to
+#               a distinct value, e.g. "health-assistant-test", to run a second
+#               stack side-by-side on the same host without container-name
+#               collisions. Named volumes + the bridge network are already
+#               isolated by the compose project name = deploy-dir basename, so
+#               only the container_name needs a prefix.)
 #
 # Bring up:    docker compose -f docker/docker-compose.prod.yml up -d
 # Migrate only: docker compose -f docker/docker-compose.prod.yml run --rm migrate
@@ -69,7 +75,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   postgres:
     image: timescale/timescaledb:latest-pg14
-    container_name: health-assistant-postgres
+    container_name: ${STACK_NAME:-health-assistant}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-health_assistant}
@@ -95,7 +101,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: health-assistant-redis
+    container_name: ${STACK_NAME:-health-assistant}-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
@@ -125,7 +131,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   migrate:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-migrate
+    container_name: ${STACK_NAME:-health-assistant}-migrate
     restart: "no"
     environment: *backend-env
     depends_on:
@@ -146,7 +152,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   backend:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-backend
+    container_name: ${STACK_NAME:-health-assistant}-backend
     restart: unless-stopped
     init: true
     environment: *backend-env
@@ -187,7 +193,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   worker:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-worker
+    container_name: ${STACK_NAME:-health-assistant}-worker
     restart: unless-stopped
     init: true
     environment: *backend-env
@@ -231,7 +237,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   beat:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-beat
+    container_name: ${STACK_NAME:-health-assistant}-beat
     restart: unless-stopped
     init: true
     environment:
@@ -257,7 +263,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   flower:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-flower
+    container_name: ${STACK_NAME:-health-assistant}-flower
     restart: unless-stopped
     init: true
     ports:
@@ -286,7 +292,7 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   frontend:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}
-    container_name: health-assistant-frontend
+    container_name: ${STACK_NAME:-health-assistant}-frontend
     restart: unless-stopped
     init: true
     ports:
