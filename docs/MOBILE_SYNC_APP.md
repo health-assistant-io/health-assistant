@@ -84,34 +84,28 @@ The mobile app must read the fragmented native data formats (which vary heavily 
 Requests must include standard Authorization headers (e.g., `Bearer <JWT_TOKEN>`) configured against the user's specific self-hosted tenant.
 
 ### Proposed JSON Payload Schema (`WearableSyncPayload`)
-The proposed payload is a highly normalized, time-series array of `WearableDataPoint` objects.
+The proposed payload is a highly normalized, time-series array of `WearableDataPoint` objects — **long-format**: one point per `(timestamp, slug)`.
 
 ```json
 {
   "device_id": "iPhone_15_Pro_Max",
   "points": [
-    {
-      "timestamp": "2026-06-11T14:30:00Z",
-      "heart_rate": 72.5,
-      "steps": 150,
-      "calories": null,
-      "data": {
-        "spo2": 98.0,
-        "sleep_stage": "deep"
-      }
-    }
+    { "timestamp": "2026-06-11T14:30:00Z", "slug": "heart-rate", "value": 72.5, "unit": "bpm" },
+    { "timestamp": "2026-06-11T14:30:00Z", "slug": "steps", "value": 150 },
+    { "timestamp": "2026-06-11T14:30:00Z", "slug": "spo2", "value": 98.0, "unit": "%" },
+    { "timestamp": "2026-06-11T14:30:00Z", "slug": "sleep-stage", "value": 3, "unit": "stage" }
   ]
 }
 ```
 
 #### Field Definitions:
 *   `device_id` (String): An identifier to track which phone/watch sourced the data.
-*   `points` (Array): Time-series metrics.
+*   `points` (Array): Time-series metrics (one point per metric/timestamp).
     *   `timestamp` (String): ISO 8601 UTC timestamp.
-    *   `heart_rate` (Float, Optional): Beats per minute.
-    *   `steps` (Float, Optional): Step count for that specific timestamp interval.
-    *   `calories` (Float, Optional): Active kilocalories burned.
-    *   `data` (Object, Optional): A dynamic JSON payload to capture unstandardized or advanced metrics (e.g., blood oxygen, HRV, specific sleep metadata) that the backend can parse flexibly.
+    *   `slug` (String): Biomarker slug (e.g. `heart-rate`, `steps`, `spo2`, `sleep-stage`).
+    *   `value` (Float): The numeric measurement.
+    *   `unit` (String, Optional): Unit symbol (e.g. `bpm`, `%`).
+    *   `patient_id` (UUID, Optional): Patient attribution; when omitted the row is attributed later via the device→integration chain.
 
 ---
 

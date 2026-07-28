@@ -30,8 +30,8 @@ Health Assistant/
 │   ├── data/seeds/                # JSON seed files (10: concepts, diseases, medications, vaccines,
 │   │                              #   clinical_event_types, allergies, anatomy_structures,
 │   │                              #   concept_edges, default_catalog, biomarker_panels)
-│   ├── scripts/                   # Admin + maintenance scripts (~22: seed_demo, create_system_admin,
-│   │                              #   export_seeds, encrypt_existing_api_keys, migrate_heart_rate, …)
+│   ├── scripts/                   # Admin + maintenance scripts (~20: seed_demo, create_system_admin,
+│   │                              #   export_seeds, encrypt_existing_api_keys, …)
 │   ├── tests/                     # pytest suite (1800+ tests)
 │   ├── requirements.txt
 │   └── pyproject.toml
