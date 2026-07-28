@@ -165,6 +165,12 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const locale: Locale = i18n.language.startsWith('el') ? el : enUS;
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Tracks whether we've performed the initial scroll for this mount. The
+  // workspace remounts the browser per catalog type (`key={active.type}`), so
+  // the first scroll always corresponds to a deep-link arrival (?item= set
+  // before the rows render) and pins the item to the top; later selections
+  // (click / keyboard) only nudge into view so they don't jump the list.
+  const didInitialScrollRef = useRef(false);
 
   const [sortBy, setSortBy] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -223,15 +229,22 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     }
   };
 
-  // Keep the selected row in view (also helps keyboard nav). `nearest` only
-  // scrolls when the row is off-screen, so click selection isn't disturbed.
+  // Keep the selected row in view (also helps keyboard nav). Depends on
+  // `sortedItems` too, because on a deep-link the rows don't exist in the DOM
+  // until the first page loads — without this dep the effect would run once
+  // against an empty list and never scroll once the rows arrive. On the first
+  // scroll (deep-link arrival) the item is pinned to the top of the list;
+  // afterwards `nearest` keeps click/keyboard selection non-disruptive.
   useEffect(() => {
     if (!selectedItemId || !scrollRef.current) return;
     const el = scrollRef.current.querySelector(
       `[data-item-id="${CSS.escape(selectedItemId)}"]`,
-    );
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [selectedItemId]);
+    ) as HTMLElement | null;
+    if (!el) return;
+    const isFirst = !didInitialScrollRef.current;
+    didInitialScrollRef.current = true;
+    el.scrollIntoView({ block: isFirst ? 'start' : 'nearest' });
+  }, [selectedItemId, sortedItems]);
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-2">

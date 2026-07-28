@@ -16,7 +16,7 @@
  * Registry-driven: the catalog types come from `GET /catalogs`. The "concept"
  * type links out to the dedicated Taxonomy Manager.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Database, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw, List as ListIcon, GitBranch } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
@@ -48,6 +48,7 @@ import { ScopeBadge } from '../../components/catalog/ScopeBadge';
 import {
   listCatalogTypes,
   listCatalogItems,
+  getCatalogItem,
   createCatalogItem,
   updateCatalogItem,
   deleteCatalogItem,
@@ -197,6 +198,16 @@ export const CatalogWorkspace: React.FC = () => {
   const PAGE_SIZE = 50;
   const isMineScope = scopeFilter === 'mine';
 
+  // Backend pagination cursor (how many items the server has handed us),
+  // tracked separately from `items.length` because deep-link injection (see
+  // the effect below) prepends an out-of-page item. Using items.length as the
+  // next offset in that case would skip a real item, so load/loadMore advance
+  // this ref from the server response sizes instead.
+  const offsetRef = useRef(0);
+  // Item ids that 404/403'd on the single-item fetch — don't keep retrying the
+  // injection on every list mutation. Cleared on catalog-type change.
+  const knownMissingRef = useRef<Set<string>>(new Set());
+
   // Server-side facet params (kind for concepts, class for anatomy/…).
   // Stringified for a stable dependency so client-side facet toggles don't
   // trigger a refetch — only server-facet changes do.
@@ -217,9 +228,11 @@ export const CatalogWorkspace: React.FC = () => {
       });
       setItems(resp.items);
       setTotal(resp.total);
+      offsetRef.current = resp.items.length;
     } catch {
       setItems([]);
       setTotal(0);
+      offsetRef.current = 0;
     } finally {
       setItemsLoading(false);
     }
@@ -238,20 +251,60 @@ export const CatalogWorkspace: React.FC = () => {
         ...catalogFilter.serverParams,
         include: 'relations',
         limit: PAGE_SIZE,
-        offset: items.length,
+        offset: offsetRef.current,
       });
-      setItems((prev) => [...prev, ...resp.items]);
+      offsetRef.current += resp.items.length;
+      // Dedup against what we already show: a deep-linked item is injected at
+      // the top of the list, so its natural copy would reappear on its real
+      // page — drop it there to avoid showing the card twice.
+      setItems((prev) => {
+        const seen = new Set(prev.map((it) => String(it.id)));
+        const fresh = resp.items.filter((it) => !seen.has(String(it.id)));
+        return fresh.length ? [...prev, ...fresh] : prev;
+      });
     } catch {
       /* ignore — keep what we have */
     } finally {
       setLoadingMore(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeType, scopeFilter, serverFilterKey, items.length, loadingMore, isMineScope]);
+  }, [activeType, scopeFilter, serverFilterKey, loadingMore, isMineScope]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep-link support: when arriving with ?item=Y and Y isn't in the loaded
+  // page (it lives on a later page), fetch it directly and prepend it so the
+  // preview + list can render it without the user paging through "Load more".
+  // Runs after `load` settles and re-checks after every items mutation; the
+  // presence guard + knownMissingRef keep it from looping or refetching.
+  useEffect(() => {
+    if (!activeType || !itemId || itemsLoading) return;
+    if (knownMissingRef.current.has(itemId)) return;
+    if (items.some((it) => String(it.id) === itemId)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const single = await getCatalogItem(activeType, itemId);
+        if (cancelled || !single || single.id == null) return;
+        const asItem = single as unknown as CatalogItem;
+        setItems((prev) =>
+          prev.some((it) => String(it.id) === String(asItem.id))
+            ? prev
+            : [asItem, ...prev],
+        );
+      } catch (e: any) {
+        // 404/403 — the item is gone or not visible to this user. Record it so
+        // we don't refetch on every subsequent list mutation.
+        const status = e?.response?.status;
+        if (status === 404 || status === 403) knownMissingRef.current.add(itemId);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeType, itemId, items, itemsLoading]);
 
   /** In-memory filters: 'mine' ownership + page-search + facet filters, over the loaded items. */
   const filteredItems = useMemo(() => {
@@ -280,6 +333,7 @@ export const CatalogWorkspace: React.FC = () => {
   useEffect(() => {
     setTab(INFO);
     clearAll();
+    knownMissingRef.current.clear();
   }, [activeType, clearAll]);
 
   // Anatomy-only: fetch the anatomy_class concepts that back the (server-side)
