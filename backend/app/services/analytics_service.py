@@ -952,56 +952,49 @@ async def get_biomarker_trends(
         telemetry_to_query = telemetry_slugs
 
     for slug in telemetry_to_query:
-        if slug == "8867-4" or "heart-rate" in slug:
-            col = "heart_rate"
-            where_clause = "heart_rate IS NOT NULL"
-        elif slug == "41950-7" or "steps" in slug:
-            col = "steps"
-            where_clause = "steps IS NOT NULL"
-        elif "calories" in slug:
-            col = "calories"
-            where_clause = "calories IS NOT NULL"
-        else:
-            # Defense-in-depth: the slug is interpolated into raw SQL below.
-            # Schema validation should have prevented unsafe slugs at write
-            # time, but rows may pre-date that guard or arrive via the AI
-            # pipeline / import — refuse to interpolate anything that is not
-            # a strict identifier.
-            if not is_safe_slug(slug):
-                logger.warning(
-                    "Skipping telemetry query for unsafe biomarker slug %r",
-                    slug,
-                )
-                continue
-            col = f"CAST(data->>'{slug}' AS FLOAT)"
-            where_clause = f"data ? '{slug}'"
+        # Defense-in-depth: even though ``slug`` is now a bind parameter
+        # (not an identifier/literal), refuse to query for obviously bogus
+        # slugs. Schema validation should have prevented them at write time,
+        # but rows may pre-date that guard or arrive via the AI pipeline /
+        # import path.
+        if not is_safe_slug(slug):
+            logger.warning(
+                "Skipping telemetry query for unsafe biomarker slug %r",
+                slug,
+            )
+            continue
 
-        table_name = "telemetry_data"
-        time_col = "timestamp"
-
-        # Separate the "aggregate expression" (what goes in the SELECT)
-        # from the "source table". For cagg tables the columns are already
-        # pre-aggregated so we wrap max/min (correct for extremes) and use
-        # AVG(_avg) for the mean (best we can do without a count column).
-        # For the raw hypertable we aggregate directly — AVG(col), not
-        # AVG(AVG(col)).
-        if bucket == "1 hour" and col in ["heart_rate", "steps", "calories"]:
+        # Long-format hypertable: pick the source table by requested bucket.
+        # When the bucket exactly matches a continuous aggregate's resolution,
+        # query the CAgg (pre-computed, fast on long horizons). Otherwise
+        # fall back to the raw hypertable with live ``time_bucket_gapfill``.
+        # The CAgg path covers every current and future telemetry biomarker
+        # via ``WHERE slug = :slug`` — no per-metric branching.
+        if bucket == "1 hour":
             table_name = "telemetry_hourly"
             time_col = "bucket"
-            avg_expr = f"AVG({col}_avg)"
-            max_expr = f"MAX({col}_max)"
-            min_expr = f"MIN({col}_min)"
-        elif bucket == "1 day" and col in ["heart_rate", "steps", "calories"]:
+            avg_expr = "AVG(avg_val)"
+            max_expr = "MAX(max_val)"
+            min_expr = "MIN(min_val)"
+        elif bucket == "1 day":
             table_name = "telemetry_daily"
             time_col = "bucket"
-            avg_expr = f"AVG({col}_avg)"
-            max_expr = f"MAX({col}_max)"
-            min_expr = f"MIN({col}_min)"
+            avg_expr = "AVG(avg_val)"
+            max_expr = "MAX(max_val)"
+            min_expr = "MIN(min_val)"
+        elif bucket == "1 month":
+            table_name = "telemetry_monthly"
+            time_col = "bucket"
+            avg_expr = "AVG(avg_val)"
+            max_expr = "MAX(max_val)"
+            min_expr = "MIN(min_val)"
         else:
             # Raw hypertable — single-level aggregation (no double-wrapping).
-            avg_expr = f"AVG({col})"
-            max_expr = f"MAX({col})"
-            min_expr = f"MIN({col})"
+            table_name = "telemetry_data"
+            time_col = "timestamp"
+            avg_expr = "AVG(value)"
+            max_expr = "MAX(value)"
+            min_expr = "MIN(value)"
 
         # Validate the bucket interval against a strict whitelist.
         # The value is interpolated into INTERVAL '{bucket}' (PostgreSQL
@@ -1020,7 +1013,7 @@ async def get_biomarker_trends(
             FROM {table_name}
             WHERE tenant_id = :tenant_id
               AND {time_col} >= :start_date AND {time_col} <= :end_date
-              AND {where_clause}
+              AND slug = :slug
             GROUP BY bucket, device_id
             ORDER BY bucket
         """
@@ -1032,6 +1025,7 @@ async def get_biomarker_trends(
                     "tenant_id": tenant_id,
                     "start_date": effective_start_date,
                     "end_date": effective_end_date,
+                    "slug": slug,
                 },
             )
             rows = res.all()

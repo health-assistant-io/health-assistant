@@ -216,7 +216,7 @@ def test_build_nonfhir_sidecars_patient_scope_excludes_telemetry_with_note():
 def test_build_nonfhir_sidecars_system_scope_includes_telemetry():
     tid = uuid.uuid4()
     t = MagicMock()
-    t.to_dict.return_value = {"id": "x", "heart_rate": 72}
+    t.to_dict.return_value = {"id": "x", "slug": "heart-rate", "value": 72}
     svc = ExportService.__new__(ExportService)
     sidecars, counts, notes = svc.build_nonfhir_sidecars(
         tid,

@@ -22,6 +22,7 @@ TABLES_WITHOUT_FK = {
     "telemetry_data",
     "telemetry_daily",
     "telemetry_hourly",
+    "telemetry_monthly",
     "catalog_audit_log",
 }
 

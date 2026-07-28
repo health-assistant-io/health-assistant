@@ -24,40 +24,54 @@ When integration webhooks push data to the backend, the parser resolves the data
 - If `is_telemetry = true`: Data is mapped to a `TelemetryDataModel` and saved to TimescaleDB.
 - If `is_telemetry = false`: Data is mapped to an `Observation` and saved to FHIR.
 
-**Automated Data Migration:** System administrators can toggle this flag via the UI, making the system infinitely expandable for future IoT devices without requiring code changes. When the flag is toggled on an existing biomarker, the Celery task `migrate_biomarker_data` performs an automatic, batched (5000 rows) migration between the standard PostgreSQL `fhir_observations` table and the TimescaleDB `telemetry_data` hypertable. For extremely large historical datasets, headless CLI scripts (`backend/scripts/migrate_heart_rate.py`) are also available to chunk migrations without timing out browser API requests.
+**Automated Data Migration:** System administrators can toggle this flag via the UI, making the system infinitely expandable for future IoT devices without requiring code changes (see "Long-Format Storage" below for why this is now truly zero-code). When the flag is toggled on an existing biomarker, the Celery task `migrate_biomarker_data` performs an automatic, batched (5000 rows) migration between the standard PostgreSQL `fhir_observations` table and the TimescaleDB `telemetry_data` hypertable.
 
-**Telemetry → FHIR patient attribution (audit C1):** the
-`telemetry_data` hypertable has **no `patient_id` column by design** —
-telemetry rows are scoped only by `tenant_id` + `device_id`. When an
-admin flips `is_telemetry` true→false on a populated biomarker, the
-migration task must resolve a `Patient` for each row before constructing
-an `Observation` with `subject={"reference": f"Patient/{id}"}`. The
-chain is:
+**Telemetry → FHIR patient attribution:** every telemetry row carries a
+persisted `patient_id` column (populated at insert by the integration
+pipeline, the FHIR→telemetry migration direction, and the `/telemetry/data`
+upload endpoint). When an admin flips `is_telemetry` true→false on a
+populated biomarker, the migration task resolves the patient per row
+directly from `tr.patient_id` — no device-id attribution chain needed.
 
-```mermaid
-flowchart LR
-    A["TelemetryDataModel.device_id"] --> B["UserIntegration<br/>(instance_name match) → user_id"]
-    B --> C["Patient.user_id<br/>(same tenant)"]
-```
+For rows that lack a persisted `patient_id` (e.g. legacy mobile uploads
+that didn't send one), the single-patient-tenant fallback remains the safe
+default. Rows that can't be attributed (no `patient_id` + multi-patient
+tenant) are **skipped**, not silently assigned to a random patient. The
+count is exposed in `BiomarkerDefinition.meta_data["migration_skipped_no_patient"]`.
 
-- Rows whose `device_id` resolves to exactly one patient get attributed
-  to that patient.
-- Rows that can't be attributed (unknown device + multi-patient tenant)
-  are **skipped**, not silently assigned to the first patient. The
-  count is exposed in `BiomarkerDefinition.meta_data["migration_skipped_no_patient"]`.
-- The single-patient-tenant case remains the safe fallback (unambiguous
-  attribution).
-- If **no** rows can be attributed (no `UserIntegration` in tenant AND
-  the tenant has multiple patients), the migration aborts with
-  `meta_data["migration_status"] = "failed"` and a clear
-  `meta_data["migration_error"]` instead of corrupting data.
-- The legacy `device_id == "fhir_migration"` marker (set by the
-  FHIR→telemetry direction) is treated as un-attributable.
+## Long-Format Storage
+The `telemetry_data` hypertable is **long-format**: one row per
+`(timestamp, device, slug)` triple with explicit `value Float` + `unit Text`
+columns. This is the canonical TimescaleDB / InfluxDB / Prometheus pattern
+for variable-schema metrics.
 
-## Data Storage Strategy
-The `telemetry_data` table is optimized for both speed and flexibility:
-- **Core Columns:** Highly common metrics (`heart_rate`, `steps`, `calories`) have dedicated SQL columns for maximum index performance.
-- **Dynamic Metrics:** A `data` JSONB column captures the long tail of specific IoT metrics (e.g., continuous temperature, SpO2, glucose). The JSONB column utilizes a GIN index (`jsonb_path_ops`) ensuring sub-millisecond querying even on arbitrary JSON keys.
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | UUID | No FK (TimescaleDB limitation); cleanup job purges on tenant delete. |
+| `id` | UUID | Composite PK part (required by TimescaleDB). |
+| `timestamp` | timestamptz | Composite PK part; hypertable time dimension. |
+| `device_id` | String | Source device / integration instance. |
+| `slug` | String | Biomarker slug (`heart-rate`, `steps`, `spo2`, `glucose`, …). |
+| `value` | Float | NOT NULL — the numeric measurement. |
+| `unit` | String | Optional unit symbol (`bpm`, `count`, `%`). |
+| `patient_id` | UUID | Persisted attribution (populated at insert). |
+
+Why long-format (vs. the legacy wide+JSONB hybrid with dedicated
+`heart_rate`/`steps`/`calories` columns):
+
+- **Adding a new telemetry biomarker is a row-only change.** Flip
+  `BiomarkerDefinition.is_telemetry = True` — no DDL, no service-layer
+  branching, no new column. SpO2 / CGM / sleep stages are first-class
+  citizens alongside heart rate.
+- **Generic continuous aggregates.** One `GROUP BY slug` CAgg definition
+  covers every current and future telemetry biomarker.
+- **Range queries get a real B-tree.** `WHERE value > 120` prunes via
+  `(tenant_id, slug, timestamp)` instead of needing per-metric JSONB
+  functional indexes.
+
+The previous `_METRIC_COLUMNS` alias map, the slug→column branching in 5
+files, and the JSONB `data` catch-all are gone. See migration
+`t1e2l3o4n5g6_telemetry_long_format` for the full rationale.
 
 ## Preserving Spikes (OHLC Aggregation)
 When rendering a dashboard for "The Last 6 Months", fetching minute-by-minute heart rate data would crash a user's browser.
@@ -71,37 +85,70 @@ To solve this, the `AnalyticsService` uses **TimescaleDB OHLC (Open-High-Low-Clo
 **Decoupled Aggregation Resolution:**
 The system decouples the "Temporal Scope" (e.g., viewing the Last 30 Days) from the "Aggregation Bucket" (e.g., grouping by 1-hour averages). Users can dynamically adjust the resolution density directly from the UI dropdowns, and the backend securely handles the dynamic PostgreSQL `INTERVAL` casting (e.g. `1 minute`, `15 minutes`, `1 day`, `1 week`).
 
+When the requested bucket exactly matches a continuous aggregate's resolution,
+the analytics service transparently dispatches to the CAgg (pre-computed,
+fast on long horizons); otherwise it falls back to live
+`time_bucket_gapfill()` over the raw hypertable. The CAgg path filters
+`WHERE slug = :slug` so every telemetry biomarker is covered by one
+definition.
+
 ## Implemented optimizations (TimescaleDB)
 
-The hypertable is paired with two production-grade TimescaleDB features, both
-registered in the consolidated baseline (`alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`):
+The hypertable is paired with production-grade TimescaleDB features, both
+registered in the consolidated baseline (`alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`)
+and rebuilt long-format in migration `t1e2l3o4n5g6_telemetry_long_format`:
 
-- **Continuous aggregates**: two materialized views — `telemetry_hourly` and
-  `telemetry_daily` — pre-compute hourly and daily rollups in the background
-  via `add_continuous_aggregate_policy`. The `AnalyticsService`
-  (`backend/app/services/analytics_service.py`) transparently dispatches to
-  these cagg tables when the requested bucket is `1 hour` or `1 day`, falling
-  back to live `time_bucket_gapfill()` over the raw hypertable for sub-hour
-  buckets. Dashboard queries for long ranges (months/years) hit the caggs
-  instead of replaying every raw row.
+- **Generic continuous aggregates**: three materialized views —
+  `telemetry_hourly`, `telemetry_daily`, `telemetry_monthly` — pre-compute
+  rollups in the background via `add_continuous_aggregate_policy`. Each
+  groups by `slug`, so one definition covers every current and future
+  telemetry biomarker (no DDL when a new biomarker is flagged
+  `is_telemetry=True`). The monthly CAgg covers the `last-12-months` /
+  `all-time` analytics buckets that previously hit the raw hypertable.
+  The `AnalyticsService` (`backend/app/services/analytics_service.py`)
+  transparently dispatches to these CAggs when the requested bucket is
+  `1 hour`, `1 day`, or `1 month`.
 - **Compression policy**: `add_compression_policy('telemetry_data', INTERVAL '7 days')`
   compresses raw minute-by-minute data older than one week
-  (`compress_segmentby = 'tenant_id, biomarker_id'`,
-  `compress_orderby = 'recorded_at DESC'`). This typically yields 90%+ storage
-  savings on the long tail of historical rows while keeping the most-recent
-  week in uncompressed form for fast inserts and queries.
+  (`compress_segmentby = 'tenant_id, device_id, slug'`,
+  `compress_orderby = 'timestamp DESC'`). Segmenting by the query-pruning
+  keys means both tenant-wide and per-device queries skip irrelevant
+  compressed chunks.
+- **Retention policy**: `add_retention_policy('telemetry_data', INTERVAL '2 years')`
+  auto-prunes raw rows older than 2 years.
+
+## Upload Contract
+The `POST /api/v1/telemetry/data` endpoint accepts long-format points — one
+per metric/timestamp:
+
+```json
+{
+  "device_id": "apple_watch_1",
+  "points": [
+    {"timestamp": "2026-07-28T08:00:00Z", "slug": "heart-rate", "value": 72.0, "unit": "bpm"},
+    {"timestamp": "2026-07-28T08:00:00Z", "slug": "steps", "value": 12.0},
+    {"timestamp": "2026-07-28T08:05:00Z", "slug": "heart-rate", "value": 75.0, "unit": "bpm"}
+  ]
+}
+```
+
+A mobile client syncing N metrics at one timestamp sends N points (not one
+point with N fields). The integration SDK already produces one Observation
+per metric, so the mapping is 1:1. The service uses SQLAlchemy Core bulk
+insert with `ON CONFLICT DO NOTHING` chunked at 5000 rows for high-frequency
+ingest.
 
 ## Future Considerations (Roadmap)
-- **Data Lifecycle & Pruning:** Currently, telemetry data is not automatically pruned. For active users with high-frequency tracking (e.g., Apple Watch syncing every minute), the database will grow continuously. System administrators should be aware of this and implement manual cron jobs or TimescaleDB retention policies to prevent disk space exhaustion until automatic pruning is formally supported.
 - **FHIR Interoperability Boundary:** The split architecture inherently moves high-frequency telemetry data outside of strict FHIR compliance. Currently, when exporting patient records to FHIR, telemetry data is excluded. Future versions will need to dynamically downsample and map TimescaleDB data back into FHIR `Observation` bundles during export.
+- **Continuous-aggregate-based anomaly detection:** `get_telemetry_anomalies` still runs the detector in Python over raw rows; SQL-side downsampling via the CAggs is a separate improvement.
 
 ## Unified Clinical View (UI & AI Integration)
 Despite the data being physically split across two different database engines, both the frontend and the AI Chatbot provide a unified longitudinal view.
 
 1. **Frontend:** The `BiomarkerDetail` view uses the `AnalyticsService` to merge and sort FHIR and TimescaleDB data.
-2. **AI Chatbot:** The AI Assistant uses the `get_aggregated_biomarker_trends` tool, which routes through the same `AnalyticsService` logic. This ensures the AI can reason over high-frequency wearable data (steps, heart rate) without being overwhelmed by raw records, while strictly adhering to aggregated OHLC (Average, Min, Max) values.
+2. **AI Chatbot:** The AI Assistant uses the `get_aggregated_biomarker_trends` tool, which routes through the same `AnalyticsService` logic. This ensures the AI can reason over high-frequency wearable data (steps, heart rate, SpO2) without being overwhelmed by raw records, while strictly adhering to aggregated OHLC (Average, Min, Max) values.
 
 This is achieved dynamically by the `AnalyticsService` in the backend:
 1. **FHIR Data:** The service queries standard `fhir_observations` matching the `biomarker_id`.
-2. **Telemetry Data:** The service inspects the `slug` of the biomarker (e.g., `"heart-rate"`, `"oxygen-saturation"`). It then queries the TimescaleDB `telemetry_data` table, pulling metrics that match either the hardcoded high-performance columns (like `heart_rate`) or dynamically querying the `data` JSONB column (`WHERE data ? 'oxygen-saturation'`).
+2. **Telemetry Data:** The service queries the long-format hypertable (or the matching continuous aggregate) with `WHERE slug = :slug` — uniform across every telemetry biomarker.
 3. **Merge & Sort:** The backend formats both datasets into the identical JSON response structure, sorts them chronologically by timestamp, and returns them to the requester (React chart or AI Tool) as a single cohesive longitudinal record.

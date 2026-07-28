@@ -1,20 +1,19 @@
-"""Tests for audit item A8 (OHLC double-aggregation + gapfill stride).
+"""Tests for the telemetry OHLC aggregation path — long-format edition.
 
-A8: The telemetry trends query double-wrapped aggregates:
-    - For the raw-table path (sub-hour / non-cagg buckets): avg_col was set
-      to "AVG(col)" and the SQL template wrapped it in AVG(AVG(col)) —
-      invalid SQL, silently caught by the except handler, producing empty
-      charts for any bucket that didn't match the cagg stride.
-    - For the cagg path: AVG(heart_rate_avg) was a mean-of-per-device-means
-      (not weighted by sample count), but MAX/MIN were correct.
+Originally pinned audit item A8 (double-wrapping aggregates + unsafe INTERVAL
+interpolation). The long-format rewrite (migration ``t1e2l3o4n5g6``) also
+collapses the slug→column branching: every metric is queried via
+``WHERE slug = :slug`` against a uniform ``value`` column (raw hypertable) or
+``avg_val``/``max_val``/``min_val`` columns (continuous aggregates).
 
-    The fix separates the aggregate expression from the source table:
-    - Raw hypertable: AVG(col), MAX(col), MIN(col) — single level.
-    - Cagg tables: AVG(col_avg), MAX(col_max), MIN(col_min) — correct for
-      max/min; avg is best-effort without a count column.
-
-    Also added a strict _ALLOWED_TELEMETRY_BUCKETS whitelist to prevent SQL
-    injection via the INTERVAL f-string interpolation.
+These tests pin:
+- No double-wrapped aggregates (``AVG(AVG(...))``) — the A8 fix stays.
+- A strict ``_ALLOWED_TELEMETRY_BUCKETS`` whitelist guards the INTERVAL
+  f-string interpolation (SQL-injection defence).
+- The SQL uses ``slug = :slug`` (bind parameter), not slug→column branching.
+- The CAgg path uses the generic ``avg_val``/``max_val``/``min_val`` columns
+  (not metric-specific ``heart_rate_avg`` etc.).
+- The raw-table path uses ``AVG(value)`` (not ``AVG(heart_rate)``).
 """
 import re
 
@@ -32,11 +31,6 @@ def test_a8_no_double_wrapped_avg_in_source():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    # The SQL template previously had AVG({avg_col}) where avg_col was
-    # itself "AVG(col)" — producing AVG(AVG(col)). The fix removed the
-    # outer wrapper from the template and the inner wrapper from the col.
-    #
-    # Check: the template uses {avg_expr} (not AVG({avg_col})).
     assert "AVG({avg_col})" not in src, (
         "analytics_service still double-wraps AVG(AVG(...))."
     )
@@ -44,34 +38,93 @@ def test_a8_no_double_wrapped_avg_in_source():
     assert "MIN({min_col})" not in src
 
 
-def test_a8_raw_table_uses_single_level_aggregate():
-    """A8: the else branch (raw hypertable) must use AVG(col) not AVG(AVG(col))."""
+# ---------------------------------------------------------------------------
+# Long-format: raw-table path uses AVG(value), not a metric-specific column
+# ---------------------------------------------------------------------------
+
+
+def test_raw_table_path_uses_uniform_value_column():
+    """Long-format contract: the raw-table else branch must aggregate
+    ``AVG(value)`` / ``MAX(value)`` / ``MIN(value)`` — no metric-specific
+    columns (``AVG(heart_rate)`` etc.) anywhere in the source."""
     import inspect
 
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    # The else branch must define avg_expr = f"AVG({col})", not avg_col.
-    # Find the else branch for the raw-table path.
-    assert 'avg_expr = f"AVG({col})"' in src, (
-        "Raw-table path must use single-level AVG(col)."
+    # The uniform raw-table aggregates.
+    assert '"AVG(value)"' in src, (
+        "Raw-table path must use AVG(value) — the long-format uniform column."
     )
-    assert 'avg_col = f"AVG({col})"' not in src, (
-        "Legacy avg_col = AVG(col) pattern still present."
-    )
+    assert '"MAX(value)"' in src
+    assert '"MIN(value)"' in src
+    # Legacy metric-specific aggregates must be gone.
+    assert "AVG(heart_rate)" not in src
+    assert "MAX(steps)" not in src
+    assert "MIN(calories)" not in src
 
 
-def test_a8_cagg_uses_pre_aggregated_columns():
-    """A8: the cagg path must use _avg/_max/_min columns, not re-aggregate."""
+# ---------------------------------------------------------------------------
+# Long-format: CAgg path uses generic avg_val/max_val/min_val columns
+# ---------------------------------------------------------------------------
+
+
+def test_cagg_path_uses_generic_pre_aggregated_columns():
+    """Long-format contract: the CAgg path must use the generic
+    ``avg_val`` / ``max_val`` / ``min_val`` columns (one definition per
+    horizon covers every current + future telemetry biomarker). No
+    metric-specific ``heart_rate_avg`` / ``steps_max`` columns."""
     import inspect
 
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert "avg_expr" in src, "Expected avg_expr variable (regression fix)."
-    assert "{col}_avg" in src, "Expected pre-aggregated _avg column reference."
-    assert "{col}_max" in src
-    assert "{col}_min" in src
+    assert '"AVG(avg_val)"' in src, (
+        "CAgg path must use AVG(avg_val) — the generic pre-aggregated column."
+    )
+    assert '"MAX(max_val)"' in src
+    assert '"MIN(min_val)"' in src
+    # Legacy metric-specific CAgg columns must be gone.
+    assert "heart_rate_avg" not in src
+    assert "steps_max" not in src
+    assert "calories_min" not in src
+
+
+# ---------------------------------------------------------------------------
+# Long-format: query filters by slug = :slug (bind parameter)
+# ---------------------------------------------------------------------------
+
+
+def test_sql_filters_by_slug_bind_parameter():
+    """Long-format contract: the WHERE clause must filter ``slug = :slug``
+    (bind parameter) — not slug→column branching, not JSONB key existence."""
+    import inspect
+
+    from app.services import analytics_service
+
+    src = inspect.getsource(analytics_service)
+    assert "slug = :slug" in src, (
+        "Telemetry SQL must filter via slug = :slug (bind parameter)."
+    )
+    # Legacy JSONB-key predicates must be gone.
+    assert "data ? '{slug}'" not in src
+    assert "data ? '{slug}'" not in src.replace("'", '"')
+    # Legacy column-not-null predicates must be gone.
+    assert "heart_rate IS NOT NULL" not in src
+    # Slug interpolation into SQL identifiers must be gone.
+    assert "CAST(data->>" not in src
+
+
+def test_sql_execute_passes_slug_parameter():
+    """The SQL execute call must pass ``slug`` in the bind parameters."""
+    import inspect
+
+    from app.services import analytics_service
+
+    src = inspect.getsource(analytics_service)
+    assert '"slug": slug' in src, (
+        "Telemetry SQL execute must pass slug as a bind parameter."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +137,6 @@ def test_a8_bucket_whitelist_exists():
     from app.services.analytics_service import _ALLOWED_TELEMETRY_BUCKETS
 
     assert isinstance(_ALLOWED_TELEMETRY_BUCKETS, frozenset)
-    # Must include the common buckets from PERIOD_MAPPING.
     for expected in ("1 minute", "15 minutes", "1 hour", "1 day", "1 week", "1 month"):
         assert expected in _ALLOWED_TELEMETRY_BUCKETS, (
             f"Expected {expected!r} in the telemetry bucket whitelist."
@@ -115,18 +167,10 @@ def test_a8_sql_uses_safe_bucket_variable():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert "safe_bucket" in src, (
-        "Expected safe_bucket variable in the SQL construction."
-    )
-    # The INTERVAL must interpolate safe_bucket.
-    assert "INTERVAL '{safe_bucket}'" in src, (
-        "SQL must interpolate the validated safe_bucket."
-    )
-    # The raw bucket must not appear in an INTERVAL clause in the actual SQL
-    # f-string (strip comments to avoid false-triggering on the audit note).
+    assert "safe_bucket" in src
+    assert "INTERVAL '{safe_bucket}'" in src
     code_lines = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
     code = "\n".join(code_lines)
-    # Check that no SQL construction uses INTERVAL '{bucket}' (unvalidated).
     assert "INTERVAL '{bucket}'" not in code, (
         "SQL still interpolates the unvalidated raw bucket into INTERVAL."
     )
@@ -137,17 +181,14 @@ def test_a8_sql_uses_safe_bucket_variable():
 # ---------------------------------------------------------------------------
 
 
-def test_a8_generated_sql_for_raw_table_has_no_nested_aggregates():
-    """A8: simulate the else-branch SQL and verify no AVG(AVG(...))."""
-    # Reproduce the SQL construction logic for the raw-table path.
-    col = "heart_rate"
-    avg_expr = f"AVG({col})"
-    max_expr = f"MAX({col})"
-    min_expr = f"MIN({col})"
+def test_generated_sql_for_raw_table_has_no_nested_aggregates():
+    """Simulate the raw-table path SQL and verify no AVG(AVG(...))."""
+    avg_expr = "AVG(value)"
+    max_expr = "MAX(value)"
+    min_expr = "MIN(value)"
     safe_bucket = "15 minutes"
     time_col = "timestamp"
     table_name = "telemetry_data"
-    where_clause = "heart_rate IS NOT NULL"
 
     sql = f"""
         SELECT
@@ -159,34 +200,51 @@ def test_a8_generated_sql_for_raw_table_has_no_nested_aggregates():
         FROM {table_name}
         WHERE tenant_id = :tenant_id
           AND {time_col} >= :start_date AND {time_col} <= :end_date
-          AND {where_clause}
+          AND slug = :slug
         GROUP BY bucket, device_id
     """
 
-    # No nested aggregate functions.
-    assert not re.search(r"AVG\s*\(\s*AVG\s*\(", sql, re.IGNORECASE), (
-        "Raw-table SQL contains AVG(AVG(...)) — double-wrapping bug."
-    )
+    assert not re.search(r"AVG\s*\(\s*AVG\s*\(", sql, re.IGNORECASE)
     assert not re.search(r"MAX\s*\(\s*MAX\s*\(", sql, re.IGNORECASE)
     assert not re.search(r"MIN\s*\(\s*MIN\s*\(", sql, re.IGNORECASE)
-    # Single-level aggregates ARE present.
-    assert "AVG(heart_rate)" in sql
-    assert "MAX(heart_rate)" in sql
-    assert "MIN(heart_rate)" in sql
+    assert "AVG(value)" in sql
+    assert "MAX(value)" in sql
+    assert "MIN(value)" in sql
+    assert "slug = :slug" in sql
 
 
-def test_a8_generated_sql_for_cagg_uses_pre_aggregated_columns():
-    """A8: the cagg-path SQL uses _avg/_max/_min columns, not raw columns."""
-    col = "heart_rate"
-    avg_expr = f"AVG({col}_avg)"
-    max_expr = f"MAX({col}_max)"
-    min_expr = f"MIN({col}_min)"
+def test_generated_sql_for_cagg_uses_generic_columns():
+    """The CAgg-path SQL uses generic avg_val/max_val/min_val columns."""
+    avg_expr = "AVG(avg_val)"
+    max_expr = "MAX(max_val)"
+    min_expr = "MIN(min_val)"
     table_name = "telemetry_hourly"
 
-    sql = f"SELECT {avg_expr}, {max_expr}, {min_expr} FROM {table_name}"
+    sql = f"SELECT {avg_expr}, {max_expr}, {min_expr} FROM {table_name} WHERE slug = :slug"
 
-    assert "AVG(heart_rate_avg)" in sql
-    assert "MAX(heart_rate_max)" in sql
-    assert "MIN(heart_rate_min)" in sql
-    # Must NOT re-aggregate the raw column.
+    assert "AVG(avg_val)" in sql
+    assert "MAX(max_val)" in sql
+    assert "MIN(min_val)" in sql
     assert "AVG(AVG(" not in sql
+    assert "heart_rate_avg" not in sql
+
+
+# ---------------------------------------------------------------------------
+# Long-format: is_safe_slug guard stays (defence-in-depth even though slug
+# is now a bind parameter, not an interpolated identifier)
+# ---------------------------------------------------------------------------
+
+
+def test_is_safe_slug_guard_still_present():
+    """The ``is_safe_slug`` defence-in-depth guard must stay — it refuses to
+    query for obviously bogus slugs even though ``slug`` is now a bind
+    parameter (no SQL-injection surface). Sanity check on input."""
+    import inspect
+
+    from app.services import analytics_service
+
+    src = inspect.getsource(analytics_service)
+    assert "is_safe_slug(slug)" in src, (
+        "The is_safe_slug defence-in-depth guard must stay in the telemetry "
+        "query loop."
+    )

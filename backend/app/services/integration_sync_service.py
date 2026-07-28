@@ -138,30 +138,30 @@ async def apply_telemetry_split(
             b_def = b_defs_map[obs.biomarker_id]
             slug = (b_def.slug or "").lower()
             value = _obs_value(obs)
+            unit = None
+            if getattr(obs, "value_quantity", None):
+                unit = obs.value_quantity.get("unit")
 
-            hr = steps = cal = None
-            data_payload: dict = {}
-
-            if "8867-4" in slug or "heart-rate" in slug or slug == "heart_rate":
-                hr = value
-            elif "41950-7" in slug or "steps" in slug:
-                steps = value
-            elif "calories" in slug:
-                cal = value
-            else:
-                data_payload[slug] = value
-                if obs.value_quantity:
-                    data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "")
+            # Long-format hypertable: one row per (timestamp, device, slug).
+            # ``value`` is NOT NULL on the hypertable, so skip rows we can't
+            # extract a numeric value for (logged at debug; the FHIR path
+            # is the better home for non-numeric observations anyway).
+            if value is None:
+                logger.debug(
+                    "telemetry split: skipping obs %s (slug=%s) — no numeric value",
+                    getattr(obs, "id", None), slug,
+                )
+                continue
 
             telemetry_records.append(
                 TelemetryDataModel(
                     tenant_id=tenant_id,
                     device_id=device_id,
                     timestamp=obs.effective_datetime,
-                    heart_rate=hr,
-                    steps=steps,
-                    calories=cal,
-                    data=data_payload if data_payload else None,
+                    slug=slug,
+                    value=value,
+                    unit=unit,
+                    patient_id=getattr(obs, "patient_id", None),
                 )
             )
         else:

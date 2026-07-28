@@ -4,7 +4,7 @@ import functools
 import logging
 import threading
 from uuid import UUID
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 from sqlalchemy import select, delete, and_, update
 from sqlalchemy.ext.asyncio import (
@@ -507,35 +507,28 @@ async def migrate_biomarker_data(
                                     else None
                                 )
                             )
+                            if val is None:
+                                # Long-format hypertable requires NOT NULL
+                                # value; skip non-numeric observations.
+                                continue
 
-                            hr = (
-                                val
-                                if slug == "8867-4" or "heart-rate" in slug
-                                else None
-                            )
-                            steps = (
-                                val if slug == "41950-7" or "steps" in slug else None
-                            )
-                            cal = val if "calories" in slug else None
+                            unit = None
+                            if getattr(obs, "value_quantity", None):
+                                unit = obs.value_quantity.get("unit")
 
-                            data_payload = {}
-                            if not hr and not steps and not cal:
-                                data_payload[slug] = val
-                                data_payload[f"{slug}_unit"] = (
-                                    obs.value_quantity.get("unit", "")
-                                    if getattr(obs, "value_quantity", None)
-                                    else ""
-                                )
-
+                            # Long-format: one row per measurement, slug on
+                            # the row. ``patient_id`` is carried over from
+                            # the source observation so the inverse direction
+                            # can attribute rows without device-id resolution.
                             telemetry_records.append(
                                 TelemetryDataModel(
                                     tenant_id=obs.tenant_id,
                                     device_id="fhir_migration",
                                     timestamp=obs.effective_datetime,
-                                    heart_rate=hr,
-                                    steps=steps,
-                                    calories=cal,
-                                    data=data_payload if data_payload else None,
+                                    slug=slug,
+                                    value=float(val),
+                                    unit=unit,
+                                    patient_id=getattr(obs, "patient_id", None),
                                 )
                             )
                             obs_ids_to_delete.append(obs.id)
@@ -560,31 +553,19 @@ async def migrate_biomarker_data(
 
             else:
                 # Migrate Telemetry -> FHIR.
-                # Audit item C1: the original implementation picked the
-                # tenant's first patient and assigned ALL migrated
-                # observations to them — silently wrong in any multi-
-                # patient tenant (cross-patient data corruption).
-                #
-                # We now resolve the patient per telemetry row via
-                # ``TelemetryDataModel.device_id`` → ``UserIntegration``
-                # (instance_name match) → ``user_id`` → ``Patient`` where
-                # ``user_id == that AND tenant_id == tenant``. Rows that
-                # can't be attributed to exactly one patient are skipped
-                # and counted in ``meta["migration_skipped_no_patient"]``
-                # so the UI/admin can see the partial-success.
+                # Long-format hypertable: the query is a uniform
+                # ``WHERE slug = :slug`` (no per-column branching), and
+                # ``patient_id`` is persisted on each row at insert time —
+                # so the fragile ``device_id → UserIntegration → user_id →
+                # Patient`` attribution chain (audit C1) is no longer needed.
+                # Rows lacking ``patient_id`` fall back to the single-patient
+                # tenant default; if that's ambiguous they are skipped and
+                # counted in ``meta["migration_skipped_no_patient"]``.
                 stmt = select(TelemetryDataModel).where(
-                    TelemetryDataModel.tenant_id == tenant_id
+                    TelemetryDataModel.tenant_id == tenant_id,
+                    TelemetryDataModel.slug == slug,
                 )
-                if slug == "8867-4" or "heart-rate" in slug:
-                    stmt = stmt.where(TelemetryDataModel.heart_rate.is_not(None))
-                elif slug == "41950-7" or "steps" in slug:
-                    stmt = stmt.where(TelemetryDataModel.steps.is_not(None))
-                elif "calories" in slug:
-                    stmt = stmt.where(TelemetryDataModel.calories.is_not(None))
-                else:
-                    stmt = stmt.where(TelemetryDataModel.data.has_key(slug))
 
-                # Unfortunately, counting JSONB keys is complex across rows, but we can count total matches
                 count_stmt = select(func.count(TelemetryDataModel.id)).where(
                     stmt.whereclause
                 )
@@ -602,47 +583,10 @@ async def migrate_biomarker_data(
                     )
                     symbol = u_res.scalar_one_or_none() or ""
 
-                    # Pre-build a device_id -> patient_id resolver. We
-                    # load all tenant UserIntegrations once (typically a
-                    # small number) and all tenant Patients linked via
-                    # user_id, then join them in-memory.
-                    from app.models.user_integration import UserIntegration as _UInt
-
-                    uint_res = await db.execute(
-                        select(
-                            _UInt.id, _UInt.instance_name, _UInt.provider, _UInt.user_id
-                        ).where(_UInt.tenant_id == tenant_id)
-                    )
-                    uint_rows = uint_res.all()
-                    # Map device_id (instance_name OR provider) -> user_id
-                    device_to_user: dict[str, Any] = {}
-                    for _id, instance_name, provider_name, user_id in uint_rows:
-                        if instance_name:
-                            device_to_user.setdefault(instance_name, user_id)
-                        if provider_name:
-                            device_to_user.setdefault(provider_name, user_id)
-                    # "fhir_migration" was the historical device_id; treat
-                    # it as "no attribution possible" (we can't know who
-                    # the row belonged to).
-                    device_to_user.pop("fhir_migration", None)
-
-                    # Load all tenant patients that have user_id set.
-                    pat_res = await db.execute(
-                        select(Patient.id, Patient.user_id).where(
-                            Patient.tenant_id == tenant_id,
-                            Patient.user_id.is_not(None),
-                        )
-                    )
-                    user_to_patient: dict[Any, Any] = {
-                        user_id: patient_id
-                        for patient_id, user_id in pat_res.all()
-                        if user_id is not None
-                    }
-
-                    # Resolve a default patient for the "no device_id on
-                    # telemetry row" case: only safe if the tenant has
-                    # exactly ONE patient. Otherwise we MUST skip to avoid
-                    # the cross-patient attribution bug.
+                    # Single-patient-tenant fallback for rows that lack a
+                    # persisted patient_id (e.g. legacy mobile uploads that
+                    # didn't send one). Only safe when the tenant has exactly
+                    # one patient.
                     single_patient_res = await db.execute(
                         select(Patient.id).where(Patient.tenant_id == tenant_id)
                     )
@@ -653,150 +597,101 @@ async def migrate_biomarker_data(
                         else None
                     )
 
-                    # If we have NO way to attribute any row, abort early
-                    # with a clear error in meta_data.
-                    if not device_to_user and not default_patient_id:
-                        meta = dict(db_biomarker.meta_data or {})
-                        meta["migration_status"] = "failed"
-                        meta["migration_error"] = (
-                            "Cannot attribute telemetry rows to a patient: no "
-                            "UserIntegrations in tenant and tenant has != 1 patient. "
-                            "Telemetry rows require a device_id that maps to a "
-                            "UserIntegration, OR a single-patient tenant."
+                    processed = 0
+                    skipped_no_patient = 0
+                    while processed < total_records:
+                        tel_res = await db.execute(
+                            stmt.limit(batch_size).offset(processed)
                         )
-                        meta["migration_progress"] = 0
+                        telemetry_records = tel_res.scalars().all()
+
+                        if not telemetry_records:
+                            break
+
+                        fhir_records = []
+                        for tr in telemetry_records:
+                            # Long-format: value + unit live directly on
+                            # the row.
+                            val = tr.value
+
+                            resolved_patient_id = tr.patient_id or default_patient_id
+
+                            if resolved_patient_id is None:
+                                # Skip — we cannot attribute this row
+                                # without risking cross-patient corruption.
+                                skipped_no_patient += 1
+                                logger.debug(
+                                    "Skipping telemetry row %s: no patient_id "
+                                    "and tenant %s is multi-patient",
+                                    tr.id,
+                                    tenant_id,
+                                )
+                                # Still delete the row so it doesn't
+                                # reappear on the next toggle.
+                                await db.delete(tr)
+                                continue
+
+                            unit = tr.unit or symbol
+                            obs = Observation(
+                                tenant_id=tr.tenant_id,
+                                patient_id=resolved_patient_id,
+                                subject={
+                                    "reference": f"Patient/{resolved_patient_id}"
+                                },
+                                status="final",
+                                code={
+                                    "coding": [
+                                        {
+                                            "system": db_biomarker.coding_system.fhir_system
+                                            if db_biomarker.coding_system
+                                            else "http://loinc.org",
+                                            "code": db_biomarker.code
+                                            or db_biomarker.slug,
+                                            "display": db_biomarker.name,
+                                        }
+                                    ],
+                                    "text": db_biomarker.name,
+                                },
+                                effective_datetime=tr.timestamp,
+                                value_quantity={
+                                    "value": float(val),
+                                    "unit": unit,
+                                },
+                                raw_value=float(val),
+                                normalized_value=float(val),
+                                biomarker_id=db_biomarker.id,
+                            )
+                            fhir_records.append(obs)
+                            # Long-format: one slug per row, so the row is
+                            # fully consumed — delete it.
+                            await db.delete(tr)
+
+                        if fhir_records:
+                            db.add_all(fhir_records)
+
+                        processed += len(telemetry_records)
+
+                        # Update progress
+                        progress = int((processed / total_records) * 100)
+                        meta = dict(db_biomarker.meta_data or {})
+                        meta["migration_status"] = "in_progress"
+                        meta["migration_progress"] = progress
+                        if skipped_no_patient:
+                            meta["migration_skipped_no_patient"] = (
+                                skipped_no_patient
+                            )
                         db_biomarker.meta_data = meta
                         flag_modified(db_biomarker, "meta_data")
                         await db.commit()
-                        logger.error(
-                            f"Aborting telemetry->FHIR migration for biomarker {biomarker_id}: "
-                            f"{meta['migration_error']}"
+
+                    if skipped_no_patient:
+                        logger.warning(
+                            "Telemetry->FHIR migration for biomarker %s: "
+                            "%d of %d rows skipped (could not attribute to a patient)",
+                            biomarker_id,
+                            skipped_no_patient,
+                            total_records,
                         )
-                    else:
-                        processed = 0
-                        skipped_no_patient = 0
-                        while processed < total_records:
-                            tel_res = await db.execute(
-                                stmt.limit(batch_size).offset(processed)
-                            )
-                            telemetry_records = tel_res.scalars().all()
-
-                            if not telemetry_records:
-                                break
-
-                            fhir_records = []
-                            for tr in telemetry_records:
-                                if slug == "8867-4" or "heart-rate" in slug:
-                                    val = tr.heart_rate
-                                    tr.heart_rate = None
-                                elif slug == "41950-7" or "steps" in slug:
-                                    val = tr.steps
-                                    tr.steps = None
-                                elif "calories" in slug:
-                                    val = tr.calories
-                                    tr.calories = None
-                                else:
-                                    val = tr.data.get(slug) if tr.data else None
-                                    if tr.data and slug in tr.data:
-                                        del tr.data[slug]
-                                        flag_modified(tr, "data")
-
-                                # Resolve patient for this row.
-                                # Priority: device_id → user_id → patient_id;
-                                # fallback: single-patient tenant default.
-                                resolved_patient_id = None
-                                if tr.device_id and tr.device_id in device_to_user:
-                                    uid = device_to_user[tr.device_id]
-                                    resolved_patient_id = user_to_patient.get(uid)
-                                if resolved_patient_id is None:
-                                    resolved_patient_id = default_patient_id
-
-                                if resolved_patient_id is None:
-                                    # Skip — we cannot attribute this row
-                                    # without risking cross-patient
-                                    # corruption (audit C1).
-                                    skipped_no_patient += 1
-                                    logger.debug(
-                                        "Skipping telemetry row %s: device_id=%s "
-                                        "does not map to a patient in tenant %s",
-                                        tr.id,
-                                        tr.device_id,
-                                        tenant_id,
-                                    )
-                                    # Still clear out the value so the row
-                                    # can be pruned if empty.
-                                elif val is not None:
-                                    obs = Observation(
-                                        tenant_id=tr.tenant_id,
-                                        patient_id=resolved_patient_id,
-                                        subject={
-                                            "reference": f"Patient/{resolved_patient_id}"
-                                        },
-                                        status="final",
-                                        code={
-                                            "coding": [
-                                                {
-                                                    "system": db_biomarker.coding_system.fhir_system
-                                                    if db_biomarker.coding_system
-                                                    else "http://loinc.org",
-                                                    "code": db_biomarker.code
-                                                    or db_biomarker.slug,
-                                                    "display": db_biomarker.name,
-                                                }
-                                            ],
-                                            "text": db_biomarker.name,
-                                        },
-                                        effective_datetime=tr.timestamp,
-                                        value_quantity={
-                                            "value": float(val)
-                                            if val is not None
-                                            else None,
-                                            "unit": symbol,
-                                        },
-                                        raw_value=float(val)
-                                        if val is not None
-                                        else None,
-                                        normalized_value=float(val)
-                                        if val is not None
-                                        else None,
-                                        biomarker_id=db_biomarker.id,
-                                    )
-                                    fhir_records.append(obs)
-
-                                is_empty = (
-                                    tr.heart_rate is None
-                                    and tr.steps is None
-                                    and tr.calories is None
-                                    and (tr.data is None or len(tr.data) == 0)
-                                )
-                                if is_empty:
-                                    await db.delete(tr)
-
-                            if fhir_records:
-                                db.add_all(fhir_records)
-
-                            processed += len(telemetry_records)
-
-                            progress = int((processed / total_records) * 100)
-                            meta = dict(db_biomarker.meta_data or {})
-                            meta["migration_status"] = "in_progress"
-                            meta["migration_progress"] = progress
-                            if skipped_no_patient:
-                                meta["migration_skipped_no_patient"] = (
-                                    skipped_no_patient
-                                )
-                            db_biomarker.meta_data = meta
-                            flag_modified(db_biomarker, "meta_data")
-                            await db.commit()
-
-                        if skipped_no_patient:
-                            logger.warning(
-                                "Telemetry->FHIR migration for biomarker %s: "
-                                "%d of %d rows skipped (could not attribute to a patient)",
-                                biomarker_id,
-                                skipped_no_patient,
-                                total_records,
-                            )
 
             # Mark as completed
             meta = dict(db_biomarker.meta_data or {})

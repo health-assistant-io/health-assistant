@@ -188,15 +188,17 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_system_settings_key'), ['key'], unique=True)
         batch_op.create_index(batch_op.f('ix_system_settings_updated_at'), ['updated_at'], unique=False)
 
+    # Long-format hypertable: one row per (timestamp, device, slug). See
+    # migration t1e2l3o4n5g6_telemetry_long_format.py for the rationale.
     op.create_table('telemetry_data',
     sa.Column('tenant_id', sa.UUID(), nullable=True),
     sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('timestamp', sa.DateTime(timezone=True), nullable=False),
     sa.Column('device_id', sa.String(length=255), nullable=False),
-    sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('heart_rate', sa.Float(), nullable=True),
-    sa.Column('steps', sa.Float(), nullable=True),
-    sa.Column('calories', sa.Float(), nullable=True),
+    sa.Column('slug', sa.String(length=255), nullable=False),
+    sa.Column('value', sa.Float(), nullable=False),
+    sa.Column('unit', sa.String(length=64), nullable=True),
+    sa.Column('patient_id', sa.UUID(), nullable=True),
     sa.Column('created_by', sa.UUID(), nullable=True),
     sa.Column('updated_by', sa.UUID(), nullable=True),
     sa.Column('version', sa.Integer(), nullable=True),
@@ -205,8 +207,10 @@ def upgrade() -> None:
     with op.batch_alter_table('telemetry_data', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_telemetry_data_device_id'), ['device_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_telemetry_data_tenant_id'), ['tenant_id'], unique=False)
-        batch_op.create_index('ix_telemetry_data_tenant_timestamp', ['tenant_id', 'timestamp'], unique=False)
+        batch_op.create_index(batch_op.f('ix_telemetry_data_patient_id'), ['patient_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_telemetry_data_timestamp'), ['timestamp'], unique=False)
+        batch_op.create_index('ix_telemetry_data_tenant_slug_ts', ['tenant_id', 'slug', 'timestamp'], unique=False)
+        batch_op.create_index('ix_telemetry_data_tenant_device_ts', ['tenant_id', 'device_id', 'timestamp'], unique=False)
 
     op.create_table('tenants',
     sa.Column('name', sa.String(length=255), nullable=False),
@@ -1687,11 +1691,12 @@ def upgrade() -> None:
             "SELECT create_hypertable('telemetry_data', 'timestamp', "
             "if_not_exists => TRUE, migrate_data => TRUE)"
         )
-        # Compression settings (segment by device_id, order by timestamp desc).
+        # Compression: segment by the query-pruning keys so both tenant-wide
+        # and per-device queries skip irrelevant compressed chunks.
         op.execute(
             "ALTER TABLE telemetry_data SET ("
             "timescaledb.compress, "
-            "timescaledb.compress_segmentby = 'device_id', "
+            "timescaledb.compress_segmentby = 'tenant_id, device_id, slug', "
             "timescaledb.compress_orderby = 'timestamp DESC'"
             ")"
         )
@@ -1703,26 +1708,23 @@ def upgrade() -> None:
             "SELECT add_retention_policy('telemetry_data', "
             "INTERVAL '2 years', if_not_exists => true)"
         )
-        # Hourly continuous aggregate.
+        # Generic continuous aggregates (long-format: GROUP BY slug handles
+        # every current + future telemetry biomarker). One definition per
+        # horizon — no DDL when a new biomarker is flagged is_telemetry=True.
         op.execute(
             """
             CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry_hourly
             WITH (timescaledb.continuous) AS
             SELECT
                 time_bucket('1 hour', timestamp) AS bucket,
-                tenant_id,
-                device_id,
-                AVG(heart_rate) AS heart_rate_avg,
-                MIN(heart_rate) AS heart_rate_min,
-                MAX(heart_rate) AS heart_rate_max,
-                AVG(steps) AS steps_avg,
-                MIN(steps) AS steps_min,
-                MAX(steps) AS steps_max,
-                AVG(calories) AS calories_avg,
-                MIN(calories) AS calories_min,
-                MAX(calories) AS calories_max
+                tenant_id, device_id, patient_id, slug,
+                AVG(value) AS avg_val,
+                MIN(value) AS min_val,
+                MAX(value) AS max_val,
+                SUM(value) AS sum_val,
+                COUNT(*)   AS sample_count
             FROM telemetry_data
-            GROUP BY bucket, tenant_id, device_id
+            GROUP BY 1, 2, 3, 4, 5
             WITH NO DATA
             """
         )
@@ -1733,26 +1735,20 @@ def upgrade() -> None:
             "schedule_interval => INTERVAL '1 hour', "
             "if_not_exists => true)"
         )
-        # Daily continuous aggregate.
         op.execute(
             """
             CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry_daily
             WITH (timescaledb.continuous) AS
             SELECT
                 time_bucket('1 day', timestamp) AS bucket,
-                tenant_id,
-                device_id,
-                AVG(heart_rate) AS heart_rate_avg,
-                MIN(heart_rate) AS heart_rate_min,
-                MAX(heart_rate) AS heart_rate_max,
-                AVG(steps) AS steps_avg,
-                MIN(steps) AS steps_min,
-                MAX(steps) AS steps_max,
-                AVG(calories) AS calories_avg,
-                MIN(calories) AS calories_min,
-                MAX(calories) AS calories_max
+                tenant_id, device_id, patient_id, slug,
+                AVG(value) AS avg_val,
+                MIN(value) AS min_val,
+                MAX(value) AS max_val,
+                SUM(value) AS sum_val,
+                COUNT(*)   AS sample_count
             FROM telemetry_data
-            GROUP BY bucket, tenant_id, device_id
+            GROUP BY 1, 2, 3, 4, 5
             WITH NO DATA
             """
         )
@@ -1760,6 +1756,30 @@ def upgrade() -> None:
             "SELECT add_continuous_aggregate_policy('telemetry_daily', "
             "start_offset => INTERVAL '7 days', "
             "end_offset => INTERVAL '1 day', "
+            "schedule_interval => INTERVAL '1 day', "
+            "if_not_exists => true)"
+        )
+        op.execute(
+            """
+            CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry_monthly
+            WITH (timescaledb.continuous) AS
+            SELECT
+                time_bucket('1 month', timestamp) AS bucket,
+                tenant_id, device_id, patient_id, slug,
+                AVG(value) AS avg_val,
+                MIN(value) AS min_val,
+                MAX(value) AS max_val,
+                SUM(value) AS sum_val,
+                COUNT(*)   AS sample_count
+            FROM telemetry_data
+            GROUP BY 1, 2, 3, 4, 5
+            WITH NO DATA
+            """
+        )
+        op.execute(
+            "SELECT add_continuous_aggregate_policy('telemetry_monthly', "
+            "start_offset => INTERVAL '12 months', "
+            "end_offset => INTERVAL '1 month', "
             "schedule_interval => INTERVAL '1 day', "
             "if_not_exists => true)"
         )
@@ -1775,6 +1795,11 @@ def downgrade() -> None:
     # Drop timescaledb objects first (materialized views + policies) but
     # leave telemetry_data itself for the normal DROP TABLE chain below.
     if _has_timescaledb():
+        op.execute(
+            "SELECT remove_continuous_aggregate_policy('telemetry_monthly', "
+            "if_exists => true)"
+        )
+        op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_monthly CASCADE")
         op.execute(
             "SELECT remove_continuous_aggregate_policy('telemetry_daily', "
             "if_exists => true)"

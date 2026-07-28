@@ -569,7 +569,9 @@ class ImportService:
                         for o in mapped_obs:
                             b_def = b_dict.get(o.biomarker_id)
                             if b_def and b_def.is_telemetry:
-                                slug = b_def.slug.lower() if b_def.slug else ""
+                                slug = (
+                                    b_def.slug.lower() if b_def.slug else ""
+                                )
                                 val = (
                                     getattr(o, "normalized_value", None)
                                     or getattr(o, "raw_value", None)
@@ -579,38 +581,23 @@ class ImportService:
                                         else None
                                     )
                                 )
-                                if val is not None:
-                                    hr = (
-                                        val
-                                        if slug == "8867-4" or "heart-rate" in slug
-                                        else None
-                                    )
-                                    steps = (
-                                        val
-                                        if slug == "41950-7" or "steps" in slug
-                                        else None
-                                    )
-                                    cal = val if "calories" in slug else None
+                                if val is None:
+                                    continue
+                                unit = None
+                                if getattr(o, "value_quantity", None):
+                                    unit = o.value_quantity.get("unit")
 
-                                    data_payload = {}
-                                    if not hr and not steps and not cal:
-                                        data_payload[slug] = val
-                                        if getattr(o, "value_quantity", None):
-                                            data_payload[f"{slug}_unit"] = (
-                                                o.value_quantity.get("unit", "")
-                                            )
-
-                                    telemetry_records.append(
-                                        TelemetryDataModel(
-                                            tenant_id=o.tenant_id,
-                                            device_id="fhir_import",
-                                            timestamp=o.effective_datetime,
-                                            heart_rate=hr,
-                                            steps=steps,
-                                            calories=cal,
-                                            data=data_payload if data_payload else None,
-                                        )
+                                telemetry_records.append(
+                                    TelemetryDataModel(
+                                        tenant_id=o.tenant_id,
+                                        device_id="fhir_import",
+                                        timestamp=o.effective_datetime,
+                                        slug=slug,
+                                        value=float(val),
+                                        unit=unit,
+                                        patient_id=getattr(o, "patient_id", None),
                                     )
+                                )
 
                         if telemetry_records:
                             self.db.add_all(telemetry_records)
@@ -1745,18 +1732,32 @@ class ImportService:
     async def _restore_telemetry(
         self, payload: List[Dict[str, Any]], tenant_id: UUID
     ) -> int:
+        """Restore long-format telemetry rows from an export sidecar.
+
+        Each item must carry ``slug`` + ``value`` (the long-format contract);
+        ``unit`` / ``patient_id`` are optional. Items missing the required
+        fields are skipped with a warning.
+        """
         count = 0
         for item in payload:
             try:
+                slug = item.get("slug")
+                value = item.get("value")
+                if slug is None or value is None:
+                    logger.warning(
+                        "telemetry row skipped: missing slug or value (%r)",
+                        item,
+                    )
+                    continue
                 row = TelemetryDataModel(
                     tenant_id=tenant_id,
                     device_id=item.get("device_id") or "imported",
                     timestamp=_parse_dt(item.get("timestamp"))
                     or datetime.now(timezone.utc),
-                    data=item.get("data"),
-                    heart_rate=item.get("heart_rate"),
-                    steps=item.get("steps"),
-                    calories=item.get("calories"),
+                    slug=slug,
+                    value=float(value),
+                    unit=item.get("unit"),
+                    patient_id=item.get("patient_id"),
                 )
                 self.db.add(row)
                 count += 1

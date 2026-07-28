@@ -1,4 +1,5 @@
-"""Tests for audit items A6, B3, F8 (telemetry endpoints/service).
+"""Tests for audit items A6, B3, F8 (telemetry endpoints/service) —
+long-format hypertable edition.
 
 A6: ``/telemetry/anomalies`` previously called
     ``await detector.detect_biomarker_anomalies(device_id, metric, period)``
@@ -11,6 +12,11 @@ B3: ``/telemetry/data``, ``/data/summary``, ``/anomalies`` took only
 
 F8: ``telemetry_service.get_telemetry_data`` and ``.get_telemetry_summary``
     were stubs returning ``[]`` / a zero dict.
+
+Long-format rewrite (migration ``t1e2l3o4n5g6``): the service queries
+``WHERE slug = :slug`` directly — no ``_METRIC_COLUMNS`` alias map, no
+column-attribute lookup. The endpoint ``metric`` parameter is now treated
+as a biomarker slug.
 """
 import inspect
 from datetime import datetime, timezone
@@ -69,10 +75,7 @@ def _clear_overrides():
 
 
 def test_anomaly_detector_method_is_sync():
-    """AnomalyDetector.detect_biomarker_anomalies must remain synchronous.
-
-    regression was caused by an ``await`` on this method. Regression guard.
-    """
+    """AnomalyDetector.detect_biomarker_anomalies must remain synchronous."""
     from app.services.anomaly_detector import AnomalyDetector
 
     assert not inspect.iscoroutinefunction(
@@ -84,7 +87,7 @@ def test_anomaly_detector_method_is_sync():
 
 
 def test_get_telemetry_anomalies_is_async_and_takes_tenant():
-    """The new wrapper must be async, return a list, and require tenant_id."""
+    """The wrapper must be async, return a list, and require tenant_id."""
     from app.services.telemetry_service import get_telemetry_anomalies
 
     sig = inspect.signature(get_telemetry_anomalies)
@@ -106,12 +109,12 @@ async def test_anomalies_endpoint_does_not_crash(tenant_a_user, async_client):
         ):
             response = await async_client.get(
                 "/api/v1/telemetry/anomalies",
-                params={"device_id": DEVICE_X, "metric": "heart_rate"},
+                params={"device_id": DEVICE_X, "metric": "heart-rate"},
             )
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["device_id"] == DEVICE_X
-        assert body["metric"] == "heart_rate"
+        assert body["metric"] == "heart-rate"
         assert body["anomalies"] == []
     finally:
         _clear_overrides()
@@ -135,7 +138,7 @@ async def test_anomalies_endpoint_passes_tenant_id(tenant_a_user, async_client):
         ):
             await async_client.get(
                 "/api/v1/telemetry/anomalies",
-                params={"device_id": DEVICE_X, "metric": "heart_rate"},
+                params={"device_id": DEVICE_X, "metric": "heart-rate"},
             )
         assert captured["tenant_id"] == TENANT_A, (
             "Telemetry anomalies endpoint did not pass the caller's tenant_id"
@@ -183,7 +186,7 @@ async def test_get_summary_endpoint_passes_tenant_id(tenant_a_user, async_client
     try:
         captured = {}
 
-        async def fake_summary(db, tenant_id, target_date, device_id=None):
+        async def fake_summary(db, tenant_id, target_date, device_id=None, metrics=None):
             captured.update(tenant_id=tenant_id, device_id=device_id)
             return {"date": target_date}
 
@@ -200,18 +203,8 @@ async def test_get_summary_endpoint_passes_tenant_id(tenant_a_user, async_client
 
 
 # ---------------------------------------------------------------------------
-# F8: service-level tests with a fake session (no longer stubs)
+# F8: service-level tests with a fake session (long-format queries)
 # ---------------------------------------------------------------------------
-
-
-class _Scalar:
-    """Mimics sqlalchemy Row.scalar() — returns first column."""
-
-    def __init__(self, value):
-        self._value = value
-
-    def scalar(self):
-        return self._value
 
 
 class _FakeResult:
@@ -236,20 +229,21 @@ class _FakeResult:
 class FakeAsyncSession:
     """Minimal AsyncSession fake: records the query, returns canned results."""
 
-    def __init__(self, rows=None, aggregate_row=None):
+    def __init__(self, rows=None, aggregate_rows=None):
         self._rows = rows or []
-        self._aggregate_row = aggregate_row
+        self._aggregate_rows = aggregate_rows
         self.last_query = None
         self.added: list = []
         self.committed = False
         self.rolled_back = False
+        self._rowcount = None
 
     async def execute(self, query):
         self.last_query = query
-        # Heuristic: aggregate queries (min/max/sum) use .one()
         compiled = str(query)
-        if "min(" in compiled and "max(" in compiled:
-            return _FakeResult(one_row=self._aggregate_row)
+        # Summary aggregates use GROUP BY slug + min/max/avg/sum/count.
+        if "group by" in compiled.lower() and "slug" in compiled.lower() and "count" in compiled.lower():
+            return _FakeResult(rows=self._aggregate_rows or [])
         return _FakeResult(rows=self._rows)
 
     def add_all(self, records):
@@ -262,18 +256,17 @@ class FakeAsyncSession:
         self.rolled_back = True
 
 
-def _make_telemetry_row(tenant_id, device_id, ts, hr=None, steps=None, cal=None):
+def _make_telemetry_row(tenant_id, device_id, ts, slug="heart-rate", value=70.0, unit=None):
     from app.models.telemetry_model import TelemetryDataModel
 
-    row = TelemetryDataModel(
+    return TelemetryDataModel(
         tenant_id=tenant_id,
         device_id=device_id,
         timestamp=ts,
-        heart_rate=hr,
-        steps=steps,
-        calories=cal,
+        slug=slug,
+        value=value,
+        unit=unit,
     )
-    return row
 
 
 @pytest.mark.asyncio
@@ -309,7 +302,7 @@ async def test_get_telemetry_data_rejects_invalid_tenant():
         end_date="2026-01-02T00:00:00Z",
     )
     assert result == []
-    assert session.last_query is None  # never queried
+    assert session.last_query is None
 
 
 @pytest.mark.asyncio
@@ -330,17 +323,15 @@ async def test_get_telemetry_data_rejects_bad_dates():
 
 
 @pytest.mark.asyncio
-async def test_get_telemetry_data_metric_filter():
-    """The ``metrics`` parameter filters the returned JSONB ``data`` dict."""
+async def test_get_telemetry_data_metrics_filter_uses_slug():
+    """Long-format: the ``metrics`` param filters by ``slug IN (...)`` —
+    not by JSONB keys."""
     from app.services.telemetry_service import get_telemetry_data
 
     ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    row = _make_telemetry_row(
-        TENANT_A, DEVICE_X, ts, hr=70,
-        # ``data`` JSONB carries multiple metrics
-    )
-    row.data = {"heart_rate": 70, "stress": 5, "resp_rate": 16}
-    session = FakeAsyncSession(rows=[row])
+    row1 = _make_telemetry_row(TENANT_A, DEVICE_X, ts, slug="heart-rate", value=70.0)
+    row2 = _make_telemetry_row(TENANT_A, DEVICE_X, ts, slug="stress-level", value=5.0)
+    session = FakeAsyncSession(rows=[row1, row2])
 
     result = await get_telemetry_data(
         session,
@@ -348,35 +339,47 @@ async def test_get_telemetry_data_metric_filter():
         device_id=DEVICE_X,
         start_date="2026-01-01T00:00:00Z",
         end_date="2026-01-02T00:00:00Z",
-        metrics="heart_rate,stress",
+        metrics="heart-rate",
     )
-    assert len(result) == 1
-    # Only the requested metrics survive
-    assert set(result[0]["data"].keys()) == {"heart_rate", "stress"}
+    sql = str(session.last_query).lower()
+    # The filter is now a slug IN (...) predicate against a real column.
+    assert "slug" in sql
+    # Result serializes via to_dict() (long-format shape).
+    assert all("slug" in r and "value" in r for r in result)
 
 
 @pytest.mark.asyncio
-async def test_get_telemetry_summary_aggregates():
-    """F8: summary runs a real aggregate query and returns computed stats."""
+async def test_get_telemetry_summary_aggregates_per_slug():
+    """F8: summary groups by slug and returns ``{slug: {min,max,avg,sum,count}}``."""
     from app.services.telemetry_service import get_telemetry_summary
 
-    # Mock aggregate row returned by SELECT min/max/avg/sum
-    class _Agg:
-        hr_min = 60.0
-        hr_max = 90.0
-        hr_avg = 75.0
-        steps_sum = 5400
-        cal_sum = 1800.0
+    # Fake aggregated rows — one per slug (the new GROUP BY slug shape).
+    class _AggRow:
+        def __init__(self, slug, mn, mx, avg, sm, cnt):
+            self.slug = slug
+            self.mn = mn
+            self.mx = mx
+            self.avg = avg
+            self.sm = sm
+            self.cnt = cnt
 
-    session = FakeAsyncSession(aggregate_row=_Agg())
+    aggregate_rows = [
+        _AggRow("heart-rate", 60.0, 90.0, 75.0, 0.0, 10),
+        _AggRow("steps", 100.0, 5000.0, 2500.0, 5400.0, 3),
+    ]
+    session = FakeAsyncSession(aggregate_rows=aggregate_rows)
+
     summary = await get_telemetry_summary(
         session,
         tenant_id=TENANT_A,
         target_date="2026-01-01",
     )
-    assert summary["steps"] == 5400
-    assert summary["calories"] == 1800.0
-    assert summary["heart_rate"] == {"min": 60.0, "max": 90.0, "avg": 75.0}
+    assert summary["date"] == "2026-01-01"
+    metrics = summary["metrics"]
+    assert "heart-rate" in metrics
+    assert metrics["heart-rate"] == {"min": 60.0, "max": 90.0, "avg": 75.0, "sum": 0.0, "count": 10}
+    assert metrics["steps"]["sum"] == 5400.0
+    assert metrics["steps"]["count"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -385,30 +388,26 @@ async def test_get_telemetry_summary_aggregates():
 
 
 @pytest.mark.asyncio
-async def test_get_telemetry_anomalies_invalid_metric_returns_empty():
-    """An unknown metric alias returns [] instead of erroring."""
+async def test_get_telemetry_anomalies_unknown_slug_returns_empty():
+    """A slug with no rows returns [] (no error)."""
     from app.services.telemetry_service import get_telemetry_anomalies
 
     session = FakeAsyncSession(rows=[])
     result = await get_telemetry_anomalies(
-        session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="unknown_metric"
+        session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="unknown-slug"
     )
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_get_telemetry_anomalies_invokes_detector_correctly():
-    """A6: the wrapper must call the sync detector with (historical, new).
-
-    Confirms the previous broken pattern (await + wrong arity) is gone.
-    """
+    """A6: the wrapper must call the sync detector with (historical, new)."""
     from app.services import telemetry_service as svc
 
-    # Two rows: detector needs len>=2 (1 historical + 1 new)
     ts1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     ts2 = datetime(2026, 1, 2, tzinfo=timezone.utc)
 
-    # The anomalies query selects (timestamp, column) tuples, not full rows
+    # Long-format: the anomalies query selects (timestamp, value) tuples.
     fake_rows = [(ts1, 70.0), (ts2, 195.0)]
     session = FakeAsyncSession(rows=fake_rows)
 
@@ -421,11 +420,10 @@ async def test_get_telemetry_anomalies_invokes_detector_correctly():
 
     with patch.object(svc.AnomalyDetector, "detect_biomarker_anomalies", fake_detect):
         result = await svc.get_telemetry_anomalies(
-            session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="heart_rate"
+            session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="heart-rate"
         )
 
     assert result == [{"type": "statistical_anomaly", "severity": "critical"}]
-    # The wrapper correctly used all-but-last as historical, last as new
     assert captured["historical"] == [{"value": 70.0}]
     assert captured["new_value"] == {"value": 195.0}
 
@@ -438,10 +436,27 @@ async def test_get_telemetry_anomalies_is_tenant_scoped():
     ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
     session = FakeAsyncSession(rows=[(ts, 70.0), (ts, 72.0)])
     await get_telemetry_anomalies(
-        session, tenant_id=TENANT_B, device_id=DEVICE_Y, metric="heart_rate"
+        session, tenant_id=TENANT_B, device_id=DEVICE_Y, metric="heart-rate"
     )
-    sql = str(session.last_query)
-    assert "tenant_id" in sql.lower()
+    sql = str(session.last_query).lower()
+    assert "tenant_id" in sql
+    # Long-format: query filters WHERE slug = :slug, not column-specific.
+    assert "slug" in sql
+
+
+@pytest.mark.asyncio
+async def test_get_telemetry_anomalies_query_filters_by_slug():
+    """Long-format contract: the anomalies query must filter ``slug = :slug``
+    rather than resolving a column name from an alias map."""
+    from app.services.telemetry_service import get_telemetry_anomalies
+
+    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    session = FakeAsyncSession(rows=[(ts, 70.0), (ts, 72.0)])
+    await get_telemetry_anomalies(
+        session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="spo2"
+    )
+    sql = str(session.last_query).lower()
+    assert "slug" in sql, "Anomalies query must use the slug column directly"
 
 
 # ---------------------------------------------------------------------------
@@ -472,3 +487,21 @@ async def test_upload_endpoint_passes_tenant_id(tenant_a_user, async_client):
         assert captured["tenant_id"] == TENANT_A
     finally:
         _clear_overrides()
+
+
+# ---------------------------------------------------------------------------
+# Source-level guard: no _METRIC_COLUMNS alias map (long-format contract)
+# ---------------------------------------------------------------------------
+
+
+def test_telemetry_service_has_no_metric_columns_alias_map():
+    """Long-format contract: the service must not carry the ``_METRIC_COLUMNS``
+    alias map or ``_column_for`` resolver — slugs are queried directly."""
+    from app.services import telemetry_service as svc
+
+    assert not hasattr(svc, "_METRIC_COLUMNS"), (
+        "_METRIC_COLUMNS alias map must be deleted — long-format queries slugs directly"
+    )
+    assert not hasattr(svc, "_column_for"), (
+        "_column_for resolver must be deleted — long-format queries slugs directly"
+    )

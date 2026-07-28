@@ -71,15 +71,21 @@ async def get_telemetry_data_endpoint(
 async def get_telemetry_summary_endpoint(
     date: str,
     device_id: str = None,
+    metrics: str = Query(None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get daily summary for telemetry data (tenant-scoped)."""
+    """Get daily summary for telemetry data (tenant-scoped).
+
+    ``metrics`` is an optional comma-separated list of biomarker slugs; when
+    omitted, every slug observed on ``date`` is summarized.
+    """
     summary = await get_telemetry_summary(
         db,
         tenant_id=current_user.tenant_id,
         target_date=date,
         device_id=device_id,
+        metrics=metrics,
     )
     return summary
 

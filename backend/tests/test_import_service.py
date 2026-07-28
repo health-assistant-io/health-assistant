@@ -834,13 +834,33 @@ async def test_restore_sidecar_telemetry_inserts_rows():
     db.flush = AsyncMock()
     svc = ImportService(db)
     payload = [
-        {"device_id": "d1", "timestamp": "2026-06-18T10:00:00+00:00", "heart_rate": 72},
-        {"device_id": "d1", "timestamp": "2026-06-18T10:01:00+00:00", "steps": 10},
+        {"device_id": "d1", "timestamp": "2026-06-18T10:00:00+00:00", "slug": "heart-rate", "value": 72.0, "unit": "bpm"},
+        {"device_id": "d1", "timestamp": "2026-06-18T10:01:00+00:00", "slug": "steps", "value": 10.0},
     ]
     created, errors, warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
     assert created["telemetry"] == 2
     assert errors == []
     assert db.add.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_restore_sidecar_telemetry_skips_rows_missing_required_fields():
+    """Long-format rows must carry ``slug`` + ``value``; rows missing either
+    are skipped with a warning (no crash)."""
+    tid = uuid.uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    svc = ImportService(db)
+    payload = [
+        {"device_id": "d1", "timestamp": "2026-06-18T10:00:00+00:00", "slug": "heart-rate"},  # missing value
+        {"device_id": "d1", "timestamp": "2026-06-18T10:01:00+00:00", "value": 10.0},  # missing slug
+        {"device_id": "d1", "timestamp": "2026-06-18T10:02:00+00:00", "slug": "steps", "value": 5.0},  # ok
+    ]
+    created, errors, warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
+    assert created["telemetry"] == 1
+    assert errors == []
+    assert db.add.call_count == 1
 
 
 @pytest.mark.asyncio
