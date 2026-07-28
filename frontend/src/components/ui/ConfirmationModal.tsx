@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { Portal } from './Portal';
 
 export const ConfirmationModal: React.FC = () => {
   const { confirmationModal, hideConfirmation } = useUIStore();
@@ -24,8 +25,15 @@ export const ConfirmationModal: React.FC = () => {
     hideConfirmation();
   };
 
+  // Portaled + z-popover so the confirmation floats ABOVE any open Modal
+  // (e.g. the catalog edit form). Modal.tsx uses z-modal (1000) and also
+  // portals to document.body; without the Portal here the confirmation
+  // renders earlier in the DOM (inline in Layout) and is painted under the
+  // form modal even at equal z-index. z-popover (1050) is the documented
+  // tier for "portalled overlays that must float ABOVE a modal".
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <Portal>
+      <div className="fixed inset-0 z-popover flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div role="dialog" aria-modal="true" className="bg-white dark:bg-dark-surface w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="p-6 overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
@@ -67,7 +75,8 @@ export const ConfirmationModal: React.FC = () => {
             {confirmLabel}
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 };
