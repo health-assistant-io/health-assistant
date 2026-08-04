@@ -43,28 +43,14 @@ jobs:
   test-backend:
     name: Run Backend Pytest Suite
     runs-on: ubuntu-latest
-    container:
-      # Pulled from Docker Hub; docker.gitea.com times out from the runner host.
-      image: gitea/runner-images:ubuntu-latest
-    services:
-      postgres:
-        image: timescale/timescaledb:latest-pg14
-        env:
-          POSTGRES_DB: health_assistant_test
-          POSTGRES_USER: admin
-          POSTGRES_PASSWORD: password
-        options: >-
-          --health-cmd "pg_isready -U admin -d health_assistant_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # NOTE: no `services:` block. Gitea act_runner v0.6.x runs every job inside
+    # a container (docker.gitea.com/runner-images:ubuntu-latest) and does NOT
+    # add service-name DNS aliases for `services:` containers — their actual
+    # container names are opaque GITEA-ACTIONS-TASK-… IDs, so neither
+    # "postgres" nor "localhost" resolves from the job container. Instead we
+    # start postgres + redis via `docker run` (the Docker socket is mounted in
+    # the job container) on the job's OWN network with explicit
+    # --network-alias, which makes them reliably resolvable by name.
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -76,6 +62,48 @@ jobs:
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
+      - name: Start database services on the job network
+        run: |
+          set -euo pipefail
+          # Clean up any orphans from a previous (crashed) run — act_runner
+          # does not reap manually-started sibling containers.
+          docker rm -f ha-test-postgres ha-test-redis 2>/dev/null || true
+
+          # Discover the job container's Docker network (the network act_runner
+          # created for this job). `hostname` inside the container is the
+          # container's short ID; the Docker socket is mounted so we can
+          # inspect ourselves + attach siblings to the same network.
+          JOB_CID="$(cat /etc/hostname)"
+          JOB_NET="$(docker inspect "$JOB_CID" \
+            --format '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' \
+            | head -n1)"
+          echo "Job container: $JOB_CID  Network: $JOB_NET"
+          echo "JOB_NET=$JOB_NET" >> "$GITHUB_ENV"
+
+          docker run -d --rm \
+            --name ha-test-postgres \
+            --network "$JOB_NET" \
+            --network-alias postgres \
+            -e POSTGRES_DB=health_assistant_test \
+            -e POSTGRES_USER=admin \
+            -e POSTGRES_PASSWORD=password \
+            timescale/timescaledb:latest-pg14
+
+          docker run -d --rm \
+            --name ha-test-redis \
+            --network "$JOB_NET" \
+            --network-alias redis \
+            redis:7-alpine
+
+          echo "Waiting for postgres to accept connections…"
+          for i in $(seq 1 30); do
+            if docker exec ha-test-postgres pg_isready -U admin -d health_assistant_test >/dev/null 2>&1; then
+              echo "postgres is ready"
+              break
+            fi
+            sleep 2
+          done
+
       - name: Install Backend Dependencies
         run: |
           cd backend
@@ -85,6 +113,8 @@ jobs:
         env:
           # Configure via parts (not DATABASE_URL) so config.py assembles the
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
+          # postgres + redis are reached by their --network-alias names set
+          # above (resolvable on the job's Docker network).
           POSTGRES_USER: admin
           POSTGRES_PASSWORD: password
           POSTGRES_HOST: postgres
@@ -97,6 +127,10 @@ jobs:
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
           pytest
+
+      - name: Stop database services
+        if: always()
+        run: docker rm -f ha-test-postgres ha-test-redis 2>/dev/null || true
 
   test-frontend:
     name: Run Frontend Lint & Build Test
