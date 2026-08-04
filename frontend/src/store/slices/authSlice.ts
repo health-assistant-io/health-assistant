@@ -36,8 +36,10 @@ interface AuthState {
   token: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  isDemoMode: boolean;
   isLoading: boolean;
   login: (token: string, refreshToken: string) => void;
+  setDemoMode: (demo: boolean) => void;
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
   initialize: () => void;
@@ -45,7 +47,7 @@ interface AuthState {
 
 // Check if token exists in localStorage
 const getInitialAuth = () => {
-  if (typeof window === 'undefined') return { token: null, refreshToken: null, isAuthenticated: false };
+  if (typeof window === 'undefined') return { token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false };
   
   const token = localStorage.getItem('accessToken');
   const refreshToken = localStorage.getItem('refreshToken');
@@ -55,7 +57,8 @@ const getInitialAuth = () => {
     return {
       token: null,
       refreshToken: null,
-      isAuthenticated: false
+      isAuthenticated: false,
+      isDemoMode: false
     };
   }
   
@@ -67,14 +70,16 @@ const getInitialAuth = () => {
     return {
       token: null,
       refreshToken: null,
-      isAuthenticated: false
+      isAuthenticated: false,
+      isDemoMode: false
     };
   }
   
   return {
     token,
     refreshToken,
-    isAuthenticated: true
+    isAuthenticated: true,
+    isDemoMode: payload.demo === true
   };
 };
 
@@ -101,10 +106,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: getInitialAuth().token,
   refreshToken: getInitialAuth().refreshToken,
   isAuthenticated: getInitialAuth().isAuthenticated,
+  isDemoMode: getInitialAuth().isDemoMode,
   isLoading: true,
   
   initialize: async () => {
-    const { token, refreshToken, isAuthenticated } = getInitialAuth();
+    const { token, refreshToken, isAuthenticated, isDemoMode } = getInitialAuth();
     
     // If we have a token but it might be expired, check with server
     if (token && isAuthenticated) {
@@ -118,30 +124,34 @@ export const useAuthStore = create<AuthState>((set) => ({
         if (!response.ok) {
           // Token is invalid or expired
           await clearAuthData();
-          set({ token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
+          set({ token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
           return;
         }
       } catch (error) {
         // Network error or other issue, assume token is invalid
         await clearAuthData();
-        set({ token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
+        set({ token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
         return;
       }
     }
     
-    set({ token, refreshToken, isAuthenticated, isLoading: false });
+    set({ token, refreshToken, isAuthenticated, isDemoMode, isLoading: false });
   },
   
   login: (token: string, refreshToken: string) => {
     localStorage.setItem('accessToken', token);
     localStorage.setItem('refreshToken', refreshToken);
+    const payload = validateToken(token);
     set({
       token,
       refreshToken,
       isAuthenticated: true,
+      isDemoMode: payload?.demo === true,
       isLoading: false
     });
   },
+
+  setDemoMode: (demo: boolean) => set({ isDemoMode: demo }),
   
   logout: async () => {
     await clearAuthData();
@@ -154,6 +164,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       token: null,
       refreshToken: null,
       isAuthenticated: false,
+      isDemoMode: false,
       isLoading: false
     });
     // Redirect to login page to ensure clean state

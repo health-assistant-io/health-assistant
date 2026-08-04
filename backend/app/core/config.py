@@ -1,6 +1,6 @@
 import secrets
 from pathlib import Path
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from typing import Optional
@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     VERSION: str = "0.4.0-rc.1"
     APP_ENV: str = "development"
     DEBUG: bool = False
+
+    # Demo mode — when true, the app auto-seeds a demo tenant + user (via
+    # scripts/seed_demo.py on boot) and exposes POST /auth/demo-login so the
+    # frontend can sign in with NO credentials. Intended for public/screenshot
+    # demos behind a firewall; NEVER enable on an instance that holds real
+    # data — it bypasses authentication entirely. Orthogonal to APP_ENV so it
+    # composes with the production boot-guards (the demo docker compose runs
+    # APP_ENV=production + DEMO_MODE=true). See dev/audits + CHANGELOG.
+    DEMO_MODE: bool = False
+    # The demo user. Aliased to the legacy HA_DEMO_EMAIL / HA_DEMO_PASSWORD
+    # env names so the existing demo docker compose + UI capture tooling keep
+    # working unchanged (single source of truth for "the demo credentials").
+    DEMO_USER_EMAIL: str = Field(
+        default="demo@healthassistant.local",
+        validation_alias=AliasChoices("DEMO_USER_EMAIL", "HA_DEMO_EMAIL"),
+    )
+    DEMO_USER_PASSWORD: str = Field(
+        default="Demo1234!",
+        validation_alias=AliasChoices("DEMO_USER_PASSWORD", "HA_DEMO_PASSWORD"),
+    )
 
     # Database
     POSTGRES_USER: str = "admin"
@@ -148,6 +168,30 @@ class Settings(BaseSettings):
             self.SETUP_TOKEN_MODE = "log"
         if self.SETUP_TOKEN_GRACE_MINUTES < 1:
             raise ValueError("SETUP_TOKEN_GRACE_MINUTES must be >= 1 minute.")
+        return self
+
+    @model_validator(mode="after")
+    def _warn_demo_mode(self) -> "Settings":
+        """Loud warning when DEMO_MODE is on.
+
+        Demo mode exposes /auth/demo-login (credential-free login as the demo
+        user) and is meant only for public demos / screenshot captures. We
+        allow it in any APP_ENV (the live demo deliberately runs in
+        production mode) but warn on every boot so an operator never
+        accidentally leaves it on for a real deployment.
+        """
+        if self.DEMO_MODE:
+            import logging
+
+            logging.warning(
+                "\n══════════════════════════════════════════════════════\n"
+                " ⚠️  DEMO MODE IS ENABLED\n"
+                " The app will auto-login anyone as the demo user (%s)\n"
+                " with NO credentials. Authentication is effectively off.\n"
+                " NEVER use this for an instance that holds real health data.\n"
+                "══════════════════════════════════════════════════════",
+                self.DEMO_USER_EMAIL,
+            )
         return self
 
     @model_validator(mode="after")

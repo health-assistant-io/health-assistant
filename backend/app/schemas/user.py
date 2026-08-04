@@ -76,6 +76,9 @@ class TokenData(BaseModel):
     aud: Optional[Any] = None
     iss: Optional[str] = None
     bound_patient_id: Optional[UUID] = None
+    # Demo-session flag (only on tokens issued by POST /auth/demo-login when
+    # DEMO_MODE is on). Lets the UI render the demo banner without a DB lookup.
+    demo: bool = False
 
     @property
     def email(self) -> Optional[str]:

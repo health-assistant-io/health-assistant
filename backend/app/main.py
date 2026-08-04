@@ -126,6 +126,19 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             _abort_or_warn(e, "Integration registry initialization")
 
+        # Demo mode — auto-seed the demo tenant + user + clinical data so the
+        # frontend can sign in with no credentials via POST /auth/demo-login.
+        # seed_demo.py is idempotent, so re-running on every boot is cheap
+        # (a few existence checks). See app/core/config.py DEMO_MODE + docs.
+        if settings.DEMO_MODE:
+            try:
+                logger.info("DEMO_MODE is on — seeding demo data...")
+                from scripts.seed_demo import seed as _seed_demo
+
+                await _seed_demo()
+            except Exception as e:
+                _abort_or_warn(e, "Demo data seeding")
+
         # First-run setup token. If the system is uninitialized (zero
         # users), prepare the setup token per SETUP_TOKEN_MODE and log
         # mode-specific guidance. The wizard reads the mode + URL hint via

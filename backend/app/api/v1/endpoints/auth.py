@@ -114,6 +114,7 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
         setup_token_required=token_required,
         token_mode=mode,
         setup_url_hint=setup_url_hint,
+        demo_mode=settings.DEMO_MODE,
     )
 
 
@@ -259,6 +260,63 @@ async def login(
     # Refresh tokens are typed + jti-tracked so they can be rotated/revoked
     # (audit A5). The jti is registered server-side; /auth/refresh replaces
     # it with a fresh one on each use.
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
+    refresh_token, jti = create_refresh_token(
+        data=token_claims,
+        expires_delta=refresh_token_expires,
+    )
+    await token_store.register_refresh(
+        str(user.id), jti, int(refresh_token_expires.total_seconds())
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=int(access_token_expires.total_seconds()),
+    )
+
+
+@router.post("/demo-login", response_model=TokenResponse)
+async def demo_login(
+    _rl=Depends(rate_limit("demo_login", max_requests=20, window=60)),
+):
+    """Credential-free login for the demo account.
+
+    Only available when ``DEMO_MODE=true`` (returns 404 otherwise). Looks
+    up the pre-seeded demo user (``DEMO_USER_EMAIL``) and issues access +
+    refresh tokens stamped with a ``demo`` claim so the frontend can render
+    the demo banner. The demo user + data are auto-seeded on boot by the
+    lifespan (scripts/seed_demo.py).
+    """
+    if not settings.DEMO_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo login is not enabled on this instance.",
+        )
+
+    user = await get_user_by_email(settings.DEMO_USER_EMAIL)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Demo user not found. Ensure DEMO_MODE seeding has completed "
+                "(the demo user is created on backend startup)."
+            ),
+        )
+
+    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    token_claims = {
+        "sub": user.email,
+        "user_id": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "role": getattr(user.role, "value", user.role),
+        "demo": True,
+    }
+    access_token = create_access_token(
+        data=token_claims,
+        expires_delta=access_token_expires,
+    )
     refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
     refresh_token, jti = create_refresh_token(
         data=token_claims,
@@ -445,6 +503,8 @@ async def refresh_token(
         "tenant_id": payload.get("tenant_id"),
         "role": payload.get("role"),
     }
+    if payload.get("demo"):
+        token_claims["demo"] = True
     access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     access_token = create_access_token(
         data=token_claims,

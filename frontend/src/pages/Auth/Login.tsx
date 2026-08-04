@@ -20,6 +20,7 @@ function Login() {
 
   // Check token validity + first-run status on mount. If the system is
   // uninitialized, redirect to the setup wizard instead of showing login.
+  // If DEMO_MODE is on, skip the form entirely and auto-call demo-login.
   useEffect(() => {
     const init = async () => {
       const token = localStorage.getItem('accessToken');
@@ -32,6 +33,20 @@ function Login() {
       }
       try {
         const res = await api.get('/auth/setup-status');
+        if (res.data && res.data.demo_mode) {
+          // Demo mode — auto-login as the pre-seeded demo user (no creds).
+          try {
+            const demoRes = await api.post('/auth/demo-login');
+            if (demoRes.data && demoRes.data.access_token) {
+              login(demoRes.data.access_token, demoRes.data.refresh_token);
+              navigate('/dashboard', { replace: true });
+              return;
+            }
+          } catch (err) {
+            console.error('Demo login failed:', err);
+            // Fall through to the login form as a safety net.
+          }
+        }
         if (res.data && !res.data.initialized) {
           navigate('/setup', { replace: true });
           return;
@@ -43,7 +58,7 @@ function Login() {
     };
 
     init();
-  }, [navigate, logout]);
+  }, [navigate, logout, login]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

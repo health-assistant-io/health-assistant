@@ -7,6 +7,8 @@
     "settings": "Settings",
     "integrations": "Integrations",
     "logout": "Logout",
+    "demo_banner": "Demo mode",
+    "demo_banner_hint": "— data is synthetic and reset periodically. Do not store real health information.",
     "search": "Search...",
     "back": "Back",
     "save": "Save",

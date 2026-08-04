@@ -79,6 +79,9 @@ class SetupStatus(BaseModel):
     can autofill the token from the launcher URL — it contains the
     ``/setup?token=<value>`` ready to be handed to the user. The launcher
     uses this when it doesn't already compose the URL itself.
+
+    ``demo_mode`` is true when ``DEMO_MODE`` is enabled: the frontend then
+    skips login entirely and auto-calls ``POST /auth/demo-login``.
     """
 
     initialized: bool = Field(
@@ -100,6 +103,13 @@ class SetupStatus(BaseModel):
         description=(
             "Only set in 'env' mode when uninitialized + token still "
             "active: the '/setup?token=<value>' one-click URL."
+        ),
+    )
+    demo_mode: bool = Field(
+        False,
+        description=(
+            "True when DEMO_MODE is enabled. The frontend auto-logs in "
+            "via POST /auth/demo-login and skips the login form."
         ),
     )
 

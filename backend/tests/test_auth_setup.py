@@ -352,3 +352,96 @@ def test_setup_request_rejects_malformed_email():
     for bad in ("noatmark", "admin@", "@host", "a b@host", ""):
         with _pytest.raises(ValidationError):
             SetupRequest(email=bad, password="securepassword", tenant_name="Org")
+
+
+# ---------------------------------------------------------------------------
+# setup-status — demo_mode flag (DEMO_MODE)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_setup_status_reports_demo_mode_when_enabled():
+    """When settings.DEMO_MODE is on, setup-status surfaces demo_mode=True."""
+    with patch.object(auth_endpoint.settings, "DEMO_MODE", True), patch.object(
+        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
+    ):
+        result = await auth_endpoint.setup_status(
+            request=_local_request(), db=MagicMock()
+        )
+    assert result.demo_mode is True
+
+
+@pytest.mark.asyncio
+async def test_setup_status_demo_mode_off_by_default():
+    """demo_mode defaults to False so the frontend shows the normal login."""
+    with patch.object(auth_endpoint.settings, "DEMO_MODE", False), patch.object(
+        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
+    ):
+        result = await auth_endpoint.setup_status(
+            request=_local_request(), db=MagicMock()
+        )
+    assert result.demo_mode is False
+
+
+# ---------------------------------------------------------------------------
+# demo-login — credential-free login (DEMO_MODE only)
+# ---------------------------------------------------------------------------
+
+
+def _demo_user():
+    """A stand-in for the seeded demo UserModel."""
+    u = MagicMock()
+    u.id = uuid.uuid4()
+    u.email = "demo@healthassistant.local"
+    u.tenant_id = uuid.uuid4()
+    u.role = Role.ADMIN
+    return u
+
+
+@pytest.mark.asyncio
+async def test_demo_login_requires_demo_mode():
+    """demo-login 404s when DEMO_MODE is off (the route must be inert)."""
+    with patch.object(auth_endpoint.settings, "DEMO_MODE", False):
+        with pytest.raises(HTTPException) as exc:
+            await auth_endpoint.demo_login()
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_demo_login_503_when_demo_user_missing():
+    """If seeding hasn't completed (no demo user), return 503 not a crash."""
+    with patch.object(auth_endpoint.settings, "DEMO_MODE", True), patch.object(
+        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+    ), patch.object(
+        auth_endpoint, "rate_limit", return_value=lambda: None
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await auth_endpoint.demo_login()
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_demo_login_stamps_demo_claim_and_issues_tokens():
+    """Happy path: returns tokens whose access JWT carries demo=True."""
+    user = _demo_user()
+    with patch.object(auth_endpoint.settings, "DEMO_MODE", True), patch.object(
+        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=user)
+    ), patch.object(
+        auth_endpoint.token_store,
+        "register_refresh",
+        new=AsyncMock(),
+    ):
+        result = await auth_endpoint.demo_login()
+
+    import jwt as _jwt
+    from app.core.config import settings
+
+    payload = _jwt.decode(
+        result.access_token,
+        settings.SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+        options={"verify_aud": False},
+    )
+    assert payload["demo"] is True
+    assert payload["sub"] == user.email
+    assert payload["role"] == Role.ADMIN.value
