@@ -274,3 +274,66 @@ images are out of scope for the seed ZIP (managed via the Atlas Editor).
 
 See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
 
+## 8. Demo Mode (`DEMO_MODE`)
+
+Demo mode is a single env flag that turns a Health Assistant instance into a
+self-contained public demo: visitors are signed in automatically (no login
+form), the data is synthetic, and a pinned banner makes the demo state
+visible on every page. It is orthogonal to `APP_ENV` — the live demo stack
+runs `APP_ENV=production` + `DEMO_MODE=true`.
+
+### Enabling it
+
+Set `DEMO_MODE=true` in `.env`:
+
+```bash
+DEMO_MODE=true
+DEMO_USER_EMAIL=demo@healthassistant.local
+DEMO_USER_PASSWORD=Demo1234!
+```
+
+`DEMO_USER_EMAIL` / `DEMO_USER_PASSWORD` also accept the legacy
+`HA_DEMO_EMAIL` / `HA_DEMO_PASSWORD` env names (used by the UI screenshot
+capture tooling in §3). A loud warning is logged on every boot while demo
+mode is on.
+
+> **Never enable `DEMO_MODE` on an instance that holds real health data.**
+> It bypasses authentication entirely — anyone who reaches the app is
+> signed in as the demo user with no credentials.
+
+### What happens on boot
+
+When `DEMO_MODE` is on, the backend lifespan runs `scripts/seed_demo.py`
+(idempotent — §1-4) after the normal catalog seed pipeline, creating or
+reconciling the demo tenant, admin user, three patients, and clinical data.
+
+### Credential-free login
+
+`POST /auth/demo-login` mints access + refresh tokens for the demo user
+**with no credentials**. It returns 404 when `DEMO_MODE` is off, so the
+route is inert on normal instances. The tokens carry a `demo: true` JWT
+claim that survives `/auth/refresh`.
+
+The frontend detects demo mode via `GET /auth/setup-status` (which reports
+`demo_mode: true`) and auto-calls `/auth/demo-login` on the login page —
+the login form is never shown.
+
+### Demo banner
+
+A pinned banner above the header ("Demo mode — data is synthetic…") appears
+on every authenticated page, driven by the `demo` claim in the JWT. An
+"Exit demo" link on the right opens the main product site.
+
+### Session persistence across resets
+
+The demo stack's daily reset wipes the DB volume + re-seeds. To keep
+existing sessions working across a reset, the demo tenant and user use
+**deterministic UUIDs** (`DEMO_TENANT_ID` / `DEMO_USER_ID` in
+`seed_demo.py`) — the same IDs are recreated every time, so outstanding
+JWTs keep referencing valid entities.
+
+If a session does go stale (transition period, or the access token expired
+past 24h), the frontend auto-recovers: `getCurrentUser()` fails → the app
+detects the `demo` claim → auto-logout → the login page auto-calls
+`demo-login` → fresh token. The visitor never has to click anything.
+

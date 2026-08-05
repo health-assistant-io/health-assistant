@@ -169,7 +169,7 @@
         "id": "seeding-and-demos",
         "file": "SEEDING_AND_DEMOS.md",
         "title": "Seeding & Demo Data",
-        "description": "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, and deterministic dates for screenshots."
+        "description": "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, deterministic dates for screenshots, and DEMO_MODE for credential-free public demos."
       },
       {
         "id": "task-debugging-guide",
