@@ -71,8 +71,13 @@ def test_built_observation_passes_fhir_validation():
         .set_reference_range(low=60, high=100)
         .build()
     )
-    # Convert to ORM as the sync path does
-    orm = Observation(**obs_create.model_dump(exclude_unset=True))
+    # Convert to ORM as the sync path does (translate value_codeable_concept
+    # snake → camelCase column name).
+    obs_dict = obs_create.model_dump(exclude_unset=True)
+    vcc = obs_dict.pop("value_codeable_concept", None)
+    if vcc is not None:
+        obs_dict["value_codeableConcept"] = vcc
+    orm = Observation(**obs_dict)
 
     # Must not raise FhirSerializationError
     fhir_dict = assert_valid_fhir(orm)

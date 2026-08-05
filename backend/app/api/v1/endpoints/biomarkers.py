@@ -3,17 +3,22 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update as sa_update, or_
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
 from app.models.biomarker_model import (
+    BiomarkerAllowedState,
     BiomarkerDefinition,
     BiomarkerReferenceRange,
+    BiomarkerState,
     Unit,
 )
 from app.models.fhir.patient import Observation
 from app.schemas.biomarker import (
+    AllowedStateSpec,
     BiomarkerCreate,
+    BiomarkerStateResponse,
     BiomarkerUpdate,
     BiomarkerResponse,
     BiomarkerRemapRequest,
@@ -25,6 +30,7 @@ from app.schemas.biomarker import (
 )
 from app.services.concept_service import resolve_biomarker_class_concept
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.models.enums import BiomarkerValueType
 from uuid import UUID
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
@@ -38,6 +44,137 @@ def _tenant_scope(tenant_id):
         BiomarkerDefinition.tenant_id.is_(None),
         BiomarkerDefinition.tenant_id == tenant_id,
     )
+
+
+async def _reload_biomarker(db: AsyncSession, bio_id) -> BiomarkerDefinition:
+    """Reload a BiomarkerDefinition with all selectin relationships populated.
+
+    After ``db.commit`` + ``db.refresh``, accessing lazy relationships
+    (``allowed_states``, ``reference_ranges``, ``preferred_unit``,
+    ``class_concept``) triggers a greenlet error in async context. This
+    helper re-fetches the row with the chains eager-loaded so
+    :func:`_serialize_biomarker` can read them safely.
+
+    ``populate_existing()`` is critical: without it, SQLAlchemy's identity
+    map returns the already-cached BiomarkerDefinition with stale
+    ``allowed_states`` (the post-commit relationship state isn't refreshed
+    by a plain ``selectinload`` when the parent is already in the map).
+    """
+    return (
+        (
+            await db.execute(
+                select(BiomarkerDefinition)
+                .options(
+                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                        BiomarkerAllowedState.state
+                    ),
+                    selectinload(BiomarkerDefinition.reference_ranges),
+                    selectinload(BiomarkerDefinition.preferred_unit),
+                    selectinload(BiomarkerDefinition.class_concept),
+                )
+                .where(BiomarkerDefinition.id == bio_id)
+                .execution_options(populate_existing=True)
+            )
+        )
+        .scalar_one()
+    )
+
+
+def _serialize_allowed_states(bio: BiomarkerDefinition) -> List[dict]:
+    """Resolve a STATE biomarker's ``allowed_states`` join rows into the
+    ``BiomarkerAllowedStateResponse`` payload shape.
+
+    Assumes ``bio.allowed_states`` is loaded (``selectin``) and each row's
+    ``state`` is also loaded (``selectin``). Returns ``[]`` for QUANTITY
+    biomarkers (none configured).
+    """
+    out = []
+    for allowed in bio.allowed_states or []:
+        state = allowed.state
+        if state is None:
+            continue
+        out.append(
+            {
+                "state_id": state.id,
+                "state_slug": state.slug,
+                "code": state.code,
+                "system": state.system,
+                "display": state.display,
+                "is_normal": allowed.is_normal,
+                "sort_order": allowed.sort_order,
+            }
+        )
+    out.sort(key=lambda d: d["sort_order"])
+    return out
+
+
+def _serialize_biomarker(bio: BiomarkerDefinition, symbol) -> dict:
+    """Build the standard ``BiomarkerResponse`` dict for a definition.
+
+    Centralizes the response shape so list/get/create/update/retry-migration
+    endpoints agree. Emits the new ``value_type`` / ``supports_multi_state``
+    fields and the resolved ``allowed_states`` list (empty for QUANTITY).
+    """
+    return {
+        "id": bio.id,
+        "slug": bio.slug,
+        "coding_system": bio.coding_system,
+        "code": bio.code,
+        "name": bio.name,
+        "category": bio.category,
+        "aliases": bio.aliases,
+        "preferred_unit_id": bio.preferred_unit_id,
+        "info": bio.info,
+        "reference_range_min": bio.reference_range_min,
+        "reference_range_max": bio.reference_range_max,
+        "is_telemetry": bio.is_telemetry,
+        "value_type": bio.value_type,
+        "supports_multi_state": bio.supports_multi_state,
+        "allowed_states": _serialize_allowed_states(bio),
+        "meta_data": bio.meta_data,
+        "preferred_unit_symbol": symbol,
+        "reference_ranges": getattr(bio, "reference_ranges", None) or [],
+    }
+
+
+async def _resolve_state_slugs(
+    db: AsyncSession, specs: List[AllowedStateSpec]
+) -> List[BiomarkerAllowedState]:
+    """Resolve a list of ``AllowedStateSpec`` (slug-keyed input) to
+    ``BiomarkerAllowedState`` ORM rows ready to attach to a definition.
+
+    Raises ``HTTPException(400)`` if any slug doesn't resolve to a state row.
+    """
+    if not specs:
+        return []
+    slugs = [s.state_slug for s in specs]
+    rows = (
+        (
+            await db.execute(
+                select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_slug = {r.slug: r for r in rows}
+    missing = [s for s in slugs if s not in by_slug]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown biomarker_state slug(s): {missing}",
+        )
+    out = []
+    for spec in specs:
+        state = by_slug[spec.state_slug]
+        out.append(
+            BiomarkerAllowedState(
+                state_id=state.id,
+                is_normal=spec.is_normal,
+                sort_order=spec.sort_order,
+            )
+        )
+    return out
 
 
 # TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (from DEVELOPMENT_PLAN.md)
@@ -58,29 +195,7 @@ async def get_biomarkers(
     )
     rows = result.all()
 
-    response = []
-    for bio, symbol in rows:
-        bio_dict = {
-            "id": bio.id,
-            "slug": bio.slug,
-            "coding_system": bio.coding_system,
-            "code": bio.code,
-            "name": bio.name,
-            "category": bio.category,
-            "aliases": bio.aliases,
-            "preferred_unit_id": bio.preferred_unit_id,
-            "info": bio.info,
-            "reference_range_min": bio.reference_range_min,
-            "reference_range_max": bio.reference_range_max,
-            "is_telemetry": bio.is_telemetry,
-            "meta_data": bio.meta_data,
-            "preferred_unit_symbol": symbol,
-            # Stratified ranges (audit B9/F3). ``reference_ranges`` is
-            # lazy="selectin" → batch-loaded on first access (one round trip).
-            "reference_ranges": bio.reference_ranges,
-        }
-        response.append(bio_dict)
-
+    response = [_serialize_biomarker(bio, symbol) for bio, symbol in rows]
     return response
 
 
@@ -125,6 +240,26 @@ async def create_unit(
         )
 
 
+@router.get("/states", response_model=List[BiomarkerStateResponse])
+async def list_biomarker_states(
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """List the universal ``biomarker_states`` catalog.
+
+    Public (any authenticated user) — the catalog is universal clinical
+    vocabulary (no tenant scoping). Powers the STATE-biomarker admin UI
+    (allowed_states picker) and any consumer that needs to resolve a
+    state code to its display label.
+    """
+    result = await db.execute(
+        select(BiomarkerState).order_by(
+            BiomarkerState.sort_order.asc(), BiomarkerState.display.asc()
+        )
+    )
+    return result.scalars().all()
+
+
 @router.post("/", response_model=BiomarkerResponse)
 async def create_biomarker(
     biomarker: BiomarkerCreate,
@@ -161,14 +296,30 @@ async def create_biomarker(
         reference_range_max=biomarker.reference_range_max,
         is_telemetry=biomarker.is_telemetry,
         preferred_unit_id=unit_id,
+        # State-biomarker discriminator (plan state-biomarkers-2026-08-05).
+        value_type=biomarker.value_type,
+        supports_multi_state=biomarker.supports_multi_state or False,
     )
     DEFAULT_CATALOG_POLICY.assign_create_scope(
         current_user.role, new_bio, current_user.tenant_id, current_user.user_id
     )
     db.add(new_bio)
+    await db.flush()  # need new_bio.id for the allowed_states FK
+
+    # STATE biomarkers: resolve the allowed_states slug list once, then attach
+    # the join rows directly (assigning to ``new_bio.allowed_states`` would
+    # trigger a lazy load of the empty collection — greenlet error in async).
+    if biomarker.value_type == BiomarkerValueType.STATE:
+        for row in await _resolve_state_slugs(db, biomarker.allowed_states):
+            row.biomarker_id = new_bio.id
+            db.add(row)
+
     try:
         await db.commit()
-        await db.refresh(new_bio)
+        # Reload with eager-loaded relationships (allowed_states, etc.) —
+        # ``db.refresh`` doesn't repopulate selectin chains and accessing
+        # them in async context triggers a greenlet error.
+        new_bio = await _reload_biomarker(db, new_bio.id)
 
         # Get unit symbol
         symbol = None
@@ -178,22 +329,7 @@ async def create_biomarker(
             )
             symbol = u_res.scalar_one_or_none()
 
-        return {
-            "id": new_bio.id,
-            "slug": new_bio.slug,
-            "coding_system": new_bio.coding_system,
-            "code": new_bio.code,
-            "name": new_bio.name,
-            "category": new_bio.category,
-            "aliases": new_bio.aliases,
-            "preferred_unit_id": new_bio.preferred_unit_id,
-            "info": new_bio.info,
-            "reference_range_min": new_bio.reference_range_min,
-            "reference_range_max": new_bio.reference_range_max,
-            "is_telemetry": new_bio.is_telemetry,
-            "meta_data": new_bio.meta_data,
-            "preferred_unit_symbol": symbol,
-        }
+        return _serialize_biomarker(new_bio, symbol)
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
@@ -307,22 +443,7 @@ async def get_biomarker_by_slug(
         raise HTTPException(status_code=404, detail="Biomarker not found")
 
     bio, symbol = row
-    return {
-        "id": bio.id,
-        "slug": bio.slug,
-        "coding_system": bio.coding_system,
-        "code": bio.code,
-        "name": bio.name,
-        "category": bio.category,
-        "aliases": bio.aliases,
-        "preferred_unit_id": bio.preferred_unit_id,
-        "info": bio.info,
-        "reference_range_min": bio.reference_range_min,
-        "reference_range_max": bio.reference_range_max,
-        "is_telemetry": bio.is_telemetry,
-        "meta_data": bio.meta_data,
-        "preferred_unit_symbol": symbol,
-    }
+    return _serialize_biomarker(bio, symbol)
 
 
 @router.get("/{biomarker_id}", response_model=BiomarkerResponse)
@@ -346,22 +467,7 @@ async def get_biomarker_by_id(
         raise HTTPException(status_code=404, detail="Biomarker not found")
 
     bio, symbol = row
-    return {
-        "id": bio.id,
-        "slug": bio.slug,
-        "coding_system": bio.coding_system,
-        "code": bio.code,
-        "name": bio.name,
-        "category": bio.category,
-        "aliases": bio.aliases,
-        "preferred_unit_id": bio.preferred_unit_id,
-        "info": bio.info,
-        "reference_range_min": bio.reference_range_min,
-        "reference_range_max": bio.reference_range_max,
-        "is_telemetry": bio.is_telemetry,
-        "meta_data": bio.meta_data,
-        "preferred_unit_symbol": symbol,
-    }
+    return _serialize_biomarker(bio, symbol)
 
 
 @router.post("/{biomarker_id}/retry-migration", response_model=BiomarkerResponse)
@@ -409,7 +515,7 @@ async def retry_biomarker_migration(
 
     try:
         await db.commit()
-        await db.refresh(db_biomarker)
+        db_biomarker = await _reload_biomarker(db, db_biomarker.id)
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
@@ -424,22 +530,7 @@ async def retry_biomarker_migration(
     )
     symbol = u_res.scalar_one_or_none()
 
-    return {
-        "id": db_biomarker.id,
-        "slug": db_biomarker.slug,
-        "coding_system": db_biomarker.coding_system,
-        "code": db_biomarker.code,
-        "name": db_biomarker.name,
-        "category": db_biomarker.category,
-        "aliases": db_biomarker.aliases,
-        "preferred_unit_id": db_biomarker.preferred_unit_id,
-        "info": db_biomarker.info,
-        "reference_range_min": db_biomarker.reference_range_min,
-        "reference_range_max": db_biomarker.reference_range_max,
-        "is_telemetry": db_biomarker.is_telemetry,
-        "meta_data": db_biomarker.meta_data,
-        "preferred_unit_symbol": symbol,
-    }
+    return _serialize_biomarker(db_biomarker, symbol)
 
 
 @router.post("/{biomarker_id}/remap")
@@ -527,13 +618,42 @@ async def update_biomarker(
 
     old_is_telemetry = db_biomarker.is_telemetry
 
+    # Extract ``allowed_states`` BEFORE ``model_dump`` flattens the nested
+    # AllowedStateSpec instances to dicts — we want the Pydantic models so
+    # ``_resolve_state_slugs`` can read ``.state_slug`` cleanly.
+    new_allowed_states = (
+        list(biomarker_update.allowed_states)
+        if biomarker_update.allowed_states is not None
+        else None
+    )
+
     # Update fields
     update_data = biomarker_update.model_dump(exclude_unset=True)
+
+    # ``allowed_states`` is handled specially below (replace the join set),
+    # and ``value_type`` is rejected by the Pydantic schema (cannot be flipped
+    # without dropping + recreating the definition — would strand observations).
+    update_data.pop("allowed_states", None)
 
     new_is_telemetry = update_data.get("is_telemetry")
     needs_migration = (
         new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
     )
+
+    # Hard guard (plan state-biomarkers Step 6/11): STATE biomarkers cannot
+    # be telemetry — ``telemetry_data.value`` is Float NOT NULL. The Pydantic
+    # schema catches the simultaneous case; this catches the toggle-on-an-
+    # already-STATE-biomarker case.
+    if (
+        needs_migration
+        and new_is_telemetry is True
+        and db_biomarker.value_type == BiomarkerValueType.STATE
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="STATE biomarkers cannot be telemetry (categorical values "
+            "have nowhere to go on telemetry_data.value Float NOT NULL).",
+        )
 
     # ``class_concept_id`` (the FK) is authoritative. ``category`` is a
     # read-only property — if a caller sends only the legacy string, resolve
@@ -551,6 +671,28 @@ async def update_biomarker(
     for key, value in update_data.items():
         setattr(db_biomarker, key, value)
 
+    # STATE biomarkers: replace the allowed_states join set atomically when
+    # the caller supplied one. QUANTITY biomarkers reject this at the schema
+    # layer (BiomarkerUpdate.value_type can't be flipped, and QUANTITY rows
+    # have no allowed_states to replace).
+    if new_allowed_states is not None:
+        if db_biomarker.value_type != BiomarkerValueType.STATE:
+            raise HTTPException(
+                status_code=400,
+                detail="allowed_states can only be set on STATE biomarkers",
+            )
+        # Delete existing join rows, then insert the new set. Direct row
+        # insertion avoids lazy-loading ``db_biomarker.allowed_states`` (a
+        # greenlet error in async context).
+        await db.execute(
+            delete(BiomarkerAllowedState).where(
+                BiomarkerAllowedState.biomarker_id == db_biomarker.id
+            )
+        )
+        for row in await _resolve_state_slugs(db, new_allowed_states):
+            row.biomarker_id = db_biomarker.id
+            db.add(row)
+
     try:
         if needs_migration:
             # We set the initial state to in_progress
@@ -561,7 +703,7 @@ async def update_biomarker(
                 del meta["migration_error"]
             db_biomarker.meta_data = meta
 
-            # Need to flag the JSONB column as modified
+            # Need to flagged the JSONB column as modified
             from sqlalchemy.orm.attributes import flag_modified
 
             flag_modified(db_biomarker, "meta_data")
@@ -576,7 +718,10 @@ async def update_biomarker(
             )
 
         await db.commit()
-        await db.refresh(db_biomarker)
+        # Reload with eager-loaded relationships (allowed_states, etc.) —
+        # ``db.refresh`` doesn't repopulate selectin chains and accessing
+        # them in async context triggers a greenlet error.
+        db_biomarker = await _reload_biomarker(db, db_biomarker.id)
 
         # Return with symbol
         u_res = await db.execute(
@@ -584,22 +729,7 @@ async def update_biomarker(
         )
         symbol = u_res.scalar_one_or_none()
 
-        return {
-            "id": db_biomarker.id,
-            "slug": db_biomarker.slug,
-            "coding_system": db_biomarker.coding_system,
-            "code": db_biomarker.code,
-            "name": db_biomarker.name,
-            "category": db_biomarker.category,
-            "aliases": db_biomarker.aliases,
-            "preferred_unit_id": db_biomarker.preferred_unit_id,
-            "info": db_biomarker.info,
-            "reference_range_min": db_biomarker.reference_range_min,
-            "reference_range_max": db_biomarker.reference_range_max,
-            "is_telemetry": db_biomarker.is_telemetry,
-            "meta_data": db_biomarker.meta_data,
-            "preferred_unit_symbol": symbol,
-        }
+        return _serialize_biomarker(db_biomarker, symbol)
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")

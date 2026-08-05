@@ -16,6 +16,12 @@ export interface ValueQuantity {
   code?: string;
 }
 
+/** FHIR R4 CodeableConcept (the value[x] shape for STATE biomarkers). */
+export interface CodeableConcept {
+  coding?: Array<{ system?: string; code?: string; display?: string }>;
+  text?: string;
+}
+
 export interface Observation {
   id: string;
   tenant_id?: string;
@@ -29,7 +35,14 @@ export interface Observation {
   effective_datetime?: string;
   value_quantity?: ValueQuantity;
   value_string?: string;
-  value_codeable_concept?: any;
+  /** STATE biomarkers carry their value here (Positive/Negative/Detected/...). */
+  value_codeable_concept?: CodeableConcept | null;
+  /** Multi-state panels: one entry per sub-context (organism, antibiotic, ...). */
+  component?: Array<{
+    code?: { coding?: Array<{ system?: string; code?: string; display?: string }> };
+    valueCodeableConcept?: CodeableConcept;
+    value_codeable_concept?: CodeableConcept; // snake-case tolerant alias
+  }>;
   reference_range?: any;
   interpretation?: string;
   comment?: string;

@@ -359,6 +359,28 @@ class CodingSystem(str, enum.Enum):
         return "urn:uuid:health-assistant:custom-biomarker"
 
 
+class BiomarkerValueType(str, enum.Enum):
+    """The shape of values a ``BiomarkerDefinition`` accepts.
+
+    A true discriminator — every consumer (analytics, OCR pipeline, FHIR
+    serialization, telemetry routing, the frontend) branches on this
+    explicitly. No silent ``float()`` calls on unknown shapes.
+
+    - ``QUANTITY`` — numeric value stored in ``Observation.value_quantity``
+      with a ``Unit`` and numeric reference ranges. The default and only
+      pre-state-biomarker behavior.
+    - ``STATE``    — categorical value stored in
+      ``Observation.value_codeableConcept``, drawn from the biomarker's
+      ``allowed_states`` set (a controlled vocabulary sourced from HL7
+      v3-ObservationInterpretation / SNOMED / DataAbsentReason). The
+      "normal set" (``BiomarkerAllowedState.is_normal``) replaces numeric
+      reference ranges. Telemetry is hard-blocked.
+    """
+
+    QUANTITY = "quantity"
+    STATE = "state"
+
+
 class IntegrationStatus(str, enum.Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"

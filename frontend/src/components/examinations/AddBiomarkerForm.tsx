@@ -140,8 +140,12 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
 
     setLoading(true);
     try {
-      // Construct FHIR Observation (preserved verbatim from AddBiomarkerModal).
-      const observation = {
+      // Construct FHIR Observation. STATE biomarkers build a
+      // valueCodeableConcept with the picked state code; QUANTITY biomarkers
+      // build a valueQuantity as before. The backend's hard validator
+      // (Observation↔BiomarkerDefinition contract) enforces the right shape.
+      const isStateBiomarker = selectedBiomarker.value_type === 'state';
+      const observation: any = {
         patient_id: patientId,
         examination_id: examinationId,
         biomarker_id: selectedBiomarker.id,
@@ -161,12 +165,6 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
           }],
           text: selectedBiomarker.name
         },
-        value_quantity: {
-          value: parseFloat(formData.value),
-          unit: formData.unit || selectedBiomarker.preferred_unit_symbol,
-          system: 'http://unitsofmeasure.org',
-          code: formData.unit || selectedBiomarker.preferred_unit_symbol
-        },
         interpretation: [{
           coding: [{
             system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
@@ -176,6 +174,28 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
         }],
         note: formData.note ? [{ text: formData.note }] : []
       };
+
+      if (isStateBiomarker) {
+        // Resolve the picked state slug → code + system from the
+        // biomarker's allowed_states catalog.
+        const pickedState = (selectedBiomarker.allowed_states ?? []).find(
+          (s) => s.state_slug === formData.value || s.code === formData.value || s.display === formData.value,
+        );
+        observation.value_codeable_concept = {
+          coding: [{
+            code: pickedState?.code ?? formData.value,
+            system: pickedState?.system ?? 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+            display: pickedState?.display ?? formData.value,
+          }],
+        };
+      } else {
+        observation.value_quantity = {
+          value: parseFloat(formData.value),
+          unit: formData.unit || selectedBiomarker.preferred_unit_symbol,
+          system: 'http://unitsofmeasure.org',
+          code: formData.unit || selectedBiomarker.preferred_unit_symbol
+        };
+      }
 
       await onSubmit(observation as unknown as AddBiomarkerFormPayload);
     } finally {
@@ -345,27 +365,53 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
         {/* Form Fields */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">{t('examination_detail.add_biomarker.value')}</label>
-            <input
-              type="number"
-              step="any"
-              placeholder="0.00"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 font-bold"
-              value={formData.value}
-              onChange={e => setFormData({...formData, value: e.target.value})}
-              required
-            />
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
+              {selectedBiomarker?.value_type === 'state'
+                ? t('biomarkers.state_value', 'State')
+                : t('examination_detail.add_biomarker.value')}
+            </label>
+            {selectedBiomarker?.value_type === 'state' ? (
+              <select
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 font-bold"
+                value={formData.value}
+                onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                required
+              >
+                <option value="">{t('biomarkers.state_value_placeholder', 'Select a state…')}</option>
+                {(selectedBiomarker.allowed_states ?? []).map((s) => (
+                  <option key={s.state_slug} value={s.state_slug}>
+                    {s.display} ({s.code})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="number"
+                step="any"
+                placeholder="0.00"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 font-bold"
+                value={formData.value}
+                onChange={e => setFormData({...formData, value: e.target.value})}
+                required
+              />
+            )}
           </div>
 
           <div className="space-y-3">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">{t('examination_detail.add_biomarker.unit')}</label>
-            <UnitSelector
-              units={units}
-              selectedSymbol={formData.unit}
-              onSelect={(u) => setFormData(prev => ({ ...prev, unit: u.symbol }))}
-              onUnitsUpdated={setUnits}
-              placeholder={t('examination_detail.add_biomarker.select_unit')}
-            />
+            {selectedBiomarker?.value_type === 'state' ? (
+              <p className="px-4 py-3 text-sm text-gray-400 dark:text-dark-muted italic">
+                {t('biomarker_catalog.state_no_unit', 'State biomarkers carry no unit (categorical values are unitless).')}
+              </p>
+            ) : (
+              <UnitSelector
+                units={units}
+                selectedSymbol={formData.unit}
+                onSelect={(u) => setFormData(prev => ({ ...prev, unit: u.symbol }))}
+                onUnitsUpdated={setUnits}
+                placeholder={t('examination_detail.add_biomarker.select_unit')}
+              />
+            )}
           </div>
 
           <div className="col-span-1 md:col-span-2 space-y-3">

@@ -1103,6 +1103,27 @@ class ImportService:
             Observation, old_id_str, tenant_id, force_id=force_id
         )
 
+        # Hard value-shape contract (plan Step 5): validate value[x]
+        # against the biomarker's value_type before persisting. The
+        # validator is a no-op when biomarker_id is absent or the
+        # biomarker can't be loaded.
+        _bio_id = orm.get("biomarker_id")
+        if _bio_id:
+            from app.models.biomarker_model import BiomarkerDefinition
+            from app.services.observation_value_validator import (
+                validate_observation_payload,
+            )
+            _bio = await self.db.get(BiomarkerDefinition, _bio_id)
+            try:
+                validate_observation_payload(_bio, orm)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Import observation skipped — value contract violation "
+                    "for biomarker %s", _bio_id,
+                )
+                return "skipped", None
+
         # Semantic Deduplication
         if not existing_id:
             from sqlalchemy import select, and_
@@ -1140,6 +1161,10 @@ class ImportService:
                     effective_datetime=_parse_dt(orm.get("effective_datetime")),
                     value_quantity=orm.get("value_quantity"),
                     value_string=orm.get("value_string"),
+                    # The converter emits snake_case value_codeable_concept;
+                    # the ORM column is camelCase value_codeableConcept.
+                    # Pre-fix this was silently dropped on round-trip.
+                    value_codeableConcept=orm.get("value_codeable_concept"),
                     reference_range=orm.get("reference_range"),
                     performer=orm.get("performer"),
                     interpretation=orm.get("interpretation"),
@@ -1159,6 +1184,7 @@ class ImportService:
             effective_datetime=_parse_dt(orm.get("effective_datetime")),
             value_quantity=orm.get("value_quantity"),
             value_string=orm.get("value_string"),
+            value_codeableConcept=orm.get("value_codeable_concept"),
             reference_range=orm.get("reference_range"),
             performer=orm.get("performer"),
             interpretation=orm.get("interpretation"),

@@ -174,7 +174,9 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
             <span className={`text-3xl font-black tracking-tight ${interpretation.toLowerCase().includes('high') ? 'text-red-600' : (interpretation.toLowerCase().includes('low') ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text')}`}>
               {formatBiomarkerValue(latestPoint.value, precisionProfile)}
             </span>
-            <span className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase">{formatUnit(latestPoint.unit)}</span>
+            {typeof latestPoint.value === 'number' && isFinite(latestPoint.value) && (
+              <span className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase">{formatUnit(latestPoint.unit)}</span>
+            )}
           </div>
         </div>
       )}
@@ -267,21 +269,32 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="flex-1 min-h-0">
-        <LineChart 
-          data={filteredTrendsData && filteredTrendsData.length > 0 ? filteredTrendsData.map((d:any) => ({name: new Date(d.date).toLocaleDateString(), value: d.value})) : mockTrends}
-          dataKey="value"
-          xAxisKey="name"
-          color={!isAbnormal(interpretation) ? '#3b82f6' : '#ef4444'}
-          referenceRange={{
-            min: latestPoint?.reference_range_min,
-            max: latestPoint?.reference_range_max
-          }}
-          showReferenceLines={showReferenceLines && !!latestPoint}
-          chartType={chartType}
-          showGrid={showGrid}
-          showBrush={showZoom}
-          interactiveZoom={interactiveZoom}
-        />
+        {/* STATE biomarkers: the trends API returns no numeric points, so
+            ``filteredTrendsData`` is empty and the chart falls back to mock
+            data. Hide the chart entirely in that case and show a placeholder
+            — categorical values need a different visualization (step/swimlane
+            timeline) which is roadmap. */}
+        {(!filteredTrendsData || filteredTrendsData.length === 0 || filteredTrendsData.every((d: any) => typeof d.value !== 'number')) ? (
+          <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-dark-muted">
+            {t('biomarkers.no_numeric_data', 'No numeric trend data available.')}
+          </div>
+        ) : (
+          <LineChart
+            data={filteredTrendsData.map((d:any) => ({name: new Date(d.date).toLocaleDateString(), value: d.value}))}
+            dataKey="value"
+            xAxisKey="name"
+            color={!isAbnormal(interpretation) ? '#3b82f6' : '#ef4444'}
+            referenceRange={{
+              min: latestPoint?.reference_range_min,
+              max: latestPoint?.reference_range_max
+            }}
+            showReferenceLines={showReferenceLines && !!latestPoint}
+            chartType={chartType}
+            showGrid={showGrid}
+            showBrush={showZoom}
+            interactiveZoom={interactiveZoom}
+          />
+        )}
       </div>
 
       {selectedInfo && (

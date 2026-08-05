@@ -81,7 +81,12 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
     if (biomarkers.length === 0) return [];
 
     const severityScore = (b: BiomarkerObservation): number => {
-      const val = b.value.normalized ?? b.value.raw;
+      // STATE biomarkers have no numeric severity — they sort via the
+      // general abnormal flag rather than a distance-from-range score.
+      if (b.valueType === 'state') return 0;
+      const rawVal = b.value.normalized ?? b.value.raw;
+      if (typeof rawVal !== 'number') return 0;
+      const val: number = rawVal;
       const min = b.referenceRange.min;
       const max = b.referenceRange.max;
       if (min == null && max == null) return 0;

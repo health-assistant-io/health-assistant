@@ -70,4 +70,19 @@ describe('useBiomarkerChange', () => {
     });
     expect(result.current).toBeNull();
   });
+
+  it('returns null when any value is non-numeric (STATE biomarker series)', () => {
+    // STATE series carry the state code as a string — no meaningful % change.
+    const { result } = renderHook(({ data }) => useBiomarkerChange(data), {
+      initialProps: { data: [{ value: 'POS' }, { value: 'NEG' }] as any },
+    });
+    expect(result.current).toBeNull();
+  });
+
+  it('returns null for NaN / Infinity values (corrupted or unsupported)', () => {
+    const { result } = renderHook(({ data }) => useBiomarkerChange(data), {
+      initialProps: { data: [{ value: NaN }, { value: 5 }] as any },
+    });
+    expect(result.current).toBeNull();
+  });
 });

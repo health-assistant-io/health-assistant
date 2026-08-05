@@ -699,6 +699,8 @@ def upgrade() -> None:
     sa.Column('reference_range_min', sa.Float(), nullable=True),
     sa.Column('reference_range_max', sa.Float(), nullable=True),
     sa.Column('is_telemetry', sa.Boolean(), nullable=False),
+    sa.Column('value_type', sa.Enum('quantity', 'state', name='biomarkervaluetype'), nullable=False),
+    sa.Column('supports_multi_state', sa.Boolean(), nullable=False),
     sa.Column('meta_data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('scope', sa.Enum('system', 'tenant', 'user', name='catalogscope'), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=True),
@@ -709,6 +711,8 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('version', sa.Integer(), nullable=True),
     sa.CheckConstraint('reference_range_min IS NULL OR reference_range_max IS NULL OR reference_range_min <= reference_range_max', name='ck_biomarker_definitions_ref_range_order'),
+    sa.CheckConstraint("is_telemetry = FALSE OR value_type != 'state'", name='ck_biomarker_definitions_state_not_telemetry'),
+    sa.CheckConstraint("value_type != 'state' OR preferred_unit_id IS NULL", name='ck_biomarker_definitions_state_no_unit'),
     sa.ForeignKeyConstraint(['class_concept_id'], ['concepts.id'], ondelete='SET NULL', name='fk_biomarker_def_concept'),
     sa.ForeignKeyConstraint(['preferred_unit_id'], ['units.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ondelete='CASCADE'),
@@ -721,6 +725,7 @@ def upgrade() -> None:
         # ix_biomarker_definitions_slug is superseded by ix_biomarker_definitions_slug_tenant
         # (per-tenant unique, created below in the raw-SQL section) -- not created here.
         batch_op.create_index(batch_op.f('ix_biomarker_definitions_updated_at'), ['updated_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_biomarker_definitions_value_type'), ['value_type'], unique=False)
 
     op.create_table('chat_sessions',
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -1071,6 +1076,42 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_biomarker_reference_ranges_biomarker_id'), ['biomarker_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_biomarker_reference_ranges_created_at'), ['created_at'], unique=False)
         batch_op.create_index(batch_op.f('ix_biomarker_reference_ranges_updated_at'), ['updated_at'], unique=False)
+
+    op.create_table('biomarker_states',
+    sa.Column('slug', sa.String(length=80), nullable=False),
+    sa.Column('code', sa.String(length=100), nullable=False),
+    sa.Column('system', sa.String(length=255), nullable=False),
+    sa.Column('display', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('category', sa.String(length=80), nullable=True),
+    sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    sa.Column('created_by', sa.UUID(), nullable=True),
+    sa.Column('updated_by', sa.UUID(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.UniqueConstraint('code', 'system', name='uq_biomarker_states_code_system'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('biomarker_states', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_biomarker_states_created_at'), ['created_at'], unique=False)
+        batch_op.create_index('ix_biomarker_states_slug', ['slug'], unique=True)
+        batch_op.create_index(batch_op.f('ix_biomarker_states_updated_at'), ['updated_at'], unique=False)
+
+    op.create_table('biomarker_allowed_states',
+    sa.Column('biomarker_id', sa.UUID(), nullable=False),
+    sa.Column('state_id', sa.UUID(), nullable=False),
+    sa.Column('is_normal', sa.Boolean(), nullable=False),
+    sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    sa.ForeignKeyConstraint(['biomarker_id'], ['biomarker_definitions.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['state_id'], ['biomarker_states.id'], ondelete='RESTRICT'),
+    sa.UniqueConstraint('biomarker_id', 'state_id', name='uq_biomarker_allowed_states'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('biomarker_allowed_states', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_biomarker_allowed_states_biomarker_id'), ['biomarker_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_biomarker_allowed_states_state_id'), ['state_id'], unique=False)
 
     op.create_table('chat_messages',
     sa.Column('session_id', sa.UUID(), nullable=False),
@@ -1859,6 +1900,7 @@ def downgrade() -> None:
         'event_anatomy_links', 'event_examination_links', 'examination_doctors', 'fhir_communications',
         'fhir_medications', 'fhir_observations', 'notifications', 'event_observation_links',
         'notification_deliveries', 'notification_recipients',
+        'biomarker_allowed_states', 'biomarker_states',
     ]
     for _t in _TABLES:
         op.execute(f'DROP TABLE IF EXISTS {_t} CASCADE')

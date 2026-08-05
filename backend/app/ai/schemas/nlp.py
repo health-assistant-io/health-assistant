@@ -1,5 +1,5 @@
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from app.models.enums import CodingSystem
 
 
@@ -34,14 +34,68 @@ class KnownBiomarkerExtract(BaseModel):
     matched_slug: str = Field(
         description="The slug from the provided catalog that matches this biomarker"
     )
-    value: float
-    unit_symbol: str = Field(description="e.g. mg/dL, mmol/L")
+    # Numeric path (the legacy default). Optional now — STATE biomarkers
+    # populate ``value_state_*`` instead. The validator below enforces that
+    # exactly one of (value, value_state_code) is set so the OCR pipeline
+    # never emits a half-formed numeric-or-state result.
+    value: Optional[float] = Field(
+        None, description="Numeric value (omit for state/qualitative results)"
+    )
+    unit_symbol: Optional[str] = Field(
+        None, description="e.g. mg/dL, mmol/L (omit for state/qualitative results)"
+    )
+    # State path (plan state-biomarkers Step 8). Populated only when the
+    # matched biomarker is value_type=STATE. ``value_state_code`` must be one
+    # of the biomarker's allowed-state codes (the LLM is given the allowed
+    # list in the prompt; ``value_state_system`` disambiguates same-code-
+    # different-system cases). Persistence builds valueCodeableConcept from
+    # this pair and skips the numeric pipeline entirely.
+    value_state_code: Optional[str] = Field(
+        None,
+        description="State code (e.g. POS/NEG/IND) when the biomarker is "
+        "value_type=state. Must be drawn from the allowed_states list given "
+        "in the prompt.",
+    )
+    value_state_system: Optional[str] = Field(
+        None,
+        description="The code system URL for value_state_code "
+        "(e.g. http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation).",
+    )
+    value_state_display: Optional[str] = Field(
+        None,
+        description="Human-readable label for the state (e.g. 'Positive').",
+    )
     method: Optional[str] = Field(None, description="e.g. Calculated, Direct Assay")
     reference_range_min: Optional[float] = None
     reference_range_max: Optional[float] = None
     interpretation_flag: Optional[str] = Field(
         None, description="e.g. High, Low, Normal, H, L"
     )
+
+    @model_validator(mode="after")
+    def _exactly_one_value_path(self):
+        """A biomarker result is either numeric (``value`` set) or state
+        (``value_state_code`` set), never both, never neither."""
+        has_numeric = self.value is not None
+        has_state = self.value_state_code is not None
+        if has_numeric and has_state:
+            raise ValueError(
+                "KnownBiomarkerExtract: set either value (numeric) or "
+                "value_state_code (state), not both"
+            )
+        if not has_numeric and not has_state:
+            raise ValueError(
+                "KnownBiomarkerExtract: must set value (numeric) or "
+                "value_state_code (state)"
+            )
+        # A numeric value without a unit is allowed (some biomarkers are
+        # unitless ratios); a state value with a unit is contradictory.
+        if has_state and self.unit_symbol:
+            raise ValueError(
+                "KnownBiomarkerExtract: unit_symbol must be empty when "
+                "value_state_code is set"
+            )
+        return self
 
 
 class UnknownBiomarkerExtract(BaseModel):

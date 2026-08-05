@@ -334,3 +334,90 @@ def test_implemented_params_still_advertised():
     assert "medication" in RESOURCE_PARAMS["MedicationRequest"]
     assert "partof" in RESOURCE_PARAMS["Organization"]
     assert "parent" in RESOURCE_PARAMS["Device"]
+
+
+# ---------------------------------------------------------------------------
+# State-biomarker search params (plan Step 10): value-concept, value-string,
+# component-code. Compile-time checks against the PostgreSQL dialect.
+# ---------------------------------------------------------------------------
+
+
+class _FakeStateObservation:
+    """Observation with all the value[x] + component slots the new params use."""
+    value_quantity = Column("value_quantity", JSONB)
+    value_string = Column("value_string", String)
+    value_codeableConcept = Column("value_codeableConcept", JSONB)
+    component = Column("component", JSONB)
+
+
+def test_value_concept_bare_code_dispatched():
+    """``value-concept=POS`` matches valueCodeableConcept.coding[].code = POS."""
+    pred = _build_resource_filter(_FakeStateObservation, "value-concept", "POS")
+    assert pred is not None
+    compiled = _literal_sql(pred)
+    assert "POS" in compiled
+    # Either valueCodeableConcept or component[].valueCodeableConcept.
+    assert "value_codeableConcept" in compiled
+    assert "component" in compiled
+
+
+def test_value_concept_system_pipe_code_dispatched():
+    """``value-concept=http://...|POS`` narrows the system + code together."""
+    pred = _build_resource_filter(
+        _FakeStateObservation,
+        "value-concept",
+        "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation|POS",
+    )
+    assert pred is not None
+    compiled = _literal_sql(pred)
+    assert "POS" in compiled
+    assert "terminology.hl7.org" in compiled
+
+
+def test_value_concept_missing_column_returns_none():
+    class _NoValueCodeable:
+        value_quantity = Column("v", JSONB)
+
+    assert _build_resource_filter(_NoValueCodeable, "value-concept", "POS") is None
+
+
+def test_value_string_dispatched_case_insensitive():
+    """``value-string=positive`` ILIKE-matches the value_string column."""
+    pred = _build_resource_filter(_FakeStateObservation, "value-string", "Positive")
+    assert pred is not None
+    compiled = _literal_sql(pred)
+    # lower() applied to both sides; the value is downcased in the LIKE pattern.
+    assert "positive" in compiled.lower()
+
+
+def test_value_string_missing_column_returns_none():
+    class _NoString:
+        value_quantity = Column("v", JSONB)
+
+    assert _build_resource_filter(_NoString, "value-string", "x") is None
+
+
+def test_component_code_dispatched():
+    """``component-code=staph-aureus`` matches component[].code.coding[].code."""
+    pred = _build_resource_filter(
+        _FakeStateObservation, "component-code", "staph-aureus"
+    )
+    assert pred is not None
+    compiled = _literal_sql(pred)
+    assert "staph-aureus" in compiled
+    assert "component" in compiled
+
+
+def test_component_code_missing_column_returns_none():
+    class _NoComponent:
+        value_quantity = Column("v", JSONB)
+
+    assert _build_resource_filter(_NoComponent, "component-code", "x") is None
+
+
+def test_state_search_params_advertised_in_capability_statement():
+    """The new params appear in RESOURCE_PARAMS so /fhir/R4/metadata advertises them."""
+    obs_params = RESOURCE_PARAMS["Observation"]
+    assert "value-concept" in obs_params
+    assert "value-string" in obs_params
+    assert "component-code" in obs_params

@@ -1,11 +1,13 @@
-from typing import Any
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
+from app.core.database import AsyncSessionLocal
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
+from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerDefinition
 
 # FHIR models
 from app.models.fhir import Observation, Medication, DiagnosticReport
@@ -88,6 +90,14 @@ async def _get_observation_status(
     name: str, val: Any, obs: Observation, ref_min: float = None, ref_max: float = None
 ) -> str:
     """Helper to determine the status of an observation using the new relative_score or interpretation"""
+    # 0. STATE biomarker branch (plan state-biomarkers Step 7): categorical
+    # values never reach the numeric pipeline. Resolve the valueCodeableConcept
+    # against the biomarker's ``allowed_states.is_normal`` set. Multi-state
+    # observations (component[]) defer to the first component's value.
+    biomarker = getattr(obs, "biomarker", None)
+    if biomarker is not None and getattr(biomarker, "value_type", None) == "state":
+        return _state_observation_status(biomarker, obs)
+
     # 1. Use LLM extracted interpretation if available
     interp_raw = _flatten_interpretation(getattr(obs, "interpretation", None))
     if interp_raw:
@@ -162,6 +172,65 @@ async def _get_observation_status(
     except (ValueError, TypeError):
         pass
     return status
+
+
+def _state_observation_status(biomarker, obs) -> str:
+    """Compute Normal/Abnormal for a STATE biomarker observation.
+
+    Uses the biomarker's ``allowed_states.is_normal`` set as the equivalent
+    of a numeric reference range. Returns:
+      - ``"Normal"``   — the observation's valueCodeableConcept coding is in
+                          the normal set.
+      - ``"Abnormal"`` — the coding is in the allowed set but not normal.
+      - ``"Unknown"`` — the coding couldn't be resolved (defensive; the
+                          write-time validator should make this unreachable).
+
+    For multi-state observations (``component[]``) this returns Abnormal if
+    ANY component is non-normal — the conservative choice for a single-badge
+    summary.
+    """
+    from app.services.observation_value_validator import _extract_coding_pair
+
+    normal_pairs = {
+        (allowed.state.code, allowed.state.system)
+        for allowed in (biomarker.allowed_states or [])
+        if allowed.is_normal and allowed.state is not None
+    }
+    if not normal_pairs:
+        # No normal set configured — every value is "Normal" by default
+        # (avoids flagging unknown/neutral states as abnormal).
+        return "Normal"
+
+    components = getattr(obs, "component", None) or []
+    if components:
+        # Multi-state: Abnormal if any component is non-normal.
+        any_normal = False
+        any_abnormal = False
+        for comp in components:
+            value_cc = (
+                comp.get("valueCodeableConcept")
+                if isinstance(comp, dict)
+                else None
+            ) or (
+                comp.get("value_codeable_concept")
+                if isinstance(comp, dict)
+                else None
+            )
+            pair = _extract_coding_pair(value_cc)
+            if pair is None:
+                continue
+            if pair in normal_pairs:
+                any_normal = True
+            else:
+                any_abnormal = True
+        if any_abnormal:
+            return "Abnormal"
+        return "Normal" if any_normal else "Unknown"
+
+    pair = _extract_coding_pair(obs.value_codeableConcept)
+    if pair is None:
+        return "Unknown"
+    return "Normal" if pair in normal_pairs else "Abnormal"
 
 
 async def get_dashboard_data(
@@ -351,8 +420,6 @@ async def get_dashboard_data(
     imaging_list = imaging_list[:6]
 
     # Latest Laboratory Results
-    from app.models.biomarker_model import BiomarkerDefinition
-
     labs_query = (
         select(Observation, BiomarkerDefinition.info.label("biomarker_info"))
         .outerjoin(
@@ -440,10 +507,7 @@ async def get_biomarker_trends(
             Observation.subject["reference"].as_string() == f"Patient/{patient_id}"
         )
 
-    from app.models.biomarker_model import (
-        BiomarkerDefinition,
-        Unit,
-    )
+    from app.models.biomarker_model import Unit
 
     if biomarker_codes:
         codes = [c.strip() for c in biomarker_codes.split(",")]
@@ -1370,3 +1434,214 @@ async def get_category_analytics(
             trends[key].sort(key=lambda x: x["date"])
 
     return {"reports": reports, "biomarkers": trends}
+
+
+# ---------------------------------------------------------------------------
+# State biomarker history (plan state-biomarkers Step 7)
+# ---------------------------------------------------------------------------
+
+
+async def get_biomarker_state_history(
+    tenant_id: str,
+    patient_id: str,
+    slug: str,
+    *,
+    limit: int = 500,
+    db: Optional[AsyncSession] = None,
+) -> List[Dict[str, Any]]:
+    """Chronological state history for a single-state biomarker.
+
+    Returns a list of ``{timestamp, state_code, state_system, display,
+    is_normal, observation_id}`` sorted ascending by timestamp. Powers the
+    frontend state-timeline component (step/stair chart of categorical
+    results over time).
+
+    No-op (empty list) for QUANTITY biomarkers — the numeric trends live in
+    :func:`get_biomarker_trends`.
+    """
+    from app.services.observation_value_validator import _extract_coding_pair
+
+    session = db
+    if session is None:
+        async with AsyncSessionLocal() as new_session:
+            return await get_biomarker_state_history(
+                tenant_id, patient_id, slug, limit=limit, db=new_session
+            )
+
+    # Resolve the biomarker definition (global + tenant scope).
+    bio = (
+        (
+            await session.execute(
+                select(BiomarkerDefinition)
+                .where(
+                    BiomarkerDefinition.slug == slug,
+                    or_(
+                        BiomarkerDefinition.tenant_id.is_(None),
+                        BiomarkerDefinition.tenant_id == tenant_id,
+                    ),
+                )
+                .options(
+                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                        BiomarkerAllowedState.state
+                    )
+                )
+            )
+        )
+        .scalar_one_or_none()
+    )
+    if bio is None or bio.value_type != "state":
+        return []
+
+    # Build the (code, system) → is_normal lookup.
+    pair_to_normal = {}
+    pair_to_display = {}
+    for allowed in bio.allowed_states or []:
+        if allowed.state is None:
+            continue
+        pair = (allowed.state.code, allowed.state.system)
+        pair_to_normal[pair] = allowed.is_normal
+        pair_to_display[pair] = allowed.state.display
+
+    observations = (
+        (
+            await session.execute(
+                select(Observation)
+                .where(
+                    Observation.tenant_id == tenant_id,
+                    Observation.patient_id == patient_id,
+                    Observation.biomarker_id == bio.id,
+                )
+                .order_by(Observation.effective_datetime.asc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    history = []
+    for obs in observations:
+        pair = _extract_coding_pair(obs.value_codeableConcept)
+        if pair is None:
+            continue
+        history.append(
+            {
+                "timestamp": obs.effective_datetime.isoformat()
+                if obs.effective_datetime
+                else None,
+                "state_code": pair[0],
+                "state_system": pair[1],
+                "display": pair_to_display.get(pair, pair[0]),
+                "is_normal": pair_to_normal.get(pair, False),
+                "observation_id": str(obs.id),
+            }
+        )
+    return history
+
+
+async def get_multi_state_history(
+    tenant_id: str,
+    patient_id: str,
+    slug: str,
+    *,
+    limit: int = 500,
+    db: Optional[AsyncSession] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Per-component state history for a multi-state biomarker.
+
+    Returns ``{component_code: [{timestamp, state_code, state_system,
+    display, is_normal, observation_id}, ...]}`` — one timeline per
+    sub-context (e.g. per organism in a microbiology panel). Each component
+    list is sorted ascending by timestamp. Powers the multi-track swimlane
+    UI.
+    """
+    from app.services.observation_value_validator import (
+        _extract_coding_pair,
+        _normalize_component_value,
+    )
+
+    session = db
+    if session is None:
+        async with AsyncSessionLocal() as new_session:
+            return await get_multi_state_history(
+                tenant_id, patient_id, slug, limit=limit, db=new_session
+            )
+
+    bio = (
+        (
+            await session.execute(
+                select(BiomarkerDefinition)
+                .where(
+                    BiomarkerDefinition.slug == slug,
+                    or_(
+                        BiomarkerDefinition.tenant_id.is_(None),
+                        BiomarkerDefinition.tenant_id == tenant_id,
+                    ),
+                )
+                .options(
+                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                        BiomarkerAllowedState.state
+                    )
+                )
+            )
+        )
+        .scalar_one_or_none()
+    )
+    if bio is None or not bio.supports_multi_state:
+        return {}
+
+    pair_to_normal = {}
+    pair_to_display = {}
+    for allowed in bio.allowed_states or []:
+        if allowed.state is None:
+            continue
+        pair = (allowed.state.code, allowed.state.system)
+        pair_to_normal[pair] = allowed.is_normal
+        pair_to_display[pair] = allowed.state.display
+
+    observations = (
+        (
+            await session.execute(
+                select(Observation)
+                .where(
+                    Observation.tenant_id == tenant_id,
+                    Observation.patient_id == patient_id,
+                    Observation.biomarker_id == bio.id,
+                )
+                .order_by(Observation.effective_datetime.asc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    tracks: Dict[str, List[Dict[str, Any]]] = {}
+    for obs in observations:
+        ts = (
+            obs.effective_datetime.isoformat() if obs.effective_datetime else None
+        )
+        for comp in obs.component or []:
+            comp_code_obj, value_cc = _normalize_component_value(comp)
+            if comp_code_obj is None or value_cc is None:
+                continue
+            # Derive a stable component key from the code.coding[0].code.
+            comp_key = (
+                comp_code_obj.get("coding", [{}])[0].get("code")
+                if isinstance(comp_code_obj, dict)
+                else None
+            ) or "unknown"
+            pair = _extract_coding_pair(value_cc)
+            if pair is None:
+                continue
+            tracks.setdefault(comp_key, []).append(
+                {
+                    "timestamp": ts,
+                    "state_code": pair[0],
+                    "state_system": pair[1],
+                    "display": pair_to_display.get(pair, pair[0]),
+                    "is_normal": pair_to_normal.get(pair, False),
+                    "observation_id": str(obs.id),
+                }
+            )
+    return tracks

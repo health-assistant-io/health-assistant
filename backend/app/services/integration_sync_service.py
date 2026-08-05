@@ -78,7 +78,18 @@ def _opt_in(provider: Any, hook_name: str) -> bool:
 
 
 def _obs_value(obs: Observation) -> Optional[float]:
-    """Best-effort numeric extraction for telemetry column mapping."""
+    """Best-effort numeric extraction for telemetry column mapping.
+
+    Returns ``None`` for any non-numeric observation, which makes the
+    telemetry split safe for STATE biomarkers by construction: a categorical
+    observation has ``value_codeableConcept`` set and ``normalized_value`` /
+    ``raw_value`` / ``value_quantity`` all NULL, so this helper returns
+    ``None`` and ``apply_telemetry_split`` skips it (line marked below).
+    Combined with the DB CHECK constraint that forbids
+    ``value_type='state' AND is_telemetry=TRUE``, STATE biomarkers are
+    double-guarded against ever reaching the Float NOT NULL telemetry
+    hypertable.
+    """
     val = getattr(obs, "normalized_value", None)
     if val is None:
         val = getattr(obs, "raw_value", None)
@@ -506,6 +517,15 @@ async def run_sync(
                     if hasattr(obs_data, "dict")
                     else obs_data
                 )
+                # The ORM column is ``value_codeableConcept`` (camelCase —
+                # predates the snake-case convention), but the SDK + REST
+                # schemas use ``value_codeable_concept``. Translate so
+                # ``Observation(**obs_dict)`` populates the right column.
+                # Without this, STATE biomarker observations from integrations
+                # would silently lose their valueCodeableConcept.
+                vcc = obs_dict.pop("value_codeable_concept", None)
+                if vcc is not None:
+                    obs_dict["value_codeableConcept"] = vcc
                 observations.append(Observation(**obs_dict))
         # audit B3: keep the relational patient_id in sync with the FHIR subject
         # reference on integration-sourced observations (the SDK builder only

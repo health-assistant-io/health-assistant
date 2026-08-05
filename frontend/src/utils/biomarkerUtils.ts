@@ -161,3 +161,29 @@ export const formatBiomarkerValue = (
   const p = getPrecisionForValue(num, precision);
   return num.toFixed(p);
 };
+
+/**
+ * Format a ``BiomarkerObservation`` value for display, branching on
+ * ``valueType``. STATE biomarkers render the state display label (no unit
+ * suffix — categorical values are unitless). QUANTITY biomarkers render
+ * the numeric value with its unit suffix via ``formatBiomarkerValue``.
+ *
+ * Replaces the ``formatBiomarkerValue(obs.value.raw) + ' ' + unit``
+ * pattern that produced nonsense like "Positive bpm" for STATE values.
+ */
+export const formatObservationDisplay = (
+  obs: { valueType?: string; value: { raw: number | string | null; normalized?: number | string | null; state?: string | null; stateDisplay?: string | null }; unit: { rawSymbol: string } },
+  precision: BiomarkerPrecisionProfile | number = 0,
+): { value: string; unit: string } => {
+  if (obs.valueType === 'state') {
+    return {
+      value: obs.value.stateDisplay ?? obs.value.state ?? '--',
+      unit: '', // STATE values are unitless.
+    };
+  }
+  const raw = obs.value.normalized ?? obs.value.raw;
+  return {
+    value: formatBiomarkerValue(raw, precision),
+    unit: obs.unit.rawSymbol || '',
+  };
+};

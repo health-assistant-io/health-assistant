@@ -153,7 +153,7 @@ names the OAuth client, so external writes are auditable end-to-end.
 | Resource | Backed by | Notes |
 |----------|-----------|-------|
 | `Patient` | `fhir_patients` | |
-| `Observation` | `fhir_observations` | |
+| `Observation` | `fhir_observations` | Search params: `patient`, `code`, `date`, `status`, `category`, `value-quantity`, `value-concept` (STATE biomarkers — token search on `valueCodeableConcept.coding[].code`), `value-string`, `component-code` (multi-state panels). See [STATE_BIOMARKERS.md](STATE_BIOMARKERS.md). |
 | `Condition` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_condition_dict()`. Metadata-driven JSONB stays untouched. |
 | `EpisodeOfCare` | `clinical_events` | Projected via `ClinicalEvent.to_fhir_episode_of_care_dict()` from the **same row** as Condition. `Condition` = the diagnosis fact; `EpisodeOfCare` = the longitudinal journey view (status, period, diagnosis list). |
 | `Encounter` | `examinations` | Projected via `ExaminationModel.to_fhir_dict()`. Default status `finished`, class `AMB`. |

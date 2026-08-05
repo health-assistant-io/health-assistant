@@ -25,6 +25,21 @@ def _a_tz():
     return datetime(2026, 7, 21, 9, 30, 0, tzinfo=timezone.utc)
 
 
+def _translate_vcc(d):
+    """SDK schema → ORM kwarg translation.
+
+    The ORM column is ``value_codeableConcept`` (camelCase — predates the
+    snake-case convention); the SDK + REST schemas use
+    ``value_codeable_concept``. Mirrors the translation in
+    ``integration_sync_service.run_sync`` so tests that build an ORM
+    Observation directly from an SDK ``model_dump()`` round-trip cleanly.
+    """
+    vcc = d.pop("value_codeable_concept", None)
+    if vcc is not None:
+        d["value_codeableConcept"] = vcc
+    return d
+
+
 # ---------------------------------------------------------------------------
 # set_value_string: basic shape
 # ---------------------------------------------------------------------------
@@ -137,7 +152,7 @@ def test_categorical_observation_passes_fhir_validation():
         .set_effective_date(_a_tz())
         .build()
     )
-    orm = Observation(**obs_create.model_dump(exclude_unset=True))
+    orm = Observation(**_translate_vcc(obs_create.model_dump(exclude_unset=True)))
 
     fhir_dict = assert_valid_fhir(orm)
     assert fhir_dict["resourceType"] == "Observation"
@@ -189,3 +204,84 @@ def test_bridge_categorical_workaround_no_longer_silently_drops():
         "build() must read the canonical _value_string attribute — if this "
         "regresses, set_value_string() is no longer the path build() honors."
     )
+
+
+# ---------------------------------------------------------------------------
+# set_value_codeable_concept: STATE biomarker shape (plan Step 9)
+# ---------------------------------------------------------------------------
+
+V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+
+
+def test_set_value_codeable_concept_emits_value_codeable_concept():
+    """The coded-categorical builder path emits value_codeable_concept (the
+    proper shape for STATE biomarkers — the validator rejects value_string
+    on STATE biomarkers, only valueCodeableConcept is accepted)."""
+    obs = (
+        ObservationBuilder(TENANT, PATIENT)
+        .set_biomarker("94500-6", "SARS-CoV-2 PCR")
+        .set_value_codeable_concept("POS", V3, display="Positive")
+        .set_effective_date(_a_tz())
+        .build()
+    )
+    assert obs.value_codeable_concept == {
+        "coding": [{"code": "POS", "system": V3, "display": "Positive"}]
+    }
+    # Mutual-exclusion: the other value[x] slots are cleared.
+    assert obs.value_string is None
+    assert obs.value_quantity is None
+    # Numeric-derived fields are also None (categoricals are unitless).
+    assert obs.raw_value is None
+    assert obs.normalized_value is None
+    assert obs.relative_score is None
+
+
+def test_set_value_codeable_concept_clears_numeric_slot():
+    """Last value-setter wins — calling set_value_codeable_concept after
+    set_value clears the quantitative slot."""
+    builder = (
+        ObservationBuilder(TENANT, PATIENT)
+        .set_biomarker("94500-6", "PCR")
+        .set_value(1.0, "x")
+    )
+    builder.set_value_codeable_concept("NEG", V3)
+    obs = builder.set_effective_date(_a_tz()).build()
+    assert obs.value_codeable_concept is not None
+    assert obs.value_quantity is None
+
+
+def test_set_value_clears_codeable_concept_slot():
+    """Reverse direction: set_value after set_value_codeable_concept clears
+    the categorical slot."""
+    builder = (
+        ObservationBuilder(TENANT, PATIENT)
+        .set_biomarker("2345-7", "Glucose")
+        .set_value_codeable_concept("POS", V3)
+    )
+    builder.set_value(5.5, "mmol/L")
+    obs = builder.set_effective_date(_a_tz()).build()
+    assert obs.value_quantity is not None
+    assert obs.value_codeable_concept is None
+
+
+def test_value_codeable_concept_passes_fhir_validation():
+    """The built observation round-trips through assert_valid_fhir and
+    projects as a FHIR Observation with valueCodeableConcept."""
+    from app.models.fhir import Observation
+    from app.services.fhir_helpers import assert_valid_fhir
+
+    obs_create = (
+        ObservationBuilder(TENANT, PATIENT)
+        .set_biomarker("94500-6", "SARS-CoV-2 PCR")
+        .set_value_codeable_concept("POS", V3, display="Positive")
+        .set_effective_date(_a_tz())
+        .build()
+    )
+    orm = Observation(**_translate_vcc(obs_create.model_dump(exclude_unset=True)))
+
+    fhir_dict = assert_valid_fhir(orm)
+    assert fhir_dict["resourceType"] == "Observation"
+    assert fhir_dict["valueCodeableConcept"]["coding"][0]["code"] == "POS"
+    # No leakage of the other value[x] flavors.
+    assert "valueQuantity" not in fhir_dict
+    assert "valueString" not in fhir_dict

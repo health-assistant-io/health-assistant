@@ -753,6 +753,70 @@ def _build_resource_filter(model, key: str, value: str):
         if pred is None:
             return None
         return not_(pred) if negate else pred
+
+    if base_key == "value-concept":
+        # Observation.value-concept: token search on valueCodeableConcept.
+        # FHIR shape: ``value-concept=POS`` (code match, any system) or
+        # ``value-concept=http://...|POS`` (system|code pair). We also match
+        # the same code under component[].valueCodeableConcept so multi-state
+        # panels surface the same way as single-state observations.
+        col = getattr(model, "value_codeableConcept", None)
+        comp_col = getattr(model, "component", None)
+        if col is None:
+            return None
+        system_part, _, code_part = value.partition("|")
+        if not code_part:
+            # Bare code — caller wrote ``value-concept=POS``.
+            code_part = system_part
+            system_part = ""
+        code_lit = code_part.strip()
+        if not code_lit:
+            return None
+        # JSONB containment: cast the whole column to text and substring-match
+        # against the desired (code, optional system) JSON snippet. The
+        # catalog is small; strict @> containment would need a
+        # jsonb_build_object per coding slot and isn't worth it here.
+        target = f'"code": "{code_lit}"'
+        sys_target = (
+            f'"system": "{system_part.strip()}"' if system_part.strip() else None
+        )
+        preds = []
+        vcc_text = col.cast(String)
+        if sys_target:
+            preds.append(vcc_text.like(f"%{target}%{sys_target}%"))
+            preds.append(vcc_text.like(f"%{sys_target}%{target}%"))
+        else:
+            preds.append(vcc_text.like(f"%{target}%"))
+        # Multi-state: same match inside the component[] array.
+        if comp_col is not None:
+            comp_text = comp_col.cast(String)
+            if sys_target:
+                preds.append(comp_text.like(f"%{target}%{sys_target}%"))
+                preds.append(comp_text.like(f"%{sys_target}%{target}%"))
+            else:
+                preds.append(comp_text.like(f"%{target}%"))
+        pred = or_(*preds)
+        return not_(pred) if negate else pred
+
+    if base_key == "value-string":
+        # Observation.value-string: substring match on value_string
+        # (case-insensitive). Matches FHIR's string search semantics.
+        col = getattr(model, "value_string", None)
+        if col is None:
+            return None
+        pred = func.lower(col).like(f"%{value.lower()}%")
+        return not_(pred) if negate else pred
+
+    if base_key == "component-code":
+        # Observation.component-code: token search on component[].code.coding[].code.
+        # Used to narrow multi-state panels by sub-context (e.g. organism in
+        # a microbiology panel).
+        comp_col = getattr(model, "component", None)
+        if comp_col is None:
+            return None
+        target = f'"code": "{value.strip()}"'
+        pred = comp_col.cast(String).like(f"%{target}%")
+        return not_(pred) if negate else pred
     # Date params: onset-date, date, effective, sent, received, authored-on.
     # Routes through DateFilter.to_orm_filter (the same path _lastUpdated uses)
     # so FHIR precision semantics (year/month/day implicit ranges) and the

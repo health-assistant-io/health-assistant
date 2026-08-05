@@ -88,6 +88,12 @@
         "description": "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
       },
       {
+        "id": "state-biomarkers",
+        "file": "STATE_BIOMARKERS.md",
+        "title": "State Biomarkers",
+        "description": "Qualitative and categorical biomarker values in Health Assistant, a self-hosted health records platform. The state catalog (HL7 v3-ObservationInterpretation + SNOMED + DataAbsentReason), allowed_states declarations, multi-state panels, and FHIR R4 value-concept search."
+      },
+      {
         "id": "export-import",
         "file": "EXPORT_IMPORT.md",
         "title": "Export & Import (Backup)",

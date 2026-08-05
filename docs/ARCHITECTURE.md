@@ -29,9 +29,10 @@ Health Assistant is a self-hosted, open-source platform for centralizing health 
 - **examinations**: Clinical visit containers (id, patient_id, organization_id, examination_date, notes, patient_notes, `category_concept_id` FK → `concepts.id`)
 - **doctors**: Care team profiles (id, tenant_id, user_id, name, `specialty_concept_id` FK → `concepts.id`, license_number, contact_info)
 - **documents**: File tracking (id, owner_id, filename, file_path, status, progress, extracted_text, entities, `category_concept_id` FK → `concepts.id`)
-- **fhir_observations**: Biomarkers/Vitals (id, `patient_id` FK → `fhir_patients.id` ON DELETE CASCADE, `document_id` FK → `documents.id` ON DELETE SET NULL, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime)
+- **fhir_observations**: Biomarkers/Vitals (id, `patient_id` FK → `fhir_patients.id` ON DELETE CASCADE, `document_id` FK → `documents.id` ON DELETE SET NULL, biomarker_id, raw_value, normalized_value, relative_score, effective_datetime). Stores numeric results in `value_quantity`, free-text in `value_string`, and categorical STATE biomarker values in `value_codeableConcept`. Multi-state panels use `component[]`.
 - **units**: Smart units with conversion logic (id, symbol, quantity_type, conversion_multiplier)
-- **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id, `class_concept_id` FK → `concepts.id`)
+- **biomarker_definitions**: Global catalog (id, slug, coding_system, code, name, aliases, preferred_unit_id, `class_concept_id` FK → `concepts.id`, `value_type` discriminator `quantity|state`, `supports_multi_state` for component[] panels). STATE biomarkers carry an `allowed_states` join set with `is_normal` flags. See [STATE_BIOMARKERS.md](STATE_BIOMARKERS.md).
+- **biomarker_states**: Universal catalog of categorical biomarker values (Positive/Negative/Detected/...) drawn from HL7 v3-ObservationInterpretation, SNOMED CT, and FHIR DataAbsentReason. Referenced by STATE biomarkers via `biomarker_allowed_states`.
 - **laboratories**: Source tracking for lab reports (id, name, location)
 - **telemetry_data**: Time-series health metrics (id, device_id, timestamp, data)
 - **concepts** + **concept_kind_tags** + **concept_edges**: the unified multi-kind taxonomy / knowledge graph that classifies every entity above. One concept carries multiple domain tags (e.g. "Blood Laboratory" is an examination category, a biomarker class, and a document category). See [TAXONOMY.md](TAXONOMY.md).

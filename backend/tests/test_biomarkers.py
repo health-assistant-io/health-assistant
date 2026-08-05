@@ -38,11 +38,41 @@ class MockResult:
     def scalar_one_or_none(self):
         return self.data[0] if self.data else None
 
+    def scalar_one(self):
+        if not self.data:
+            raise RuntimeError("scalar_one called on empty MockResult")
+        return self.data[0]
+
     def first(self):
         return self.data[0] if self.data else None
 
     def all(self):
         return self.data
+
+
+def _mock_biomarker(value_type="quantity", **overrides):
+    """Build a MagicMock BiomarkerDefinition for the create/reload paths."""
+    from app.models.enums import BiomarkerValueType
+
+    bio = MagicMock()
+    bio.id = overrides.get("id", uuid.uuid4())
+    bio.slug = overrides.get("slug", "new-biomarker")
+    bio.name = overrides.get("name", "New Biomarker")
+    bio.category = overrides.get("category", None)
+    bio.aliases = overrides.get("aliases", [])
+    bio.preferred_unit_id = overrides.get("preferred_unit_id", None)
+    bio.info = overrides.get("info", None)
+    bio.coding_system = overrides.get("coding_system", "loinc")
+    bio.code = overrides.get("code", None)
+    bio.meta_data = overrides.get("meta_data", {})
+    bio.reference_range_min = overrides.get("reference_range_min", None)
+    bio.reference_range_max = overrides.get("reference_range_max", None)
+    bio.is_telemetry = overrides.get("is_telemetry", False)
+    bio.value_type = overrides.get("value_type", BiomarkerValueType(value_type))
+    bio.supports_multi_state = overrides.get("supports_multi_state", False)
+    bio.allowed_states = overrides.get("allowed_states", [])
+    bio.reference_ranges = overrides.get("reference_ranges", [])
+    return bio
 
 
 def get_mock_db(data_to_return):
@@ -81,6 +111,13 @@ async def test_get_biomarkers(async_client: AsyncClient):
     mock_bio.coding_system = "loinc"
     mock_bio.code = "1234-5"
     mock_bio.meta_data = {}
+    # State-biomarker fields (default QUANTITY shape — no allowed_states).
+    from app.models.enums import BiomarkerValueType
+
+    mock_bio.value_type = BiomarkerValueType.QUANTITY
+    mock_bio.supports_multi_state = False
+    mock_bio.allowed_states = []
+    mock_bio.reference_ranges = []
 
     app.dependency_overrides[get_db] = get_mock_db([(mock_bio, "mg/dL")])
 
@@ -133,6 +170,9 @@ async def test_create_biomarker(async_client: AsyncClient):
 
     mock_unit = MagicMock()
     mock_unit.id = uuid.uuid4()
+    mock_bio = _mock_biomarker(
+        slug="new-biomarker", name="New Biomarker", aliases=["NB"]
+    )
 
     async def mock_execute(*args, **kwargs):
         query = args[0] if args else kwargs.get("statement")
@@ -144,7 +184,9 @@ async def test_create_biomarker(async_client: AsyncClient):
             or "select unit.symbol \nfrom" in query_str
         ):
             return MockResult(["mg/dL"])
-
+        # State-biomarker reload query (selects BiomarkerDefinition by id).
+        if "from biomarker_definitions" in query_str:
+            return MockResult([mock_bio])
         # Fallback for Unit creation or other queries (select(Unit)...)
         return MockResult([mock_unit])
 
@@ -195,6 +237,12 @@ async def test_create_telemetry_biomarker(async_client: AsyncClient):
 
     mock_unit = MagicMock()
     mock_unit.id = uuid.uuid4()
+    mock_bio = _mock_biomarker(
+        slug="heart-rate",
+        name="Heart Rate",
+        aliases=["HR"],
+        is_telemetry=True,
+    )
 
     async def mock_execute(*args, **kwargs):
         query = args[0] if args else kwargs.get("statement")
@@ -205,6 +253,8 @@ async def test_create_telemetry_biomarker(async_client: AsyncClient):
             or "select unit.symbol \nfrom" in query_str
         ):
             return MockResult(["bpm"])
+        if "from biomarker_definitions" in query_str:
+            return MockResult([mock_bio])
 
         return MockResult([mock_unit])
 

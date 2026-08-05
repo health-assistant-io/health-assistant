@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint
+from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint, UniqueConstraint, Integer
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -9,7 +9,13 @@ from app.models.base import (
     VersionedMixin,
     TimestampMixin,
 )
-from app.models.enums import QuantityType, CodingSystem, CatalogScope, Gender
+from app.models.enums import (
+    QuantityType,
+    CodingSystem,
+    CatalogScope,
+    Gender,
+    BiomarkerValueType,
+)
 
 
 class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
@@ -64,6 +70,17 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     reference_range_min = Column(Float, nullable=True)
     reference_range_max = Column(Float, nullable=True)
     is_telemetry = Column(Boolean, nullable=False, default=False)
+    # Discriminator: numeric vs categorical. See ``BiomarkerValueType``.
+    value_type = Column(
+        Enum(BiomarkerValueType, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=BiomarkerValueType.QUANTITY,
+        index=True,
+    )
+    # STATE biomarkers only: when True, Observations use FHIR ``component[]``
+    # (one ``valueCodeableConcept`` per sub-context) instead of a single
+    # top-level value. Ignored for QUANTITY biomarkers.
+    supports_multi_state = Column(Boolean, nullable=False, default=False)
     meta_data = Column(JSONB, nullable=True)
     scope = Column(
         Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
@@ -91,6 +108,17 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         passive_deletes=True,
         lazy="selectin",
     )
+    # STATE biomarkers only: the controlled vocabulary this biomarker accepts.
+    # Join rows carry ``is_normal`` (the "normal set" replacing numeric ref
+    # ranges) and ``sort_order`` (stable UI rendering).
+    allowed_states = relationship(
+        "BiomarkerAllowedState",
+        back_populates="biomarker",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="BiomarkerAllowedState.sort_order",
+        lazy="selectin",
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -98,6 +126,17 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
             "OR reference_range_max IS NULL "
             "OR reference_range_min <= reference_range_max",
             name="ck_biomarker_definitions_ref_range_order",
+        ),
+        # STATE biomarkers cannot be telemetry (telemetry_data.value is
+        # Float NOT NULL — categorical values have nowhere to go).
+        CheckConstraint(
+            "is_telemetry = FALSE OR value_type != 'state'",
+            name="ck_biomarker_definitions_state_not_telemetry",
+        ),
+        # STATE biomarkers have no unit (categorical values are unitless).
+        CheckConstraint(
+            "value_type != 'state' OR preferred_unit_id IS NULL",
+            name="ck_biomarker_definitions_state_no_unit",
         ),
     )
 
@@ -162,6 +201,94 @@ class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):
         CheckConstraint(
             "age_min IS NULL OR age_max IS NULL OR age_min <= age_max",
             name="ck_biomarker_reference_ranges_age_window",
+        ),
+    )
+
+
+class BiomarkerState(Base, UUIDMixin, AuditMixin, TimestampMixin):
+    """The controlled vocabulary of categorical biomarker values (states).
+
+    Universal catalog (no ``tenant_id``) — clinical state codes are global.
+    Codes are drawn from standard code systems so FHIR interop is immediate:
+
+    - HL7 v3-ObservationInterpretation
+      (``http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation``)
+      — POS, NEG, IND, H, L, S, R, ...
+    - SNOMED CT (``http://snomed.info/sct``) — Detected / Not detected / ...
+    - FHIR DataAbsentReason
+      (``http://terminology.hl7.org/CodeSystem/data-absent-reason``)
+    - ``urn:uuid:health-assistant:custom-state`` — proprietary codes
+      (e.g. WITHIN_LIMITS) paralleling ``CodingSystem.CUSTOM``.
+
+    A ``BiomarkerDefinition`` with ``value_type=STATE`` declares its allowed
+    values via ``BiomarkerAllowedState`` join rows pointing here.
+    """
+
+    __tablename__ = "biomarker_states"
+
+    slug = Column(String(80), nullable=False, unique=True, index=True)
+    # The FHIR ``coding.code`` value (e.g. "POS", "260373001", "WITHIN_LIMITS").
+    code = Column(String(100), nullable=False)
+    # The FHIR ``coding.system`` URL identifying the code system.
+    system = Column(String(255), nullable=False)
+    # Human-readable label (FHIR ``coding.display``).
+    display = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    # Group label for UI navigation (e.g. "microbiology_serology",
+    # "susceptibility", "data_absent"). Nullable for backward compat —
+    # states without a category render in an "Other" group.
+    category = Column(String(80), nullable=True)
+    # Stable ordering for UI pickers / dropdowns.
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        # A code is unique within its code system (POS in v3-OI is unambiguous;
+        # a different POS in another system would be a different concept).
+        UniqueConstraint(
+            "code", "system", name="uq_biomarker_states_code_system"
+        ),
+    )
+
+
+class BiomarkerAllowedState(Base, UUIDMixin):
+    """Join row: a STATE biomarker ↔ a state it accepts.
+
+    Carries the per-biomarker metadata that replaces numeric reference ranges
+    for categorical biomarkers:
+
+    - ``is_normal`` — whether this state is in the biomarker's "normal set".
+      The analytics status computation is:
+      ``state in normal_set → "Normal" else "Abnormal"``.
+    - ``sort_order`` — stable UI rendering (e.g. Positive → Negative → Indet).
+    """
+
+    __tablename__ = "biomarker_allowed_states"
+
+    biomarker_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("biomarker_definitions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    state_id = Column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("biomarker_states.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    is_normal = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    # Relationships
+    biomarker = relationship(
+        "BiomarkerDefinition", back_populates="allowed_states"
+    )
+    state = relationship("BiomarkerState", lazy="selectin")
+
+    __table_args__ = (
+        # A biomarker lists each state at most once.
+        UniqueConstraint(
+            "biomarker_id", "state_id", name="uq_biomarker_allowed_states"
         ),
     )
 

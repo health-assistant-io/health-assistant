@@ -40,6 +40,11 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
 
   const latestValue = latestPoint?.value ?? '--';
   const unit = latestPoint?.unit ?? '';
+  // STATE / non-numeric values: the sparkline (LineChart) is meaningless and
+  // the unit suffix is wrong ("Positive bpm"). Render the value as-is and
+  // skip the chart. ``useBiomarkerChange`` already short-circuits to null
+  // for non-numeric series so the delta badge auto-hides.
+  const isNumericValue = typeof latestPoint?.value === 'number' && isFinite(latestPoint.value);
   
   // Calculate trend change
   const changeInfo = useBiomarkerChange(data);
@@ -206,13 +211,15 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
             <span className={`text-4xl font-black tracking-tighter ${status.toLowerCase().includes('high') ? 'text-red-600' : (status.toLowerCase().includes('low') ? 'text-blue-600' : 'text-gray-900 dark:text-dark-text')}`}>
               {formatBiomarkerValue(latestValue, precisionProfile)}
             </span>
-            <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
-              {formatUnit(unit)}
-            </span>
+            {isNumericValue && (
+              <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
+                {formatUnit(unit)}
+              </span>
+            )}
           </div>
         </div>
 
-        {showSparkline && (
+        {showSparkline && isNumericValue && (
           <div className="w-32 h-16 flex-shrink-0 nodrag opacity-80 hover:opacity-100 transition-opacity">
             <LineChart 
               data={data.slice(-10).map((d: any) => ({ 

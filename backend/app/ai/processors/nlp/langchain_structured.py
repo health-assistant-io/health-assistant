@@ -123,14 +123,21 @@ Here is the current catalog of KNOWN medications:
 Instructions:
 1. Try to match each extracted biomarker to the `slug` of a known biomarker.
 2. Try to match each extracted medication to the `id` of a known medication.
-3. If it matches, add to `known_*` list with the correct identifier.
+3. If it matches, add it to `known_*` list with the correct identifier.
 4. If it absolutely does not match, add it to `unknown_*` list.
-5. Parse numerical values strictly as floats, including result `value`, `reference_range_min`, and `reference_range_max`.
-6. For medications:
+5. NUMERIC biomarkers: parse numerical values strictly as floats, including
+   result `value`, `reference_range_min`, and `reference_range_max`.
+6. STATE biomarkers (the catalog marks these as `value_type: "state"``):
+   do NOT extract a numeric `value`. Instead pick a `value_state_code` from
+   the biomarker's `allowed_states` list (e.g. POS/NEG/IND). The matching
+   `value_state_system` URL is in the catalog entry — copy it verbatim.
+   Examples of state results: "Positive", "Negative", "Detected", "Not
+   Detected", "Indeterminate", "Weakly reactive", "Within limits".
+7. For medications:
    - Extract the CLEAN, GENERIC name (e.g., 'Phenylephrine Hydrochloride' instead of 'Phenylephrine Hydrochloride 2.5% Ophthalmic Solution').
    - DO NOT include dosages, concentrations, or delivery formats in the name.
    - Extract dosage, frequency, and reason if available into their respective fields.
-7. Provide a concise narrative `impressions` summary.
+8. Provide a concise narrative `impressions` summary.
 """
 
         logger.info(

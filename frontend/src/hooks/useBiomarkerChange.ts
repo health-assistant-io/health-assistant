@@ -10,18 +10,25 @@ export interface BiomarkerChangeInfo {
 
 /**
  * Computes the percentage change between the last two points of a biomarker
- * trend series. Returns null when there are fewer than 2 points or the
- * previous value is zero (would divide by zero).
+ * trend series. Returns null when there are fewer than 2 points, the
+ * previous value is zero (would divide by zero), or any value is non-numeric
+ * (STATE biomarkers — categorical values have no meaningful percentage
+ * change; the cards should hide the delta badge for those series).
  *
  * Used by BiomarkerCard, TrendsCard, and any card that shows a ↑/↓ delta.
  */
 export function useBiomarkerChange(
-  data: Array<{ value: number }> | undefined | null
+  data: Array<{ value: number | string | null | undefined }> | undefined | null
 ): BiomarkerChangeInfo | null {
   return useMemo(() => {
     if (!data || data.length < 2) return null;
-    const latest = data[data.length - 1].value;
-    const prev = data[data.length - 2].value;
+    const latestRaw = data[data.length - 1].value;
+    const prevRaw = data[data.length - 2].value;
+    // STATE / non-numeric values: short-circuit (no meaningful % change).
+    if (typeof latestRaw !== 'number' || typeof prevRaw !== 'number') return null;
+    if (!isFinite(latestRaw) || !isFinite(prevRaw)) return null;
+    const latest = latestRaw;
+    const prev = prevRaw;
     if (prev === 0) return null;
     const diff = latest - prev;
     const percent = (diff / Math.abs(prev)) * 100;

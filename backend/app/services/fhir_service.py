@@ -14,6 +14,8 @@ from app.services.fhir_helpers import (
 from app.services.notification_manager import NotificationManager
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 from app.services.fhir_extensions import validate_patient_extensions
+from app.services.observation_value_validator import validate_observation_value
+from app.models.enums import BiomarkerValueType
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +323,13 @@ async def create_observation(
     # ORM-shape input (snake_case) — coerce types directly. The /fhir/* POST
     # endpoints speak ORM-shape; FHIR parsing lives only at the import boundary.
     value_quantity = observation_data.get("value_quantity")
+    value_string = observation_data.get("value_string")
+    value_codeable_concept = (
+        observation_data.get("value_codeable_concept")
+        if observation_data.get("value_codeable_concept") is not None
+        else observation_data.get("valueCodeableConcept")
+    )
+    component = observation_data.get("component")
     subject = observation_data.get("subject") or {}
 
     # document_id is a UUID FK (audit B2). Accept str or UUID; drop anything
@@ -337,20 +346,50 @@ async def create_observation(
     # JSONB and patient-delete cascades.
     _patient_id = coerce_patient_id(observation_data.get("patient_id"), subject)
 
+    # Hard value-shape contract (plan state-biomarkers Step 5): load the
+    # biomarker definition and validate value[x] against its value_type before
+    # building the ORM row. STATE biomarkers leave raw_value/normalized_value
+    # NULL (categorical values are unitless).
+    _biomarker_id = observation_data.get("biomarker_id")
+    _biomarker = None
+    if _biomarker_id and DATABASE_AVAILABLE:
+        async with AsyncSessionLocal() as session:
+            from app.models.biomarker_model import BiomarkerDefinition
+
+            _biomarker = await session.get(BiomarkerDefinition, _biomarker_id)
+    validate_observation_value(
+        _biomarker,
+        value_quantity=value_quantity,
+        value_string=value_string,
+        value_codeable_concept=value_codeable_concept,
+        component=component,
+    )
+
+    # raw_value is only meaningful for QUANTITY observations — for STATE the
+    # value lives in valueCodeableConcept (and the validator has rejected any
+    # numeric shape).
+    raw_value = None
+    if _biomarker is None or _biomarker.value_type == BiomarkerValueType.QUANTITY:
+        raw_value = observation_data.get("raw_value") or (
+            value_quantity.get("value") if value_quantity else None
+        )
+
     new_obs = Observation(
         tenant_id=tenant_id,
         status=observation_data.get("status", "final"),
         code=observation_data.get("code") or {},
         subject=subject,
         value_quantity=value_quantity,
+        value_string=value_string,
+        value_codeableConcept=value_codeable_concept,
+        component=component,
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
         biomarker_id=observation_data.get("biomarker_id"),
         interpretation=_normalize_interpretation(
             observation_data.get("interpretation")
         ),
-        raw_value=observation_data.get("raw_value")
-        or (value_quantity.get("value") if value_quantity else None),
+        raw_value=raw_value,
         document_id=_doc_id,
         patient_id=_patient_id,
     )
@@ -939,6 +978,27 @@ async def map_observations_to_biomarkers(
                     logger.info(f"Auto-created catalog entry for {text} (slug: {slug})")
 
             if bdef:
-                obs.biomarker_id = bdef.id
+                # Hard value-shape contract (plan state-biomarkers Step 5):
+                # validate value[x] against the biomarker's value_type before
+                # accepting the link. STATE biomarkers reject value_quantity;
+                # QUANTITY rejects a top-level valueCodeableConcept. On
+                # mismatch we detach (clear biomarker_id) and log — the
+                # observation remains an unmapped FHIR row rather than being
+                # misassociated with a contract it can't satisfy.
+                try:
+                    validate_observation_value(
+                        bdef,
+                        value_quantity=obs.value_quantity,
+                        value_string=obs.value_string,
+                        value_codeable_concept=obs.value_codeableConcept,
+                        component=obs.component,
+                    )
+                    obs.biomarker_id = bdef.id
+                except Exception as exc:
+                    logger.warning(
+                        "Observation code=%s value-shape contract violation "
+                        "for biomarker %s — detaching. Detail: %s",
+                        obs.code, bdef.slug, exc,
+                    )
 
     return {"mapped": len(observations), "dropped_invalid": dropped}

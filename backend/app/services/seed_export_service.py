@@ -514,6 +514,21 @@ class SeedExportService:
                 item["reference_range_max"] = b.reference_range_max
             if b.is_telemetry:
                 item["is_telemetry"] = True
+            # State biomarker discriminator (round-trip on seed export/import).
+            if b.value_type and b.value_type.value != "quantity":
+                item["value_type"] = b.value_type.value
+            if b.supports_multi_state:
+                item["supports_multi_state"] = True
+            if b.allowed_states:
+                item["allowed_states"] = [
+                    {
+                        "state_slug": s.state.slug,
+                        "is_normal": s.is_normal,
+                        "sort_order": s.sort_order,
+                    }
+                    for s in b.allowed_states
+                    if s.state is not None
+                ]
             biomarkers_out.append(item)
 
         return {

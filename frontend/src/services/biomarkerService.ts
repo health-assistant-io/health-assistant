@@ -1,4 +1,4 @@
-import { Biomarker, Unit, BiomarkerGroup, BiomarkerReferenceRange } from '../types/biomarker';
+import { Biomarker, Unit, BiomarkerGroup, BiomarkerReferenceRange, BiomarkerState } from '../types/biomarker';
 import api from '../api/axios';
 
 const API_URL = '/biomarkers';
@@ -55,6 +55,14 @@ class BiomarkerService {
 
   async getUnits(): Promise<Unit[]> {
     const response = await api.get(`${API_URL}/units`);
+    return response.data;
+  }
+
+  /** List the universal biomarker_states catalog (HL7 v3-OI + SNOMED +
+   * DataAbsentReason + custom urn). Powers the STATE-biomarker
+   * allowed_states picker. Public — any authenticated user. */
+  async getStates(): Promise<BiomarkerState[]> {
+    const response = await api.get(`${API_URL}/states`);
     return response.data;
   }
 

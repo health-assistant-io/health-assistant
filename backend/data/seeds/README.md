@@ -91,7 +91,22 @@ edges now live in `concept_edges.json` with `src_type=anatomy`,
   `biomarker_class` concept slug)**, `category`? (legacy underscore string,
   e.g. `blood_laboratory`; swapped `_`→`-` to find the concept),
   `preferred_unit_symbol`?, `aliases`? (list), `info`?,
-  `reference_range_min`?, `reference_range_max`?, `is_telemetry`?
+  `reference_range_min`?, `reference_range_max`?, `is_telemetry`?,
+  `value_type`? (`quantity` default, or `state` for categorical biomarkers),
+  `supports_multi_state`? (STATE-only; accept `component[]` observations),
+  `allowed_states`? (STATE-only; list of `{state_slug, is_normal, sort_order}`
+  referencing `biomarker_states.json`)
+
+### `biomarker_states.json` — universal state catalog (STATE biomarkers)
+- `items[]`: `slug` **(req, unique)**, `code` **(req)**, `system` **(req)**
+  (code system URL: `http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation`,
+  `http://snomed.info/sct`, `http://terminology.hl7.org/CodeSystem/data-absent-reason`,
+  or `urn:uuid:health-assistant:custom-state`), `display` **(req)**,
+  `description`?, `category`? (group label for UI navigation),
+  `sort_order`? (int, default 0)
+- Unique on `(code, system)`. Seeded with 22 codes in 5 categories
+  (Microbiology & Serology, Antimicrobial Susceptibility, Qualitative Presence,
+  Limits & Thresholds, Data Absent). See [STATE_BIOMARKERS.md](../../../docs/STATE_BIOMARKERS.md).
 
 ### `biomarker_panels.json` — panel memberships (→ `MEMBER_OF` edges)
 - `panel_slug` **(req)** — a `biomarker_panel` concept

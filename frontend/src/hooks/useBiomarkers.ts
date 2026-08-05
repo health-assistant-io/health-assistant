@@ -66,6 +66,31 @@ const generateSafeSlug = (name: string) => {
   return name?.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'unknown';
 };
 
+/**
+ * Pull a STATE biomarker's value from a FHIR Observation (ORM shape).
+ *
+ * Returns the coding[0].code as ``state`` and the coding[0].display
+ * (falling back to ``text``) as ``stateDisplay``. Returns ``null`` when
+ * the value[x] is missing or not a CodeableConcept (a QUANTITY observation
+ * slip-through, or a multi-state panel — handled separately by the caller).
+ *
+ * Used by the observations path and the legacy document path to populate
+ * ``BiomarkerObservation.value.state`` without shoving strings into the
+ * numeric ``raw`` slot.
+ */
+const extractStateValue = (
+  valueCC: any,
+): { state: string; stateDisplay: string; stateSystem: string | null } | null => {
+  if (!valueCC || typeof valueCC !== 'object') return null;
+  const coding = Array.isArray(valueCC.coding) ? valueCC.coding : null;
+  const first = coding && coding.length > 0 ? coding[0] : null;
+  const code = first?.code ?? valueCC.code;
+  if (!code) return null;
+  const display = first?.display ?? valueCC.text ?? code;
+  const system = first?.system ?? null;
+  return { state: String(code), stateDisplay: String(display), stateSystem: system };
+};
+
 export function useBiomarkers({ documents = [], trendsData, observations = [] }: UseBiomarkersProps) {
   // Load the definition catalog once (session-wide cache) so we can enrich
   // every BiomarkerObservation with the canonical definition name + UUID.
@@ -233,26 +258,56 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
         const rawRef = { ...rawRange, displayText: getRangeText(rawRange.min, rawRange.max) };
         const stdRef = { ...standardRange, displayText: getRangeText(standardRange.min, standardRange.max) };
 
+        // Value extraction — STATE biomarkers (valueCodeableConcept) take a
+        // separate branch so the state code/display land in ``value.state``
+        // instead of being shoved into the numeric ``raw`` slot (pre-fix the
+        // ?? 0 tail coerced CodeableConcept display strings into 0).
+        // Prefer the backend's explicit biomarker_value_type when available;
+        // fall back to inferring from the presence of value_codeable_concept.
+        const backendValueType = (obs as any).biomarker_value_type as string | undefined;
+        const stateValue = extractStateValue(obs.value_codeable_concept);
+        const isState = backendValueType === 'state' || (!backendValueType && stateValue !== null);
+        const value: BiomarkerObservation['value'] = isState && stateValue
+          ? {
+              raw: null,
+              normalized: null,
+              state: stateValue.state,
+              stateDisplay: stateValue.stateDisplay,
+              stateSystem: stateValue.stateSystem,
+            }
+          : {
+              raw: obs.raw_value ?? obs.value_quantity?.value ?? null,
+              normalized: obs.normalized_value ?? obs.value_quantity?.value ?? null,
+            };
+        const valueType: BiomarkerObservation['valueType'] = isState ? 'state' : 'quantity';
+
         const observation: BiomarkerObservation = {
           id: obs.id || `obs-${index}`,
           displayName: name,
           slug: slug,
           method: obs.method || null,
-          value: {
-            raw: obs.raw_value ?? obs.value_quantity?.value ?? obs.value_string ?? obs.value_codeable_concept?.text ?? obs.value_codeable_concept?.coding?.[0]?.display ?? 0,
-            normalized: obs.normalized_value ?? obs.value_quantity?.value ?? obs.value_string ?? obs.value_codeable_concept?.text ?? obs.value_codeable_concept?.coding?.[0]?.display ?? 0
-          },
+          valueType,
+          value,
           unit: {
             rawSymbol: obs.value_quantity?.unit || '',
             normalizedSymbol: obs.normalized_unit || obs.value_quantity?.unit || ''
           },
-          referenceRange: {
-            ...(obs.normalized_value ? stdRef : rawRef),
-            raw: rawRef,
-            standard: stdRef
-          },
-          relativeScore: obs.relative_score || null,
-          interpretation: codeableText(obs.interpretation) || 'Normal',
+          referenceRange: isState && stateValue
+            ? // STATE biomarkers have no numeric reference range — the
+              // normal set lives on the definition (allowed_states.is_normal).
+              { min: null, max: null, displayText: stateValue.stateDisplay || '--' }
+            : {
+                ...(obs.normalized_value ? stdRef : rawRef),
+                raw: rawRef,
+                standard: stdRef
+              },
+          relativeScore: isState ? null : obs.relative_score || null,
+          interpretation: isState
+            ? // For STATE, the backend already computed Normal/Abnormal via
+              // the is_normal set; trust the interpretation field if present,
+              // otherwise defer to the general "Normal" default.
+              codeableText(obs.interpretation) || 'Normal'
+            : codeableText(obs.interpretation) || 'Normal',
           source: {
             documentId: obs.document_id || '',
             filename: 'Laboratory Result',
@@ -264,7 +319,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
           aliases: obs.biomarker_aliases || [],
           _rawJson: obs
         };
-        
+
         observation.interpretation = getFinalStatus(observation);
         extracted.push(observation);
       });
@@ -371,12 +426,29 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
       if (doc.entities.biomarkers && Array.isArray(doc.entities.biomarkers) && !doc.entities.known_biomarkers) {
         doc.entities.biomarkers.forEach((b: any, index: number) => {
           const generatedSlug = generateSafeSlug(b.name);
+          // Pre-fix this branch did ``parseFloat(b.value) || 0``, which
+          // silently destroyed any non-numeric value (e.g. a state display
+          // like "Positive") and stored 0 as if it were a quantity. Detect
+          // numeric vs string properly so STATE values survive.
+          const rawInput = b.value;
+          const numericRaw =
+            typeof rawInput === 'number'
+              ? rawInput
+              : typeof rawInput === 'string' && rawInput.trim() !== '' && !isNaN(Number(rawInput))
+                ? Number(rawInput)
+                : null;
+          const isStateValue =
+            typeof rawInput === 'string' && numericRaw === null && rawInput.trim() !== '';
+          const value: BiomarkerObservation['value'] = isStateValue
+            ? { raw: null, normalized: null, state: null, stateDisplay: rawInput }
+            : { raw: numericRaw ?? 0, normalized: null };
           const observation: BiomarkerObservation = {
             id: `${doc.id}-legacy-${index}`,
             displayName: b.name,
             slug: generatedSlug,
             method: null,
-            value: { raw: parseFloat(b.value) || 0, normalized: null },
+            valueType: isStateValue ? 'state' : 'quantity',
+            value,
             unit: { rawSymbol: b.unit || '' },
             referenceRange: { min: null, max: null, displayText: b.reference_range || '--' },
             relativeScore: null,
@@ -385,8 +457,8 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
             definitionId: b.biomarker_id || null,
             info: null,
             aliases: b.aliases || [],
-            _rawJson: { 
-              ...b, 
+            _rawJson: {
+              ...b,
               document_category: doc.entities.document_category,
               techCategory: doc.entities.document_category
             }
@@ -403,7 +475,12 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
     extracted.forEach(b => {
       // Use examinationId if available, otherwise fallback to date for flat telemetry
       const contextId = b.source.examinationId || (b.source.date ? b.source.date.split('T')[0] : 'unknown-date');
-      const uniqueKey = `${b.slug}-${b.value.raw}-${contextId}`;
+      // Deduplicate exact same measurements from the same examination context.
+      // For STATE observations the dedup key uses the state code rather than
+      // ``value.raw`` (which is null for STATE). Template-string interpolation
+      // handles both number and string uniformly.
+      const valueKey = b.valueType === 'state' ? (b.value.state ?? b.value.stateDisplay ?? '') : b.value.raw;
+      const uniqueKey = `${b.slug}-${valueKey}-${contextId}`;
       if (!uniqueMap.has(uniqueKey)) {
         uniqueMap.set(uniqueKey, b);
       }

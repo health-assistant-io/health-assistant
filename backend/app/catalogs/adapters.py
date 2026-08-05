@@ -745,9 +745,16 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         fields = self._writable(payload)
+        # Pop allowed_states — it's a relationship, not a mapped column,
+        # so _writable filters it out. Handle it after the definition is
+        # flushed (needs the parent id for the FK).
+        allowed_states_spec = payload.get("allowed_states") or []
         bio = BiomarkerDefinition(**fields)
         self.policy.assign_create_scope(actor.role, bio, actor.tenant_id, actor.user_id)
         db.add(bio)
+        await db.flush()
+        if allowed_states_spec:
+            await self._upsert_allowed_states(db, bio.id, allowed_states_spec)
         await db.commit()
         await db.refresh(bio)
         await self._audit(db, actor, "create", bio)
@@ -771,6 +778,10 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         )
         for key, value in self._writable(payload).items():
             setattr(bio, key, value)
+        await db.flush()
+        # Replace allowed_states if the payload carries them.
+        if "allowed_states" in payload:
+            await self._upsert_allowed_states(db, bio.id, payload.get("allowed_states") or [])
         await db.commit()
         await db.refresh(bio)
         await self._audit(db, actor, "update", bio)
@@ -902,9 +913,76 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
                 for rr in (bio.reference_ranges or [])
             ],
             "is_telemetry": bio.is_telemetry,
+            # State biomarker discriminator (plan state-biomarkers).
+            "value_type": bio.value_type.value if bio.value_type else "quantity",
+            "supports_multi_state": bio.supports_multi_state or False,
+            "allowed_states": [
+                {
+                    "state_id": str(als.state.id),
+                    "state_slug": als.state.slug,
+                    "code": als.state.code,
+                    "system": als.state.system,
+                    "display": als.state.display,
+                    "is_normal": als.is_normal,
+                    "sort_order": als.sort_order,
+                }
+                for als in (bio.allowed_states or [])
+                if als.state is not None
+            ],
             "meta_data": bio.meta_data,
             "preferred_unit_symbol": unit_symbol,
             "scope": bio.scope.value if bio.scope else "system",
             "tenant_id": str(bio.tenant_id) if bio.tenant_id else None,
             "created_by": str(bio.created_by) if bio.created_by else None,
         }
+
+    @staticmethod
+    async def _upsert_allowed_states(
+        db: AsyncSession, biomarker_id: UUID, specs: list
+    ) -> None:
+        """Resolve state slugs → BiomarkerAllowedState rows and replace the
+        existing set atomically (delete-then-insert). Mirrors the domain
+        endpoint behavior in ``biomarkers.py``."""
+        from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerState
+        from sqlalchemy import delete as sa_delete
+
+        if not specs:
+            await db.execute(
+                sa_delete(BiomarkerAllowedState).where(
+                    BiomarkerAllowedState.biomarker_id == biomarker_id
+                )
+            )
+            return
+        slugs = [
+            s.get("state_slug") if isinstance(s, dict) else getattr(s, "state_slug", None)
+            for s in specs
+        ]
+        slugs = [s for s in slugs if s]
+        if not slugs:
+            return
+        state_rows = (
+            (await db.execute(select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))))
+            .scalars()
+            .all()
+        )
+        by_slug = {r.slug: r for r in state_rows}
+        await db.execute(
+            sa_delete(BiomarkerAllowedState).where(
+                BiomarkerAllowedState.biomarker_id == biomarker_id
+            )
+        )
+        for spec in specs:
+            slug = spec.get("state_slug") if isinstance(spec, dict) else getattr(spec, "state_slug", None)
+            state = by_slug.get(slug)
+            if not state:
+                continue
+            is_normal = spec.get("is_normal", False) if isinstance(spec, dict) else getattr(spec, "is_normal", False)
+            sort_order = spec.get("sort_order", 0) if isinstance(spec, dict) else getattr(spec, "sort_order", 0)
+            db.add(
+                BiomarkerAllowedState(
+                    biomarker_id=biomarker_id,
+                    state_id=state.id,
+                    is_normal=bool(is_normal),
+                    sort_order=int(sort_order),
+                )
+            )

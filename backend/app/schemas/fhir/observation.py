@@ -22,6 +22,12 @@ class ObservationCreate(ObservationBase):
         None, description="Value with unit"
     )
     value_string: Optional[str] = None
+    # Coded categorical value (STATE biomarkers). Tolerates both
+    # snake_case (``value_codeable_concept``) and FHIR camelCase
+    # (``valueCodeableConcept``) on input — the create path normalizes.
+    value_codeable_concept: Optional[Dict[str, Any]] = Field(
+        None, alias="value_codeable_concept"
+    )
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None
@@ -42,6 +48,8 @@ class ObservationCreate(ObservationBase):
     performer: Optional[List[Dict[str, Any]]] = None
     component: Optional[List[Dict[str, Any]]] = None
 
+    model_config = ConfigDict(populate_by_name=True)
+
 
 class ObservationUpdate(BaseModel):
     """Observation update schema"""
@@ -51,6 +59,7 @@ class ObservationUpdate(BaseModel):
     subject: Optional[Dict[str, Any]] = None
     value_quantity: Optional[Dict[str, Any]] = None
     value_string: Optional[str] = None
+    value_codeable_concept: Optional[Dict[str, Any]] = None
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None
@@ -66,6 +75,7 @@ class ObservationResponse(ObservationBase):
     id: UUID
     value_quantity: Optional[Dict[str, Any]] = None
     value_string: Optional[str] = None
+    value_codeable_concept: Optional[Dict[str, Any]] = None
     effective_datetime: Optional[datetime] = None
     category: Optional[List[Dict[str, Any]]] = None
     reference_range: Optional[List[Dict[str, Any]]] = None

@@ -450,6 +450,17 @@ class ExportService:
                     "reference_range_min": b.reference_range_min,
                     "reference_range_max": b.reference_range_max,
                     "is_telemetry": b.is_telemetry,
+                    "value_type": b.value_type.value if b.value_type else "quantity",
+                    "supports_multi_state": b.supports_multi_state or False,
+                    "allowed_states": [
+                        {
+                            "state_slug": s.state.slug,
+                            "is_normal": s.is_normal,
+                            "sort_order": s.sort_order,
+                        }
+                        for s in (b.allowed_states or [])
+                        if s.state is not None
+                    ],
                     "tenant_id": str(b.tenant_id) if b.tenant_id else None,
                 }
                 for b in bios_res.scalars().all()

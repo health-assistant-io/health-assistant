@@ -5,7 +5,13 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.biomarker_model import BiomarkerDefinition, BiomarkerReferenceRange, Unit
+from app.models.biomarker_model import (
+    BiomarkerAllowedState,
+    BiomarkerDefinition,
+    BiomarkerReferenceRange,
+    BiomarkerState,
+    Unit,
+)
 from app.models.enums import ConceptKind, QuantityType
 from app.schemas.biomarker import CatalogImportPayload
 from app.services.concept_service import (
@@ -80,6 +86,61 @@ class CatalogImportService:
                         applies_to=applies_to,
                     )
                 )
+
+    async def _upsert_allowed_states(self, biomarker_id: UUID, desired) -> None:
+        """Idempotently upsert allowed_states for a STATE biomarker.
+
+        ``desired`` is a list of ``AllowedStateSpec`` (state_slug, is_normal,
+        sort_order). Slugs are resolved against the universal
+        ``biomarker_states`` catalog. Replaces the existing set atomically
+        (delete-then-insert) so the JSON is the single source of truth.
+        """
+        if not desired:
+            return
+        # Resolve slugs → state_ids.
+        slugs = [getattr(s, "state_slug", None) or s.get("state_slug") for s in desired]
+        slugs = [s for s in slugs if s]
+        if not slugs:
+            return
+        state_rows = (
+            (
+                await self.db.execute(
+                    select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_slug = {r.slug: r for r in state_rows}
+        # Wipe existing and re-insert (atomic replace).
+        from sqlalchemy import delete as sa_delete
+        await self.db.execute(
+            sa_delete(BiomarkerAllowedState).where(
+                BiomarkerAllowedState.biomarker_id == biomarker_id
+            )
+        )
+        for spec in desired:
+            slug = getattr(spec, "state_slug", None) or spec.get("state_slug")
+            state = by_slug.get(slug)
+            if not state:
+                logger.warning(
+                    "Catalog import: unknown biomarker_state slug %r — skipping", slug
+                )
+                continue
+            is_normal = getattr(spec, "is_normal", None)
+            if is_normal is None:
+                is_normal = spec.get("is_normal", False)
+            sort_order = getattr(spec, "sort_order", None)
+            if sort_order is None:
+                sort_order = spec.get("sort_order", 0)
+            self.db.add(
+                BiomarkerAllowedState(
+                    biomarker_id=biomarker_id,
+                    state_id=state.id,
+                    is_normal=bool(is_normal),
+                    sort_order=int(sort_order),
+                )
+            )
 
     async def _resolve_class_concept(self, bio_data) -> Optional[UUID]:
         """Resolve a biomarker's class concept, preferring the explicit slug
@@ -194,8 +255,17 @@ class CatalogImportService:
                     existing_bio.reference_range_max = bio_data.reference_range_max
                     if pref_unit_id:
                         existing_bio.preferred_unit_id = pref_unit_id
+                    # State biomarker discriminator (plan Step 4/6).
+                    if bio_data.value_type:
+                        existing_bio.value_type = bio_data.value_type
+                        existing_bio.supports_multi_state = (
+                            bio_data.supports_multi_state or False
+                        )
                     await self._upsert_reference_ranges(
                         existing_bio.id, getattr(bio_data, "reference_ranges", None)
+                    )
+                    await self._upsert_allowed_states(
+                        existing_bio.id, getattr(bio_data, "allowed_states", None)
                     )
                     stats["biomarkers_updated"] += 1
                 else:
@@ -213,11 +283,16 @@ class CatalogImportService:
                         reference_range_min=bio_data.reference_range_min,
                         reference_range_max=bio_data.reference_range_max,
                         preferred_unit_id=pref_unit_id,
+                        value_type=bio_data.value_type,
+                        supports_multi_state=bio_data.supports_multi_state or False,
                     )
                     self.db.add(new_bio)
                     await self.db.flush()  # populate new_bio.id for the FK
                     await self._upsert_reference_ranges(
                         new_bio.id, getattr(bio_data, "reference_ranges", None)
+                    )
+                    await self._upsert_allowed_states(
+                        new_bio.id, getattr(bio_data, "allowed_states", None)
                     )
                     stats["biomarkers_added"] += 1
             except Exception as e:

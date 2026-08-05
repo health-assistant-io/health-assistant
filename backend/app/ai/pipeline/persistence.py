@@ -204,6 +204,93 @@ async def save_observation(
     val_float = b.value
     biomarker_id = target_bio.id if target_bio else None
     unit_symbol = b.unit_symbol
+
+    # --- STATE biomarker branch (plan state-biomarkers Step 8) -------------
+    # Categorical results bypass the entire numeric pipeline (no raw_value,
+    # normalized_value, relative_score, or unit resolution). The hard
+    # validator (called downstream by create_observation / the integration
+    # chokepoint) enforces that the coding is in the biomarker's allowed set.
+    if b.value_state_code is not None:
+        if target_bio is not None and target_bio.value_type != "state":
+            logger.warning(
+                "OCR extracted a state value for %s but the matched biomarker "
+                "is value_type=%s — skipping.",
+                b.matched_slug, target_bio.value_type,
+            )
+            return
+        coding = []
+        if target_bio:
+            coding.append(
+                {
+                    "system": target_bio.coding_system.fhir_system
+                    if target_bio.coding_system
+                    else CodingSystem.CUSTOM.fhir_system,
+                    "code": target_bio.code or target_bio.slug,
+                    "display": target_bio.name,
+                }
+            )
+        # Build the valueCodeableConcept. Default the system to the
+        # canonical HL7 v3-ObservationInterpretation when the model omitted
+        # it (most state extractions will — the prompt lists codes by slug).
+        state_system = b.value_state_system or (
+            "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+        )
+        value_cc: dict = {
+            "coding": [{"code": b.value_state_code, "system": state_system}]
+        }
+        if b.value_state_display:
+            value_cc["coding"][0]["display"] = b.value_state_display
+        obs = Observation(
+            examination_id=exam.id,
+            document_id=document_id,
+            patient_id=exam.patient_id,
+            tenant_id=exam.tenant_id,
+            status="final",
+            code={"coding": coding, "text": b.name},
+            subject={"reference": patient_ref},
+            effective_datetime=effective_date,
+            value_codeableConcept=value_cc,
+            biomarker_id=biomarker_id,
+            method=b.method,
+            interpretation=_normalize_interpretation(b.interpretation_flag),
+            category=_fhir_observation_category(
+                target_bio.class_concept if target_bio else None
+            ),
+            # Numeric-only fields stay None — categorical values are unitless.
+            value_quantity=None,
+            raw_value=None,
+            raw_unit_id=None,
+            normalized_value=None,
+            relative_score=None,
+            lab_reference_range=None,
+        )
+        try:
+            assert_valid_fhir(obs)
+        except FhirSerializationError as e:
+            logger.warning(
+                "Skipping invalid OCR state observation for %s: %s", b.name, e
+            )
+            return
+        # Hard value-shape contract (plan Step 5): validate the STATE
+        # biomarker's allowed_states membership before persisting.
+        from app.services.observation_value_validator import (
+            validate_observation_value,
+        )
+        try:
+            validate_observation_value(
+                target_bio,
+                value_codeable_concept=obs.value_codeableConcept,
+            )
+        except Exception as e:
+            logger.warning(
+                "Skipping OCR state observation for %s — contract violation: %s",
+                b.name, e,
+            )
+            return
+        db.add(obs)
+        return
+
+    # --- QUANTITY biomarker branch (the legacy path) -----------------------
     raw_unit_id = None
     # Default normalized_value to the raw value; refined below if we have
     # enough unit information to convert. The previous code only normalized

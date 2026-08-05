@@ -169,24 +169,33 @@ const LineChart = React.memo(({
 
   const yDomain: [number | string, number | string] = useMemo(() => {
     if (!data || data.length === 0) return [0, 'auto'];
-    
-    const values = displayData.map(d => d[dataKey] as number);
+
+    // Filter to numeric values only — STATE biomarker series may carry
+    // string state codes (POS/NEG/...) that would make Math.min/max return
+    // NaN and break the Y axis. Non-numeric values are silently dropped
+    // from the domain calculation (they won't be plotted by recharts anyway).
+    const allValues = displayData.map(d => d[dataKey]);
+    const values = allValues.filter(
+      (v): v is number => typeof v === 'number' && isFinite(v),
+    );
     if (referenceRange) {
       if (referenceRange.min != null) values.push(referenceRange.min);
       if (referenceRange.max != null) values.push(referenceRange.max);
     }
-    
+
+    if (values.length === 0) return [0, 1]; // No numeric data — placeholder domain.
+
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
-    
+
     const range = maxVal - minVal;
     // Add 15% padding to top and bottom
     const padding = range === 0 ? Math.abs(maxVal) * 0.1 || 1 : range * 0.05;
-    
+
     let domainMin = minVal - padding;
     let domainMax = maxVal + padding;
 
-    // For medical data, if the values are all positive and close to 0, 
+    // For medical data, if the values are all positive and close to 0,
     // keep 0 as a baseline. Otherwise, let it be dynamic.
     if (minVal >= 0 && domainMin < minVal * 0.2) {
       domainMin = 0;

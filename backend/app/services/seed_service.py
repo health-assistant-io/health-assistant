@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_ as sa_or, and_ as sa_and
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.allergy import AllergyCatalog
@@ -1117,6 +1117,111 @@ class SeedService:
                 await new_session.commit()
                 return result
 
+    async def seed_biomarker_states(
+        self, session: AsyncSession = None
+    ) -> Dict[str, int]:
+        """Seed the canonical ``biomarker_states`` catalog (universal, no tenant).
+
+        Loads ``data/seeds/biomarker_states.json`` and upserts by
+        ``(code, system)`` — the controlled vocabulary of categorical values
+        a STATE biomarker can take. Codes are drawn from HL7
+        v3-ObservationInterpretation, SNOMED CT and FHIR DataAbsentReason
+        (plus a ``urn:uuid:health-assistant:custom-state`` namespace for
+        proprietary codes like WITHIN_LIMITS / TRACE). Idempotent: re-runs
+        reconcile display/description/sort_order to the JSON.
+
+        Standalone — no upstream dependency. A STATE biomarker picks its
+        accepted subset via the ``biomarker_allowed_states`` join table
+        (managed by the biomarker CRUD endpoints, not the seed).
+        """
+        from app.models.biomarker_model import BiomarkerState
+
+        file_path = self.seeds_dir / "biomarker_states.json"
+        if not file_path.exists():
+            logger.warning(f"Biomarker states seed file not found: {file_path}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load biomarker states seed: {e}")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
+
+        items = data.get("items", []) if isinstance(data, dict) else data
+
+        async def _process(s: AsyncSession) -> Dict[str, int]:
+            stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+            if not await self._table_exists(s, "biomarker_states"):
+                logger.error(
+                    "Table 'biomarker_states' does not exist. Skipping state seed."
+                )
+                return {"added": 0, "updated": 0, "skipped": len(items), "errors": 0}
+            # Pre-fetch existing rows indexed by (code, system) so the upsert
+            # is a single round-trip rather than N queries.
+            code_system_pairs = {(it["code"], it["system"]) for it in items}
+            existing_rows = (
+                (
+                    await s.execute(
+                        select(BiomarkerState).where(
+                            # tuple_in doesn't translate cleanly across PG;
+                            # build OR pairs. The catalog is small (<30 rows).
+                            sa_or(
+                                *[
+                                    sa_and(
+                                        BiomarkerState.code == code,
+                                        BiomarkerState.system == system,
+                                    )
+                                    for code, system in code_system_pairs
+                                ]
+                            )
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            existing = {(r.code, r.system): r for r in existing_rows}
+
+            for item in items:
+                try:
+                    key = (item["code"], item["system"])
+                    row = existing.get(key)
+                    if row:
+                        row.slug = item["slug"]
+                        row.display = item["display"]
+                        row.description = item.get("description")
+                        row.category = item.get("category")
+                        row.sort_order = item.get("sort_order", 0)
+                        stats["updated"] += 1
+                    else:
+                        s.add(
+                            BiomarkerState(
+                                slug=item["slug"],
+                                code=item["code"],
+                                system=item["system"],
+                                display=item["display"],
+                                description=item.get("description"),
+                                category=item.get("category"),
+                                sort_order=item.get("sort_order", 0),
+                            )
+                        )
+                        stats["added"] += 1
+                except Exception as e:
+                    logger.error(
+                        f"Error seeding biomarker state {item.get('slug')}: {e}"
+                    )
+                    stats["errors"] += 1
+            await s.flush()
+            return stats
+
+        if session:
+            return await _process(session)
+        async with AsyncSessionLocal() as new_session:
+            result = await _process(new_session)
+            await new_session.commit()
+            return result
+
     # Ordered list populated at call time (methods are bound to ``self``).
     # Dependencies are documented inline — moving a stage here is the single
     # place to review ordering, replacing the hardcoded call sequence that
@@ -1133,6 +1238,7 @@ class SeedService:
         "body_parts",  # after concepts (resolves anatomy_class)
         "anatomy_figures",  # after body_parts
         "concept_edges",  # after concepts + diseases + body_parts + vaccines
+        "biomarker_states",  # standalone — universal state catalog (no deps)
         "default_catalog",  # after concepts (biomarker_class)
         "biomarker_panels",  # after concepts + default_catalog
     ]

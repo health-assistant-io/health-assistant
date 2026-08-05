@@ -2,7 +2,7 @@ import re
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from uuid import UUID
 from typing import Optional, List
-from app.models.enums import CodingSystem, Gender
+from app.models.enums import CodingSystem, Gender, BiomarkerValueType
 
 # Safe identifier for biomarker slugs. The slug is interpolated into raw SQL
 # in the telemetry analytics path (see app/services/analytics_service.py), so
@@ -69,6 +69,72 @@ class BiomarkerBase(BaseModel):
     reference_range_min: Optional[float] = None
     reference_range_max: Optional[float] = None
     is_telemetry: Optional[bool] = False
+    # Discriminator (plan state-biomarkers-2026-08-05). QUANTITY = numeric
+    # value + unit + numeric reference ranges (the legacy default). STATE =
+    # categorical value drawn from ``allowed_states`` (the normal set is
+    # ``is_normal=True`` rows, replacing numeric ref ranges).
+    value_type: BiomarkerValueType = BiomarkerValueType.QUANTITY
+    # STATE biomarkers only: when True the biomarker accepts Observations
+    # with FHIR ``component[]`` (one ``valueCodeableConcept`` per
+    # sub-context) instead of a single top-level value. Ignored for QUANTITY.
+    supports_multi_state: Optional[bool] = False
+
+    @model_validator(mode="after")
+    def _validate_value_type_invariants(self):
+        """Cross-field invariants that the DB also enforces via CHECK
+        constraints (defence-in-depth: reject bad payloads at the schema
+        layer for a clean 422 instead of an opaque 500)."""
+        if self.value_type == BiomarkerValueType.STATE:
+            if self.is_telemetry:
+                raise ValueError(
+                    "STATE biomarkers cannot be telemetry "
+                    "(telemetry_data.value is Float NOT NULL)"
+                )
+            # ``preferred_unit_id`` / ``preferred_unit_symbol`` are not on
+            # ``BiomarkerBase`` (they live on Create/Response) — checked by
+            # the biomarker endpoint and the create validator below.
+        return self
+
+
+class AllowedStateSpec(BaseModel):
+    """Input shape: declare a STATE biomarker's accepted state by slug.
+
+    The slug resolves to a ``BiomarkerState`` row at the endpoint layer; the
+    slug is the stable round-trip key (catalog export/import, seed files).
+    """
+
+    state_slug: str
+    is_normal: bool = False
+    sort_order: int = 0
+
+
+class BiomarkerStateResponse(BaseModel):
+    """A row from the universal ``biomarker_states`` catalog."""
+
+    id: UUID
+    slug: str
+    code: str
+    system: str
+    display: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    sort_order: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BiomarkerAllowedStateResponse(BaseModel):
+    """A STATE biomarker's resolved allowed-state entry (join row + state)."""
+
+    state_id: UUID
+    state_slug: str
+    code: str
+    system: str
+    display: str
+    is_normal: bool
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BiomarkerCreate(BiomarkerBase):
@@ -78,6 +144,9 @@ class BiomarkerCreate(BiomarkerBase):
     # import/seed path so the default catalog can ship demographic-specific
     # ranges. Forward-ref resolved via model_rebuild() at module end.
     reference_ranges: List["BiomarkerReferenceRangeCreate"] = []
+    # STATE biomarkers only: the states this biomarker accepts (and which are
+    # in its normal set via ``is_normal``). Required non-empty for STATE.
+    allowed_states: List[AllowedStateSpec] = []
 
     @field_validator("slug")
     @classmethod
@@ -93,6 +162,35 @@ class BiomarkerCreate(BiomarkerBase):
             )
         return v
 
+    @model_validator(mode="after")
+    def _validate_value_type_create_invariants(self):
+        """Create-path invariants that depend on Create-only fields
+        (preferred_unit_*, allowed_states)."""
+        if self.value_type == BiomarkerValueType.STATE:
+            if self.preferred_unit_id is not None or self.preferred_unit_symbol:
+                raise ValueError(
+                    "STATE biomarkers carry no unit (categorical values are unitless)"
+                )
+            if not self.allowed_states:
+                raise ValueError(
+                    "STATE biomarkers must declare at least one allowed_state"
+                )
+            if self.reference_range_min is not None or self.reference_range_max is not None:
+                raise ValueError(
+                    "STATE biomarkers use allowed_states (is_normal) — "
+                    "numeric reference_range_min/max do not apply"
+                )
+        else:  # QUANTITY
+            if self.allowed_states:
+                raise ValueError(
+                    "allowed_states / supports_multi_state apply to STATE biomarkers only"
+                )
+            if self.supports_multi_state:
+                raise ValueError(
+                    "supports_multi_state applies to STATE biomarkers only"
+                )
+        return self
+
 
 class BiomarkerUpdate(BaseModel):
     name: Optional[str] = None
@@ -104,6 +202,27 @@ class BiomarkerUpdate(BaseModel):
     reference_range_max: Optional[float] = None
     is_telemetry: Optional[bool] = None
     preferred_unit_id: Optional[UUID] = None
+    value_type: Optional[BiomarkerValueType] = None
+    supports_multi_state: Optional[bool] = None
+    allowed_states: Optional[List[AllowedStateSpec]] = None
+
+    @model_validator(mode="after")
+    def _validate_value_type_update_invariants(self):
+        """Update-path invariants. ``value_type`` itself cannot be flipped
+        here — that's a destructive operation requiring a dedicated migration
+        of existing observations; reject it to fail loud rather than silently
+        strand rows. The endpoint enforces the same rule for fields outside
+        this schema (preferred_unit, reference_range_min/max)."""
+        if self.value_type is not None:
+            raise ValueError(
+                "value_type cannot be changed via PATCH — drop and recreate the "
+                "biomarker definition (observations would need re-mapping)"
+            )
+        if self.is_telemetry and self.supports_multi_state:
+            raise ValueError(
+                "STATE biomarkers (supports_multi_state=True) cannot be telemetry"
+            )
+        return self
 
 
 class BiomarkerRemapRequest(BaseModel):
@@ -125,6 +244,9 @@ class BiomarkerResponse(BiomarkerBase):
     # Stratified reference ranges (audit B9/F3). Forward-ref resolved at the
     # bottom of the module via model_rebuild().
     reference_ranges: List["BiomarkerReferenceRangeResponse"] = []
+    # STATE biomarkers only: resolved allowed-state set (the universal catalog
+    # rows + per-biomarker is_normal / sort_order). Empty for QUANTITY.
+    allowed_states: List[BiomarkerAllowedStateResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

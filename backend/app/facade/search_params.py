@@ -51,6 +51,14 @@ RESOURCE_PARAMS: Dict[str, frozenset] = {
             "status",
             "category",
             "value-quantity",
+            # Categorical / state biomarker search (plan state-biomarkers
+            # Step 10). ``value-concept`` matches valueCodeableConcept.coding
+            # (STATE biomarkers + multi-state component[].valueCodeableConcept);
+            # ``value-string`` matches free-text valueString; ``component-code``
+            # narrows multi-state panels by sub-context code.
+            "value-concept",
+            "value-string",
+            "component-code",
             "performer",
         }
     ),

@@ -252,6 +252,12 @@ class Observation(
             "biomarker_slug": self.biomarker.slug if self.biomarker else None,
             "biomarker_info": self.biomarker.info if self.biomarker else None,
             "biomarker_aliases": self.biomarker.aliases if self.biomarker else [],
+            "biomarker_value_type": self.biomarker.value_type.value
+            if self.biomarker and self.biomarker.value_type
+            else None,
+            "biomarker_supports_multi_state": self.biomarker.supports_multi_state
+            if self.biomarker
+            else False,
             "biomarker_reference_range_min": self.biomarker.reference_range_min
             if self.biomarker
             else None,

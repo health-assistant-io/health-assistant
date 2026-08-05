@@ -11,7 +11,7 @@ import { useBiomarkers } from '../../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
 import { getDocumentCategories } from '../../../services/conceptService';
-import { getFinalStatus, isAbnormal, formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils';
+import { getFinalStatus, isAbnormal, formatUnit, formatObservationDisplay } from '../../../utils/biomarkerUtils';
 import { filterBiomarkers } from '../../../utils/searchUtils';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
@@ -144,11 +144,12 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
   
   const labs = processedBiomarkers.map(b => {
     const status = getFinalStatus(b);
-    
+    const display = formatObservationDisplay(b, precisionProfile);
+
     return {
       name: b.displayName,
-      result: formatBiomarkerValue(b.value.raw, precisionProfile),
-      unit: b.unit.rawSymbol,
+      result: display.value,
+      unit: display.unit,
       status: status,
       date: b.source.date,
       info: b.info,

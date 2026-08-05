@@ -445,18 +445,28 @@ const BiomarkerDetail: React.FC = () => {
               <div className="p-5 bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border shadow-inner">
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.clinical_reference')}</p>
                 <div className="flex items-baseline space-x-2">
-                  <span className={`${biomarker.reference_range_min != null || biomarker.reference_range_max != null ? 'text-xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tighter' : 'text-sm font-medium text-gray-300 dark:text-dark-muted/30 italic'}`}>
-                    {biomarker.reference_range_min != null && biomarker.reference_range_max != null
-                      ? `${biomarker.reference_range_min} - ${biomarker.reference_range_max}`
-                      : biomarker.reference_range_min != null
-                        ? `> ${biomarker.reference_range_min}`
-                        : biomarker.reference_range_max != null
-                          ? `< ${biomarker.reference_range_max}`
-                          : 'undefined'
-                    }
-                  </span>
-                  {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
-                    <span className="text-xs font-bold text-gray-400 dark:text-dark-muted">{trends.length > 0 ? formatUnit(trends[0].unit) : ''}</span>
+                  {biomarker.value_type === 'state' ? (
+                    /* STATE biomarkers: show the normal set (allowed_states
+                       with is_normal=true) instead of numeric ranges. */
+                    <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                      {(biomarker.allowed_states ?? []).filter((s) => s.is_normal).map((s) => s.display).join(', ') || t('biomarker_catalog.allowed_state_empty', 'No normal set configured')}
+                    </span>
+                  ) : (
+                    <>
+                      <span className={`${biomarker.reference_range_min != null || biomarker.reference_range_max != null ? 'text-xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tighter' : 'text-sm font-medium text-gray-300 dark:text-dark-muted/30 italic'}`}>
+                        {biomarker.reference_range_min != null && biomarker.reference_range_max != null
+                          ? `${biomarker.reference_range_min} - ${biomarker.reference_range_max}`
+                          : biomarker.reference_range_min != null
+                            ? `> ${biomarker.reference_range_min}`
+                            : biomarker.reference_range_max != null
+                              ? `< ${biomarker.reference_range_max}`
+                              : 'undefined'
+                        }
+                      </span>
+                      {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
+                        <span className="text-xs font-bold text-gray-400 dark:text-dark-muted">{trends.length > 0 ? formatUnit(trends[0].unit) : ''}</span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -465,7 +475,12 @@ const BiomarkerDetail: React.FC = () => {
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.avg_6mo')}</p>
                   <p className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">
-                    {trends.length > 0 ? (trends.reduce((a, b) => a + b.value, 0) / trends.length).toFixed(1) : '--'}
+                    {/* STATE biomarkers: averaging is meaningless and the trends
+                        API returns no numeric points. Hide the avg rather than
+                        render NaN. */}
+                    {trends.length > 0 && trends.every((t: any) => typeof t.value === 'number')
+                      ? (trends.reduce((a, b) => a + b.value, 0) / trends.length).toFixed(1)
+                      : '--'}
                   </p>
                 </div>
                 <div>

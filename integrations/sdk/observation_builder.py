@@ -38,6 +38,10 @@ class ObservationBuilder:
         self._unit: Optional[str] = None
         self._unit_code: Optional[str] = None
         self._value_string: Optional[str] = None
+        # valueCodeableConcept for STATE biomarkers (plan state-biomarkers
+        # Step 9). Mutually exclusive with the numeric and string slots —
+        # FHIR R4 §3.1.1 allows exactly one value[x].
+        self._value_codeable_concept: Optional[Dict[str, Any]] = None
         self._biomarker_id: Optional[UUID] = None
         self._reference_range: Optional[Dict[str, float]] = None
         self._interpretation: Optional[str] = None
@@ -59,6 +63,7 @@ class ObservationBuilder:
         self._unit = None
         self._unit_code = None
         self._value_string = None
+        self._value_codeable_concept = None
         self._biomarker_id = None
         self._reference_range = None
         self._interpretation = None
@@ -97,14 +102,16 @@ class ObservationBuilder:
     def set_value(self, value: float, unit: str, unit_code: Optional[str] = None) -> "ObservationBuilder":
         """Set a quantitative value (FHIR ``valueQuantity``).
 
-        Mutually exclusive with :meth:`set_value_string` — FHIR R4 §3.1.1
-        allows exactly one ``value[x]``. Calling this clears the string slot;
-        the last value-setter wins.
+        Mutually exclusive with :meth:`set_value_string` and
+        :meth:`set_value_codeable_concept` — FHIR R4 §3.1.1 allows exactly
+        one ``value[x]``. Calling this clears the other slots; the last
+        value-setter wins.
         """
         self._value = value
         self._unit = unit
         self._unit_code = unit_code
         self._value_string = None
+        self._value_codeable_concept = None
         return self
 
     def set_value_string(self, value: str) -> "ObservationBuilder":
@@ -115,11 +122,46 @@ class ObservationBuilder:
         :meth:`set_value` clears the quantitative slot; the reverse also
         holds. ``raw_value``/``normalized_value``/``relative_score`` are
         not meaningful for string values and are left unset.
+
+        Prefer :meth:`set_value_codeable_concept` for coded categorical
+        results (Positive/Negative/Detected/...) — those produce a proper
+        ``valueCodeableConcept`` that the biomarker validator accepts for
+        STATE biomarkers. Reserve ``valueString`` for genuinely free-text
+        results with no controlled vocabulary.
         """
         self._value_string = value
         self._value = None
         self._unit = None
         self._unit_code = None
+        self._value_codeable_concept = None
+        return self
+
+    def set_value_codeable_concept(
+        self,
+        code: str,
+        system: str,
+        display: Optional[str] = None,
+    ) -> "ObservationBuilder":
+        """Set a coded categorical value (FHIR ``valueCodeableConcept``).
+
+        This is the proper shape for STATE biomarkers (Positive / Negative /
+        Detected / Susceptible / Within Limits / ...). The biomarker
+        validator rejects ``value_string`` on STATE biomarkers — only
+        ``valueCodeableConcept`` is accepted, and its ``coding[0].{code,
+        system}`` pair must be in the biomarker's ``allowed_states`` set.
+
+        Mutually exclusive with :meth:`set_value` and :meth:`set_value_string`
+        — FHIR R4 §3.1.1 allows exactly one ``value[x]``.
+        """
+        coding: Dict[str, Any] = {"code": code, "system": system}
+        if display:
+            coding["display"] = display
+        self._value_codeable_concept = {"coding": [coding]}
+        # Clear the other value[x] slots — last setter wins.
+        self._value = None
+        self._unit = None
+        self._unit_code = None
+        self._value_string = None
         return self
 
     def set_reference_range(
@@ -200,9 +242,16 @@ class ObservationBuilder:
             eff_dt = eff_dt.replace(tzinfo=timezone.utc)
 
         # FHIR R4 §3.1.1: an Observation has exactly one value[x]. Emit
-        # value_string when set; otherwise value_quantity (which may be None
-        # for code-only observations, e.g. multi-component panels).
+        # whichever slot was set: value_codeable_concept (STATE biomarkers) →
+        # value_string (free-text categoricals) → value_quantity (numeric).
         value_string = self._value_string if self._value_string is not None else None
+        value_codeable_concept = self._value_codeable_concept or None
+
+        # For STATE / string observations the numeric raw_value/normalized_value
+        # are not meaningful — leave them None so analytics never tries to
+        # chart a string on a numeric axis.
+        raw_value = self._value if self._value is not None else None
+        normalized_value = self._value if self._value is not None else None
 
         return ObservationCreate(
             tenant_id=self.tenant_id,
@@ -215,8 +264,9 @@ class ObservationBuilder:
             effective_datetime=eff_dt,
             value_quantity=value_quantity,
             value_string=value_string,
-            raw_value=self._value,
-            normalized_value=self._value, # Default to raw, should be improved with unit conversion
+            value_codeable_concept=value_codeable_concept,
+            raw_value=raw_value,
+            normalized_value=normalized_value,
             biomarker_id=self._biomarker_id,
             lab_reference_range=self._reference_range,
             relative_score=relative_score,

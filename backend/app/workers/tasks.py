@@ -456,6 +456,31 @@ async def migrate_biomarker_data(
                 logger.error(f"Biomarker {biomarker_id} not found during migration.")
                 return {"status": "failed", "error": "Biomarker not found"}
 
+            # Hard-block (plan state-biomarkers Step 11): STATE biomarkers
+            # cannot migrate to telemetry. ``telemetry_data.value`` is Float
+            # NOT NULL — categorical values have nowhere to go. The DB CHECK
+            # constraint + the endpoint guard already prevent the toggle from
+            # being queued; this defensive backstop keeps the task honest if
+            # it's ever invoked directly (e.g. by a future script).
+            if getattr(db_biomarker, "value_type", None) == "state" and to_telemetry:
+                logger.error(
+                    "Refusing to migrate STATE biomarker %s to telemetry — "
+                    "telemetry_data.value is Float NOT NULL.",
+                    db_biomarker.slug,
+                )
+                meta = dict(db_biomarker.meta_data or {})
+                meta["migration_status"] = "failed"
+                meta["migration_error"] = (
+                    "STATE biomarkers cannot be telemetry (Float NOT NULL hypertable)"
+                )
+                db_biomarker.meta_data = meta
+                flag_modified(db_biomarker, "meta_data")
+                await db.commit()
+                return {
+                    "status": "failed",
+                    "error": "STATE biomarkers cannot be telemetry",
+                }
+
             # Update status to in_progress
             meta = dict(db_biomarker.meta_data or {})
             meta["migration_status"] = "in_progress"

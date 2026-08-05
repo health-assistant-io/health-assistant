@@ -10,6 +10,7 @@ from app.api.v1 import api_router
 from app.core.config import settings
 from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
 from app.services.fhir_helpers import FhirSerializationError
+from app.services.observation_value_validator import InvalidObservationValue
 from app.core.errors import DomainError
 
 # Configure logging
@@ -299,6 +300,21 @@ async def fhir_validation_handler(request: Request, exc: FhirSerializationError)
         status_code=400,
         content={"message": "FHIR validation failed", "detail": str(exc)},
     )
+
+
+@app.exception_handler(InvalidObservationValue)
+async def invalid_observation_value_handler(
+    request: Request, exc: InvalidObservationValue
+):
+    """Map the Observation↔BiomarkerDefinition contract violation to HTTP 422.
+
+    Raised by ``validate_observation_value`` (the single chokepoint on every
+    Observation write path) when the value[x] shape doesn't match the
+    biomarker's ``value_type`` contract (QUANTITY vs STATE, allowed-state
+    membership, multi-state component[]). 422 — the payload was syntactically
+    valid FHIR but semantically inconsistent with the linked biomarker.
+    """
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.exception_handler(DomainError)

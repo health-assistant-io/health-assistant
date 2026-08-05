@@ -703,7 +703,16 @@
     "iot_telemetry_hint": "Δρομολογεί συνεχή δεδομένα υψηλής συχνότητας (καρδιακός παλμός, βήματα, SpO2, CGM) στο TimescaleDB. Η αλλαγή αυτής της ρύθμισης μεταφέρει όλα τα υπάρχοντα ιστορικά δεδομένα μεταξύ βάσεων — ενδέχεται να διαρκέσει για μεγάλα σύνολα δεδομένων.",
     "migration_confirm_title": "Μεταφορά Δεδομένων Τηλεμετρίας;",
     "migration_confirm_message": "Προειδοποίηση: Η αλλαγή του τύπου τηλεμετρίας αυτού του βιοδείκτη θα μεταφέρει όλα τα υπάρχοντα ιστορικά δεδομένα μεταξύ βάσεων δεδομένων. Αυτό μπορεί να διαρκέσει για μεγάλα σύνολα δεδομένων. Είστε βέβαιοι ότι θέλετε να συνεχίσετε;",
-    "migration_confirm_button": "Ναι, Μεταφορά Δεδομένων"
+    "migration_confirm_button": "Ναι, Μεταφορά Δεδομένων",
+    "value_type": "Value type",
+    "value_type_quantity": "Quantity (numeric)",
+    "value_type_state": "State (categorical)",
+    "value_type_hint": "Quantity = numeric measurements (glucose, heart rate). State = categorical results drawn from a controlled vocabulary (Positive/Negative/Detected/...).",
+    "state_no_telemetry": "State biomarkers cannot be telemetry metrics — categorical values cannot be stored on the numeric telemetry hypertable.",
+    "state_value": "State",
+    "state_value_placeholder": "Select a state…",
+    "multi_state_panel": "Multi-state panel",
+    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel)."
   },
   "biomarker_catalog": {
     "back_to_trends": "Επιστροφή στις Τάσεις",
@@ -733,7 +742,15 @@
     "detailed_info": "Λεπτομερείς Πληροφορίες & Κλινικό Πλαίσιο",
     "info_placeholder": "Περιγράψτε τι αντιπροσωπεύει αυτός ο βιοδείκτης, τα φυσιολογικά εύρη και την κλινική σημασία...",
     "info_note": "Σημείωση: Αυτές οι πληροφορίες θα εμφανίζονται σε αναδυόμενα παράθυρα σε όλη την πλατφόρμα για αυτόν τον βιοδείκτη.",
-    "save_info": "Αποθήκευση Πληροφοριών"
+    "save_info": "Αποθήκευση Πληροφοριών",
+    "allowed_states": "Allowed states",
+    "allowed_states_hint": "The states this biomarker accepts. Mark each state that should be considered \"normal\" — the analytics status will be Normal when the observation value is in the normal set, Abnormal otherwise.",
+    "allowed_state_normal": "Normal",
+    "allowed_state_add": "Add state",
+    "allowed_state_empty": "No states selected — pick at least one.",
+    "allowed_state_remove": "Remove",
+    "state_no_unit": "State biomarkers carry no unit (categorical values are unitless).",
+    "state_no_range": "State biomarkers use the allowed_states normal set instead of numeric reference ranges."
   },
   "documents_explorer": {
     "title": "Εξερεύνηση Εγγράφων",

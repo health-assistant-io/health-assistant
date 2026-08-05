@@ -80,9 +80,12 @@ Defines the medical tests, vital signs, and measurements.
 - **`category`** (String, Optional): The clinical grouping (e.g., `blood_laboratory`, `vital_signs`, `ophthalmology`). On import this is translated — via `biomarker_category_to_concept_slug` — to a `biomarker_class` **concept** stored on `biomarker_definitions.class_concept_id` (see [TAXONOMY.md](TAXONOMY.md)); it is not stored as a free-text column.
 - **`preferred_unit_symbol`** (String, Optional): The `symbol` of the unit defined in the `units` array that this biomarker should default to for rendering charts.
 - **`aliases`** (Array of Strings, Optional): Synonyms or common abbreviations used by the AI to match OCR data to this definition (e.g., `["WBC", "White Count"]`).
-- **`reference_range_min`** (Float, Optional): The standard clinical lower bound.
-- **`reference_range_max`** (Float, Optional): The standard clinical upper bound.
+- **`reference_range_min`** (Float, Optional): The standard clinical lower bound. QUANTITY biomarkers only — STATE biomarkers use `allowed_states` with `is_normal` flags instead.
+- **`reference_range_max`** (Float, Optional): The standard clinical upper bound. QUANTITY biomarkers only.
 - **`info`** (String, Optional): Markdown-formatted text explaining the clinical significance of the biomarker to the patient.
+- **`value_type`** (String, Optional): Discriminator — `quantity` (default, numeric) or `state` (categorical, drawn from a controlled vocabulary). STATE biomarkers carry no `preferred_unit_symbol` / `reference_range_min` / `reference_range_max`; instead they declare `allowed_states`. See [STATE_BIOMARKERS.md](STATE_BIOMARKERS.md).
+- **`supports_multi_state`** (Boolean, Optional, default false): STATE biomarkers only. When true, the biomarker accepts `Observation.component[]` (one `valueCodeableConcept` per sub-context, e.g. one organism per row in a microbiology panel) instead of a single top-level value.
+- **`allowed_states`** (Array of Objects, Optional): STATE biomarkers only. Each entry is `{state_slug: <biomarker_states.slug>, is_normal: <bool>, sort_order: <int>}`. Required non-empty for STATE biomarkers. The slugs resolve to the universal `biomarker_states` catalog at import time; an unknown slug fails the import.
 
 ## Import Behavior
 

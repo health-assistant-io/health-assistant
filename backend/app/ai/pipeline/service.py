@@ -120,10 +120,29 @@ class MedicalProcessingService:
 
         # 2. Catalogs
         bio_defs = await self.db.execute(select(BiomarkerDefinition))
-        biomarker_catalog = [
-            {"slug": b.slug, "name": b.name, "aliases": b.aliases}
-            for b in bio_defs.scalars().all()
-        ]
+        biomarker_catalog = []
+        for b in bio_defs.scalars().all():
+            entry = {
+                "slug": b.slug,
+                "name": b.name,
+                "aliases": b.aliases,
+                "value_type": b.value_type.value if b.value_type else "quantity",
+            }
+            # STATE biomarkers: include the allowed_states list so the LLM can
+            # pick a valid code (plan state-biomarkers Step 8). QUANTITY
+            # biomarkers omit it (kept compact).
+            if entry["value_type"] == "state":
+                entry["allowed_states"] = [
+                    {
+                        "code": allowed.state.code,
+                        "system": allowed.state.system,
+                        "display": allowed.state.display,
+                        "is_normal": allowed.is_normal,
+                    }
+                    for allowed in (b.allowed_states or [])
+                    if allowed.state is not None
+                ]
+            biomarker_catalog.append(entry)
 
         med_defs = await self.db.execute(select(MedicationCatalog))
         medication_catalog = [

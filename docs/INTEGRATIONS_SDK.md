@@ -1221,6 +1221,23 @@ obs_categorical = (
 
 The builder leaves `raw_value` / `normalized_value` / `relative_score` unset for categorical observations — they're numeric concepts and downstream analytics must not try to plot a string on a numeric axis.
 
+> **STATE biomarkers:** If the matched biomarker has `value_type=state`, use `set_value_codeable_concept(code, system, display?)` instead. The hard validator (`observation_value_validator.py`) rejects `value_string` on STATE biomarkers — only `valueCodeableConcept` with a coding from the biomarker's `allowed_states` set is accepted. See [STATE_BIOMARKERS.md](STATE_BIOMARKERS.md).
+
+```python
+# Proper STATE biomarker shape:
+obs_state = (
+    builder
+    .set_biomarker("94500-6", "SARS-CoV-2 PCR", coding_system=CodingSystem.LOINC)
+    .set_value_codeable_concept(
+        code="POS",
+        system="http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+        display="Positive",
+    )
+    .set_effective_date(timestamp_obj)
+    .build()
+)
+```
+
 ---
 
 ## 5. Enable your Integration

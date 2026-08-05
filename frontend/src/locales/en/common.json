@@ -733,7 +733,16 @@
     "iot_telemetry_hint": "Routes continuous high-frequency data (heart rate, steps, SpO2, CGM) to TimescaleDB. Changing this migrates all existing historical data between databases — may take a while for large datasets.",
     "migration_confirm_title": "Migrate Telemetry Data?",
     "migration_confirm_message": "Warning: Changing this biomarker's telemetry type will migrate all existing historical data between databases. This could take a while for large datasets. Are you sure you want to continue?",
-    "migration_confirm_button": "Yes, Migrate Data"
+    "migration_confirm_button": "Yes, Migrate Data",
+    "value_type": "Value type",
+    "value_type_quantity": "Quantity (numeric)",
+    "value_type_state": "State (categorical)",
+    "value_type_hint": "Quantity = numeric measurements (glucose, heart rate). State = categorical results drawn from a controlled vocabulary (Positive/Negative/Detected/...).",
+    "state_no_telemetry": "State biomarkers cannot be telemetry metrics — categorical values cannot be stored on the numeric telemetry hypertable.",
+    "state_value": "State",
+    "state_value_placeholder": "Select a state…",
+    "multi_state_panel": "Multi-state panel",
+    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel)."
   },
   "biomarker_catalog": {
     "back_to_trends": "Back to Trends",
@@ -763,7 +772,15 @@
     "detailed_info": "Detailed Information & Clinical Context",
     "info_placeholder": "Describe what this biomarker represents, normal ranges, and clinical significance...",
     "info_note": "Note: This information will be displayed in popups across the platform for this biomarker.",
-    "save_info": "Save Information"
+    "save_info": "Save Information",
+    "allowed_states": "Allowed states",
+    "allowed_states_hint": "The states this biomarker accepts. Mark each state that should be considered \"normal\" — the analytics status will be Normal when the observation value is in the normal set, Abnormal otherwise.",
+    "allowed_state_normal": "Normal",
+    "allowed_state_add": "Add state",
+    "allowed_state_empty": "No states selected — pick at least one.",
+    "allowed_state_remove": "Remove",
+    "state_no_unit": "State biomarkers carry no unit (categorical values are unitless).",
+    "state_no_range": "State biomarkers use the allowed_states normal set instead of numeric reference ranges."
   },
   "documents_explorer": {
     "title": "Documents Explorer",

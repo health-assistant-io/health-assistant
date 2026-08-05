@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useId, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useId, useCallback, useLayoutEffect } from 'react';
 import { Search, ChevronDown, Check } from 'lucide-react';
 import { Popover } from './Popover';
 
@@ -7,6 +7,7 @@ export interface DropdownOption {
   label: string;
   icon?: string; // e.g. for flags
   description?: string;
+  group?: string; // optional category for grouped rendering (group headers appear as non-selectable dividers)
 }
 
 interface Props {
@@ -37,6 +38,19 @@ export const SearchableDropdown: React.FC<Props> = ({
   const [activeIndex, setActiveIndex] = useState(-1);
   const triggerRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+
+  // Measure the trigger width so the popover panel matches it (the Popover
+  // component doesn't auto-match width — without this the panel shrinks to
+  // its intrinsic content width, which is narrower than the trigger).
+  // Re-measures on resize while open so the panel tracks the trigger.
+  const [triggerWidth, setTriggerWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+    const measure = () => setTriggerWidth(triggerRef.current?.offsetWidth ?? 0);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen]);
 
   const filteredOptions = useMemo(() => {
     if (!searchTerm.trim()) return options;
@@ -126,6 +140,39 @@ export const SearchableDropdown: React.FC<Props> = ({
     setActiveIndex(filteredOptions.length > 0 ? 0 : -1);
   };
 
+  const renderOption = (opt: DropdownOption, idx: number, displayIdx?: number) => {
+    const isSelected = opt.value === value;
+    const isActive = idx === activeIndex;
+    const key = `${opt.value}-${displayIdx ?? idx}`;
+    return (
+      <div
+        key={key}
+        id={`${listId}-${idx}`}
+        role="option"
+        aria-selected={isSelected}
+        className={`px-4 py-2.5 text-sm flex items-center justify-between cursor-pointer transition-colors rounded-lg m-0.5 ${
+          isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+        } ${isSelected ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''} hover:bg-blue-50 dark:hover:bg-blue-900/20`}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSelect(opt.value);
+        }}
+        onMouseEnter={() => setActiveIndex(idx)}
+      >
+        <div className="flex items-center gap-3 truncate">
+          {opt.icon && <span className="text-base flex-shrink-0">{opt.icon}</span>}
+          <div className="flex flex-col truncate">
+            <span className={`font-bold truncate ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-dark-text'}`}>
+              {opt.label}
+            </span>
+            {opt.description && <span className="text-[10px] text-gray-400 uppercase tracking-tighter truncate">{opt.description}</span>}
+          </div>
+        </div>
+        {isSelected && <Check className="w-4 h-4 text-blue-600" />}
+      </div>
+    );
+  };
+
   return (
     <div className={`relative ${className}`}>
       {label && (
@@ -170,7 +217,7 @@ export const SearchableDropdown: React.FC<Props> = ({
       >
         <div
           className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
-          style={{ minWidth: 220 }}
+          style={{ minWidth: Math.max(triggerWidth, 220), width: triggerWidth || undefined }}
           onKeyDown={handleListKeyDown}
         >
           <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
@@ -189,39 +236,34 @@ export const SearchableDropdown: React.FC<Props> = ({
           </div>
 
           <div className="max-h-60 overflow-y-auto custom-scrollbar p-1" role="listbox" id={listId}>
-            {filteredOptions.length > 0 ? (
-              filteredOptions.map((opt, idx) => {
-                const isSelected = opt.value === value;
-                const isActive = idx === activeIndex;
-                return (
-                  <div
-                    key={opt.value}
-                    id={`${listId}-${idx}`}
-                    role="option"
-                    aria-selected={isSelected}
-                    className={`px-4 py-2.5 text-sm flex items-center justify-between cursor-pointer transition-colors rounded-lg m-0.5 ${
-                      isActive ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                    } ${isSelected ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''} hover:bg-blue-50 dark:hover:bg-blue-900/20`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelect(opt.value);
-                    }}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                  >
-                    <div className="flex items-center gap-3 truncate">
-                      {opt.icon && <span className="text-base flex-shrink-0">{opt.icon}</span>}
-                      <div className="flex flex-col truncate">
-                        <span className={`font-bold truncate ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-dark-text'}`}>
-                          {opt.label}
-                        </span>
-                        {opt.description && <span className="text-[10px] text-gray-400 uppercase tracking-tighter truncate">{opt.description}</span>}
-                      </div>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-blue-600" />}
+            {filteredOptions.length > 0 ? (() => {
+              // Check if any options have a group. If so, render with group
+              // headers; otherwise render flat.
+              const hasGroups = filteredOptions.some((o) => o.group);
+              if (!hasGroups) {
+                return filteredOptions.map((opt, idx) => renderOption(opt, idx));
+              }
+              // Group options while preserving sort_order.
+              const groups: { name: string; items: { opt: DropdownOption; idx: number }[] }[] = [];
+              const groupMap = new Map<string, number>();
+              filteredOptions.forEach((opt, idx) => {
+                const g = opt.group || 'Other';
+                if (!groupMap.has(g)) {
+                  groupMap.set(g, groups.length);
+                  groups.push({ name: g, items: [] });
+                }
+                groups[groupMap.get(g)!].items.push({ opt, idx });
+              });
+              let optionCounter = 0;
+              return groups.map((group) => (
+                <div key={group.name}>
+                  <div className="px-3 pt-2 pb-0.5 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-dark-muted">
+                    {group.name}
                   </div>
-                );
-              })
-            ) : (
+                  {group.items.map(({ opt, idx }) => renderOption(opt, idx, optionCounter++))}
+                </div>
+              ));
+            })() : (
               <div className="px-4 py-8 text-sm text-gray-400 italic text-center">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
                 <p>No matches found</p>
