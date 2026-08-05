@@ -6,13 +6,14 @@ This document describes the structure of the Health Assistant CI/CD pipeline, th
 
 ## 1. Pipeline Structure Overview
 
-The pipeline (`.gitea/workflows/deploy.yml`) is split into four highly optimized stages:
+The pipeline (`.gitea/workflows/deploy.yml`) is split into five stages:
 
 ```mermaid
 flowchart TD
     A[test-backend] --> C[build-and-push]
     B[test-frontend] --> C
     C --> D[deploy]
+    C --> E["trigger-demo-deploy (optional)"]
 ```
 
 1. **`test-backend` (Concurrently):**
@@ -29,6 +30,11 @@ flowchart TD
    - Transfers `docker-compose.prod.yml` and updates server-level `.env` configs (must include `FLOWER_USER` / `FLOWER_PASSWORD` for Flower auth).
    - Pulls updated images and (re)starts containers. The one-shot `migrate` service runs `alembic upgrade head` before `backend`, `worker`, and `beat` boot — they depend on it with `condition: service_completed_successfully`.
    - Verifies container health (checks for premature container exits after startup to fail the pipeline if a crash loop occurs). Healthchecks on `backend` (`/health`), `worker` (`celery inspect ping`), and `flower` (`/`) catch wedged-but-running processes.
+5. **`trigger-demo-deploy`** *(optional, main branch only):*
+   - After new images are pushed, SSHes into the demo server and runs `docker compose pull` + `up -d` so the public demo runs the freshly-built `:latest` images.
+   - **Opt-in:** only runs when the `DEMO_DEPLOY_PATH` secret is set (see §2). Without it, the job is skipped entirely.
+   - **Non-blocking:** `continue-on-error: true` — if the demo SSH/deploy fails, the pipeline still succeeds. Demo deployment is best-effort, not a critical dependency.
+   - Reuses the same SSH key + host as the production deploy (override with `DEMO_VM_HOST` if the demo is on a separate host).
 
 ---
 
@@ -46,6 +52,8 @@ Go to **Settings -> Actions -> Secrets** in your Gitea repository and configure 
 | **`INTEGRATION_SECRET_KEY`** | Fernet key for encrypting integration configurations and tokens. | *Base64 32-byte string* |
 | **`POSTGRES_PASSWORD`** | Production database password. | *Secure password* |
 | **`FLOWER_PASSWORD`** | Password for the Celery Flower monitoring dashboard. | *Secure password* |
+| **`DEMO_DEPLOY_PATH`** *(Optional)* | Set to enable auto-deploy of the demo stack. The server path where `docker-compose.demo.yml` + `.env` live. Without this secret, the `trigger-demo-deploy` job is skipped. | `/home/deploy/health_assistant_demo` |
+| **`DEMO_VM_HOST`** *(Optional)* | Override if the demo runs on a different host than production. Falls back to `VM_HOST`. | `<DEMO_SERVER_IP>` |
 | **`OPENAI_API_KEY`** *(Optional)* | OpenAI API key for intelligent OCR and AI diagnostic features. | `sk-proj-...` |
 
 ---

@@ -194,6 +194,43 @@ jobs:
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ env.IMAGE_TAG_FLOATING }}
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }}
 
+  # OPTIONAL: after new images are pushed, SSH into the demo server and pull +
+  # restart the demo stack so it runs the freshly-built :latest images.
+  #
+  # Opt-in: set the DEMO_DEPLOY_PATH secret in this repo to enable (e.g.
+  # /home/deploy/health_assistant_demo). Without it, this job is skipped
+  # entirely and the pipeline is unaffected. Override DEMO_VM_HOST too if the
+  # demo lives on a different host than production. continue-on-error ensures
+  # the pipeline NEVER fails even if the demo SSH/deploy breaks — demo
+  # deployment is best-effort, not a critical dependency.
+  trigger-demo-deploy:
+    name: Redeploy demo with new images (optional)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
+    if: ${{ github.ref_name == 'main' && secrets.DEMO_DEPLOY_PATH != '' }}
+    steps:
+      - name: Pull new images + restart demo stack
+        uses: appleboy/ssh-action@v1
+        continue-on-error: true
+        env:
+          DEMO_PATH: ${{ secrets.DEMO_DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.DEMO_VM_HOST || secrets.VM_HOST }}
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VM_PORT || '22' }}
+          envs: DEMO_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEMO_PATH"
+            echo "→ Pulling new :latest images…"
+            docker compose -f docker-compose.demo.yml --env-file .env pull
+            echo "→ Restarting demo stack…"
+            docker compose -f docker-compose.demo.yml --env-file .env up -d
+            echo "✅ Demo stack restarted with new images."
+
   deploy:
     name: Deploy to Target Server
     needs: build-and-push
