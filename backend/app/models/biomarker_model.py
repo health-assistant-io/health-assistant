@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint, UniqueConstraint, Integer
+from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint, UniqueConstraint, Integer, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import relationship
 from app.models.base import (
@@ -75,12 +75,13 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
         Enum(BiomarkerValueType, values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=BiomarkerValueType.QUANTITY,
+        server_default=BiomarkerValueType.QUANTITY.value,
         index=True,
     )
     # STATE biomarkers only: when True, Observations use FHIR ``component[]``
     # (one ``valueCodeableConcept`` per sub-context) instead of a single
     # top-level value. Ignored for QUANTITY biomarkers.
-    supports_multi_state = Column(Boolean, nullable=False, default=False)
+    supports_multi_state = Column(Boolean, nullable=False, default=False, server_default=text('false'))
     meta_data = Column(JSONB, nullable=True)
     scope = Column(
         Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
