@@ -200,14 +200,22 @@ function App() {
         })
         .catch((error) => {
           console.error('Failed to load user profile', error);
-          // Fallback: decode the JWT to populate a minimal user object
-          // so the app remains usable (e.g. during a tenant switch where
-          // /users/me may transiently 404 if the backend hasn't been
-          // restarted with the fix yet).
-          try {
-            const token = localStorage.getItem('accessToken');
-            if (token) {
+          const token = localStorage.getItem('accessToken');
+          if (token) {
+            try {
               const payload = JSON.parse(atob(token.split('.')[1]));
+              // Demo mode: a /users/me 404 means the session is stale — the
+              // daily reset wiped the DB volume + re-seeded, so the user_id
+              // in this JWT no longer exists. Don't mask it with the JWT
+              // fallback; logout so /login auto-calls /auth/demo-login and
+              // mints a fresh token against the re-seeded data.
+              if (payload.demo === true) {
+                logout();
+                return;
+              }
+              // Non-demo fallback: decode the JWT to populate a minimal user
+              // object so the app remains usable (e.g. during a tenant switch
+              // where /users/me may transiently 404).
               updateUser({
                 id: payload.user_id,
                 email: payload.sub || '',
@@ -215,13 +223,13 @@ function App() {
                 tenant_id: payload.tenant_id,
                 settings: {},
               });
+            } catch (e) {
+              console.error('JWT fallback also failed', e);
             }
-          } catch (e) {
-            console.error('JWT fallback also failed', e);
           }
         });
     }
-  }, [isAuthenticated, user, updateUser]);
+  }, [isAuthenticated, user, updateUser, logout]);
 
   useEffect(() => {
     if (isAuthenticated) {

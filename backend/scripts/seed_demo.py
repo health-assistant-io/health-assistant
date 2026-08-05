@@ -29,24 +29,34 @@ backend_dir = os.path.dirname(current_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
-from app.core.security import get_password_hash
-from app.models.enums import Gender, Role
-from app.models.fhir.patient import Patient, Observation
-from app.models.document_model import DocumentModel
-from app.models.examination_model import ExaminationModel
-from app.models.tenant_model import TenantModel
-from app.models.user_model import UserModel
-from app.services.import_service import ImportService
+from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
+from app.core.security import get_password_hash  # noqa: E402
+from app.models.enums import Gender, Role  # noqa: E402
+from app.models.fhir.patient import Patient, Observation  # noqa: E402
+from app.models.document_model import DocumentModel  # noqa: E402
+from app.models.examination_model import ExaminationModel  # noqa: E402
+from app.models.tenant_model import TenantModel  # noqa: E402
+from app.models.user_model import UserModel  # noqa: E402
+from app.services.import_service import ImportService  # noqa: E402
 
 # Default credentials — overridable via the root .env
 DEMO_EMAIL = os.getenv("HA_DEMO_EMAIL", "demo@healthassistant.local")
 DEMO_PASSWORD = os.getenv("HA_DEMO_PASSWORD", "Demo1234!")
 DEMO_TENANT_NAME = "Demo Clinic"
 DEMO_TENANT_SLUG = "demo-clinic"
+
+# Deterministic UUIDs so outstanding JWTs survive the daily reset (which wipes
+# the DB volume + re-seeds). With random IDs, every reset mints a new
+# tenant_id/user_id, so all existing tokens silently break — /auth/validate
+# still passes (stateless JWT) but every data query filters by a tenant_id that
+# no longer exists and returns empty results. Fixed IDs mean a reset recreates
+# the exact same entities the tokens point at, so demo visitors never see a
+# broken/empty app or have to manually log out + back in.
+DEMO_TENANT_ID = UUID("11111111-1111-4111-8111-111111111111")
+DEMO_USER_ID = UUID("22222222-2222-4222-8222-222222222222")
 
 RICH_OCR_TEXT = """PATIENT & LABORATORY INFORMATION
 Patient Name: Maria Papadopoulou
@@ -344,7 +354,7 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
 
 
     _brr = await import_service.restore_fhir_bundle(bundle, tenant_id)
-    created, updated, errors, warnings = _brr.created, _brr.updated, _brr.errors, _brr.warnings
+    _created, _updated, errors, warnings = _brr.created, _brr.updated, _brr.errors, _brr.warnings
     if errors:
         print(f"❌ FHIR Import Errors: {errors}")
         # Not raising immediately so we can see all errors
@@ -438,6 +448,7 @@ async def seed() -> None:
         ).scalar_one_or_none()
         if not tenant:
             tenant = TenantModel(
+                id=DEMO_TENANT_ID,
                 name=DEMO_TENANT_NAME,
                 slug=DEMO_TENANT_SLUG,
                 description="Deterministic demo tenant for UI screenshot capture.",
@@ -458,6 +469,7 @@ async def seed() -> None:
         ).scalar_one_or_none()
         if not user:
             user = UserModel(
+                id=DEMO_USER_ID,
                 email=DEMO_EMAIL,
                 hashed_password=get_password_hash(DEMO_PASSWORD),
                 role=Role.ADMIN,
@@ -503,16 +515,15 @@ async def seed() -> None:
         # 4. Clinical Data for the primary patient
         if primary_patient_id:
             # Check if clinical data exists (checking Observations)
-            from sqlalchemy import text
             obs_exists = (await session.execute(
                 select(Observation).where(Observation.subject["reference"].astext == f"Patient/{primary_patient_id}").limit(1)
             )).scalar_one_or_none()
             
             if not obs_exists:
                 await seed_clinical_data(session, tenant.id, primary_patient_id, user.id)
-                print(f"✅ Seeded comprehensive clinical data for Maria Papadopoulou")
+                print("✅ Seeded comprehensive clinical data for Maria Papadopoulou")
             else:
-                print(f"⚠️  Clinical data already exists for primary patient.")
+                print("⚠️  Clinical data already exists for primary patient.")
 
         try:
             await session.commit()
