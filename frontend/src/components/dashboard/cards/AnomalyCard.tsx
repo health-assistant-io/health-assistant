@@ -76,7 +76,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
 
       <div className="flex items-center justify-between mb-4">
         <CardTitle
-          to="/analytics/trends"
+          to="/biomarkers"
           title={t('dashboard.cards.anomaly_alerts', { defaultValue: 'Anomaly Detection' })}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"
           icon={

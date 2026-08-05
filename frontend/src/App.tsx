@@ -265,7 +265,6 @@ function App() {
           <Route path="/allergies/details/:allergyId" element={<AllergyDetail />} />
           <Route path="/notifications" element={<NotificationManagement />} />
           <Route path="/notifications/:tab" element={<NotificationManagement />} />
-          <Route path="/analytics/trends" element={<BiomarkerTrends />} />
           <Route path="/analytics/correlative" element={<CorrelativeAnalytics />} />
           <Route path="/biomarkers" element={<BiomarkerTrends />} />
           {/* Unified catalog workspace (Phase C) — replaces the per-type

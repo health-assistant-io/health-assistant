@@ -1,6 +1,6 @@
 /**
  * Observation (biomarker result) instance facets — single source for the
- * adapter + browse modal. Mirrors the `/analytics/trends` filter set as far as
+ * adapter + browse modal. Mirrors the `/biomarkers` filter set as far as
  * the raw Observation shape allows:
  *   - status — recomputed via `getObservationStatus` (the SAME algorithm as
  *     `getFinalStatus` on the enriched BiomarkerObservation: range-based, then

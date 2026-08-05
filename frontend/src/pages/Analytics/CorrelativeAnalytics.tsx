@@ -255,7 +255,7 @@ const CorrelativeAnalytics: React.FC = () => {
         subtitle="Explore relationships between different biomarkers over time"
         icon={<TrendingUp className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('biomarkers.title'), path: '/analytics/trends' }
+          { label: t('biomarkers.title'), path: '/biomarkers' }
         ]}
         showBackButton={true}
       />

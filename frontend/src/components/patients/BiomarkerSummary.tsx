@@ -170,7 +170,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
             content: t('biomarkers.info_text'),
             ariaLabel: t('common.info'),
           }}
-          titleTo="/analytics/trends"
+          titleTo="/biomarkers"
           onAdd={() => setIsLogReadingOpen(true)}
           addLabel={t('biomarkers.log_reading.button', 'Log Reading')}
         />
@@ -214,7 +214,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
           ariaLabel: t('common.info'),
         }}
           tags={tags}
-          titleTo="/analytics/trends"
+          titleTo="/biomarkers"
           onAdd={() => setIsLogReadingOpen(true)}
           addLabel={t('biomarkers.log_reading.button', 'Log Reading')}
         />
@@ -308,7 +308,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
             {/* Fill empty slots with a "view all" prompt if we have fewer than 4 tiles */}
             {trackedCount > MAX_TILES && (
               <button
-                onClick={() => navigate('/analytics/trends')}
+                onClick={() => navigate('/biomarkers')}
                 title={t('common.open_x', { x: t('common.biomarker_trends') })}
                 className="rounded-xl border border-dashed border-gray-200 dark:border-dark-border p-3 flex flex-col items-center justify-center text-center hover:border-blue-300 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all group"
               >

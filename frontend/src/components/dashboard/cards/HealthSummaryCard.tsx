@@ -137,7 +137,7 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
 
       <div className="mb-3">
         <CardTitle
-          to="/analytics/trends"
+          to="/biomarkers"
           title={t('dashboard.cards.health_summary', { defaultValue: 'Health Summary' })}
           titleClassName="text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest"
         />

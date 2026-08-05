@@ -5,7 +5,7 @@ import { deriveCountedOptions } from './helpers';
 
 /**
  * Trends biomarker facets — `FacetDefinition<BiomarkerObservation>[]` for the
- * `/analytics/trends` view (last biomarker results). Pure data/functions, no
+ * `/biomarkers` view (last biomarker results). Pure data/functions, no
  * JSX. Reuses `getFinalStatus` so the status facet is consistent with the
  * existing alerts-only toggle and badge coloring.
  *

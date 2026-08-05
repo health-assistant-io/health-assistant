@@ -33,7 +33,7 @@ export const ObservationView: React.FC<InstanceViewProps<Observation>> = ({
   const { t } = useTranslation();
   // Enrich raw observations → BiomarkerObservation (the shape that carries
   // isTelemetry / techCategory / labName), then filter with the SAME facets the
-  // /analytics/trends page uses — single source of truth for biomarker filters
+  // /biomarkers page uses — single source of truth for biomarker filters
   // (status / source_type / subcategory / unit / source / mapped).
   const { biomarkers } = useBiomarkers({ observations: items });
   const filter = useFilterState<BiomarkerObservation>(trendsBiomarkerFacets);

@@ -150,7 +150,7 @@ function Sidebar() {
         // ── Clinical Record ──
         { path: '/examinations', labelKey: 'common.examinations', section: 'common.section_clinical_record' },
         { path: '/documents', labelKey: 'common.documents_explorer' },
-        { path: '/analytics/trends', labelKey: 'common.biomarkers' },
+        { path: '/biomarkers', labelKey: 'common.biomarkers' },
         { path: '/analytics/correlative', labelKey: 'common.correlative_analytics' },
         // ── Treatments & Alerts ──
         { path: '/medications', labelKey: 'common.medications', section: 'common.section_treatments_alerts' },

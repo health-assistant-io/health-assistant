@@ -14,7 +14,7 @@ flowchart TD
     C -- yes --> D[Connect an LLM<br/>/settings/ai-config]
     C -- no --> E
     D --> E[Upload a lab report<br/>/examinations/upload]
-    E --> F[Review biomarker trends<br/>/analytics/trends]
+    E --> F[Review biomarker trends<br/>/biomarkers]
     F --> G{What next?}
     G --> H[Track medications & vaccinations]
     G --> I[Start a health journey]
@@ -142,7 +142,7 @@ sequenceDiagram
 When processing finishes:
 
 - **Documents** (`/documents`) shows the uploaded files with previews.
-- **Biomarkers** (`/analytics/trends`) charts any extracted lab results.
+- **Biomarkers** (`/biomarkers`) charts any extracted lab results.
 - The **Examination** detail page (`/examinations/:id`) groups the
   documents, your notes, and the linked biomarker results in one place.
 
@@ -170,7 +170,7 @@ calendar both reference them.
 
 ## 6. Read your biomarker trends
 
-Go to **Biomarkers** (`/analytics/trends`). Each row is a biomarker
+Go to **Biomarkers** (`/biomarkers`). Each row is a biomarker
 (cholesterol, glucose, thyroid, vitamins — anything you've had tested)
 charted over time. For each result you get:
 
