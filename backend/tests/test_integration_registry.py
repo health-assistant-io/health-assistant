@@ -1,5 +1,4 @@
 import pytest
-import os
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
@@ -51,7 +50,7 @@ async def test_integration_registry_initialize():
         
     mock_db.execute = mock_execute
     
-    with patch.object(registry, "_load_manifests") as mock_load, \
+    with patch.object(registry, "_load_manifests"), \
          patch.object(registry, "_load_integration") as mock_load_int:
          
         registry._manifests = {"dev_dummy": {}}

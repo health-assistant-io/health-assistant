@@ -21,11 +21,8 @@ Post-fix contract pinned here:
 5. Running two ``@async_task`` functions back-to-back in the same
    process does not raise (the original failure mode).
 """
-import asyncio
 import inspect
 
-import pytest
-from sqlalchemy.pool import NullPool
 
 
 def test_get_async_engine_is_process_singleton():

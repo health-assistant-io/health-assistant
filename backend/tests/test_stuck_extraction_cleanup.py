@@ -101,7 +101,6 @@ def test_a6_startup_cleanup_threshold_at_or_beyond_celery_hard_limit():
 async def test_a6_startup_cleanup_does_not_target_fresh_exams(monkeypatch):
     """Sanity test: simulate a fresh exam (updated_at = now) and verify
     the cleanup predicate would NOT match it."""
-    from sqlalchemy import and_
 
     # Build the WHERE clause the way the endpoint does.
     threshold = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=20)

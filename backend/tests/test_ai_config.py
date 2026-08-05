@@ -1,17 +1,8 @@
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from uuid import uuid4
-from unittest.mock import patch
 
 from app.main import app
-from app.core.database import AsyncSessionLocal
-from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
-from app.ai.schemas.config import (
-    AIProviderCreate,
-    AIModelCreate,
-    AITaskAssignmentCreate,
-)
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
 
@@ -146,7 +137,7 @@ class TestAIProviderEndpoints:
         )
         assert response.status_code == 200
         assert response.json()["name"] == "Updated Provider Name"
-        assert response.json()["is_active"] == False
+        assert response.json()["is_active"] is False
 
     async def test_delete_provider(self, authenticated_client: AsyncClient):
         """Test deleting a provider"""

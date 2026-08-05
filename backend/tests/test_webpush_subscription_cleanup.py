@@ -19,7 +19,7 @@ Post-fix contract pinned here:
    processing the remaining subscriptions.
 """
 import inspect
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pywebpush import WebPushException

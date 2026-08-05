@@ -6,7 +6,6 @@ the list shape survives: import → ORM → to_fhir_dict → validator.
 """
 from uuid import uuid4
 
-import pytest
 
 from app.models.fhir.patient import Observation
 from app.services.fhir_helpers import _flatten_interpretation, _normalize_interpretation

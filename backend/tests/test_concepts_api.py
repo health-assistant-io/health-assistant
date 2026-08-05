@@ -101,7 +101,7 @@ async def test_search_concepts_endpoint(async_client, system_admin_headers):
     )
 
     resp = await async_client.get(
-        f"/api/v1/concepts/search?q=Searchable", headers=system_admin_headers
+        "/api/v1/concepts/search?q=Searchable", headers=system_admin_headers
     )
     assert resp.status_code == 200
     assert any(c["slug"] == slug for c in resp.json())

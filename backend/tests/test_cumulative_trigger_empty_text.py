@@ -13,7 +13,7 @@ extracted text, the else branch marks the exam completed (extraction_status
 ``cumulative_extraction.delay``.
 """
 import inspect
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -53,7 +53,6 @@ async def test_c11_empty_text_path_marks_exam_completed(monkeypatch):
     Uses mocked DB to avoid needing a real Postgres for this logic test.
     """
     from app.workers import ai_tasks
-    from app.models.document_model import DocumentModel
 
     # Build a doc that's part of an exam where all included docs finished
     # with empty text.

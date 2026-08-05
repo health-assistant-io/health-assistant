@@ -9,9 +9,8 @@ manager with a real in-memory FastMCP server is guarded by
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -337,8 +336,8 @@ class TestExtractResult:
 
 class TestDescriptionTruncation:
     def test_long_description_truncated_in_adapter(self):
-        fastmcp = pytest.importorskip("fastmcp")
-        from integrations.mcp_client.tool_adapter import adapt_tool, MAX_DESCRIPTION_LEN
+        pytest.importorskip("fastmcp")
+        from integrations.mcp_client.tool_adapter import adapt_tool
 
         long_desc = "x" * (MAX_DESCRIPTION_LEN + 100)
         mcp_tool = MagicMock()
@@ -366,7 +365,7 @@ class TestAdapterEndToEnd:
     """Exercise filter_and_adapt_tools against a real in-memory FastMCP server."""
 
     def test_discover_and_call(self):
-        fastmcp = pytest.importorskip("fastmcp")
+        pytest.importorskip("fastmcp")
         from fastmcp import FastMCP, Client
         from integrations.mcp_client.connection_manager import (
             _Connection,
@@ -420,7 +419,7 @@ class TestAdapterEndToEnd:
         asyncio.run(run())
 
     def test_disabled_tools_filtered(self):
-        fastmcp = pytest.importorskip("fastmcp")
+        pytest.importorskip("fastmcp")
         from fastmcp import FastMCP, Client
         from integrations.mcp_client.connection_manager import (
             _Connection,
@@ -513,7 +512,8 @@ class TestAggregator:
         mcp_provider = MagicMock()
         mcp_provider.supports_tools.return_value = True
         async def fake_get_tools(integration):
-            t = MagicMock(); t.name = "mcp__mcp__tool"
+            t = MagicMock()
+            t.name = "mcp__mcp__tool"
             return [t]
         mcp_provider.get_tools = fake_get_tools
 
@@ -548,7 +548,8 @@ class TestAggregator:
         async def fake_get_tools(integration):
             if integration is bad:
                 raise RuntimeError("connection refused")
-            t = MagicMock(); t.name = "mcp__good__tool"
+            t = MagicMock()
+            t.name = "mcp__good__tool"
             return [t]
         provider.get_tools = fake_get_tools
 
@@ -575,8 +576,10 @@ class TestAggregator:
         provider = MagicMock()
         provider.supports_tools.return_value = True
         async def fake_get_tools(integration):
-            t1 = MagicMock(); t1.name = "a"
-            t2 = MagicMock(); t2.name = "b"
+            t1 = MagicMock()
+            t1.name = "a"
+            t2 = MagicMock()
+            t2.name = "b"
             return [t1, t2]
         provider.get_tools = fake_get_tools
 
@@ -602,7 +605,8 @@ class TestAggregator:
         ws_provider = MagicMock()
         ws_provider.supports_tools.return_value = True
         async def fake_get_tools(integration):
-            t = MagicMock(); t.name = "web_search"
+            t = MagicMock()
+            t.name = "web_search"
             return [t]
         ws_provider.get_tools = fake_get_tools
 
@@ -732,8 +736,12 @@ class TestProvider:
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
         async def fake_list_tools(integration):
-            t1 = MagicMock(); t1.name = "echo"; t1.description = "Echo text"
-            t2 = MagicMock(); t2.name = "add"; t2.description = "Add numbers"
+            t1 = MagicMock()
+            t1.name = "echo"
+            t1.description = "Echo text"
+            t2 = MagicMock()
+            t2.name = "add"
+            t2.description = "Add numbers"
             return [t1, t2]
         fake_cm.list_tools = fake_list_tools
         cm_mod.mcp_connection_manager = fake_cm

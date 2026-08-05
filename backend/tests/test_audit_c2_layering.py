@@ -123,7 +123,6 @@ def test_clinical_event_service_uses_access_module():
 
 def test_endpoints_still_resolve_helpers():
     """Endpoint modules must resolve the helpers via app.services.access."""
-    import importlib
 
     examinations = importlib.import_module("app.api.v1.endpoints.examinations")
     assert examinations.check_patient_access is access_module.check_patient_access

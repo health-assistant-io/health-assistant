@@ -9,14 +9,14 @@ Covers:
 - check_allergy_access filters deleted_at
 """
 import datetime as _dt
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
 from app.models.enums import AllergyCategory, AllergyClinicalStatus, AllergyCriticality
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
-from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
+from app.services.fhir_helpers import assert_valid_fhir
 
 
 def _valid_allergy_data() -> dict:

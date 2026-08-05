@@ -16,7 +16,6 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
 from app.models.tenant_model import TenantModel
 from app.services.fhir_helpers import parse_fhir_resource
 from app.services.seed_service import SeedService

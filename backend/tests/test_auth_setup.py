@@ -331,7 +331,6 @@ async def test_register_without_tenant_id_returns_403():
 
 
 def test_setup_request_accepts_localhost_email():
-    from pydantic import ValidationError
 
     for addr in (
         "admin@localhost",

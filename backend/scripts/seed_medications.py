@@ -18,7 +18,7 @@ async def main():
     stats = await seed_service.seed_medications()
 
     print("-" * 30)
-    print(f"✅ Sync complete!")
+    print("✅ Sync complete!")
     print(f"➕ Added:   {stats['added']}")
     print(f"🔄 Updated: {stats['updated']}")
     print(f"❌ Errors:  {stats['errors']}")

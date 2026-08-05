@@ -8,7 +8,6 @@ Covers:
     using a mocked AIAssistanceService so no LLM/DB plumbing is required.
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 

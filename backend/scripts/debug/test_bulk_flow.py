@@ -1,7 +1,5 @@
 import httpx
 import asyncio
-import uuid
-import time
 
 API_URL = "http://localhost:8000/api/v1"
 AUTH = ("admin@health-assistant.local", "admin123")

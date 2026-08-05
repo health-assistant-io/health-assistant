@@ -283,7 +283,6 @@ async def test_parse_records_does_not_leak_reference_range_across_records(provid
     reference range leaked it into the following record (which intended to
     have none). The fix resets the builder per iteration (SDK skill §10.4)."""
     from integrations.health_assistant_bridge.provider import ClientRecord
-    from integrations.sdk.observation_builder import ObservationBuilder
 
     builder = provider.create_observation_builder(integration_mock)
     records = [
@@ -337,9 +336,9 @@ async def test_parse_records_does_not_leak_interpretation(provider, integration_
 # Phase 5.6 — HMAC api_secret end-to-end
 # ---------------------------------------------------------------------------
 
-import hashlib
-import hmac
-import time
+import hashlib  # noqa: E402
+import hmac  # noqa: E402
+import time  # noqa: E402
 
 
 def _sign(secret: str, method: str, path: str, body: bytes, ts: str) -> str:

@@ -4,7 +4,6 @@ from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.task_log import TaskLog
 from app.workers.tasks import get_async_session
-from uuid import UUID
 
 
 async def check():
@@ -41,8 +40,8 @@ async def check():
             select(TaskLog).order_by(TaskLog.created_at.desc()).limit(15)
         )
         logs = res_logs.scalars().all()
-        for l in logs:
-            print(f"[{l.level}] {l.task_name} ({l.resource_id}): {l.message}")
+        for log in logs:
+            print(f"[{log.level}] {log.task_name} ({log.resource_id}): {log.message}")
 
     await engine.dispose()
 

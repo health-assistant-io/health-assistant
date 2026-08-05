@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 import uuid
 import datetime
 
@@ -7,7 +7,6 @@ import datetime
 @pytest.mark.asyncio
 async def test_get_biomarker_trends():
     from app.services.analytics_service import get_biomarker_trends
-    from app.models.fhir.patient import Observation
 
     tenant_id = str(uuid.uuid4())
     doc_id = str(uuid.uuid4())

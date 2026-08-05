@@ -129,7 +129,7 @@ async def test_check_trigger_cumulative_skips_when_lock_not_acquired():
     db.execute = _execute
 
     with patch.object(worker_tasks.cumulative_extraction, "delay") as delayed:
-        result = await worker_tasks._check_trigger_cumulative(db, doc.id)
+        await worker_tasks._check_trigger_cumulative(db, doc.id)
 
     delayed.assert_not_called(), (
         "cumulative_extraction.delay() must NOT fire when the advisory lock "

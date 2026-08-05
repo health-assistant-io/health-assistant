@@ -6,8 +6,6 @@ that lets a signed ``/map`` or ``/sync`` request through the bridge HMAC gate.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import sys
 import os
 
@@ -18,10 +16,10 @@ _SDK_DIR = os.path.join(
 )
 sys.path.insert(0, _SDK_DIR)
 
-import pytest
+import pytest  # noqa: E402
 
-from health_assistant_bridge.signing import sign_request
-from integrations.sdk.webhook_security import verify_canonical_signature
+from health_assistant_bridge.signing import sign_request  # noqa: E402
+from integrations.sdk.webhook_security import verify_canonical_signature  # noqa: E402
 
 
 SECRET = "topsecret"

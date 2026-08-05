@@ -20,18 +20,17 @@ import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
 from app.models.catalog_audit_model import CatalogAuditLog
-from app.models.concept_model import Concept, ConceptKindTag
+from app.models.concept_model import Concept
 from app.models.enums import (
     CatalogScope,
     ConceptKind,
     ConceptStatus,
-    EdgeApprovalStatus,
     EdgeEndpointType,
     ConceptRelationType,
 )
 from app.services.concept_service import ConceptService
 from app.services.catalog_graph_service import count_relations_both_directions
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 
 @pytest_asyncio.fixture
@@ -661,7 +660,7 @@ async def test_whole_concept_graph_endpoint_works(
         await session.commit()
 
     resp = await async_client.get(
-        f"/api/v1/catalogs/graph?types=concept&kind=organ,body_system",
+        "/api/v1/catalogs/graph?types=concept&kind=organ,body_system",
         headers=system_admin_headers,
     )
     assert resp.status_code == 200
@@ -707,7 +706,7 @@ async def test_whole_catalog_graph_returns_cross_catalog_nodes(
         await session.commit()
 
     resp = await async_client.get(
-        f"/api/v1/catalogs/graph?types=biomarker,concept",
+        "/api/v1/catalogs/graph?types=biomarker,concept",
         headers=system_admin_headers,
     )
     assert resp.status_code == 200

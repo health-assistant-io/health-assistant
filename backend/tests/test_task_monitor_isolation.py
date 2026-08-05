@@ -133,7 +133,6 @@ async def test_get_processing_documents_filters_by_tenant_for_user(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_processing_documents_system_admin_skips_tenant_filter(monkeypatch):
     """SYSTEM_ADMIN is the deliberate cross-tenant visibility exception."""
-    tenant_a = uuid.uuid4()
     admin = _user(uuid.uuid4(), role=Role.SYSTEM_ADMIN.value)
 
     captured = {}

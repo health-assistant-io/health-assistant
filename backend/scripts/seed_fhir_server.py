@@ -20,7 +20,6 @@ import asyncio
 import os
 import random
 import sys
-import uuid
 from datetime import datetime, timedelta, timezone
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +27,7 @@ backend_dir = os.path.dirname(current_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-import httpx
+import httpx  # noqa: E402
 
 # (loinc, display, unit, unit_code, category, low, high)
 PANEL = [
@@ -101,7 +100,7 @@ async def seed(base_url: str, patient_id: str | None, per_type: int, months: int
         result = r.json()
         created = sum(1 for e in result.get("entry", []) if e.get("response", {}).get("status", "").startswith("2"))
         print(f"Posted {len(entries)} Observations across {len(PANEL)} LOINC codes; {created} created.")
-        print(f"\nNow sync the fhir_server integration (auth_mode=none) to pull these into the Biomarker Engine.")
+        print("\nNow sync the fhir_server integration (auth_mode=none) to pull these into the Biomarker Engine.")
 
 
 def main() -> None:

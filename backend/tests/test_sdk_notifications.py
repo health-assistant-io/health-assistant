@@ -117,7 +117,7 @@ def test_type_spec_defaults_and_to_dict():
 # NotificationAction URL/endpoint scheme validation (Phase 3.1 — stored-XSS)
 # ---------------------------------------------------------------------------
 
-import pytest
+import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize(

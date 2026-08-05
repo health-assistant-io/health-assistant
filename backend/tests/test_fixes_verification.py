@@ -9,8 +9,6 @@ from app.core.security import get_current_user
 from app.core.database import get_db
 from app.models.examination_model import ExaminationModel
 from app.models.document_model import DocumentModel
-from app.models.fhir.patient import Observation
-from app.models.fhir.medication import Medication
 from app.schemas.user import TokenData
 
 

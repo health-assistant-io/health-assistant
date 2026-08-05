@@ -116,7 +116,7 @@ async def test_register_existing_tenant_with_valid_invite_succeeds():
     ), patch.object(
         auth_endpoint, "service_create_user", new=AsyncMock(return_value=fake_new_user)
     ) as creating:
-        result = await auth_endpoint.register(
+        await auth_endpoint.register(
             user_data=UserRegister(
                 email="newuser@family.com",
                 password="password123",

@@ -9,7 +9,6 @@ A4: ``MAX_UPLOAD_SIZE`` must actually be enforced — an oversized upload is
 rejected with 413 before it exhausts server RAM.
 """
 import io
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException

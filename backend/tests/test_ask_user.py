@@ -25,10 +25,8 @@ from uuid import uuid4
 import pytest
 
 from app.ai.agents.hitl import _hitl_resolution_summary, _parse_hitl_proposal
-from app.ai.tools import ask_user as au
 from app.ai.tools.ask_user import (
     ALLOWED_CATALOG_TYPES,
-    ALLOWED_INSTANCE_ENTITY_TYPES,
     MAX_CANDIDATES_PER_REF,
     MAX_OPTIONS_PER_QUESTION,
     MAX_QUESTIONS_PER_BATCH,

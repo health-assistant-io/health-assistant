@@ -7,7 +7,6 @@ Covers:
 - agent block construction (F12: resolved Practitioner/Device or display-only fallback)
 - Provenance is immutable (no soft-delete mixin)
 """
-import asyncio
 import datetime as _dt
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -15,9 +14,6 @@ from uuid import uuid4
 import pytest
 
 from app.models.fhir.provenance import (
-    ACTIVITY_CREATE,
-    ACTIVITY_DELETE,
-    ACTIVITY_UPDATE,
     ProvenanceModel,
 )
 from app.services.fhir_converter import fhir_to_provenance_orm, validate_resource
@@ -99,7 +95,6 @@ def test_provenance_recorded_iso_format():
 
 def test_provenance_no_soft_delete_mixin():
     """Provenance is immutable per spec — no SoftDeleteMixin columns."""
-    from app.models.base import SoftDeleteMixin
 
     # ProvenanceModel should not have deleted_at.
     assert not hasattr(ProvenanceModel, "deleted_at")

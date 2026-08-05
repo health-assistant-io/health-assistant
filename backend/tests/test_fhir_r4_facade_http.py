@@ -14,9 +14,7 @@ Uses mocked DB to keep tests fast and deterministic. The model-level tests
 (test_fhir_r4_*.py) cover the serialization + converter layers in depth;
 this file covers the HTTP wiring + status codes + headers.
 """
-import json
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -25,7 +23,6 @@ from starlette.testclient import TestClient
 
 from app.api.v1.endpoints.fhir_r4 import router as facade_router
 from app.facade.registry import RESOURCE_REGISTRY
-from app.facade.responses import operation_outcome
 
 
 @pytest.fixture

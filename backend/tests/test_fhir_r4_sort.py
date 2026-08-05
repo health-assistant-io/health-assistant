@@ -24,7 +24,7 @@ test against an in-memory SQLite DB for the Patient name expression.
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, func, insert, select
+from sqlalchemy import Column, Integer, MetaData, String, Table, func, insert, select
 
 from app.facade.search_params import SORT_COLUMNS, _patient_family_name_sort
 
@@ -161,7 +161,6 @@ def test_patient_name_sort_semantics_lowercase_family(fake_pg_db):
     #   first element's family).
     # - json_extract(name, '$.family') handles dict shape.
     # COALESCE picks whichever is non-NULL.
-    from sqlalchemy import func
 
     expr = func.lower(
         func.coalesce(

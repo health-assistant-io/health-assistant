@@ -27,7 +27,6 @@ from app.facade.search_params import (
     DATE_PREFIXES,
     DateFilter,
     _parse_fhir_date_range,
-    _parse_fhir_datetime,
 )
 
 

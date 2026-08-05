@@ -9,7 +9,6 @@ Covers:
 - /metadata endpoint returns valid CapabilityStatement (200, Cache-Control)
 - Unknown facade route returns 501 OperationOutcome
 """
-import math
 from datetime import datetime, timezone
 
 import pytest
@@ -20,7 +19,6 @@ from app.facade.search_params import (
     DATE_PREFIXES,
     DEFAULT_COUNT,
     MAX_COUNT,
-    FhirSearchParams,
     DateFilter,
     parse_search_params,
 )
@@ -213,7 +211,7 @@ def test_build_search_bundle_basic():
     assert bundle["entry"][0]["fullUrl"] == "https://host/api/v1/fhir/R4/Patient/abc"
     assert bundle["entry"][0]["resource"]["id"] == "abc"
     # Should have self, first, last, next links (no previous — on page 1).
-    rels = {l["relation"] for l in bundle["link"]}
+    rels = {link["relation"] for link in bundle["link"]}
     assert "self" in rels
     assert "first" in rels
     assert "last" in rels
@@ -231,7 +229,7 @@ def test_build_search_bundle_middle_page_has_previous():
         offset=2,
         count=2,
     )
-    rels = {l["relation"] for l in bundle["link"]}
+    rels = {link["relation"] for link in bundle["link"]}
     assert "previous" in rels
     assert "next" in rels
 
@@ -246,7 +244,7 @@ def test_build_search_bundle_last_page_no_next():
         offset=4,
         count=2,
     )
-    rels = {l["relation"] for l in bundle["link"]}
+    rels = {link["relation"] for link in bundle["link"]}
     assert "next" not in rels
     assert "previous" in rels
 
@@ -425,7 +423,7 @@ def test_capability_statement_per_resource_no_version_no_update_create():
 def test_capability_statement_date_is_current():
     """F18: the CapabilityStatement.date must be the current time, not a
     hardcoded constant."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import timedelta
 
     # Allow a small skew between the build_capability_statement call and `now`
     # to tolerate test latency.

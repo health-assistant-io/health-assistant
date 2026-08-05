@@ -17,7 +17,6 @@ Post-fix contract pinned here:
 4. The migration that aligned the indexes runs cleanly both ways.
 """
 import importlib
-import inspect
 
 import pytest
 
@@ -70,7 +69,6 @@ def test_facade_soft_delete_predicate_works_for_model(module_name, class_name):
     exclude tombstones."""
     from app.facade.crud import _soft_delete_predicate
     from app.facade.registry import ResourceEntry
-    from app.models.base import SoftDeleteMixin
 
     mod = importlib.import_module(module_name)
     model = getattr(mod, class_name)
@@ -200,7 +198,7 @@ def test_initial_schema_has_deleted_at_on_nine_tables():
         "documents",
     }
     for table in expected:
-        assert f"'deleted_at'" in src, (
+        assert "'deleted_at'" in src, (
             f"deleted_at column missing from consolidated baseline (table {table})"
         )
 
@@ -247,5 +245,5 @@ def test_organization_model_has_timestamp_mixin():
 # ---------------------------------------------------------------------------
 
 
-import uuid
+import uuid  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402

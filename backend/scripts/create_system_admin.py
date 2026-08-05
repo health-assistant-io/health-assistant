@@ -6,8 +6,6 @@ Create a System Administrator user for Health Assistant
 import os
 import sys
 import asyncio
-import uuid
-from typing import Optional
 
 # Ensure the backend directory is in the path
 # This script is located in backend/scripts/
@@ -16,14 +14,14 @@ backend_dir = os.path.dirname(current_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from app.core.security import get_password_hash
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE, engine
-from app.models.user_model import UserModel
-from app.models.tenant_model import TenantModel
-from app.models.enums import Role
-from app.utils.slug import slugify
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from app.core.security import get_password_hash  # noqa: E402
+from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE, engine  # noqa: E402
+from app.models.user_model import UserModel  # noqa: E402
+from app.models.tenant_model import TenantModel  # noqa: E402
+from app.models.enums import Role  # noqa: E402
+from app.utils.slug import slugify  # noqa: E402
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 
 async def create_system_admin(email: str, password: str, tenant_name: str = "System Tenant") -> bool:
@@ -88,7 +86,7 @@ async def create_system_admin(email: str, password: str, tenant_name: str = "Sys
                 print("=" * 60)
                 print(f"Email:    {email}")
                 print(f"Password: {password}")
-                print(f"Role:     SYSTEM_ADMIN")
+                print("Role:     SYSTEM_ADMIN")
                 print(f"Tenant:   {tenant.name}")
                 print("=" * 60)
                 return True

@@ -8,10 +8,8 @@ async def _ocr_document_async(document_id: str, file_path: str, tenant_id: str):
 
 async def _cumulative_extraction_async(examination_id: str):
     return await cumulative_extraction.__wrapped__.__wrapped__(None, examination_id)
-from app.models.document_model import DocumentModel
-from app.models.examination_model import ExaminationModel
-from app.models.biomarker_model import BiomarkerDefinition
-from app.models.fhir.medication import MedicationCatalog
+from app.models.document_model import DocumentModel  # noqa: E402
+from app.models.examination_model import ExaminationModel  # noqa: E402
 
 
 @pytest.mark.asyncio

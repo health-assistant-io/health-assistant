@@ -12,7 +12,6 @@ Post-fix contract pinned here:
    information leak).
 5. ``SYSTEM_ADMIN`` Bearer JWT is honored regardless of tenant.
 """
-import io
 import uuid
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 

@@ -26,10 +26,10 @@ backend_dir = os.path.dirname(current_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from sqlalchemy import select
+from sqlalchemy import select  # noqa: E402
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
-from app.models.system_integration import SystemIntegration
+from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
+from app.models.system_integration import SystemIntegration  # noqa: E402
 
 
 async def toggle(domain: str, enable: bool) -> None:

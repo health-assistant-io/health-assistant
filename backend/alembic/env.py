@@ -7,7 +7,6 @@ from alembic import context
 
 # Import your models' Base
 from app.models.base import Base
-import app.models  # This will trigger registration of all models
 
 # this is the Alembic Config object
 config = context.config

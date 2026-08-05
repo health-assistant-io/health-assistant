@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, cast
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.core.config import settings
 from app.models.document_model import DocumentModel

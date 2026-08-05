@@ -10,7 +10,6 @@ Covers:
 import datetime as _dt
 from uuid import uuid4
 
-import pytest
 
 from app.models.fhir.device import DeviceModel
 from app.models.fhir.communication import CommunicationModel

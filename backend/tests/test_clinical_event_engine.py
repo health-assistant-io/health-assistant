@@ -7,7 +7,6 @@ biomarker pass-through.
 """
 import datetime as _dt
 
-import pytest
 
 from app.models.clinical_event import ClinicalEvent, ClinicalEventType
 from app.models.enums import ClinicalEventStatus

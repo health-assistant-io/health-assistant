@@ -5,7 +5,6 @@ where FKs aren't supported) must have a foreign key constraint to
 ``tenants.id`` with ``ON DELETE CASCADE`` so deleting a tenant purges all
 their data instead of orphaning it.
 """
-import pytest
 from sqlalchemy import create_engine, text
 
 from app.core.config import settings

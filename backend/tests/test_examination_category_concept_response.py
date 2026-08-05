@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.models.concept_model import Concept
-from app.models.enums import ConceptKind
 from app.models.examination_model import ExaminationModel
 
 

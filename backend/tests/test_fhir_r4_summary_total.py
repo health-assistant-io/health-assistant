@@ -16,7 +16,6 @@ SELECT) and skips the COUNT when ``_total=none``.
 
 from __future__ import annotations
 
-from urllib.parse import parse_qs, urlparse
 
 from app.facade.bundle import build_search_bundle
 
@@ -185,7 +184,7 @@ def test_summary_count_bundle_still_has_correct_shape():
     assert bundle["entry"] == []
     assert bundle["total"] == 99
     # The pagination links are still present (self, first, last).
-    rels = {l["relation"] for l in bundle["link"]}
+    rels = {link["relation"] for link in bundle["link"]}
     assert "self" in rels
     assert "first" in rels
     assert "last" in rels

@@ -35,7 +35,7 @@ async def main():
             stats = await import_service.import_catalog(payload)
             
             print("-" * 30)
-            print(f"✅ Catalog Sync complete!")
+            print("✅ Catalog Sync complete!")
             print(f"🧬 Biomarkers Added:   {stats.get('biomarkers_added', 0)}")
             print(f"🧬 Biomarkers Updated: {stats.get('biomarkers_updated', 0)}")
             print(f"📏 Units Added:        {stats.get('units_added', 0)}")

@@ -1,9 +1,5 @@
 import asyncio
-from app.workers.ai_tasks import cumulative_extraction, ocr_document
-from sqlalchemy import select
-from app.models.document_model import DocumentModel
-from app.workers.tasks import AsyncSessionFactory
-from uuid import UUID
+from app.workers.ai_tasks import cumulative_extraction
 
 
 async def trigger():

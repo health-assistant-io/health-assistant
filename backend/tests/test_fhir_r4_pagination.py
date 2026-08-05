@@ -56,7 +56,7 @@ def test_pagination_next_link_points_to_page_2():
         offset=0,
         count=2,
     )
-    next_link = next(l for l in bundle["link"] if l["relation"] == "next")
+    next_link = next(link for link in bundle["link"] if link["relation"] == "next")
     qs = parse_qs(urlparse(next_link["url"]).query)
     assert qs["page"] == ["2"]
 
@@ -72,7 +72,7 @@ def test_pagination_last_link_points_to_final_page():
         offset=0,
         count=2,
     )
-    last_link = next(l for l in bundle["link"] if l["relation"] == "last")
+    last_link = next(link for link in bundle["link"] if link["relation"] == "last")
     qs = parse_qs(urlparse(last_link["url"]).query)
     assert qs["page"] == ["3"]
 
@@ -87,7 +87,7 @@ def test_pagination_previous_link_on_page_3_points_to_page_2():
         offset=4,
         count=2,
     )
-    prev_link = next(l for l in bundle["link"] if l["relation"] == "previous")
+    prev_link = next(link for link in bundle["link"] if link["relation"] == "previous")
     qs = parse_qs(urlparse(prev_link["url"]).query)
     assert qs["page"] == ["2"]
 
@@ -197,7 +197,7 @@ def test_pagination_round_trip_walks_all_pages():
             offset=params.offset,
             count=count,
         )
-        next_links = [l for l in bundle["link"] if l["relation"] == "next"]
+        next_links = [link for link in bundle["link"] if link["relation"] == "next"]
         if not next_links:
             break
         # Take the next link's query string as the new current_qs.
@@ -232,6 +232,6 @@ def test_pagination_round_trip_offset_alias_works():
     )
 
     # The `next` link should target page 3 (offset 4), not page 1.
-    next_link = next(l for l in bundle["link"] if l["relation"] == "next")
+    next_link = next(link for link in bundle["link"] if link["relation"] == "next")
     qs = parse_qs(urlparse(next_link["url"]).query)
     assert qs["page"] == ["3"]

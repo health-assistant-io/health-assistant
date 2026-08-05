@@ -9,7 +9,6 @@ import uuid
 from typing import Dict, Tuple
 
 import pytest
-from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.concept_model import ConceptEdge
@@ -99,7 +98,7 @@ async def test_list_with_include_relations_annotates_items(async_client):
     await _add_edge(a, b, "CORRELATES_WITH")
 
     resp = await async_client.get(
-        f"/api/v1/catalogs/medication?include=relations&search=List-",
+        "/api/v1/catalogs/medication?include=relations&search=List-",
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
@@ -116,7 +115,7 @@ async def test_list_without_include_has_no_count(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     a = await _create_medication("Plain-A")
     resp = await async_client.get(
-        f"/api/v1/catalogs/medication?search=Plain-", headers=headers
+        "/api/v1/catalogs/medication?search=Plain-", headers=headers
     )
     assert resp.status_code == 200, resp.text
     by_id = {it["id"]: it for it in resp.json()["items"]}

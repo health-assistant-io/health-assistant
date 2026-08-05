@@ -11,7 +11,6 @@ Covers:
 import datetime as _dt
 from uuid import uuid4
 
-import pytest
 
 from app.models.fhir.medication import Medication, MedicationCatalog
 from app.models.enums import MedicationIntent, MedicationStatus

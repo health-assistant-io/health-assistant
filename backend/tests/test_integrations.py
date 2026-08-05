@@ -187,7 +187,7 @@ async def test_get_integration_details(async_client: AsyncClient):
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
+    with patch("app.api.v1.endpoints.integrations.integration_registry"):
         response = await async_client.get(f"/api/v1/integrations/instance/{integration_id}/details?patient_id={patient_uuid}")
         
         assert response.status_code == 200

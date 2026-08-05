@@ -23,7 +23,6 @@ a live PG instance cover actual execution semantics.
 
 from __future__ import annotations
 
-import json
 
 import pytest
 from sqlalchemy import Column

@@ -1,6 +1,6 @@
 import asyncio
 from app.core.database import engine, async_sessionmaker, AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from app.models.fhir.patient import Observation
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel

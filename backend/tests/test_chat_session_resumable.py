@@ -12,12 +12,10 @@ empty arrays.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import AsyncIterator
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.models.chat_model import ChatMessage, ChatSession
