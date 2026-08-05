@@ -5,7 +5,7 @@
 # Health Assistant
 ### Self-hosted, privacy-first health records
 
-[![Version](https://img.shields.io/badge/version-v0.4.0--rc.1-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
+[![Version](https://img.shields.io/badge/version-v0.4.1--rc.1-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#scope--limitations)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20Self--Hosted-lightgrey.svg)](#quick-start)

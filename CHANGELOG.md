@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [v0.4.1-rc.1] - 2026-08-05
+
 - **Docs: document `DEMO_MODE` in SEEDING_AND_DEMOS.md §8.** Covers enabling the flag, auto-seeding on boot, credential-free `/auth/demo-login`, the demo banner with "Exit demo" link, and deterministic UUIDs for session persistence across daily resets. SEO description in `docs-tree.json` updated to mention `DEMO_MODE`.
 
 - **Fix: demo session breaks after daily reset — deterministic UUIDs + auto-logout.** The daily demo reset (`reset-demo.sh`) wiped the DB volume + re-seeded with new random UUIDs, so outstanding JWTs referenced non-existent tenant/user IDs — `/auth/validate` still passed (stateless) but every data query returned empty. Two-layer fix: (1) `seed_demo.py` now uses fixed UUIDs for the demo tenant (`11111111-…`) + user (`22222222-…`), so a reset recreates the same entities the tokens point at; (2) `App.tsx` detects a stale session (`getCurrentUser()` 404) when the JWT carries `demo: true` and auto-logs out — the login page then auto-calls `demo-login`, so the visitor never has to click anything.
