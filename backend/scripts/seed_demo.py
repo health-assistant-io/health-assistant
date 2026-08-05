@@ -8,6 +8,8 @@ Creates (idempotently):
   - 3 demo patients in that tenant
   - Comprehensive clinical data for the primary patient (Maria Papadopoulou):
     - Biomarkers: Glucose, Cholesterol, Blood Pressure
+    - STATE Biomarker: SARS-CoV-2 PCR (Positive/Negative timeline) — exercises
+      the StateTimeline + categorical history-table rendering.
     - Medications: Metformin, Vitamin D3
     - Allergies: Peanuts
     - Clinical Events: Annual Checkup
@@ -34,7 +36,12 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
-from app.models.enums import Gender, Role  # noqa: E402
+from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem, Gender, Role  # noqa: E402
+from app.models.biomarker_model import (  # noqa: E402
+    BiomarkerAllowedState,
+    BiomarkerDefinition,
+    BiomarkerState,
+)
 from app.models.fhir.patient import Patient, Observation  # noqa: E402
 from app.models.document_model import DocumentModel  # noqa: E402
 from app.models.examination_model import ExaminationModel  # noqa: E402
@@ -442,6 +449,181 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 .values(examination_id=str(exam_id))
             )
 
+
+# HL7 v3-ObservationInterpretation system URL — the canonical code system for
+# categorical results (POS/NEG/Indeterminate/...). Pre-seeded by
+# ``seed_service.seed_biomarker_states`` at startup.
+V3_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+
+
+async def seed_state_biomarkers(session, tenant_id: UUID, patient_id: UUID, user_id: UUID) -> None:
+    """Seed a STATE biomarker (SARS-CoV-2 PCR) + an alternating POS/NEG
+    observation timeline.
+
+    This exercises the StateTimeline UI + the categorical history-table
+    rendering. STATE biomarkers carry their value in
+    ``valueCodeableConcept`` (numeric columns are NULL by design), so they
+    can't go through the legacy FHIR-bundle path above — the validator
+    requires a BiomarkerDefinition with ``value_type=STATE`` + matching
+    ``allowed_states`` to exist first.
+
+    Idempotent: re-runs skip rows that already exist (matched by biomarker
+    slug + observation effective_datetime).
+    """
+    # 1. Resolve the canonical POS / NEG BiomarkerState rows (pre-seeded by
+    #    seed_service.seed_biomarker_states). Skip silently if the state
+    #    catalog isn't loaded — never crash the demo seed over a missing
+    #    optional catalog row.
+    pos_state = (
+        await session.execute(
+            select(BiomarkerState).where(
+                BiomarkerState.code == "POS",
+                BiomarkerState.system == V3_SYSTEM,
+            )
+        )
+    ).scalar_one_or_none()
+    neg_state = (
+        await session.execute(
+            select(BiomarkerState).where(
+                BiomarkerState.code == "NEG",
+                BiomarkerState.system == V3_SYSTEM,
+            )
+        )
+    ).scalar_one_or_none()
+    if not pos_state or not neg_state:
+        print(
+            "⚠️  POS/NEG BiomarkerState rows not found — run the biomarker_states "
+            "seed first. Skipping state-biomarker demo data."
+        )
+        return
+
+    # 2. Create (or reuse) the SARS-CoV-2 PCR definition. LOINC 94500-6 is
+    #    "SARS-CoV-2 (COVID-19) RNA [Presence] in Respiratory specimen by NAA
+    #    with probe detection" — the canonical PCR test.
+    bio_slug = "sars-cov-2-pcr"
+    bio = (
+        await session.execute(
+            select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug)
+        )
+    ).scalar_one_or_none()
+    if not bio:
+        bio = BiomarkerDefinition(
+            slug=bio_slug,
+            coding_system=CodingSystem.LOINC,
+            code="94500-6",
+            name="SARS-CoV-2 PCR",
+            aliases=["COVID-19 PCR", "Coronavirus PCR"],
+            info="Detects SARS-CoV-2 RNA in respiratory specimens via nucleic acid amplification. Positive indicates active infection.",
+            value_type=BiomarkerValueType.STATE,
+            supports_multi_state=False,
+            scope=CatalogScope.SYSTEM,
+        )
+        session.add(bio)
+        await session.flush()
+        print(f"✅ Created STATE biomarker: {bio.name}")
+    else:
+        # Backfill value_type on legacy re-seeds where the row was created
+        # before state-biomarkers shipped.
+        if bio.value_type != BiomarkerValueType.STATE:
+            bio.value_type = BiomarkerValueType.STATE
+
+    # 3. Attach allowed_states (POS=abnormal, NEG=normal) idempotently.
+    #    Query the join table directly — accessing bio.allowed_states would
+    #    lazy-load inside an async context and raise MissingGreenlet.
+    existing_allowed = {
+        a.state_id
+        for a in (
+            await session.execute(
+                select(BiomarkerAllowedState).where(
+                    BiomarkerAllowedState.biomarker_id == bio.id
+                )
+            )
+        ).scalars().all()
+    }
+    if pos_state.id not in existing_allowed:
+        session.add(
+            BiomarkerAllowedState(
+                biomarker_id=bio.id,
+                state_id=pos_state.id,
+                is_normal=False,
+                sort_order=0,
+            )
+        )
+    if neg_state.id not in existing_allowed:
+        session.add(
+            BiomarkerAllowedState(
+                biomarker_id=bio.id,
+                state_id=neg_state.id,
+                is_normal=True,
+                sort_order=1,
+            )
+        )
+    await session.flush()
+
+    # 4. Seed a 6-point timeline telling a realistic clinical story:
+    #    baseline NEG → acute infection POS → still POS → recovered NEG →
+    #    routine NEG → reinfection POS (latest, for screenshot timeliness).
+    timeline = [
+        ("2026-01-10T09:00:00Z", neg_state, "Negative"),
+        ("2026-02-15T14:30:00Z", pos_state, "Positive"),
+        ("2026-02-25T10:00:00Z", pos_state, "Positive"),
+        ("2026-03-08T08:15:00Z", neg_state, "Negative"),
+        ("2026-05-12T11:00:00Z", neg_state, "Negative"),
+        ("2026-06-15T10:00:00Z", pos_state, "Positive"),
+    ]
+    created_obs = 0
+    for iso_ts, state, display in timeline:
+        effective_dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        # Idempotent: skip if any observation for this patient + biomarker +
+        # timestamp already exists (re-runs shouldn't duplicate).
+        exists = (
+            await session.execute(
+                select(Observation.id).where(
+                    Observation.patient_id == patient_id,
+                    Observation.biomarker_id == bio.id,
+                    Observation.effective_datetime == effective_dt,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists:
+            continue
+        session.add(
+            Observation(
+                tenant_id=tenant_id,
+                status="final",
+                code={
+                    "coding": [
+                        {
+                            "system": "http://loinc.org",
+                            "code": "94500-6",
+                            "display": "SARS-CoV-2 PCR",
+                        }
+                    ],
+                    "text": "SARS-CoV-2 PCR",
+                },
+                subject={"reference": f"Patient/{patient_id}"},
+                patient_id=patient_id,
+                biomarker_id=bio.id,
+                value_codeableConcept={
+                    "coding": [
+                        {
+                            "code": state.code,
+                            "system": state.system,
+                            "display": display,
+                        }
+                    ]
+                },
+                effective_datetime=effective_dt,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+        )
+        created_obs += 1
+    if created_obs:
+        await session.flush()
+        print(f"✅ Seeded {created_obs} STATE observations for SARS-CoV-2 PCR")
+
+
 async def seed() -> None:
     if not DATABASE_AVAILABLE:
         print("❌ Database is not available. Check DATABASE_URL in backend/.env")
@@ -533,6 +715,12 @@ async def seed() -> None:
                 print("✅ Seeded comprehensive clinical data for Maria Papadopoulou")
             else:
                 print("⚠️  Clinical data already exists for primary patient.")
+
+            # STATE biomarker (SARS-CoV-2 PCR) + alternating POS/NEG timeline.
+            # Idempotent on its own — runs on every seed so re-seeds pick up
+            # the state timeline even if the quantity clinical data was
+            # already present.
+            await seed_state_biomarkers(session, tenant.id, primary_patient_id, user.id)
 
         try:
             await session.commit()

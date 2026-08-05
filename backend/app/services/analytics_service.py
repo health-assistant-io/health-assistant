@@ -8,10 +8,10 @@ from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.user_model import UserModel
 from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerDefinition
+from app.models.enums import BiomarkerValueType
 
 # FHIR models
 from app.models.fhir import Observation, Medication, DiagnosticReport
-from app.services.fhir_helpers import _flatten_interpretation
 from app.schemas.biomarker import is_safe_slug
 
 import re
@@ -98,30 +98,25 @@ async def _get_observation_status(
     if biomarker is not None and getattr(biomarker, "value_type", None) == "state":
         return _state_observation_status(biomarker, obs)
 
-    # 1. Use LLM extracted interpretation if available
-    interp_raw = _flatten_interpretation(getattr(obs, "interpretation", None))
-    if interp_raw:
-        interp = interp_raw.upper()
-        if interp in ["H", "HIGH", "A", "ABNORMAL", "E", "ELEVATED"]:
-            return "High"
-        if interp in ["L", "LOW", "D", "DECREASED"]:
-            return "Low"
-        if interp in ["N", "NORMAL"]:
-            return "Normal"
+    # Status is always recomputed from the value + reference range so the
+    # backend stays consistent with the frontend (getFinalStatus /
+    # computeStatus). The FHIR ``interpretation`` field is intentionally
+    # not consulted — it was a legacy input that the frontend already
+    # ignores (and the manual Low/Normal/High toggle has been removed).
 
-    # 2. Use relative score (clamped to [0.0, 1.0] by ObservationBuilder).
+    # 1. Use relative score (clamped to [0.0, 1.0] by ObservationBuilder).
     # A strictly-interior score (0 < score < 1) genuinely means the value
     # sits inside the reference range, so Normal is correct there. Boundary
     # values (exactly 0.0 or 1.0) are ambiguous after clamping: the value
     # could be exactly at the bound (still normal) or beyond it (abnormal).
     # Rather than guess, fall through to the explicit reference-range
-    # comparison in step 3 which has the raw value + bounds to decide.
+    # comparison in step 2 which has the raw value + bounds to decide.
     if getattr(obs, "relative_score", None) is not None:
         if 0.0 < obs.relative_score < 1.0:
             return "Normal"
         # score at boundary (0.0 or 1.0) — defer to the range check below.
 
-    # 3. Use provided ranges or fallback to parsing FHIR reference_range
+    # 2. Use provided ranges or fallback to parsing FHIR reference_range
     status = "Normal"
     try:
         num_val = float(val)
@@ -600,6 +595,15 @@ async def get_biomarker_trends(
         select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
         .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
         .options(selectinload(BiomarkerDefinition.reference_ranges))
+        # allowed_states is needed to (a) detect STATE biomarkers and (b)
+        # resolve display + is_normal for the trends response. Without this
+        # eager load, every state observation would be silently dropped
+        # (the numeric-only branch below returns None for them).
+        .options(
+            selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                BiomarkerAllowedState.state
+            )
+        )
     )
     bio_defs_res = await db.execute(bio_defs_query)
     bio_defs_rows = bio_defs_res.all()
@@ -785,11 +789,60 @@ async def get_biomarker_trends(
             else:
                 clinical_groups = ["Uncategorized"]
 
-        val = getattr(obs, "normalized_value", None)
-        if val is None:
-            val = getattr(obs, "raw_value", None)
-        if val is None and obs.value_quantity:
-            val = obs.value_quantity.get("value")
+        # STATE biomarkers carry their value in valueCodeableConcept (the
+        # numeric columns are NULL by design — see fhir_service.create_observation).
+        # Resolve to a (display, code, is_normal) tuple so the trends response
+        # has the same richness as the QUANTITY path. Falls through to the
+        # numeric branch when the coding can't be parsed (defensive — shouldn't
+        # happen for validated writes).
+        state_display: Optional[str] = None
+        state_code: Optional[str] = None
+        state_system: Optional[str] = None
+        state_is_normal: Optional[bool] = None
+        is_state_biomarker = (
+            b_def is not None
+            and getattr(b_def, "value_type", None) == BiomarkerValueType.STATE
+        )
+        if is_state_biomarker:
+            from app.services.observation_value_validator import _extract_coding_pair
+
+            pair = _extract_coding_pair(obs.value_codeableConcept)
+            if pair is not None:
+                state_code, state_system = pair
+                # Resolve display + is_normal from the biomarker's allowed_states.
+                for allowed in (b_def.allowed_states or []):
+                    if (
+                        allowed.state is not None
+                        and allowed.state.code == state_code
+                        and allowed.state.system == state_system
+                    ):
+                        state_display = allowed.state.display or state_code
+                        state_is_normal = bool(allowed.is_normal)
+                        break
+                if state_display is None:
+                    # Fall back to the coding's own display, then the bare code.
+                    coding = (
+                        obs.value_codeableConcept.get("coding")
+                        if isinstance(obs.value_codeableConcept, dict)
+                        else None
+                    )
+                    if isinstance(coding, list) and coding and isinstance(coding[0], dict):
+                        state_display = coding[0].get("display") or state_code
+                    else:
+                        state_display = state_code
+                # Use the display string as ``val`` so downstream consumers
+                # (KPI strip, history table) that expect a value get something
+                # meaningful. The dedicated state_* fields carry the
+                # machine-readable contract.
+                val = state_display
+            else:
+                val = None
+        else:
+            val = getattr(obs, "normalized_value", None)
+            if val is None:
+                val = getattr(obs, "raw_value", None)
+            if val is None and obs.value_quantity:
+                val = obs.value_quantity.get("value")
 
         if val is not None:
             obs_date = obs.effective_datetime
@@ -911,17 +964,33 @@ async def get_biomarker_trends(
                     else:
                         source_id = source_name  # Fallback to domain if no UUID stored
 
+            # For STATE biomarkers we already resolved (display, is_normal)
+            # above; skip the numeric status computation (it would also try
+            # to read obs.biomarker.allowed_states, which may not be eager-
+            # loaded on the Observation relationship).
+            if is_state_biomarker:
+                status = (
+                    "Normal"
+                    if state_is_normal is True
+                    else "Abnormal"
+                    if state_is_normal is False
+                    else "Unknown"
+                )
+            else:
+                status = await _get_observation_status(
+                    name, val, obs, ref_range_min, ref_range_max
+                )
+
             trends[key].append(
                 {
+                    "observation_id": str(obs.id),
                     "date": obs_date.isoformat() if obs_date else "",
                     "value": val,
                     "unit": obs.value_quantity.get("unit", "")
                     if obs.value_quantity
                     else "",
                     "name": name,
-                    "status": await _get_observation_status(
-                        name, val, obs, ref_range_min, ref_range_max
-                    ),
+                    "status": status,
                     "biomarker_id": str(obs.biomarker_id)
                     if obs.biomarker_id
                     else (str(b_def.id) if b_def else None),
@@ -936,6 +1005,14 @@ async def get_biomarker_trends(
                     "clinical_groups": clinical_groups,
                     "examination_id": exam_id,
                     "examination_name": exam_name,
+                    # STATE-only contract (mirrors the useBiomarkers
+                    # observations path). QUANTITY rows leave these null so
+                    # the frontend can branch on presence.
+                    "value_type": "state" if is_state_biomarker else "quantity",
+                    "state": state_code if is_state_biomarker else None,
+                    "state_display": state_display if is_state_biomarker else None,
+                    "state_system": state_system if is_state_biomarker else None,
+                    "state_is_normal": state_is_normal if is_state_biomarker else None,
                 }
             )
 

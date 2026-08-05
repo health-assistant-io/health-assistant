@@ -5,10 +5,16 @@
  * Time range + aggregation are lifted to the parent (they drive the shared
  * data fetch + filteredTrends used by the KPI strip and the history table);
  * chart-only preferences (chart type, grid, spikes) live here.
+ *
+ * Branches on ``biomarker.value_type``:
+ *  - QUANTITY (default): the legacy LineChart with reference-range bands.
+ *  - STATE: a categorical StateTimeline (step-line of colored state dots)
+ *    instead of a nonsensical numeric line chart.
  */
 import React, { useState } from 'react';
 import { TrendingUp, Layers, Box, Activity, Calendar } from 'lucide-react';
 import LineChart from '../../charts/LineChart';
+import { StateTimeline } from '../StateTimeline';
 import { InfoTooltip } from '../../ui/InfoTooltip';
 import { useSettingsStore } from '../../../store/slices/settingsSlice';
 import type { Biomarker } from '../../../types/biomarker';
@@ -37,8 +43,11 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
   setAggregation,
 }) => {
   const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
+  const isState = biomarker.value_type === 'state';
 
   // Chart-only display preferences (local to this tab).
+  // For STATE biomarkers these don't apply (no line/area/bar reference range
+  // to toggle) — the StateTimeline has its own legend.
   const [chartType, setChartType] = useState<'line' | 'area' | 'bar'>('line');
   const [showGrid, setShowGrid] = useState(true);
   const [showSpikes, setShowSpikes] = useState(true);
@@ -99,15 +108,17 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
             ))}
           </div>
 
-          <button
-            onClick={() => setShowGrid(!showGrid)}
-            className={`p-2 rounded-xl transition-all border ${showGrid ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 text-blue-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
-            title="Toggle Grid"
-          >
-            <Layers className="w-4 h-4" />
-          </button>
+          {!isState && (
+            <button
+              onClick={() => setShowGrid(!showGrid)}
+              className={`p-2 rounded-xl transition-all border ${showGrid ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 text-blue-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
+              title="Toggle Grid"
+            >
+              <Layers className="w-4 h-4" />
+            </button>
+          )}
 
-          {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
+          {!isState && (biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
             <button
               onClick={() => setShowReferenceRanges(!showReferenceRanges)}
               className={`p-2 rounded-xl transition-all border ${showReferenceRanges ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 text-emerald-600' : 'bg-white dark:bg-dark-surface border-gray-100 text-gray-400'}`}
@@ -130,36 +141,42 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
 
       <div className="h-[400px]">
         {filteredTrends.length > 0 ? (
-          <LineChart
-            data={filteredTrends.map(trendPoint => ({
-              name: new Date(trendPoint.date).toLocaleDateString(),
-              tooltipLabel: new Date(trendPoint.date).toLocaleString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: biomarker.is_telemetry ? 'numeric' : undefined,
-                minute: biomarker.is_telemetry ? '2-digit' : undefined,
-              }),
-              value: trendPoint.value,
-              min_value: trendPoint.min_value,
-              max_value: trendPoint.max_value,
-              range: (trendPoint.min_value !== undefined && trendPoint.max_value !== undefined) ? [trendPoint.min_value, trendPoint.max_value] : undefined,
-            }))}
-            dataKey="value"
-            xAxisKey="name"
-            color="#3b82f6"
-            referenceRange={{
-              min: biomarker.reference_range_min,
-              max: biomarker.reference_range_max,
-            }}
-            showReferenceLines={showReferenceRanges}
-            chartType={chartType}
-            showGrid={showGrid}
-            showSpikes={showSpikes && biomarker.is_telemetry}
-            showBrush={true}
-            interactiveZoom={true}
-            height="100%"
-          />
+          isState ? (
+            <div className="h-full flex flex-col justify-center">
+              <StateTimeline points={filteredTrends} height={400} />
+            </div>
+          ) : (
+            <LineChart
+              data={filteredTrends.map(trendPoint => ({
+                name: new Date(trendPoint.date).toLocaleDateString(),
+                tooltipLabel: new Date(trendPoint.date).toLocaleString(undefined, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: biomarker.is_telemetry ? 'numeric' : undefined,
+                  minute: biomarker.is_telemetry ? '2-digit' : undefined,
+                }),
+                value: trendPoint.value,
+                min_value: trendPoint.min_value,
+                max_value: trendPoint.max_value,
+                range: (trendPoint.min_value !== undefined && trendPoint.max_value !== undefined) ? [trendPoint.min_value, trendPoint.max_value] : undefined,
+              }))}
+              dataKey="value"
+              xAxisKey="name"
+              color="#3b82f6"
+              referenceRange={{
+                min: biomarker.reference_range_min,
+                max: biomarker.reference_range_max,
+              }}
+              showReferenceLines={showReferenceRanges}
+              chartType={chartType}
+              showGrid={showGrid}
+              showSpikes={showSpikes && biomarker.is_telemetry}
+              showBrush={true}
+              interactiveZoom={true}
+              height="100%"
+            />
+          )
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
             <Calendar className="w-12 h-12 mb-4 text-gray-300" />

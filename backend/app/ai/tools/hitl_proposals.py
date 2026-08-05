@@ -260,7 +260,6 @@ def build(ctx: ToolContext) -> List[Any]:
         biomarker_name: str,
         value: float,
         unit: Optional[str] = None,
-        interpretation: Optional[str] = None,
         note: Optional[str] = None,
         examination_id: Optional[str] = None,
         reason: Optional[str] = None,
@@ -291,7 +290,6 @@ def build(ctx: ToolContext) -> List[Any]:
             biomarker_name: The biomarker name or slug (e.g. "Cholesterol", "glucose").
             value: The numeric measurement value.
             unit: Optional unit symbol (e.g. "mg/dL"). Defaults to the biomarker's preferred unit.
-            interpretation: Optional - one of "low", "normal", "high". Defaults to "normal".
             note: Optional free-text note.
             examination_id: Optional exam UUID to target. Required when no exam is open in the chat.
             reason: Optional clinical rationale for the proposal.
@@ -344,10 +342,6 @@ def build(ctx: ToolContext) -> List[Any]:
         )
 
         # --- Resolve the biomarker by name/slug (tenant-scoped or global) ---
-        interp = (interpretation or "normal").lower()
-        if interp not in {"low", "normal", "high"}:
-            interp = "normal"
-
         biomarker_id = None
         biomarker_slug = None
         resolved_name = biomarker_name
@@ -384,7 +378,6 @@ def build(ctx: ToolContext) -> List[Any]:
                 "biomarker_slug": biomarker_slug,
                 "value": value,
                 "unit": unit or "",
-                "interpretation": interp,
                 "note": note or "",
                 "matched": matched,
             },

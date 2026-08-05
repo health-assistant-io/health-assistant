@@ -422,10 +422,6 @@
       "value": "Τιμή",
       "unit": "Μονάδα",
       "select_unit": "Επιλογή Μονάδας",
-      "interpretation": "Ερμηνεία",
-      "low": "χαμηλό",
-      "normal": "φυσιολογικό",
-      "high": "υψηλό",
       "observations": "Παρατηρήσεις / Σημειώσεις",
       "observations_placeholder": "Κλινικές σημειώσεις ή σχόλια...",
       "add_result": "Προσθήκη Αποτελέσματος"
@@ -712,7 +708,22 @@
     "state_value": "State",
     "state_value_placeholder": "Select a state…",
     "multi_state_panel": "Multi-state panel",
-    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel)."
+    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel).",
+    "log_reading": {
+      "title": "Καταχώριση Μέτρησης Βιοδείκτη",
+      "subtitle": "Χειροκίνητη Καταχώριση",
+      "button": "Καταχώριση Μέτρησης",
+      "button_mobile": "Μέτρηση",
+      "empty_cta": "Καταχώρισε την πρώτη μέτρηση",
+      "measured_at": "Ημερομηνία Μέτρησης",
+      "method": "Μέθοδος (προαιρετικά)",
+      "method_placeholder": "π.χ. Τσίμπημα δακτύλου, Συσκευή μέτρησης, Εργαστηριακή εξέταση",
+      "saved_for": "Η μέτρηση αποθηκεύτηκε για {{name}}",
+      "saved_default": "Η μέτρηση αποθηκεύτηκε",
+      "save_error": "Αποτυχία αποθήκευσης μέτρησης",
+      "telemetry_disabled": "Οι τηλεμετρικοί δείκτες συμπληρώνονται μόνο μέσω συγχρονισμού συσκευής",
+      "manual_entry_label": "Χειροκίνητη Καταχώριση"
+    }
   },
   "biomarker_catalog": {
     "back_to_trends": "Επιστροφή στις Τάσεις",
@@ -2037,6 +2048,7 @@
     "section_display": "Εμφάνιση",
     "section_unit": "Μονάδα",
     "section_reference_ranges": "Φυσιολογικές τιμές",
+    "section_allowed_states": "Αποδεκτές καταστάσεις",
     "section_additional": "Επιπλέον πεδία",
     "section_meta": "Μεταδεδομένα",
     "field_slug": "Slug",

@@ -163,15 +163,6 @@ async def test_a9_boundary_at_exactly_low_bound_is_normal():
 
 
 @pytest.mark.asyncio
-async def test_a9_interpretation_still_wins_over_score():
-    """A9: the LLM interpretation is still the highest-priority signal."""
-    from app.services.analytics_service import _get_observation_status
-
-    obs = _FakeObs(relative_score=0.5, interpretation="H")
-    assert await _get_observation_status("x", 1, obs) == "High"
-
-
-@pytest.mark.asyncio
 async def test_a9_no_score_uses_range():
     """A9: absent relative_score falls through to the range check unchanged."""
     from app.services.analytics_service import _get_observation_status

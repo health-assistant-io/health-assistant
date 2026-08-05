@@ -8,6 +8,7 @@ from app.services.fhir_service import (
     get_observation,
     list_observations,
     create_observation,
+    update_observation,
     delete_observation,
 )
 from app.schemas.user import TokenData
@@ -77,6 +78,42 @@ async def create_observation_endpoint(
         new_value=observation_data,
     )
     return observation
+
+
+@router.put("/{observation_id}")
+async def update_observation_endpoint(
+    observation_id: str,
+    updates: dict,
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an existing observation's mutable fields (value, unit,
+    effective_datetime, method, comment). Identity fields (biomarker_id,
+    patient_id, code, subject) are not patched — re-assigning a biomarker
+    requires delete + re-create.
+    """
+    existing = await get_observation(observation_id, current_user.tenant_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Observation not found")
+
+    # Patient-scoped access check for USER role.
+    if current_user.role == Role.USER.value:
+        patient_id = existing.patient_id
+        if patient_id:
+            await check_patient_access(str(patient_id), current_user, db)
+
+    updated = await update_observation(observation_id, updates, current_user.tenant_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Observation not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_observation",
+        resource_type="Observation",
+        resource_id=observation_id,
+        new_value=updates,
+    )
+    return updated
 
 
 @router.get("/{observation_id}")

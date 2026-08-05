@@ -33,6 +33,7 @@ import {
   Gauge,
   MoreHorizontal,
   Braces,
+  ListChecks,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { CatalogType } from '../../../types/catalog';
@@ -52,6 +53,7 @@ export type SectionId =
   | 'display'
   | 'unit'
   | 'reference_ranges'
+  | 'allowed_states'
   | 'additional'
   | 'meta';
 
@@ -75,6 +77,7 @@ export const SECTION_META: Record<SectionId, SectionMeta> = {
   display: { labelKey: 'catalogs.section_display', labelFallback: 'Display', icon: MapIcon },
   unit: { labelKey: 'catalogs.section_unit', labelFallback: 'Unit', icon: Ruler },
   reference_ranges: { labelKey: 'catalogs.section_reference_ranges', labelFallback: 'Reference ranges', icon: Gauge },
+  allowed_states: { labelKey: 'catalogs.section_allowed_states', labelFallback: 'Allowed states', icon: ListChecks },
   additional: { labelKey: 'catalogs.section_additional', labelFallback: 'Additional fields', icon: MoreHorizontal },
   meta: { labelKey: 'catalogs.section_meta', labelFallback: 'Meta', icon: Braces },
 };
@@ -84,6 +87,7 @@ export const SECTION_ORDER: SectionId[] = [
   'identity',
   'coding',
   'reference_ranges',
+  'allowed_states',
   'unit',
   'schedule',
   'targets',
@@ -169,6 +173,11 @@ export type FieldDescriptor =
       kind: 'refranges';
     })
   | (FieldBase & {
+      /** AllowedStatesField: STATE biomarker's controlled vocabulary
+       *  (allowed_states[]) with normal-set highlighting. */
+      kind: 'states';
+    })
+  | (FieldBase & {
       /** DoseScheduleField: vaccine {doses, intervals[]} schedule. */
       kind: 'dose';
     })
@@ -192,12 +201,27 @@ export type FieldDescriptor =
 // to place in a named section. Order within a type is preserved.
 // ---------------------------------------------------------------------------
 
+const BIOMARKER_VALUE_TYPE_OPTIONS: Record<string, string> = {
+  quantity: 'Quantity (numeric)',
+  state: 'State (categorical)',
+};
+
+const BIOMARKER_VALUE_TYPE_TONES: Partial<Record<string, ChipVariant>> = {
+  quantity: 'info',
+  state: 'success',
+};
+
 const BIOMARKER_FIELDS: FieldDescriptor[] = [
   { key: 'name', labelKey: 'catalogs.field_name', labelFallback: 'Name', section: 'identity' },
   { key: 'slug', labelKey: 'catalogs.field_slug', labelFallback: 'Slug', section: 'identity', mono: true, copyable: true },
   { key: 'aliases', labelKey: 'catalogs.field_aliases', labelFallback: 'Aliases', section: 'identity', kind: 'chips', variant: 'neutral' },
   { key: 'category', labelKey: 'catalogs.field_category', labelFallback: 'Category', section: 'identity' },
   { key: 'class_concept_name', labelKey: 'catalogs.taxonomy_link', labelFallback: 'Class', section: 'identity' },
+  {
+    key: 'value_type', labelKey: 'biomarkers.value_type', labelFallback: 'Value type', section: 'identity',
+    kind: 'enum', options: BIOMARKER_VALUE_TYPE_OPTIONS, tones: BIOMARKER_VALUE_TYPE_TONES,
+    hideWhenEmpty: false,
+  },
   {
     key: 'code', labelKey: 'catalogs.field_code', labelFallback: 'Code', section: 'coding',
     kind: 'code', systemKey: 'coding_system',
@@ -207,6 +231,15 @@ const BIOMARKER_FIELDS: FieldDescriptor[] = [
   {
     key: 'reference_ranges', labelKey: 'catalogs.field_reference_ranges', labelFallback: 'Stratified ranges',
     section: 'reference_ranges', kind: 'refranges', hideWhenEmpty: false,
+  },
+  {
+    key: 'allowed_states', labelKey: 'biomarker_catalog.allowed_states', labelFallback: 'Allowed states',
+    section: 'allowed_states', kind: 'states',
+  },
+  {
+    key: 'supports_multi_state', labelKey: 'biomarkers.multi_state_panel', labelFallback: 'Multi-state panel',
+    section: 'allowed_states', kind: 'boolean',
+    labelOn: 'Multi-state', labelOff: 'Single-state',
   },
   { key: 'preferred_unit_symbol', labelKey: 'catalogs.col_unit', labelFallback: 'Preferred unit', section: 'unit' },
   { key: 'preferred_unit_id', labelKey: 'catalogs.field_unit_id', labelFallback: 'Unit ID', section: 'unit', mono: true, copyable: true, hideWhenEmpty: false },

@@ -24,7 +24,6 @@ function proposalToPrefill(proposed: Record<string, any> | undefined): AddBiomar
     biomarker_slug: proposed.biomarker_slug,
     value: proposed.value,
     unit: proposed.unit,
-    interpretation: proposed.interpretation,
     note: proposed.note,
     matched: proposed.matched,
   };
@@ -49,7 +48,6 @@ export function renderAddBiomarkerSummary(task: TaskInfo): React.ReactNode {
     const unit = p.unit ? ` ${p.unit}` : '';
     chips.push({ icon: Tag, label: `${p.value}${unit}` });
   }
-  if (p.interpretation) chips.push({ icon: Tag, label: String(p.interpretation) });
 
   return (
     <div className="flex flex-wrap gap-1.5">

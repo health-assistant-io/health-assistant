@@ -380,3 +380,136 @@ async def test_multi_state_history_returns_per_component_tracks():
     assert tracks["staph"][0]["is_normal"] is False
     assert tracks["e-coli"][0]["state_code"] == "NEG"
     assert tracks["e-coli"][0]["is_normal"] is True
+
+
+# ---------------------------------------------------------------------------
+# get_biomarker_trends — STATE branch (regression test for the bug where
+# every state observation was silently dropped because all numeric columns
+# are NULL for STATE biomarkers).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_biomarker_trends_includes_state_observations():
+    """STATE observations must appear in the trends response (previously
+    they were silently dropped because raw_value/normalized_value/
+    value_quantity are all NULL for categorical rows)."""
+    from app.services.analytics_service import get_biomarker_trends
+
+    tenant_id, patient_id, bio_id, slug = await _seed_world()
+    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    await _add_observation(
+        tenant_id, patient_id, bio_id,
+        value_cc={"coding": [{"code": "POS", "system": V3, "display": "Positive"}]},
+        ts=base,
+    )
+    await _add_observation(
+        tenant_id, patient_id, bio_id,
+        value_cc={"coding": [{"code": "NEG", "system": V3, "display": "Negative"}]},
+        ts=base + timedelta(days=30),
+    )
+
+    async with AsyncSessionLocal() as session:
+        trends = await get_biomarker_trends(
+            tenant_id=str(tenant_id),
+            patient_id=str(patient_id),
+            biomarker_codes=slug,
+            period="all-time",
+            db=session,
+        )
+    points = trends.get("biomarkers", {}).get(slug, [])
+    assert len(points) == 2, f"expected 2 state points, got {len(points)}"
+
+    # Chronological order (the trends loop preserves DB order which is the
+    # SELECT order — verifiable by date).
+    points_sorted = sorted(points, key=lambda p: p["date"])
+    assert points_sorted[0]["state"] == "POS"
+    assert points_sorted[0]["state_display"] == "Positive"
+    assert points_sorted[0]["state_is_normal"] is False
+    assert points_sorted[0]["status"] == "Abnormal"
+    assert points_sorted[0]["value_type"] == "state"
+
+    assert points_sorted[1]["state"] == "NEG"
+    assert points_sorted[1]["state_display"] == "Negative"
+    assert points_sorted[1]["state_is_normal"] is True
+    assert points_sorted[1]["status"] == "Normal"
+
+    # The ``value`` field carries the human-readable display so the existing
+    # history-table badge (which reads trendRow.value) shows something useful
+    # even before the frontend branches on state_display.
+    assert points_sorted[0]["value"] == "Positive"
+
+
+@pytest.mark.asyncio
+async def test_get_biomarker_trends_quantity_unchanged():
+    """Sanity: the QUANTITY branch is untouched by the state-handling fix.
+    A numeric biomarker still returns numeric ``value`` + status, and the
+    new state_* fields are absent/null."""
+    from app.services.analytics_service import get_biomarker_trends
+
+    async with AsyncSessionLocal() as session:
+        tenant = TenantModel(id=uuid4(), name="Q", slug=f"qty-t-{uuid4().hex[:8]}")
+        session.add(tenant)
+        await session.flush()
+        patient = Patient(
+            id=uuid4(),
+            tenant_id=tenant.id,
+            name={"family": "Q", "given": ["T"]},
+            gender="UNKNOWN",
+        )
+        session.add(patient)
+        bio = BiomarkerDefinition(
+            slug=f"qty-trends-{uuid4().hex[:8]}",
+            coding_system=CodingSystem.LOINC,
+            name="Glucose-T",
+            aliases=[],
+            value_type=BiomarkerValueType.QUANTITY,
+            reference_range_min=70,
+            reference_range_max=99,
+            scope=CatalogScope.SYSTEM,
+        )
+        session.add(bio)
+        await session.flush()
+        obs = Observation(
+            id=uuid4(),
+            tenant_id=tenant.id,
+            status="final",
+            code={"text": "Glucose"},
+            subject={"reference": f"Patient/{patient.id}"},
+            patient_id=patient.id,
+            biomarker_id=bio.id,
+            value_quantity={"value": 95.0, "unit": "mg/dL"},
+            raw_value=95.0,
+            effective_datetime=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+        session.add(obs)
+        await session.commit()
+        tenant_id, patient_id, slug = tenant.id, patient.id, bio.slug
+
+    try:
+        async with AsyncSessionLocal() as session:
+            trends = await get_biomarker_trends(
+                tenant_id=str(tenant_id),
+                patient_id=str(patient_id),
+                biomarker_codes=slug,
+                period="all-time",
+                db=session,
+            )
+        points = trends.get("biomarkers", {}).get(slug, [])
+        assert len(points) == 1
+        assert points[0]["value"] == 95.0
+        assert points[0]["value_type"] == "quantity"
+        # State fields are null on QUANTITY rows.
+        assert points[0]["state"] is None
+        assert points[0]["state_display"] is None
+    finally:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("DELETE FROM biomarker_definitions WHERE slug = :s"),
+                {"s": slug},
+            )
+            await session.execute(
+                text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant_id)}
+            )
+            await session.commit()
+

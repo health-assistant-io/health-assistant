@@ -138,9 +138,6 @@ class BiomarkerFormOutput(BaseModel):
     unit: Optional[str] = Field(
         None, description="The unit symbol (e.g., mg/dL, mmol/L)"
     )
-    interpretation: Optional[str] = Field(
-        None, description="One of: 'low', 'normal', 'high'"
-    )
     note: Optional[str] = Field(
         None, description="A brief clinical note or observation"
     )

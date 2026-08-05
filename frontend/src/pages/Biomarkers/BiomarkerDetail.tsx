@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Activity, Calendar, TrendingUp, Box, Share2, Printer, Database, Tag, Info } from 'lucide-react';
+import { Activity, Calendar, TrendingUp, Box, Share2, Printer, Database, Tag, Info, Plus } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { NoPatientState } from '../../components/ui/NoPatientState';
 import { formatUnit, getFinalStatus, getStatusColorClass, formatBiomarkerValue } from '../../utils/biomarkerUtils';
@@ -17,6 +17,10 @@ import { Biomarker } from '../../types/biomarker';
 import { TimePeriod, DEFAULT_AGGREGATIONS, AggregationBucket, getCutoffDate } from '../../config/timeRanges';
 import { MigrationProgressIndicator } from '../../components/biomarkers/MigrationProgressIndicator';
 import { BiomarkerKpiStrip } from '../../components/biomarkers/BiomarkerKpiStrip';
+import { LogBiomarkerReadingModal } from '../../components/biomarkers/LogBiomarkerReadingModal';
+import { EditBiomarkerReadingModal } from '../../components/biomarkers/EditBiomarkerReadingModal';
+import { deleteObservation, getObservation } from '../../services/observationService';
+import type { Observation } from '../../types/observation';
 import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import {
   BiomarkerInfoTab,
@@ -40,10 +44,15 @@ const BiomarkerDetail: React.FC = () => {
   const decodedId = decodeURIComponent(biomarkerId || '');
 
   const setCurrentBiomarkerId = useUIStore(state => state.setCurrentBiomarkerId);
+  const showConfirmation = useUIStore(state => state.showConfirmation);
 
   const [biomarker, setBiomarker] = useState<Biomarker | null>(null);
   const [trends, setTrends] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLogReadingOpen, setIsLogReadingOpen] = useState(false);
+  const [editingObservation, setEditingObservation] = useState<Observation | null>(null);
+  // Bumped after a successful manual save so the trend/KPI/history tabs refresh.
+  const [readingNonce, setReadingNonce] = useState(0);
 
   // URL-synced active tab (deep-linkable, matches ExaminationDetail convention).
   // Trend is the default — it's the primary view when opening a biomarker.
@@ -80,6 +89,33 @@ const BiomarkerDetail: React.FC = () => {
     } catch (error) {
       console.error("Failed to retry migration", error);
     }
+  };
+
+  /** Edit: fetch the full Observation (the trend row only carries a subset),
+   *  then open the edit modal. */
+  const handleEditRecord = async (trendRow: any) => {
+    try {
+      const obs = await getObservation(trendRow.observation_id);
+      setEditingObservation(obs);
+    } catch (err) {
+      console.error('Failed to fetch observation for edit', err);
+    }
+  };
+
+  /** Delete: confirm via the global modal, then DELETE + refresh. */
+  const handleDeleteRecord = (trendRow: any) => {
+    showConfirmation({
+      title: t('biomarkers.delete_title', { defaultValue: 'Delete Biomarker Result' }),
+      message: t('biomarkers.delete_message', {
+        defaultValue: 'Are you sure you want to delete this biomarker result? This action cannot be undone.',
+      }),
+      confirmLabel: t('common.delete', { defaultValue: 'Delete' }),
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        await deleteObservation(trendRow.observation_id);
+        setReadingNonce(n => n + 1);
+      },
+    });
   };
 
   // Polling for migration status (kept on the detail page so the trend chart
@@ -264,10 +300,12 @@ const BiomarkerDetail: React.FC = () => {
     };
 
     fetchData();
-    // 'biomarker' + 'initialDateRangeSet' are intentionally excluded — they're
-    // set inside this effect and would cause a fetch loop if listed as deps.
+    // 'biomarker' + 'initialDateRangeSet' + 'readingNonce' are intentionally
+    // excluded where they overlap with the listed deps — 'biomarker' is set
+    // inside this effect; 'readingNonce' would be redundant with the
+    // explicit refresh-on-save handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decodedId, currentPatient?.id, dateRange, aggregation]);
+  }, [decodedId, currentPatient?.id, dateRange, aggregation, readingNonce]);
 
   if (!currentPatient) {
     return <NoPatientState icon={Activity} contextKey="biomarker_detail" />;
@@ -328,13 +366,27 @@ const BiomarkerDetail: React.FC = () => {
       <StickyToolbar
         actions={
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsLogReadingOpen(true)}
+              disabled={biomarker.is_telemetry}
+              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200/50 dark:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-blue-400"
+              title={
+                biomarker.is_telemetry
+                  ? t('biomarkers.log_reading.telemetry_disabled', 'Telemetry metrics can only be populated by device sync')
+                  : t('biomarkers.log_reading.title', 'Log a manual reading')
+              }
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">{t('biomarkers.log_reading.button', 'Log Reading')}</span>
+              <span className="sm:hidden">{t('biomarkers.log_reading.button_mobile', 'Log')}</span>
+            </button>
             <a
               href={`/catalogs?type=biomarker&item=${biomarker.id}`}
               className="flex items-center space-x-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg"
               title={t('biomarkers.manage_in_catalog', 'Manage in Catalog')}
             >
               <Database className="w-4 h-4" />
-              <span>{t('biomarkers.manage_in_catalog', 'Manage in Catalog')}</span>
+              <span className="hidden md:inline">{t('biomarkers.manage_in_catalog', 'Manage in Catalog')}</span>
             </a>
             <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
               <Share2 className="w-5 h-5" />
@@ -401,6 +453,9 @@ const BiomarkerDetail: React.FC = () => {
                   biomarker={biomarker}
                   filteredTrends={filteredTrends}
                   precisionProfile={precisionProfile}
+                  onLogReading={() => setIsLogReadingOpen(true)}
+                  onEditRecord={handleEditRecord}
+                  onDeleteRecord={handleDeleteRecord}
                 />
               )}
               {activeTab === 'insights' && <BiomarkerInsightsTab biomarker={biomarker} />}
@@ -492,6 +547,26 @@ const BiomarkerDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {currentPatient && (
+        <LogBiomarkerReadingModal
+          isOpen={isLogReadingOpen}
+          onClose={() => setIsLogReadingOpen(false)}
+          patientId={currentPatient.id}
+          lockedBiomarker={biomarker}
+          onSuccess={() => setReadingNonce(n => n + 1)}
+        />
+      )}
+
+      {biomarker && (
+        <EditBiomarkerReadingModal
+          isOpen={!!editingObservation}
+          onClose={() => setEditingObservation(null)}
+          observation={editingObservation}
+          biomarker={biomarker}
+          onSuccess={() => setReadingNonce(n => n + 1)}
+        />
+      )}
 
     </div>
   );

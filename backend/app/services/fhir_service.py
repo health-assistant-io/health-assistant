@@ -49,6 +49,33 @@ def _parse_datetime(d):
         return None
 
 
+def _extract_comment_text(raw: Any) -> Optional[str]:
+    """Normalize the various "note" shapes callers pass into a single string
+    for the ``Observation.comment`` column.
+
+    Accepts:
+      * ``None`` / empty → ``None``
+      * FHIR ``note`` array shape ``[{"text": "..."}]``
+      * Plain string (stripped; empty-after-strip → ``None``)
+      * Any other type → ``None`` (defensive — never raise)
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return next(
+            (
+                entry.get("text")
+                for entry in raw
+                if isinstance(entry, dict) and entry.get("text")
+            ),
+            None,
+        )
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        return stripped or None
+    return None
+
+
 async def create_patient(
     patient_data: dict, tenant_id: str | UUID
 ) -> Optional[Patient]:
@@ -374,6 +401,18 @@ async def create_observation(
             value_quantity.get("value") if value_quantity else None
         )
 
+    # Optional provenance fields surfaced for standalone manual entry
+    # (not exam-scoped). ``comment`` mirrors FHIR Observation.note — accept
+    # either a plain string (``comment`` / ``note_text``) or the FHIR
+    # ``note`` array shape ``[{ "text": "..." }]`` emitted by the existing
+    # exam-scoped form. ``method`` is the measurement technique
+    # (e.g. "Fingerstick").
+    _comment_text = _extract_comment_text(
+        observation_data.get("comment")
+        or observation_data.get("note_text")
+        or observation_data.get("note")
+    )
+
     new_obs = Observation(
         tenant_id=tenant_id,
         status=observation_data.get("status", "final"),
@@ -392,6 +431,9 @@ async def create_observation(
         raw_value=raw_value,
         document_id=_doc_id,
         patient_id=_patient_id,
+        comment=_comment_text,
+        method=(observation_data.get("method") or None),
+        reference_range=observation_data.get("reference_range"),
     )
     assert_valid_fhir(new_obs)
 
@@ -421,6 +463,104 @@ async def create_observation(
             )
 
     return new_obs
+
+
+async def update_observation(
+    observation_id: str | UUID,
+    updates: dict,
+    tenant_id: str | UUID | None = None,
+) -> Optional[Observation]:
+    """Update an existing observation's editable fields.
+
+    Only the user-mutable fields are patched: ``value_quantity`` /
+    ``value_codeableConcept`` (branched on biomarker value_type),
+    ``effective_datetime``, ``method``, ``comment``, ``unit`` (raw).
+    Identity fields (``biomarker_id``, ``patient_id``, ``examination_id``,
+    ``code``, ``subject``) are never changed — to re-assign a biomarker,
+    delete + re-create.
+
+    The update re-validates the value against the linked biomarker
+    definition (same contract as ``create_observation``).
+    """
+    if not DATABASE_AVAILABLE:
+        return None
+
+    try:
+        if isinstance(observation_id, str):
+            observation_id = UUID(observation_id)
+    except ValueError:
+        return None
+
+    predicates = [Observation.id == observation_id]
+    if tenant_id is not None:
+        try:
+            tid = UUID(tenant_id) if isinstance(tenant_id, str) else tenant_id
+        except (ValueError, TypeError):
+            return None
+        predicates.append(Observation.tenant_id == tid)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Observation).where(*predicates))
+        obs = result.scalar_one_or_none()
+        if obs is None:
+            return None
+
+        # Resolve the biomarker definition for value-shape validation.
+        _biomarker_id = obs.biomarker_id
+        _biomarker = None
+        if _biomarker_id:
+            from app.models.biomarker_model import BiomarkerDefinition
+
+            _biomarker = await session.get(BiomarkerDefinition, _biomarker_id)
+
+        # ---- value[x] patching ----
+        value_quantity = updates.get("value_quantity")
+        value_codeable_concept = (
+            updates.get("value_codeable_concept")
+            if updates.get("value_codeable_concept") is not None
+            else updates.get("valueCodeableConcept")
+        )
+
+        # Validate only if a new value is supplied; partial updates that
+        # leave the value alone are allowed.
+        if value_quantity is not None or value_codeable_concept is not None:
+            validate_observation_value(
+                _biomarker,
+                value_quantity=value_quantity,
+                value_string=updates.get("value_string"),
+                value_codeable_concept=value_codeable_concept,
+                component=updates.get("component"),
+            )
+
+            obs.value_quantity = value_quantity if value_quantity is not None else obs.value_quantity
+            obs.value_codeableConcept = (
+                value_codeable_concept
+                if value_codeable_concept is not None
+                else obs.value_codeableConcept
+            )
+            obs.value_string = updates.get("value_string", obs.value_string)
+
+            # Recompute raw_value for QUANTITY biomarkers.
+            if _biomarker is None or _biomarker.value_type == BiomarkerValueType.QUANTITY:
+                new_raw = updates.get("raw_value")
+                if new_raw is None and value_quantity:
+                    new_raw = value_quantity.get("value")
+                if new_raw is not None:
+                    obs.raw_value = new_raw
+
+        # ---- scalar field patches ----
+        if "effective_datetime" in updates:
+            obs.effective_datetime = _parse_datetime(updates["effective_datetime"])
+        if "method" in updates:
+            obs.method = updates.get("method") or None
+        if "comment" in updates or "note_text" in updates or "note" in updates:
+            obs.comment = _extract_comment_text(
+                updates.get("comment") or updates.get("note_text") or updates.get("note")
+            )
+
+        await session.commit()
+        await session.refresh(obs)
+        return obs
 
 
 async def get_observation(

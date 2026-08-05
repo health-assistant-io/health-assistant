@@ -37,6 +37,7 @@ import { BooleanPill } from '../../ui/BooleanPill';
 import { CopyButton } from '../../ui/CopyButton';
 import { EnumBadgeField } from './fields/EnumBadgeField';
 import { RefRangesField } from './fields/RefRangesField';
+import { AllowedStatesField } from './fields/AllowedStatesField';
 import { DoseScheduleField } from './fields/DoseScheduleField';
 import { ColorSwatchField } from './fields/ColorSwatchField';
 import { IconPreviewField } from './fields/IconPreviewField';
@@ -195,6 +196,8 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
         return <EnumBadgeField value={raw as string} options={d.options} tones={d.tones} />;
       case 'refranges':
         return <RefRangesField value={raw} />;
+      case 'states':
+        return <AllowedStatesField value={raw} />;
       case 'dose':
         return <DoseScheduleField value={raw} />;
       case 'color':

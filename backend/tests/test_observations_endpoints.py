@@ -164,6 +164,63 @@ async def test_get_observation_not_found(mock_get, async_client: AsyncClient):
     app.dependency_overrides = {}
 
 
+# ---------- PUT /observations/{id} (update) ----------
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.observations.log_audit_action", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.observations.update_observation", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
+async def test_update_observation_success(
+    mock_get, mock_update, mock_audit, async_client: AsyncClient, observation_dict
+):
+    from app.main import app
+    from app.core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
+    existing = MagicMock()
+    existing.id = observation_dict["id"]
+    existing.patient_id = None
+    mock_get.return_value = existing
+
+    updated = MagicMock()
+    updated.id = observation_dict["id"]
+    mock_update.return_value = updated
+
+    response = await async_client.put(
+        f"/api/v1/observations/{observation_dict['id']}",
+        json={"value_quantity": {"value": 99, "unit": "mg/dL"}},
+    )
+    assert response.status_code == 200
+    mock_update.assert_awaited_once()
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["action"] == "update_observation"
+
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.observations.update_observation", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
+async def test_update_observation_not_found(
+    mock_get, mock_update, async_client: AsyncClient
+):
+    from app.main import app
+    from app.core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
+    mock_get.return_value = None
+
+    response = await async_client.put(
+        f"/api/v1/observations/{uuid4()}",
+        json={"value_quantity": {"value": 99, "unit": "mg/dL"}},
+    )
+    assert response.status_code == 404
+    mock_update.assert_not_called()
+
+    app.dependency_overrides = {}
+
+
 # ---------- DELETE /observations/{id} ----------
 
 

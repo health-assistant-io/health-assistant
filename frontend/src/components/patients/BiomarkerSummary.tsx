@@ -12,6 +12,7 @@ import { BiomarkerObservation } from '../../types/biomarker';
 import { isAbnormal, formatUnit, formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import LineChart from '../charts/LineChart';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_RED } from '../ui/SummaryCardHeader';
+import { LogBiomarkerReadingModal } from '../biomarkers/LogBiomarkerReadingModal';
 
 interface Props {
   patientId: string;
@@ -32,6 +33,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
   const [trendsData, setTrendsData] = useState<Record<string, any[]> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [isLogReadingOpen, setIsLogReadingOpen] = useState(false);
   const loadingRef = useRef(false);
 
   const { biomarkers, getAbnormal } = useBiomarkers({ trendsData: trendsData || undefined });
@@ -169,6 +171,8 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
             ariaLabel: t('common.info'),
           }}
           titleTo="/analytics/trends"
+          onAdd={() => setIsLogReadingOpen(true)}
+          addLabel={t('biomarkers.log_reading.button', 'Log Reading')}
         />
         <div className="p-6 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="w-8 h-8 text-amber-400 mb-2" />
@@ -181,6 +185,12 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
             <span>{t('common.retry')}</span>
           </button>
         </div>
+        <LogBiomarkerReadingModal
+          isOpen={isLogReadingOpen}
+          onClose={() => setIsLogReadingOpen(false)}
+          patientId={patientId}
+          onSuccess={fetchTrends}
+        />
       </div>
     );
   }
@@ -205,6 +215,8 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
         }}
           tags={tags}
           titleTo="/analytics/trends"
+          onAdd={() => setIsLogReadingOpen(true)}
+          addLabel={t('biomarkers.log_reading.button', 'Log Reading')}
         />
 
       {/* Body */}
@@ -213,13 +225,22 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
           <div className="flex flex-col items-center justify-center text-center py-6">
             <Activity className="w-10 h-10 text-gray-200 dark:text-dark-border mb-2" />
             <p className="text-sm text-gray-400 dark:text-dark-muted italic mb-3">{t('biomarkers.no_trends_yet')}</p>
-            <button
-              onClick={() => navigate('/examinations/upload')}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold"
-            >
-              <Upload className="w-3 h-3" />
-              <span>{t('common.new_examination')}</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                onClick={() => setIsLogReadingOpen(true)}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-xs font-bold"
+              >
+                <Activity className="w-3 h-3" />
+                <span>{t('biomarkers.log_reading.button', 'Log Reading')}</span>
+              </button>
+              <button
+                onClick={() => navigate('/examinations/upload')}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold"
+              >
+                <Upload className="w-3 h-3" />
+                <span>{t('common.new_examination')}</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -300,6 +321,13 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
           </div>
         )}
       </div>
+
+      <LogBiomarkerReadingModal
+        isOpen={isLogReadingOpen}
+        onClose={() => setIsLogReadingOpen(false)}
+        patientId={patientId}
+        onSuccess={fetchTrends}
+      />
     </div>
   );
 };

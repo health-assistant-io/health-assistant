@@ -432,10 +432,6 @@
       "value": "Value",
       "unit": "Unit",
       "select_unit": "Select Unit",
-      "interpretation": "Interpretation",
-      "low": "low",
-      "normal": "normal",
-      "high": "high",
       "observations": "Observations / Notes",
       "observations_placeholder": "Clinical notes or comments...",
       "add_result": "Add Result"
@@ -742,7 +738,22 @@
     "state_value": "State",
     "state_value_placeholder": "Select a state…",
     "multi_state_panel": "Multi-state panel",
-    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel)."
+    "multi_state_hint": "Allow observations with multiple component[] entries (e.g. one organism per row in a microbiology panel).",
+    "log_reading": {
+      "title": "Log Biomarker Reading",
+      "subtitle": "Manual Entry",
+      "button": "Log Reading",
+      "button_mobile": "Log",
+      "empty_cta": "Log the first reading",
+      "measured_at": "Measurement Date",
+      "method": "Method (optional)",
+      "method_placeholder": "e.g. Fingerstick, Home BP cuff, Lab draw",
+      "saved_for": "Reading saved for {{name}}",
+      "saved_default": "Reading saved",
+      "save_error": "Failed to save reading",
+      "telemetry_disabled": "Telemetry metrics can only be populated by device sync",
+      "manual_entry_label": "Manual Entry"
+    }
   },
   "biomarker_catalog": {
     "back_to_trends": "Back to Trends",
@@ -2098,6 +2109,7 @@
     "section_display": "Display",
     "section_unit": "Unit",
     "section_reference_ranges": "Reference ranges",
+    "section_allowed_states": "Allowed states",
     "section_additional": "Additional fields",
     "section_meta": "Meta",
     "field_slug": "Slug",

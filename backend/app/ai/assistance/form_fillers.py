@@ -84,15 +84,9 @@ async def fill_biomarker_form(
         recent_bios = await _get_recent_biomarkers_context(db, UUID(patient_id))
 
     system_prompt = """You are a medical assistant helping to fill a biomarker entry form.
-Extract the biomarker name, value, unit, and interpretation from the user's input.
+Extract the biomarker name, value, and unit from the user's input.
 Style Matching: The user has previously recorded these biomarkers: {recent_bios}.
 If the user mentions a biomarker that matches one of these, prefer the unit they used before.
-
-Interpretation Rules:
-- 'low': if the value is below normal
-- 'normal': if the value is within normal range
-- 'high': if the value is above normal
-If not explicitly mentioned, assume 'normal' unless the value is obviously pathological.
 """
 
     structured_llm = llm.with_structured_output(BiomarkerFormOutput)
@@ -105,13 +99,7 @@ If not explicitly mentioned, assume 'normal' unless the value is obviously patho
         {"user_input": user_input, "recent_bios": json.dumps(recent_bios)}
     )
 
-    data = result.model_dump()
-    if data.get("interpretation"):
-        data["interpretation"] = data["interpretation"].lower()
-        if data["interpretation"] not in ["low", "normal", "high"]:
-            data["interpretation"] = "normal"
-
-    return {"suggested_data": data, "success": True}
+    return {"suggested_data": result.model_dump(), "success": True}
 
 
 async def fill_medication_form(

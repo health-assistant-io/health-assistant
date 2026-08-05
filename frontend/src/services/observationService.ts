@@ -14,6 +14,11 @@ export async function getObservation(observationId: string): Promise<Observation
   return response.data;
 }
 
+export async function updateObservation(observationId: string, updates: Partial<Observation>): Promise<Observation> {
+  const response = await api.put<Observation>(`/observations/${observationId}`, updates);
+  return response.data;
+}
+
 export async function deleteObservation(observationId: string): Promise<{ message: string }> {
   const response = await api.delete<{ message: string }>(`/observations/${observationId}`);
   return response.data;

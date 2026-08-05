@@ -5,7 +5,7 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { getBiomarkerTrends, getCachedBiomarkerTrends } from '../../services/analyticsService';
 import LineChart from '../../components/charts/LineChart';
-import { Download, TrendingUp, Search, AlertCircle, Grid, List, Table as TableIcon, ChevronDown, ListTree, Box, Layers, Calendar, X, Check, Filter, Info } from 'lucide-react';
+import { Download, TrendingUp, Search, AlertCircle, Grid, List, Table as TableIcon, ChevronDown, ListTree, Box, Layers, Calendar, X, Check, Filter, Info, Plus } from 'lucide-react';
 import { useBiomarkers, Perspective } from '../../hooks/useBiomarkers';
 import { TimePeriod, TIME_RANGES, DEFAULT_AGGREGATIONS } from '../../config/timeRanges';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -15,6 +15,7 @@ import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { InfoTooltip } from '../../components/ui/InfoTooltip';
 import { BiomarkerList } from '../../components/biomarkers/BiomarkerList';
 import { VisualizationSettings } from '../../components/biomarkers/VisualizationSettings';
+import { LogBiomarkerReadingModal } from '../../components/biomarkers/LogBiomarkerReadingModal';
 import { isAbnormal } from '../../utils/biomarkerUtils';
 import { FilterBar, useFilterState } from '../../components/ui/filters';
 import { trendsBiomarkerFacets } from '../../features/biomarkers/facets';
@@ -199,6 +200,7 @@ function BiomarkerTrends() {
   const [isLoading, setIsLoading] = useState(true);
   const loadingRef = useRef(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [isLogReadingOpen, setIsLogReadingOpen] = useState(false);
 
 
   const { getTabs, getGroupedData, totalCount, getAbnormal, biomarkers } = useBiomarkers({ trendsData });
@@ -325,6 +327,16 @@ function BiomarkerTrends() {
         }
         actions={
           <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setIsLogReadingOpen(true)}
+              className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-200/50 dark:shadow-none active:scale-95"
+              title={t('biomarkers.log_reading.title', 'Log a manual reading')}
+            >
+              <Plus className="w-5 h-5" />
+              <span className="hidden xs:inline">{t('biomarkers.log_reading.button', 'Log Reading')}</span>
+              <span className="xs:hidden">{t('biomarkers.log_reading.button_mobile', 'Log')}</span>
+            </button>
+
             <button 
               onClick={() => setShowAlertsOnly(!showAlertsOnly)}
               className={`p-2.5 rounded-xl border transition-all active:scale-95 ${showAlertsOnly ? 'bg-red-50 border-red-200 text-red-600 shadow-sm' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-50'}`}
@@ -398,6 +410,15 @@ function BiomarkerTrends() {
         initialDataMode="normalized"
         onRemapped={() => setReloadNonce(n => n + 1)}
       />
+
+      {currentPatient && (
+        <LogBiomarkerReadingModal
+          isOpen={isLogReadingOpen}
+          onClose={() => setIsLogReadingOpen(false)}
+          patientId={currentPatient.id}
+          onSuccess={() => setReloadNonce(n => n + 1)}
+        />
+      )}
     </div>
   );
 }

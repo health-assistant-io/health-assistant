@@ -12,7 +12,7 @@ import type { CatalogType } from '../../../../types/catalog';
 const ALL_SECTION_IDS: SectionId[] = [
   'identity', 'coding', 'clinical', 'safety', 'reactions', 'schedule',
   'targets', 'presentation', 'aliases', 'display', 'unit', 'reference_ranges',
-  'additional', 'meta',
+  'allowed_states', 'additional', 'meta',
 ];
 
 describe('fieldRegistry', () => {
@@ -52,7 +52,7 @@ describe('fieldRegistry', () => {
   });
 
   it('every declared kind is a known renderer kind; kv descriptors omit it', () => {
-    const VALID_KINDS = new Set(['richtext', 'code', 'chips', 'boolean', 'enum', 'refranges', 'dose', 'color', 'icon']);
+    const VALID_KINDS = new Set(['richtext', 'code', 'chips', 'boolean', 'enum', 'refranges', 'states', 'dose', 'color', 'icon']);
     for (const [type, descriptors] of Object.entries(TYPE_FIELDS)) {
       for (const d of descriptors) {
         if ('kind' in d && d.kind !== undefined) {
