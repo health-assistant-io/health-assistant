@@ -57,6 +57,14 @@ DEMO_TENANT_SLUG = "demo-clinic"
 # broken/empty app or have to manually log out + back in.
 DEMO_TENANT_ID = UUID("11111111-1111-4111-8111-111111111111")
 DEMO_USER_ID = UUID("22222222-2222-4222-8222-222222222222")
+# Patient UUIDs are deterministic too — the frontend stores the selected
+# patient ID in localStorage; if a reset mints new UUIDs, the stored ID points
+# at a ghost and "No patient selected" appears. Index 0 = Maria (primary).
+DEMO_PATIENT_IDS = [
+    UUID("33333333-3333-4333-8333-333333333301"),
+    UUID("33333333-3333-4333-8333-333333333302"),
+    UUID("33333333-3333-4333-8333-333333333303"),
+]
 
 RICH_OCR_TEXT = """PATIENT & LABORATORY INFORMATION
 Patient Name: Maria Papadopoulou
@@ -501,6 +509,7 @@ async def seed() -> None:
                 continue
                 
             new_patient = Patient(
+                id=DEMO_PATIENT_IDS[i],
                 tenant_id=tenant.id,
                 created_by=user.id,
                 updated_by=user.id,
