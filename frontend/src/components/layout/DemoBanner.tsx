@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { FlaskConical, ExternalLink } from 'lucide-react';
+import { FlaskConical, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../store/slices/authSlice';
 
 const MAIN_SITE_URL = 'https://health-assistant.io';
@@ -9,7 +9,8 @@ const MAIN_SITE_URL = 'https://health-assistant.io';
  * running in demo mode (DEMO_MODE=true). Pinned and non-dismissable — anyone
  * who is signed in got here through the credential-free /auth/demo-login
  * flow, so the banner must always make that clear. An "Exit demo" link on the
- * right opens the main product site so visitors can leave the sandbox.
+ * right redirects to the main product site (same tab) so visitors can leave
+ * the sandbox.
  * Mirrors the TenantSwitchBanner pattern.
  */
 function DemoBanner() {
@@ -32,13 +33,11 @@ function DemoBanner() {
         </div>
         <a
           href={MAIN_SITE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 transition-colors text-xs font-bold uppercase tracking-wide shrink-0"
           title={MAIN_SITE_URL}
         >
           <span className="hidden sm:inline">{t('common.demo_exit', 'Exit demo')}</span>
-          <ExternalLink className="w-3.5 h-3.5" />
+          <LogOut className="w-3.5 h-3.5" />
         </a>
       </div>
     </div>
