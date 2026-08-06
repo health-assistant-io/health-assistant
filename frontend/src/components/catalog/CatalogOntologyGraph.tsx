@@ -360,10 +360,10 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
           <button
             key={kind}
             onClick={() => toggleHiddenKind(kind)}
-            className={`px-1.5 py-0.5 text-[9px] rounded border ${
+            className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border transition-all ${
               hiddenKinds.includes(kind)
-                ? 'bg-gray-400 text-white border-transparent'
-                : 'border-gray-200 dark:border-gray-600 text-gray-300 hover:bg-gray-50'
+                ? 'bg-gray-500 text-white border-transparent'
+                : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
             }`}
           >
             {CONCEPT_KIND_LABELS[kind]}
