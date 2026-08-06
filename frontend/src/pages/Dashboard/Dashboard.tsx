@@ -256,6 +256,22 @@ function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLayoutMenuOpen, setIsLayoutMenuOpen] = useState(false);
   const [isAddCardMenuOpen, setIsAddCardMenuOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  const addCardMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the layout + add-card dropdowns when clicking outside them.
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (layoutMenuRef.current && !layoutMenuRef.current.contains(event.target as Node)) {
+        setIsLayoutMenuOpen(false);
+      }
+      if (addCardMenuRef.current && !addCardMenuRef.current.contains(event.target as Node)) {
+        setIsAddCardMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadAllCardData = useCallback(async () => {
     if (!currentPatient?.id) return;
@@ -762,7 +778,7 @@ function Dashboard() {
 
       <StickyToolbar
         details={
-          <div className="relative w-full sm:w-auto">
+          <div ref={layoutMenuRef} className="relative w-full sm:w-auto">
             <button 
               onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
               className="w-full sm:w-auto flex items-center justify-between sm:justify-start space-x-2 px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-dark-bg transition-all active:scale-95"
@@ -861,7 +877,7 @@ function Dashboard() {
           <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto overflow-x-auto sm:overflow-visible no-scrollbar pb-1 sm:pb-0">
             {isEditMode && (
               <>
-                <div className="relative flex-shrink-0">
+                <div ref={addCardMenuRef} className="relative flex-shrink-0">
                   <button 
                     onClick={() => setIsAddCardMenuOpen(!isAddCardMenuOpen)}
                     className="flex items-center space-x-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-sm hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all active:scale-95 shadow-sm border border-blue-100 dark:border-blue-900/30"
