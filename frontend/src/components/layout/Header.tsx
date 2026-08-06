@@ -175,12 +175,14 @@ function Header() {
             )}
             <div className="flex flex-col min-w-0">
               {pageHeaderConfig?.breadcrumbs && (
-                <Breadcrumbs 
-                  items={pageHeaderConfig.breadcrumbs} 
-                  currentLabel={pageHeaderConfig.title}
-                />
+                <div className="hidden lg:block">
+                  <Breadcrumbs 
+                    items={pageHeaderConfig.breadcrumbs} 
+                    currentLabel={pageHeaderConfig.title}
+                  />
+                </div>
               )}
-              <h1 className="text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none sm:truncate break-words">
+              <h1 className="text-sm sm:text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none break-words">
                 {getPageTitle()}
               </h1>
               {pageHeaderConfig?.subtitle && (

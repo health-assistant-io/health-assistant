@@ -20,6 +20,7 @@ import { useIsTablet } from '../../hooks/useMediaQuery';
 import { useState, useMemo, useRef, Fragment, useEffect } from 'react';
 import AppVersion from '../ui/AppVersion';
 import CreateMenu from '../ui/CreateMenu';
+import { Breadcrumbs } from '../ui/Breadcrumbs';
 
 interface SubItem {
   path: string;
@@ -56,6 +57,7 @@ function Sidebar() {
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
   const theme = useSettingsStore(state => state.theme);
+  const pageHeaderConfig = useUIStore(state => state.pageHeaderConfig);
   const [expandedItems, setExpandedItems] = useState<string[]>(['/patient-record']);
   const [hoveredMenu, setHoveredMenu] = useState<{ path: string; rect: DOMRect, items?: SubItem[], labelKey: string } | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -200,6 +202,21 @@ function Sidebar() {
     );
   };
 
+  // Auto-expand the parent group of the active sub-item so the highlighted
+  // navigation entry is always visible without manual toggling.
+  useEffect(() => {
+    setExpandedItems(prev => {
+      const next = [...prev];
+      for (const item of menuItems) {
+        if (item.subItems && item.subItems.some(isSubActive) && !next.includes(item.path)) {
+          next.push(item.path);
+        }
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search, menuItems]);
+
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter(item => {
       if (item.roles && user && !item.roles.includes(user.role)) return false;
@@ -256,6 +273,18 @@ function Sidebar() {
           {!effectiveCollapsed && <h1 className="text-xl font-bold text-brand-navy dark:text-white truncate">Health Assistant</h1>}
         </Link>
       </div>
+
+      {/* Current page breadcrumb path — mobile/tablet only. On desktop (lg+)
+          the path renders in the header bar instead. Shown only when the
+          sidebar drawer is open; hidden in icon-only collapsed mode. */}
+      {!effectiveCollapsed && pageHeaderConfig?.breadcrumbs && pageHeaderConfig.breadcrumbs.length > 0 && (
+        <div className="lg:hidden px-6 pb-3 -mt-1 mb-1 border-b border-gray-50 dark:border-white/5">
+          <Breadcrumbs
+            items={pageHeaderConfig.breadcrumbs}
+            currentLabel={pageHeaderConfig.title}
+          />
+        </div>
+      )}
 
       {/* Invisible hover bridge — keeps the handle visible when the cursor is near the sidebar edge */}
       <div className="hidden lg:block absolute inset-y-0 left-full w-5 z-[955]" aria-hidden="true" />
