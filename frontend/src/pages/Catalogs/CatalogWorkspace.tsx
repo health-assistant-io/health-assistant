@@ -909,7 +909,7 @@ export const CatalogWorkspace: React.FC = () => {
                 />
               ) : undefined}
               hasActiveFilters={explorationMode === 'graph' ? graphActiveFilterCount > 0 : catalogFilter.isActive}
-              onFiltersClick={explorationMode === 'graph' ? () => setGraphFiltersOpen(true) : undefined}
+              onFiltersClick={explorationMode === 'graph' ? () => setGraphFiltersOpen((v) => !v) : undefined}
             />
           </div>
 

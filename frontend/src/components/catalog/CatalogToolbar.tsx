@@ -105,13 +105,14 @@ export const CatalogToolbar: React.FC<CatalogToolbarProps> = ({
         ))}
       </div>
 
-      {/* Mobile: Filters toggle. Opens the facet collapse (list/card modes)
-          or the graph filter sheet via `onFiltersClick` (graph mode). */}
+      {/* Filters toggle. In graph mode (`onFiltersClick`) it shows on all
+          viewports (opens the graph filter side panel / bottom sheet); in
+          list/card modes it's mobile-only (collapses the facet FilterBar). */}
       {(filterBar || onFiltersClick) && (
         <button
           type="button"
           onClick={() => (onFiltersClick ? onFiltersClick() : setMobileFiltersOpen((v) => !v))}
-          className="sm:hidden flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 shrink-0"
+          className={`${onFiltersClick ? '' : 'sm:hidden'} flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 shrink-0`}
           aria-expanded={onFiltersClick ? undefined : mobileFiltersOpen}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />

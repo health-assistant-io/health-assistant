@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import {
   ConceptGraphView,
   type ConceptGraphNode,
@@ -97,6 +98,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   activeFilterCount,
 }) => {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const [rawNodes, setRawNodes] = useState<ConceptGraphNode[]>([]);
   const [rawEdges, setRawEdges] = useState<ConceptGraphEdgeData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,6 +240,16 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
     setIncludeIsolated(false);
     setDepth(0);
   };
+
+  // Close the filter panel/sheet on Escape.
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onFiltersOpenChange(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [filtersOpen, onFiltersOpenChange]);
 
   // Unified filter sections — one source of truth rendered inline on desktop
   // and inside the mobile bottom sheet. Includes the Dim row (formerly below
@@ -387,14 +399,60 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   );
 
   return (
-    <div className="flex flex-col h-full min-h-[500px] gap-2">
-      {/* === Desktop (md+): inline filter rows, always visible === */}
-      <div className="hidden md:block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-2">
-        {renderFilterSections()}
-      </div>
+    <div className="relative flex flex-col h-full min-h-[500px] gap-2">
+      {/* === Desktop (md+): slide-in side panel — opened from the toolbar
+          === Filters button. Overlays the canvas from the right so the graph
+          === keeps full width; close via X or Escape. === */}
+      {filtersOpen && (
+        <div
+          role="dialog"
+          aria-modal="false"
+          aria-label={t('catalogs.graph_filters', { defaultValue: 'Graph filters' })}
+          className="hidden md:flex absolute top-0 right-0 bottom-0 z-[200] w-80 flex-col bg-white dark:bg-dark-surface border-l border-gray-200 dark:border-dark-border shadow-2xl animate-in slide-in-from-right duration-300"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-dark-border">
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-sm font-bold text-gray-700 dark:text-dark-text truncate">
+                {t('catalogs.graph_filters', { defaultValue: 'Graph Filters' })}
+              </h3>
+              {activeFilterCount > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-white bg-blue-500 rounded-full shrink-0">
+                  {activeFilterCount}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => onFiltersOpenChange(false)}
+              className="p-1.5 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text shrink-0"
+              aria-label={t('common.close', { defaultValue: 'Close' })}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Scrollable filter sections */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+            {renderFilterSections()}
+          </div>
+
+          {/* Footer — reset */}
+          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 dark:border-dark-border">
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={activeFilterCount === 0}
+              className="text-xs font-bold text-gray-500 dark:text-dark-muted hover:text-red-500 disabled:opacity-40 disabled:hover:text-gray-500 transition-colors"
+            >
+              {t('filters.clear_all', { defaultValue: 'Clear all' })}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* === Mobile (< md): bottom sheet — opened from the toolbar Filters
-          === button (workspace-owned `filtersOpen`), not from a bar here. === */}
+           === button (workspace-owned `filtersOpen`). === */}
       {filtersOpen && (
         <>
           <div
@@ -474,6 +532,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
             edges={displayedGraph.edges}
             selectedNodeId={selectedNode}
             hiddenKinds={hiddenKinds}
+            showMiniMap={!isMobile}
             onSelectNode={(id) => {
               // Single-click is purely local (show detail card). Navigation
               // (URL change + catalog reload) happens on double-click below —
