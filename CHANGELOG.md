@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.3] - 2026-08-06
+
+- **Change: breadcrumb path split between header and sidebar for a mobile-friendly layout.** The breadcrumb navigation is now distributed by viewport to keep the header compact on small screens without losing context. On desktop (`lg+`), the breadcrumb renders in the header bar above the page title as before. On mobile and tablet (below `lg`), the breadcrumb moves into the sidebar drawer below the logo, so the header shows only the page title — which wraps naturally (no truncation or ellipsis dots). The sidebar auto-expands the parent group of the active sub-item so the highlighted navigation entry is always visible without manual toggling. The `Breadcrumbs` component itself wraps naturally and never truncates text. `tsc --noEmit` clean.
+
 - **Fix: `value_type`/`supports_multi_state` lost their DB-level defaults in the consolidated baseline.** The state-biomarkers migration (`s1t2a3t4e5b6`) intended `value_type ... DEFAULT 'quantity'` and `supports_multi_state ... DEFAULT false`, but the consolidated baseline (`8ddb7ef7ca4d`) recreated both columns NOT NULL **without** the `DEFAULT` clause. Since the baseline runs first, the incremental migration's guarded `ADD COLUMN ... DEFAULT` was skipped (`_column_exists` short-circuit), so fresh installs (incl. the CI test DB) ended up with NOT NULL and no server default — raw-SQL inserts and any non-ORM write path failed with a spurious `NotNullViolationError` instead of the constraint they were testing. The ORM model only carried a Python-side `default=` (bypassed by raw SQL). Restored `server_default` on both columns in the baseline migration AND the model. Three previously-failing audit tests (`test_biomarker_reference_range_order_enforced`, `test_same_slug_allowed_across_tenants_but_not_within`, `test_two_null_tenant_rows_with_same_slug_collide`) now pass unmodified; full suite 2832 green; `alembic check` shows no column/default diff.
 
 ## [v0.4.2] - 2026-08-06
