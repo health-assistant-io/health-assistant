@@ -16,6 +16,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { X } from 'lucide-react';
 import {
   ConceptGraphView,
   type ConceptGraphNode,
@@ -45,28 +46,61 @@ interface CatalogOntologyGraphProps {
   onFocusNode?: (node: { id: string; type?: string | null }) => void;
   /** Bump to force a refetch without remounting. */
   refreshKey?: number;
+
+  /** Graph-filter state — owned by the workspace so the toolbar's Filters
+   *  button + badge can drive the same state the canvas reads. */
+  activeTypes: Set<string>;
+  activeKinds: Set<ConceptKind>;
+  hiddenRelations: Set<string>;
+  hiddenKinds: string[];
+  includeIsolated: boolean;
+  depth: number;
+  selectedNode?: string;
+
+  /** Setters for the controlled filter state above. */
+  setActiveTypes: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setActiveKinds: React.Dispatch<React.SetStateAction<Set<ConceptKind>>>;
+  setHiddenRelations: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setHiddenKinds: React.Dispatch<React.SetStateAction<string[]>>;
+  setIncludeIsolated: React.Dispatch<React.SetStateAction<boolean>>;
+  setDepth: React.Dispatch<React.SetStateAction<number>>;
+  setSelectedNode: React.Dispatch<React.SetStateAction<string | undefined>>;
+
+  /** Mobile sheet visibility — workspace-owned so the toolbar Filters button
+   *  can open it (the trigger lives in the toolbar, not here). */
+  filtersOpen: boolean;
+  onFiltersOpenChange: (open: boolean) => void;
+
+  /** Active filter-dimension count, for the sheet header badge. */
+  activeFilterCount: number;
 }
 
 export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   onFocusNode,
   refreshKey = 0,
+  activeTypes,
+  activeKinds,
+  hiddenRelations,
+  hiddenKinds,
+  includeIsolated,
+  depth,
+  selectedNode,
+  setActiveTypes,
+  setActiveKinds,
+  setHiddenRelations,
+  setHiddenKinds,
+  setIncludeIsolated,
+  setDepth,
+  setSelectedNode,
+  filtersOpen,
+  onFiltersOpenChange,
+  activeFilterCount,
 }) => {
   const { t } = useTranslation();
   const [rawNodes, setRawNodes] = useState<ConceptGraphNode[]>([]);
   const [rawEdges, setRawEdges] = useState<ConceptGraphEdgeData[]>([]);
   const [loading, setLoading] = useState(true);
   const [truncated, setTruncated] = useState(false);
-
-  // Server-side filters
-  const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
-  const [activeKinds, setActiveKinds] = useState<Set<ConceptKind>>(new Set());
-  const [includeIsolated, setIncludeIsolated] = useState(false);
-
-  // Client-side filters
-  const [selectedNode, setSelectedNode] = useState<string | undefined>();
-  const [depth, setDepth] = useState(0);
-  const [hiddenKinds, setHiddenKinds] = useState<string[]>([]);
-  const [hiddenRelations, setHiddenRelations] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,136 +230,235 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
   const allKinds = Object.keys(CONCEPT_KIND_LABELS) as ConceptKind[];
   const conceptActive = activeTypes.size === 0 || activeTypes.has('concept');
 
-  return (
-    <div className="flex flex-col h-full min-h-[500px] gap-2">
-      {/* Controls bar — two rows */}
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-2">
-        {/* Row 1: catalog-type chips + depth + counts */}
+  const resetFilters = () => {
+    setActiveTypes(new Set());
+    setActiveKinds(new Set());
+    setHiddenRelations(new Set());
+    setHiddenKinds([]);
+    setIncludeIsolated(false);
+    setDepth(0);
+  };
+
+  // Unified filter sections — one source of truth rendered inline on desktop
+  // and inside the mobile bottom sheet. Includes the Dim row (formerly below
+  // the canvas) so every filter lives in one place.
+  const renderFilterSections = () => (
+    <>
+      {/* Types + include-isolated + depth */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
+          {t('catalogs.graph_types', 'Types')}:
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {ALL_CATALOG_TYPES.map((type) => {
+            const active = activeTypes.size === 0 || activeTypes.has(type);
+            const typeCount = displayedGraph.nodes.filter(
+              (n) => n.type === type,
+            ).length;
+            return (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                title={`${CATALOG_TYPE_LABELS[type]} (${typeCount})`}
+                className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
+                  active
+                    ? 'text-white border-transparent'
+                    : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
+                }`}
+                style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
+              >
+                <DynamicIcon
+                  icon={CATALOG_TYPE_ICONS[type] ?? 'Circle'}
+                  className="w-2.5 h-2.5"
+                />
+                {CATALOG_TYPE_LABELS[type]}
+                {typeCount > 0 && (
+                  <span className="ml-0.5 px-1 rounded-full text-[9px] bg-black/20">
+                    {typeCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => setIncludeIsolated((v) => !v)}
+          className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ml-1 ${
+            includeIsolated
+              ? 'bg-indigo-600 text-white border-transparent'
+              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+          }`}
+          title={t('catalogs.graph_isolated_hint', 'Show items with no relations')}
+        >
+          {t('catalogs.graph_isolated', 'Include isolated')}
+        </button>
+
+        {selectedNode && (
+          <div className="flex items-center gap-1 ml-2">
+            <span className="text-[10px] text-gray-400">
+              {t('catalogs.graph_depth', 'Depth')}:
+            </span>
+            {[0, 1, 2, 3, 4].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDepth(d)}
+                className={`w-6 h-6 text-[11px] rounded-md font-medium ${
+                  depth === d
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                {d === 0 ? '∞' : d}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Kinds (concepts only) */}
+      {conceptActive && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
-            {t('catalogs.graph_types', 'Types')}:
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {t('catalogs.graph_kinds', 'Kinds')}:
           </span>
           <div className="flex flex-wrap gap-1">
-            {ALL_CATALOG_TYPES.map((type) => {
-              const active = activeTypes.size === 0 || activeTypes.has(type);
-              const typeCount = displayedGraph.nodes.filter(
-                (n) => n.type === type,
-              ).length;
+            {allKinds.map((kind) => {
+              const active = activeKinds.has(kind);
               return (
                 <button
-                  key={type}
-                  onClick={() => toggleType(type)}
-                  title={`${CATALOG_TYPE_LABELS[type]} (${typeCount})`}
-                  className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full border transition-all ${
+                  key={kind}
+                  onClick={() => toggleKind(kind)}
+                  className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border transition-all ${
                     active
                       ? 'text-white border-transparent'
-                      : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 opacity-40'
+                      : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
-                  style={active ? { backgroundColor: CATALOG_TYPE_COLORS[type] || '#6b7280' } : undefined}
+                  style={active ? { backgroundColor: KIND_COLORS[kind] } : undefined}
                 >
-                  <DynamicIcon
-                    icon={CATALOG_TYPE_ICONS[type] ?? 'Circle'}
-                    className="w-2.5 h-2.5"
-                  />
-                  {CATALOG_TYPE_LABELS[type]}
-                  {typeCount > 0 && (
-                    <span className="ml-0.5 px-1 rounded-full text-[9px] bg-black/20">
-                      {typeCount}
-                    </span>
-                  )}
+                  {CONCEPT_KIND_LABELS[kind]}
                 </button>
               );
             })}
           </div>
-
-          {/* Show-isolated toggle */}
-          <button
-            onClick={() => setIncludeIsolated((v) => !v)}
-            className={`px-2 py-0.5 text-[11px] font-medium rounded-md border transition-colors ml-1 ${
-              includeIsolated
-                ? 'bg-indigo-600 text-white border-transparent'
-                : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            title={t('catalogs.graph_isolated_hint', 'Show items with no relations')}
-          >
-            {t('catalogs.graph_isolated', 'Include isolated')}
-          </button>
-
-          {/* Depth chips */}
-          {selectedNode && (
-            <div className="flex items-center gap-1 ml-2">
-              <span className="text-[10px] text-gray-400">
-                {t('catalogs.graph_depth', 'Depth')}:
-              </span>
-              {[0, 1, 2, 3, 4].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDepth(d)}
-                  className={`w-6 h-6 text-[11px] rounded-md font-medium ${
-                    depth === d
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {d === 0 ? '∞' : d}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex-1" />
-
-          {truncated && (
-            <span className="text-[10px] text-amber-500">
-              {t('catalogs.graph_truncated', 'Capped — narrow with filters')}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-400">
-            {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')} ·{' '}
-            {displayedGraph.edges.length} {t('catalogs.graph_edges', 'edges')}
-          </span>
         </div>
+      )}
 
-        {/* Row 2: concept-kind sub-chips (only when concepts are active) */}
-        {conceptActive && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('catalogs.graph_kinds', 'Kinds')}:
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {allKinds.map((kind) => {
-                const active = activeKinds.has(kind);
-                return (
-                  <button
-                    key={kind}
-                    onClick={() => toggleKind(kind)}
-                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border transition-all ${
-                      active
-                        ? 'text-white border-transparent'
-                        : 'border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                    style={active ? { backgroundColor: KIND_COLORS[kind] } : undefined}
-                  >
-                    {CONCEPT_KIND_LABELS[kind]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+      {/* Relations (edge types) — uses rawEdges so chips persist after hide */}
+      <GraphRelationFilter
+        edges={rawEdges}
+        hidden={hiddenRelations}
+        onToggle={toggleRelation}
+      />
 
-        {/* Row 3: relation-type (edge) filter chips.
-            Uses rawEdges (NOT displayedGraph.edges) so the chips persist after
-            a relation is hidden — the filter must show what *can* be toggled,
-            not just what's currently visible. */}
-        <GraphRelationFilter
-          edges={rawEdges}
-          hidden={hiddenRelations}
-          onToggle={toggleRelation}
-        />
+      {/* Dim (client-side hidden-kind dimming) */}
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[10px] text-gray-400 mr-1">
+          {t('catalogs.graph_dim', 'Dim')}:
+        </span>
+        {allKinds.map((kind) => (
+          <button
+            key={kind}
+            onClick={() => toggleHiddenKind(kind)}
+            className={`px-1.5 py-0.5 text-[9px] rounded border ${
+              hiddenKinds.includes(kind)
+                ? 'bg-gray-400 text-white border-transparent'
+                : 'border-gray-200 dark:border-gray-600 text-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {CONCEPT_KIND_LABELS[kind]}
+          </button>
+        ))}
       </div>
 
-      {/* Graph canvas */}
+      {/* Status: truncation warning + node/edge counts */}
+      <div className="flex flex-wrap items-center gap-2 pt-2 mt-1 border-t border-gray-100 dark:border-gray-700">
+        {truncated && (
+          <span className="text-[10px] text-amber-500">
+            {t('catalogs.graph_truncated', 'Capped — narrow with filters')}
+          </span>
+        )}
+        <span className="text-[10px] text-gray-400 ml-auto">
+          {displayedGraph.nodes.length} {t('catalogs.graph_nodes', 'nodes')} ·{' '}
+          {displayedGraph.edges.length} {t('catalogs.graph_edges', 'edges')}
+        </span>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex flex-col h-full min-h-[500px] gap-2">
+      {/* === Desktop (md+): inline filter rows, always visible === */}
+      <div className="hidden md:block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 space-y-2">
+        {renderFilterSections()}
+      </div>
+
+      {/* === Mobile (< md): bottom sheet — opened from the toolbar Filters
+          === button (workspace-owned `filtersOpen`), not from a bar here. === */}
+      {filtersOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-[200]"
+            onClick={() => onFiltersOpenChange(false)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('catalogs.graph_filters', { defaultValue: 'Graph filters' })}
+            className="md:hidden fixed inset-x-0 bottom-0 z-[201] max-h-[78vh] flex flex-col bg-white dark:bg-dark-surface rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
+          >
+            {/* Header — drag handle + title + active badge + close */}
+            <div className="flex items-center justify-between gap-2 px-4 pt-2 pb-3 border-b border-gray-100 dark:border-dark-border">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full shrink-0" aria-hidden />
+                <h3 className="text-sm font-bold text-gray-700 dark:text-dark-text truncate">
+                  {t('catalogs.graph_filters', { defaultValue: 'Graph Filters' })}
+                </h3>
+                {activeFilterCount > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-white bg-blue-500 rounded-full shrink-0">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onFiltersOpenChange(false)}
+                className="p-1.5 -mr-1 text-gray-400 hover:text-gray-600 dark:hover:text-dark-text shrink-0"
+                aria-label={t('common.close', { defaultValue: 'Close' })}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable filter sections */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+              {renderFilterSections()}
+            </div>
+
+            {/* Footer — reset + done */}
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 dark:border-dark-border">
+              <button
+                type="button"
+                onClick={resetFilters}
+                disabled={activeFilterCount === 0}
+                className="text-xs font-bold text-gray-500 dark:text-dark-muted hover:text-red-500 disabled:opacity-40 disabled:hover:text-gray-500 transition-colors"
+              >
+                {t('filters.clear_all', { defaultValue: 'Clear all' })}
+              </button>
+              <button
+                type="button"
+                onClick={() => onFiltersOpenChange(false)}
+                className="px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                {t('common.done', { defaultValue: 'Done' })}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Graph canvas (shared) */}
       <div className="flex-1 min-h-0 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
         {loading ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400">
@@ -372,26 +505,6 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
             )}
           />
         )}
-      </div>
-
-      {/* Hidden-kind dimming chips (client-side) */}
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-[10px] text-gray-400">
-          {t('catalogs.graph_dim', 'Dim')}:
-        </span>
-        {allKinds.map((kind) => (
-          <button
-            key={kind}
-            onClick={() => toggleHiddenKind(kind)}
-            className={`px-1.5 py-0.5 text-[9px] rounded border ${
-              hiddenKinds.includes(kind)
-                ? 'bg-gray-400 text-white border-transparent'
-                : 'border-gray-200 dark:border-gray-600 text-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            {CONCEPT_KIND_LABELS[kind]}
-          </button>
-        ))}
       </div>
     </div>
   );

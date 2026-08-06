@@ -18,7 +18,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Database, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw, List as ListIcon, GitBranch } from 'lucide-react';
+import { Database, ArrowLeft, Info as InfoIcon, Edit3, History as HistoryIcon, ExternalLink, Trash2, RotateCcw } from 'lucide-react';
 import PageHeader from '../../components/ui/PageHeader';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -56,6 +56,7 @@ import {
 import biomarkerService from '../../services/biomarkerService';
 import type { BiomarkerReferenceRange } from '../../types/biomarker';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
+import type { ConceptKind } from '../../types/concept';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useMasterDetail } from '../../hooks/useMasterDetail';
@@ -89,6 +90,42 @@ export const CatalogWorkspace: React.FC = () => {
       { replace: true },
     );
   };
+
+  // Unified exploration mode backing the toolbar's 3-way segmented control
+  // (List | Cards | Graph). Graph is URL-driven (?view=graph); list/card are
+  // the in-list rendering style. Selecting 'graph' switches to the ontology
+  // graph view; selecting list/cards exits graph mode and sets the item style.
+  const explorationMode: 'list' | 'card' | 'graph' = graphMode === 'graph' ? 'graph' : viewMode;
+  const setExplorationMode = (mode: 'list' | 'card' | 'graph') => {
+    if (mode === 'graph') {
+      setGraphMode('graph');
+    } else {
+      setGraphMode('list');
+      setViewMode(mode);
+    }
+  };
+
+  // Graph-filter state — owned here so the toolbar's Filters button (mobile)
+  // and badge can drive the same state the graph canvas + bottom sheet read.
+  // Passed down to <CatalogOntologyGraph> as controlled props.
+  const [graphActiveTypes, setGraphActiveTypes] = useState<Set<string>>(new Set());
+  const [graphActiveKinds, setGraphActiveKinds] = useState<Set<ConceptKind>>(new Set());
+  const [graphHiddenRelations, setGraphHiddenRelations] = useState<Set<string>>(new Set());
+  const [graphHiddenKinds, setGraphHiddenKinds] = useState<string[]>([]);
+  const [graphIncludeIsolated, setGraphIncludeIsolated] = useState(false);
+  const [graphDepth, setGraphDepth] = useState(0);
+  const [graphSelectedNode, setGraphSelectedNode] = useState<string | undefined>(undefined);
+  const [graphFiltersOpen, setGraphFiltersOpen] = useState(false);
+
+  // Active graph-filter dimension count — drives the toolbar Filters badge
+  // (graph mode) and the sheet header badge. Counts sections, not chips.
+  const graphActiveFilterCount =
+    (graphActiveTypes.size > 0 ? 1 : 0) +
+    (graphActiveKinds.size > 0 ? 1 : 0) +
+    (graphHiddenRelations.size > 0 ? 1 : 0) +
+    (graphHiddenKinds.length > 0 ? 1 : 0) +
+    (graphIncludeIsolated ? 1 : 0) +
+    (graphDepth > 0 && graphSelectedNode ? 1 : 0);
 
   // Items (owned here so the browser, preview Info + Relations tabs share).
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -856,14 +893,14 @@ export const CatalogWorkspace: React.FC = () => {
               onSelectType={selectType}
               scopeFilter={scopeFilter}
               onScopeChange={setScopeFilter}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
+              explorationMode={explorationMode}
+              onExplorationModeChange={setExplorationMode}
               onNew={canCreate ? () => {
                 setEditing({ name: '' });
                 setIsNew(true);
               } : undefined}
               canExportSeeds={currentUserRole === 'SYSTEM_ADMIN'}
-              filterBar={facets.length > 0 ? (
+              filterBar={explorationMode !== 'graph' && facets.length > 0 ? (
                 <FilterBar<CatalogItem>
                   facets={facets}
                   filter={catalogFilter}
@@ -871,36 +908,10 @@ export const CatalogWorkspace: React.FC = () => {
                   showActivePills
                 />
               ) : undefined}
+              hasActiveFilters={explorationMode === 'graph' ? graphActiveFilterCount > 0 : catalogFilter.isActive}
+              onFiltersClick={explorationMode === 'graph' ? () => setGraphFiltersOpen(true) : undefined}
             />
           </div>
-
-          {/* List | Graph exploration toggle (all catalog types) */}
-          {active && (
-            <div className="shrink-0 flex items-center gap-2 py-1">
-              <div className="flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                <button
-                  onClick={() => setGraphMode('list')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
-                    graphMode === 'list'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <ListIcon className="w-3.5 h-3.5" /> {t('catalogs.view_list', 'List')}
-                </button>
-                <button
-                  onClick={() => setGraphMode('graph')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
-                    graphMode === 'graph'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <GitBranch className="w-3.5 h-3.5" /> {t('catalogs.view_graph', 'Graph')}
-                </button>
-              </div>
-            </div>
-          )}
 
           {active ? (
             graphMode === 'graph' ? (
@@ -911,6 +922,23 @@ export const CatalogWorkspace: React.FC = () => {
                   onFocusNode={(node) => {
                     selectItem(node.id, node.type ?? undefined);
                   }}
+                  activeTypes={graphActiveTypes}
+                  setActiveTypes={setGraphActiveTypes}
+                  activeKinds={graphActiveKinds}
+                  setActiveKinds={setGraphActiveKinds}
+                  hiddenRelations={graphHiddenRelations}
+                  setHiddenRelations={setGraphHiddenRelations}
+                  hiddenKinds={graphHiddenKinds}
+                  setHiddenKinds={setGraphHiddenKinds}
+                  includeIsolated={graphIncludeIsolated}
+                  setIncludeIsolated={setGraphIncludeIsolated}
+                  depth={graphDepth}
+                  setDepth={setGraphDepth}
+                  selectedNode={graphSelectedNode}
+                  setSelectedNode={setGraphSelectedNode}
+                  filtersOpen={graphFiltersOpen}
+                  onFiltersOpenChange={setGraphFiltersOpen}
+                  activeFilterCount={graphActiveFilterCount}
                 />
               </div>
             ) : (
