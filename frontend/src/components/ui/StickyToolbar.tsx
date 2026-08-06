@@ -97,12 +97,12 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
         transform: hidden && sticky ? 'translateY(calc(-100% - 8px))' : 'translateY(0)',
       }}
       className={`
-        ${sticky ? 'sticky top-[-6px] md:top-[-14px] lg:top-[-18px] z-[450] backdrop-blur-md bg-gray-50/90 dark:bg-dark-bg/90 py-3 mb-6' : 'py-2 mb-4'}
-        flex flex-wrap items-center justify-between gap-4 transition-all duration-300 border-b border-gray-200 dark:border-dark-border -mx-2 sm:-mx-4 md:-mx-6 lg:-mx-8 px-2 sm:px-4 md:px-6 lg:px-8
+        ${sticky ? 'sticky top-[-6px] md:top-[-14px] lg:top-[-18px] z-[450] backdrop-blur-md bg-gray-50/90 dark:bg-dark-bg/90 py-2 sm:py-3 mb-3 sm:mb-6' : 'py-1.5 sm:py-2 mb-2 sm:mb-4'}
+        flex flex-wrap items-center justify-between gap-2 sm:gap-4 transition-all duration-300 border-b border-gray-200 dark:border-dark-border -mx-2 sm:-mx-4 md:-mx-6 lg:-mx-8 px-2 sm:px-4 md:px-6 lg:px-8
         ${className}
       `}
     >
-      <div className="flex flex-wrap items-center gap-6 flex-1 min-w-0">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-6 flex-1 min-w-0">
         {details && (
           <div className="flex items-center">
             {details}
@@ -119,7 +119,7 @@ export const StickyToolbar: React.FC<StickyToolbarProps> = ({
       </div>
 
       {actions && (
-        <div className="flex flex-wrap items-center gap-3 ml-auto">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-auto">
           {actions}
         </div>
       )}
