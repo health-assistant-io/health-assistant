@@ -7,11 +7,12 @@ class HealthAssistantBridgeConfigFlow(BaseConfigFlow):
     Security model: the two-way API proxy exposes ``/api/<id>/{status,map,sync}``
     endpoints. By default the UUID-in-URL is the only secret (acceptable for a
     self-hosted box on a trusted/LAN). For a bridge exposed to the public
-    internet, the user should set ``api_secret`` — when present the provider
-    verifies an HMAC-SHA256 signature (``X-Api-Signature`` + ``X-Api-Timestamp``,
-    ±5 min replay window) on every ``/map`` and ``/sync`` request via
-    :func:`integrations.sdk.webhook_security.verify_canonical_signature`.
-    The secret is Fernet-encrypted at rest and masked on read.
+    internet, the user should set ``api_secret`` — when present the platform
+    endpoint verifies an HMAC-SHA256 signature (``X-Api-Signature`` +
+    ``X-Api-Timestamp``, ±5 min replay window) on **every** path (including
+    ``/status``) via :func:`integrations.sdk.webhook_security.verify_canonical_signature`
+    before dispatch reaches the provider. The secret is Fernet-encrypted at
+    rest and masked on read.
     """
 
     domain = "health_assistant_bridge"

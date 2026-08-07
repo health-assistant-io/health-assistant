@@ -1,4 +1,4 @@
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 from .client import HealthAssistantBridgeClient
 from .async_client import AsyncHealthAssistantBridgeClient
@@ -7,8 +7,10 @@ from .models import (
     BridgeStatus,
     MetricMappingRequest,
     MappedMetric,
+    MapRequestPayload,
     MapResponsePayload,
     ClientRecord,
+    ClientExaminationRecord,
     SyncPayload,
     SyncResponse
 )
@@ -20,9 +22,11 @@ __all__ = [
     "BridgeStatus",
     "MetricMappingRequest",
     "MappedMetric",
+    "MapRequestPayload",
     "MapResponsePayload",
     "ClientRecord",
+    "ClientExaminationRecord",
     "SyncPayload",
     "SyncResponse",
-    "__version__"
+    "__version__",
 ]

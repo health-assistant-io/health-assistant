@@ -1,6 +1,6 @@
 import * as crypto from "crypto";
 
-export const SDK_VERSION = "1.2.0";
+export const SDK_VERSION = "1.3.0";
 
 // Default per-request timeout (30s). The client passes an AbortSignal derived
 // from this so a stalled backend can't hang a long-lived client process.

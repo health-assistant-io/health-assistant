@@ -62,3 +62,42 @@ def rate_limit(prefix: str, max_requests: int, window: int = 60):
     ``max_requests`` per ``window`` seconds per client IP.
     """
     return _limiter_dep(prefix, max_requests, window)
+
+
+def _integration_limiter_dep(prefix: str, max_requests: int, window: int):
+    """Build a FastAPI dependency that enforces a fixed-window limit keyed by
+    the ``integration_id`` path parameter (in addition to the per-IP limit).
+
+    Used by the unauthenticated webhook + API-proxy routes — the
+    ``integration_id`` is the natural unit for "how hard is *this* instance
+    being driven", and a per-instance cap survives a distributed flood that a
+    per-IP cap alone wouldn't catch.
+    """
+
+    async def _check(integration_id: str):
+        bucket = int(time.time()) // window
+        key = f"rl:{prefix}:integration:{integration_id}:{bucket}"
+        try:
+            count = await redis_client.incr(key)
+            if count == 1:
+                await redis_client.expire(key, window)
+        except Exception as e:  # Redis unreachable — degrade open.
+            logger.warning("Rate-limit backend unavailable, allowing request: %s", e)
+            return
+        if count > max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many requests for this integration. Please try again later.",
+                headers={"Retry-After": str(window)},
+            )
+
+    return _check
+
+
+def rate_limit_integration(prefix: str, max_requests: int, window: int = 60):
+    """Per-integration rate limit keyed on the ``integration_id`` path param.
+
+    Pair with :func:`rate_limit` (per-IP) on the same route for both
+    distributed- and targeted-flood protection.
+    """
+    return _integration_limiter_dep(prefix, max_requests, window)

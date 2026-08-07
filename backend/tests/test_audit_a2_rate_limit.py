@@ -100,3 +100,66 @@ class TestAuthEndpointsWired:
             fn = getattr(auth, name)
             src = inspect.getsource(fn)
             assert "rate_limit" in src, f"{name} must depend on rate_limit"
+
+
+class TestIntegrationRateLimit:
+    """Per-integration limiter (``rate_limit_integration``) — keyed on the
+    ``integration_id`` path param, used by the webhook + API-proxy routes."""
+
+    @pytest.mark.asyncio
+    async def test_allows_under_limit(self, fake_redis):
+        dep = rl_mod.rate_limit_integration("integration_webhook", max_requests=60, window=60)
+        for _ in range(60):
+            await dep("00000000-0000-0000-0000-000000000001")
+
+    @pytest.mark.asyncio
+    async def test_blocks_over_limit_with_429(self, fake_redis):
+        from fastapi import HTTPException
+
+        dep = rl_mod.rate_limit_integration("integration_webhook", max_requests=5, window=60)
+        for _ in range(5):
+            await dep("int-A")
+        with pytest.raises(HTTPException) as exc:
+            await dep("int-A")
+        assert exc.value.status_code == 429
+        assert "Retry-After" in exc.value.headers
+
+    @pytest.mark.asyncio
+    async def test_separate_buckets_per_integration(self, fake_redis):
+        """Two integrations under the same IP get independent buckets."""
+        from fastapi import HTTPException
+
+        dep = rl_mod.rate_limit_integration("integration_api_proxy", max_requests=2, window=60)
+        await dep("int-A")
+        await dep("int-A")
+        # int-B has its own bucket — not affected by int-A's traffic.
+        await dep("int-B")
+        # int-A now exceeds.
+        with pytest.raises(HTTPException):
+            await dep("int-A")
+
+    @pytest.mark.asyncio
+    async def test_degrades_open_when_redis_down(self, fake_redis):
+        fake_redis.fail = True
+        dep = rl_mod.rate_limit_integration("integration_webhook", max_requests=1, window=60)
+        for _ in range(50):
+            await dep("int-A")  # all allowed
+
+
+class TestIntegrationRoutesWired:
+    """Static guard: the unauthenticated integration routes carry rate limits."""
+
+    def test_oauth_callback_webhook_api_proxy_are_rate_limited(self):
+        import inspect
+        from app.api.v1.endpoints import integrations as ep
+
+        # oauth_callback: per-IP only (no integration_id in the URL).
+        assert "rate_limit(" in inspect.getsource(ep.oauth_callback)
+        # webhook + api-proxy: per-IP AND per-integration.
+        for name in ("integration_webhook", "integration_api_proxy"):
+            fn = getattr(ep, name)
+            src = inspect.getsource(fn)
+            assert "rate_limit(" in src, f"{name} must have a per-IP rate_limit dep"
+            assert "rate_limit_integration(" in src, (
+                f"{name} must have a per-integration rate_limit_integration dep"
+            )

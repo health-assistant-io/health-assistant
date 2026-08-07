@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.schemas.fhir.observation import ObservationCreate
@@ -45,6 +45,15 @@ class ObservationBuilder:
         self._biomarker_id: Optional[UUID] = None
         self._reference_range: Optional[Dict[str, float]] = None
         self._interpretation: Optional[str] = None
+        # Multi-value / structural fields the inbound FHIR converter
+        # (fhir_observation_to_create) already preserves but the builder
+        # historically couldn't author. Used for blood pressure (component),
+        # panel grouping (category), provenance (performer), and clinician
+        # notes (comment).
+        self._components: list[Dict[str, Any]] = []
+        self._performer: Optional[List[Dict[str, Any]]] = None
+        self._categories: list[Dict[str, Any]] = []
+        self._comment: Optional[str] = None
 
     def reset(self) -> "ObservationBuilder":
         """Clear all fields except ``tenant_id`` / ``patient_id``.
@@ -67,6 +76,10 @@ class ObservationBuilder:
         self._biomarker_id = None
         self._reference_range = None
         self._interpretation = None
+        self._components = []
+        self._performer = None
+        self._categories = []
+        self._comment = None
         return self
 
     def set_status(self, status: str) -> "ObservationBuilder":
@@ -112,6 +125,8 @@ class ObservationBuilder:
         self._unit_code = unit_code
         self._value_string = None
         self._value_codeable_concept = None
+        # A value[x] observation has no components (FHIR R4 §3.1.1).
+        self._components = []
         return self
 
     def set_value_string(self, value: str) -> "ObservationBuilder":
@@ -134,6 +149,8 @@ class ObservationBuilder:
         self._unit = None
         self._unit_code = None
         self._value_codeable_concept = None
+        # A value[x] observation has no components (FHIR R4 §3.1.1).
+        self._components = []
         return self
 
     def set_value_codeable_concept(
@@ -162,6 +179,110 @@ class ObservationBuilder:
         self._unit = None
         self._unit_code = None
         self._value_string = None
+        # A component observation has no parent value[x]; conversely a value[x]
+        # observation has no components (FHIR R4 §3.1.1).
+        self._components = []
+        return self
+
+    def add_component(
+        self,
+        code: str,
+        display: str,
+        value: float,
+        unit: str,
+        unit_code: Optional[str] = None,
+        coding_system: CodingSystem = CodingSystem.LOINC,
+    ) -> "ObservationBuilder":
+        """Append a component (FHIR ``component[]``) for multi-value observations.
+
+        Essential for blood pressure (systolic + diastolic under one panel
+        code), lab panels, and any observation carrying multiple correlated
+        measurements. Per FHIR R4 §3.1.1, an Observation with ``component[]``
+        has **no parent** ``value[x]`` — calling this clears any previously-set
+        value (``set_value`` / ``set_value_string`` /
+        ``set_value_codeable_concept``), and any subsequent value-setter
+        clears the components. The last mutation wins.
+        """
+        component: Dict[str, Any] = {
+            "code": {
+                "coding": [
+                    {
+                        "system": coding_system.fhir_system,
+                        "code": code,
+                        "display": display,
+                    }
+                ],
+                "text": display,
+            },
+            "valueQuantity": {"value": value, "system": UCUM_SYSTEM},
+        }
+        if unit:
+            component["valueQuantity"]["unit"] = unit
+        if unit_code or unit:
+            component["valueQuantity"]["code"] = unit_code or unit
+        self._components.append(component)
+        # Component observations have no parent value[x].
+        self._value = None
+        self._unit = None
+        self._unit_code = None
+        self._value_string = None
+        self._value_codeable_concept = None
+        return self
+
+    def add_category(
+        self,
+        code: str,
+        system: Optional[str] = None,
+        display: Optional[str] = None,
+    ) -> "ObservationBuilder":
+        """Append a category (FHIR ``category[]``) — e.g. ``vital-signs``,
+        ``laboratory``, ``imaging``, ``social-history``.
+
+        Multiple categories may be attached (a blood-pressure observation is
+        both ``vital-signs`` and may belong to a clinic-specific group).
+        """
+        coding: Dict[str, Any] = {"code": code}
+        if system:
+            coding["system"] = system
+        if display:
+            coding["display"] = display
+        self._categories.append({"coding": [coding]})
+        return self
+
+    def set_performer(
+        self,
+        display: str,
+        reference: Optional[str] = None,
+        performer_type: Optional[str] = None,
+    ) -> "ObservationBuilder":
+        """Set the performer (who/what produced the result).
+
+        ``reference`` is a FHIR reference like ``"Organization/<uuid>"`` or
+        ``"Integration/<id>"``; ``performer_type`` is the resource type
+        (``"Organization"``, ``"Practitioner"``, ``"Integration"``).
+        Replaces any previously-set performer (an observation's performer list
+        is small enough that single-set semantics is the common case; append
+        manually via the ``performer`` field on the built model if needed).
+        """
+        entry: Dict[str, Any] = {"display": display}
+        if reference:
+            entry["reference"] = reference
+        if performer_type:
+            entry["type"] = performer_type
+        self._performer = [entry]
+        return self
+
+    def add_note(self, text: str) -> "ObservationBuilder":
+        """Append a free-text comment (FHIR ``note``).
+
+        Multiple notes are joined with ``" "`` at build time into the
+        ``comment`` field on ``ObservationCreate`` (the storage schema keeps a
+        single comment column). For the rare case where you need the full
+        ``note[]`` array, set it on the built model directly.
+        """
+        if not text:
+            return self
+        self._comment = f"{self._comment} {text}".strip() if self._comment else text
         return self
 
     def set_reference_range(
@@ -270,5 +391,9 @@ class ObservationBuilder:
             biomarker_id=self._biomarker_id,
             lab_reference_range=self._reference_range,
             relative_score=relative_score,
-            interpretation=self._interpretation
+            interpretation=self._interpretation,
+            component=list(self._components) if self._components else None,
+            performer=list(self._performer) if self._performer else None,
+            category=list(self._categories) if self._categories else None,
+            comment=self._comment,
         )

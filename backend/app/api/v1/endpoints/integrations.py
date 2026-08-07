@@ -20,6 +20,7 @@ from app.services.system_integration_service import (
 )
 from integrations.sdk.auth import OAuthStateStore
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from app.core.rate_limit import rate_limit, rate_limit_integration
 
 logger = logging.getLogger(__name__)
 
@@ -378,6 +379,7 @@ async def oauth_callback(
     state: str,
     code: str,
     db: AsyncSession = Depends(get_db),
+    _rl=Depends(rate_limit("integration_oauth_callback", max_requests=30, window=60)),
 ):
     """OAuth callback (browser redirect, unauthenticated — secured by `state`).
 
@@ -1179,6 +1181,48 @@ async def sync_integration(
     }
 
 
+def _resolve_secret_field(domain: str, config: Dict[str, Any], field_name: str) -> Optional[str]:
+    """Return the plaintext value of a secret config field, decrypting if needed.
+
+    Integration config flows declare secret fields via ``get_secret_fields()``
+    and the platform Fernet-encrypts them at rest (stored as
+    ``{"_encrypted": "<token>", "_kid": "<tag>"}``). The HMAC verifiers below
+    need the **plaintext** secret to recompute the MAC — passing the encrypted
+    wrapper verbatim would raise ``AttributeError`` on ``.encode()`` (a dict
+    has no ``encode``) and the request would 500 instead of authenticating.
+
+    This helper resolves the config flow for ``domain`` via the registry and
+    delegates to its ``decrypt_for_use`` when ``field_name`` is declared
+    secret; otherwise the raw value is returned (non-secret fields need no
+    decryption). Returns ``None`` when the field is absent, empty, masked
+    (``"***"``), or decryption fails (key rotation mismatch) — callers treat
+    ``None`` as "no secret configured".
+    """
+    if not isinstance(config, dict):
+        return None
+    raw = config.get(field_name)
+    if raw is None or raw == "" or raw == "***":
+        return None
+    flow = integration_registry.get_config_flow(domain)
+    secret_fields = flow.get_secret_fields() if flow else []
+    if field_name not in secret_fields:
+        # Not declared secret — return as-is (already plaintext).
+        return raw if isinstance(raw, str) else None
+    try:
+        decrypted = flow.decrypt_for_use(config)
+        val = decrypted.get(field_name)
+        if val == "***" or not val:
+            return None
+        return val
+    except Exception as e:
+        logger.warning(
+            "Failed to decrypt %s for integration domain=%s: %s "
+            "(key rotation mismatch? set INTEGRATION_SECRET_KEY_PREVIOUS).",
+            field_name, domain, e,
+        )
+        return None
+
+
 def _verify_webhook_signature(
     secret: str, raw_body: bytes, provided_signature: str
 ) -> bool:
@@ -1261,6 +1305,8 @@ async def integration_webhook(
     integration_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _rl_ip=Depends(rate_limit("integration_webhook", max_requests=120, window=60)),
+    _rl_int=Depends(rate_limit_integration("integration_webhook", max_requests=60, window=60)),
 ) -> Any:
     """
     Handle incoming webhooks for a specific integration.
@@ -1305,7 +1351,7 @@ async def integration_webhook(
     raw_body = await request.body()
 
     cfg = getattr(integration, "user_config", None) or {}
-    webhook_secret = cfg.get("webhook_secret") if isinstance(cfg, dict) else None
+    webhook_secret = _resolve_secret_field(domain, cfg, "webhook_secret")
     if webhook_secret:
         # Accept any of the conventional signature headers.
         provided_sig = (
@@ -1494,6 +1540,8 @@ async def integration_api_proxy(
     path: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _rl_ip=Depends(rate_limit("integration_api_proxy", max_requests=120, window=60)),
+    _rl_int=Depends(rate_limit_integration("integration_api_proxy", max_requests=60, window=60)),
 ) -> Any:
     """
     Handle generic two-way API requests for a specific integration.
@@ -1537,7 +1585,7 @@ async def integration_api_proxy(
     # downstream JSON parsing shares the exact bytes used to verify.
     raw_body = await request.body()
     cfg = getattr(integration, "user_config", None) or {}
-    api_secret = cfg.get("api_secret") if isinstance(cfg, dict) else None
+    api_secret = _resolve_secret_field(domain, cfg, "api_secret")
     if api_secret:
         provided_sig = request.headers.get("X-Api-Signature")
         provided_ts = request.headers.get("X-Api-Timestamp")

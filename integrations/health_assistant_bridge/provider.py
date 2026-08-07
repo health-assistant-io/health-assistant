@@ -3,7 +3,6 @@ import datetime
 from typing import List, Any, Dict, Optional, Literal
 from integrations.sdk import BaseHealthProvider, BaseConfigFlow
 from integrations.sdk.observation_builder import ObservationBuilder
-from integrations.sdk.webhook_security import verify_canonical_signature
 from app.schemas.fhir.observation import ObservationCreate
 from app.ai.schemas.nlp import MapResponsePayload, MetricMappingRequest
 from app.models.user_integration import UserIntegration
@@ -11,11 +10,6 @@ from pydantic import BaseModel, Field
 import json
 
 logger = logging.getLogger(__name__)
-
-# Endpoints that require HMAC verification when an ``api_secret`` is set.
-# ``status`` is left unsigned so a client can probe connectivity / discover SDK
-# versions without a secret handshake; only mutating/data endpoints are gated.
-_HMAC_PROTECTED_PATHS = {"map", "sync"}
 
 # --- Payloads for Two-Way Contract ---
 
@@ -57,92 +51,27 @@ class MapRequestPayload(BaseModel):
 
 class HealthAssistantBridgeProvider(BaseHealthProvider):
     domain = "health_assistant_bridge"
-    
-    async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
-        # This is a bridge integration driven by the client. It does not actively pull data on a schedule.
-        return []
-
-    # --- HMAC verification (Phase 5.6) ----------------------------------
-
-    def _get_api_secret(self, integration: UserIntegration) -> Optional[str]:
-        """Return the plaintext ``api_secret`` for this instance, or ``None``.
-
-        Reads via the config flow's ``decrypt_for_use`` so the secret is
-        decrypted from its Fernet-at-rest form. Returns ``None`` when no
-        secret is configured (UUID-only mode) or it's the masked ``"***"``
-        placeholder (a read-after-write path should never see that here, but
-        defended against for safety).
-        """
-        config = integration.user_config or {}
-        secret = config.get("api_secret")
-        if not secret or secret == "***":
-            return None
-        # Already-encrypted at rest; decrypt for use only.
-        try:
-            from integrations.health_assistant_bridge.config_flow import HealthAssistantBridgeConfigFlow
-            flow = HealthAssistantBridgeConfigFlow()
-            decrypted = flow.decrypt_for_use(config)
-            val = decrypted.get("api_secret")
-            return val if val and val != "***" else None
-        except Exception as e:
-            logger.warning("Could not decrypt api_secret for %s: %s", integration.id, e)
-            return None
-
-    async def _require_hmac(
-        self,
-        integration: UserIntegration,
-        method: str,
-        path: str,
-        request: Any,
-        api_secret: str,
-    ) -> None:
-        """Verify an HMAC-SHA256 signature on the current request.
-
-        Raises ``ValueError`` (→ HTTP 400 via the endpoint) on a missing or
-        invalid signature. The signed canonical string is
-        ``METHOD\\n<path>\\n<timestamp>\\n<raw_body>`` — exactly the form
-        :func:`verify_canonical_signature` expects.
-
-        Reads the raw body via ``await request.body()`` once — FastAPI/Starlette
-        caches the bytes, so the route's later ``await request.json()`` reuses
-        the cached body and isn't broken by this read.
-        """
-        headers = request.headers if hasattr(request, "headers") else {}
-        provided_sig = headers.get("x-api-signature") or headers.get("X-Api-Signature")
-        provided_ts = headers.get("x-api-timestamp") or headers.get("X-Api-Timestamp")
-        if not provided_sig:
-            raise ValueError(
-                "api_secret is configured but the request carries no "
-                "X-Api-Signature header."
-            )
-        # Read + cache the raw body so the later await request.json() works.
-        raw_body = await request.body()
-        ok = verify_canonical_signature(
-            api_secret, method, f"/{path}", raw_body, provided_sig,
-            provided_timestamp=provided_ts, max_skew_seconds=300,
-        )
-        if not ok:
-            logger.info("Rejected HMAC for integration %s on %s /%s", integration.id, method, path)
-            raise ValueError("Invalid or expired request signature.")
 
     async def handle_api_request(self, integration: UserIntegration, path: str, method: str, request: Any) -> Dict[str, Any]:
-        """Handle two-way API requests from headless clients."""
+        """Handle two-way API requests from headless clients.
+
+        Auth is enforced entirely by the platform endpoint
+        (``integration_api_proxy``): when an ``api_secret`` is configured the
+        route verifies ``X-Api-Signature`` (HMAC-SHA256,
+        ``METHOD\\n<path>\\n[<timestamp>\\n]<raw_body>``) on **every** path
+        before dispatch reaches this handler. The provider therefore never
+        re-verifies — the endpoint is the single auth chokepoint, and a
+        request arriving here is already authenticated (either by a valid
+        signature when a secret is set, or by UUID-knowledge in legacy mode).
+        """
         config = integration.user_config or {}
-        
+
         # Log the request details for debugging
         await self.log_debug_payload(
             integration,
             f"API Request: {method} /{path}",
             {"path": path, "method": method}
         )
-
-        # HMAC verification when an api_secret is configured (Phase 5.6).
-        # When unset the bridge runs UUID-as-secret only (acceptable for a
-        # self-hosted box on a trusted/LAN). When set, /map and /sync require
-        # X-Api-Signature + X-Api-Timestamp (±5 min replay window).
-        api_secret = self._get_api_secret(integration)
-        if api_secret and path in _HMAC_PROTECTED_PATHS:
-            await self._require_hmac(integration, method, path, request, api_secret)
 
         if path == "status" and method == "GET":
             # Load the manifest to get the latest SDK versions
@@ -333,14 +262,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from sqlalchemy import select
         from app.models.fhir import Observation
-        from app.models.biomarker_model import BiomarkerDefinition
-        from app.models.telemetry_model import TelemetryDataModel
         from app.models.fhir.organization import OrganizationModel
         from app.models.user_integration import IntegrationSyncLog
         from app.schemas.examination import ExaminationCreate
         from app.services.examination_service import create_examination
         from app.services.fhir_service import map_observations_to_biomarkers
         from app.services.integration_actor import resolve_integration_actor
+        from app.services.integration_sync_service import apply_telemetry_split
 
         count = 0
         start_time = datetime.datetime.now(datetime.timezone.utc)
@@ -444,56 +372,32 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     
                 if observations:
                     await map_observations_to_biomarkers(db, observations)
-                    
-                    # Fetch all definitions used
-                    b_ids = list(set([obs.biomarker_id for obs in observations if obs.biomarker_id]))
-                    b_defs_map = {}
-                    if b_ids:
-                        stmt = select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
-                        res = await db.execute(stmt)
-                        for b in res.scalars().all():
-                            b_defs_map[b.id] = b
 
-                    telemetry_records = []
-                    fhir_records = []
-
-                    for obs in observations:
-                        is_telemetry = False
-                        if obs.biomarker_id and obs.biomarker_id in b_defs_map:
-                            is_telemetry = b_defs_map[obs.biomarker_id].is_telemetry
-                        
-                        if is_telemetry:
-                            slug = b_defs_map[obs.biomarker_id].slug.lower() if b_defs_map[obs.biomarker_id].slug else ""
-                            val = getattr(obs, "normalized_value", None) or getattr(obs, "raw_value", None) or (obs.value_quantity.get("value") if obs.value_quantity else None)
-                            
-                            hr = val if slug == "8867-4" or "heart-rate" in slug else None
-                            steps = val if slug == "41950-7" or "steps" in slug else None
-                            cal = val if "calories" in slug else None
-                            
-                            data_payload = {}
-                            if not hr and not steps and not cal:
-                                data_payload[slug] = val
-                                data_payload[f"{slug}_unit"] = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
-
-                            telemetry_records.append(TelemetryDataModel(
-                                tenant_id=integration.tenant_id,
-                                device_id=integration.instance_name or integration.provider,
-                                timestamp=obs.effective_datetime,
-                                heart_rate=hr,
-                                steps=steps,
-                                calories=cal,
-                                data=data_payload if data_payload else None
-                            ))
-                        else:
-                            fhir_records.append(obs)
-                    
+                    # Route observations through the shared FHIR/telemetry split
+                    # (the same helper ``run_sync`` and the webhook endpoint
+                    # use). Previously this block inlined a stale copy that
+                    # constructed ``TelemetryDataModel(heart_rate=, steps=,
+                    # calories=, data=)`` — kwargs removed in the long-format
+                    # hypertable rewrite (migration ``t1e2l3o4n5g6``); the
+                    # model now takes ``slug=, value=, unit=, patient_id=``.
+                    # The inlined copy would have raised ``TypeError`` on any
+                    # wearable record. The shared helper resolves biomarker
+                    # defs, builds long-format rows, and assigns performers.
+                    telemetry_records, fhir_records = await apply_telemetry_split(
+                        db,
+                        observations,
+                        tenant_id=integration.tenant_id,
+                        instance_name=integration.instance_name,
+                        provider_name=integration.provider,
+                        integration_id=integration.id,
+                    )
                     if telemetry_records:
                         db.add_all(telemetry_records)
                     if fhir_records:
                         db.add_all(fhir_records)
-                        
+
                     count += len(telemetry_records) + len(fhir_records)
-                
+
                 # We do NOT db.add(integration) here because it is already attached 
                 # to the outer session provided by the FastAPI Dependency `Depends(get_db)`.
                 # If we add it to the inner `AsyncSessionLocal()`, SQLAlchemy throws an error.

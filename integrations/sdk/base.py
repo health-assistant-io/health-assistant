@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 import logging
@@ -430,11 +430,13 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
         ``INTEGRATION_MAX_DOC_BYTES_PER_SYNC`` (default 50 MiB) total
         bytes per sync. Over-cap items are dropped with a warning.
 
-        Idempotency is the provider's responsibility — the platform has
-        no document-level dedup today (no ``source_integration_id`` +
-        ``external_id`` columns on ``DocumentModel``). Providers should
-        advance their own cursor via ``set_sync_cursor`` so they don't
-        re-pull the same upstream files on every sync.
+        Idempotency: set ``external_id`` on each ``DocumentPull`` to the
+        upstream's stable document id. The platform dedups on
+        ``(tenant_id, patient_id, source_integration_id, external_id)`` via
+        a partial unique index (migration ``d1o2c3u4m5e6``) — a re-pull of
+        the same document returns the existing row instead of creating a
+        duplicate. ``source_integration_id`` is supplied by the engine (the
+        integration's own id); providers only set ``external_id``.
 
         Default: ``[]`` (no documents). Override on providers that opt
         in via :meth:`supports_documents`. Swallow per-instance errors
@@ -587,10 +589,30 @@ class BaseHealthProvider(CoreBaseHealthProvider, ABC):
             patient_id=integration.patient_id
         )
 
-    @abstractmethod
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
-        """Fetch data and return Pydantic models."""
-        pass
+        """Fetch data and return Pydantic models.
+
+        Concrete default returns ``[]`` so push-only / tool-only providers
+        (``webhook``, ``health_assistant_bridge``, ``mcp_client``) no longer
+        pay a pointless abstract-method tax — they simply inherit this
+        no-op. Polling providers override it to return real observations;
+        the engine calls it unconditionally and treats ``[]`` as "nothing
+        new this cycle".
+        """
+        return []
+
+    def supports_push(self) -> bool:
+        """Opt-in flag for outbound push. Return ``True`` when
+        :meth:`push_data` does real work; the engine skips the call otherwise.
+
+        Mirrors the ``supports_*`` opt-in pattern used by the eight ``pull_*``
+        families. The default detects a real ``push_data`` override by
+        comparing against the base no-op, so providers that already implement
+        ``push_data`` (``dev_dummy``, ``fhir_server``) are picked up
+        automatically — no extra override needed. Return ``False`` explicitly
+        to disable push even when ``push_data`` is overridden.
+        """
+        return self.push_data.__func__ is not BaseHealthProvider.push_data
 
     async def handle_webhook(self, integration: UserIntegration, payload: Any, request: Any = None) -> List[ObservationCreate]:
         """Process inbound webhook payloads and return Pydantic models.

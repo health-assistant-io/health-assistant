@@ -1159,11 +1159,16 @@ async def run_sync(
                 )
 
         # ---- push ----
+        # Gated behind ``supports_push`` (mirrors the ``supports_*`` opt-in
+        # pattern used by the eight ``pull_*`` families). The default detects
+        # a real ``push_data`` override, so ``dev_dummy`` and ``fhir_server``
+        # are still called; push-only-default providers skip the no-op.
         push_result: Optional[Dict[str, Any]] = None
         try:
-            push_result = await provider.push_data(
-                integration, {"status": f"{source}_sync"}
-            )
+            if _opt_in(provider, "supports_push"):
+                push_result = await provider.push_data(
+                    integration, {"status": f"{source}_sync"}
+                )
         except Exception as push_err:
             logger.warning("Push failed for %s: %s", integration.provider, push_err)
             push_result = None

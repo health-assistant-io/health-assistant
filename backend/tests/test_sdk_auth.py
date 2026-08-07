@@ -47,14 +47,21 @@ def _integration(user_config=None):
 
 
 class _FakeRedis:
-    """Minimal async fake of the slice of redis we use (get/set/delete + TTL)."""
+    """Minimal async fake of the slice of redis we use (get/set/delete + TTL,
+    ``nx`` for SET-not-exists, and ``eval`` for token-checked release)."""
 
     def __init__(self):
         self._store = {}
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self._store:
+            existing = self._store[key]
+            # Still live (not expired)?
+            if not (existing[1] and datetime.now(timezone.utc).timestamp() >= existing[1]):
+                return None
         expiry = datetime.now(timezone.utc).timestamp() + ex if ex is not None else None
         self._store[key] = (value, expiry)
+        return True
 
     async def get(self, key):
         if key not in self._store:
@@ -67,6 +74,31 @@ class _FakeRedis:
 
     async def delete(self, key):
         self._store.pop(key, None)
+
+    async def execute_command(self, command, key, *args):
+        """Subset we use: ``GETDEL`` (atomic one-shot consume)."""
+        if command.upper() == "GETDEL":
+            value = await self.get(key)
+            if value is not None:
+                await self.delete(key)
+            return value
+        raise NotImplementedError(command)
+
+    async def eval(self, script, numkeys, key, *args):
+        """Token-checked compare-and-delete (the refresh-lock release path)."""
+        if script.strip().startswith("if redis.call('GET'"):
+            current = await self.get(key)
+            if current is not None and current == (args[0] if args else None):
+                await self.delete(key)
+                return 1
+            return 0
+        # The GETDEL Lua polyfill (consume): get-then-delete, return value.
+        if "redis.call('GET'" in script and "DEL" in script:
+            value = await self.get(key)
+            if value is not None:
+                await self.delete(key)
+            return value
+        return None
 
 
 # ---------- pure functions ----------
@@ -489,3 +521,388 @@ async def test_register_client_redacts_secret_in_error():
     msg = str(ei.value)
     assert "DCR-SECRET-XYZ" not in msg
     assert "client_secret" in msg or "redacted" in msg
+
+
+# ---------------------------------------------------------------------------
+# revoke() routes through the shared _retry_request (SSRF + retry chokepoint)
+# ---------------------------------------------------------------------------
+
+
+def _smart_with_stored_oauth(http, cipher, oauth_blob):
+    """Build a SmartOAuth whose token store returns ``oauth_blob`` for any
+    integration (the cipher is injected so no settings are read)."""
+    from unittest.mock import MagicMock
+
+    store = OAuthTokenStore(cipher=cipher)
+    # Bypass encryption: plant the plaintext blob directly as ``_read`` output.
+    store._read = lambda integration: dict(oauth_blob)
+    smart = SmartOAuth(http, token_store=store, cipher=cipher)
+    return smart
+
+
+@pytest.mark.asyncio
+async def test_revoke_routes_through_retry_request_not_raw_post(monkeypatch):
+    """Phase 3.1: ``SmartOAuth.revoke`` must call the shared ``_retry_request``
+    (which runs ``net_guard.assert_safe_url`` + retries transient failures),
+    not ``self.http.post`` directly. Pre-fix revoke was the only SDK HTTP call
+    that bypassed both SSRF defense and the retry/backoff contract.
+    """
+    cipher = SecretCipher(Fernet.generate_key())
+    calls = {"retry": 0, "raw_post": 0}
+
+    async with _mock_client(lambda r: httpx.Response(200)) as http:
+        # Wrap http.post so we can detect a raw (unguarded) call.
+        original_post = http.post
+
+        async def _spy_post(*a, **kw):
+            calls["raw_post"] += 1
+            return await original_post(*a, **kw)
+
+        http.post = _spy_post  # type: ignore[method-assign]
+
+        import integrations.sdk.http as http_module
+
+        real_retry = http_module._retry_request
+
+        async def _spy_retry(do_request, *, url, method, max_retries=3):
+            calls["retry"] += 1
+            return await real_retry(do_request, url=url, method=method, max_retries=max_retries)
+
+        monkeypatch.setattr(http_module, "_retry_request", _spy_retry)
+
+        smart = _smart_with_stored_oauth(http, cipher, {
+            "revocation_endpoint": "https://ehr/revoke",
+            "refresh_token": "rt-xyz",
+            "access_token": "at-xyz",
+            "client_id": "cid",
+        })
+        await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000001"))
+
+    assert calls["retry"] == 1, "revoke must go through _retry_request"
+    assert calls["raw_post"] == 1, "the retry wrapper still ends up calling http.post once"
+
+
+@pytest.mark.asyncio
+async def test_revoke_blocks_ssrf_cloud_metadata_url(monkeypatch):
+    """A malicious ``revocation_endpoint`` pointing at a cloud-metadata IP is
+    blocked by ``net_guard`` (the SSRF gate inside ``_retry_request``). The
+    best-effort ``except`` swallows it — the integration is still deleted."""
+    from integrations.sdk.exceptions import IntegrationDataError
+
+    cipher = SecretCipher(Fernet.generate_key())
+
+    async with _mock_client(lambda r: httpx.Response(200)) as http:
+        smart = _smart_with_stored_oauth(http, cipher, {
+            "revocation_endpoint": "http://169.254.169.254/latest/meta-data/",
+            "refresh_token": "rt-xyz",
+        })
+        # Must not raise — revoke is best-effort.
+        await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000002"))
+        # No assertion on response: the SSRF block is swallowed; the win is
+        # that no request reached the metadata IP. (assert_safe_url resolves
+        # 169.254.169.254 to a link-local address and rejects it.)
+
+
+@pytest.mark.asyncio
+async def test_revoke_no_revocation_endpoint_is_noop():
+    """No ``revocation_endpoint`` advertised → revoke returns immediately
+    without any HTTP traffic."""
+    cipher = SecretCipher(Fernet.generate_key())
+    posted = {"n": 0}
+
+    class _Client:
+        async def post(self, *a, **kw):
+            posted["n"] += 1
+            return httpx.Response(200)
+
+    smart = _smart_with_stored_oauth(_Client(), cipher, {
+        "refresh_token": "rt-xyz",
+        # no revocation_endpoint
+    })
+    await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000003"))
+    assert posted["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_revoke_no_tokens_is_noop():
+    """``_oauth`` blob with neither refresh nor access token → no POST."""
+    cipher = SecretCipher(Fernet.generate_key())
+    posted = {"n": 0}
+
+    class _Client:
+        async def post(self, *a, **kw):
+            posted["n"] += 1
+            return httpx.Response(200)
+
+    smart = _smart_with_stored_oauth(_Client(), cipher, {
+        "revocation_endpoint": "https://ehr/revoke",
+    })
+    await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000004"))
+    assert posted["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_revoke_swallows_failure_best_effort():
+    """A network failure during revoke must not propagate — the caller
+    (integration delete) proceeds regardless."""
+    cipher = SecretCipher(Fernet.generate_key())
+
+    def handler(request):
+        raise httpx.ConnectError("network down")
+
+    async with _mock_client(handler) as http:
+        smart = _smart_with_stored_oauth(http, cipher, {
+            "revocation_endpoint": "https://ehr/revoke",
+            "refresh_token": "rt-xyz",
+        })
+        # Must not raise.
+        await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000005"))
+
+
+# ---------------------------------------------------------------------------
+# Per-integration refresh lock (Phase 3.2)
+# ---------------------------------------------------------------------------
+
+
+def _smart_with_state_store(http, cipher, fake_redis, oauth_blob):
+    """SmartOAuth wired to ``fake_redis`` via the state store (shared client
+    so the refresh lock and state store see the same keyspace)."""
+    store = OAuthTokenStore(cipher=cipher)
+    # ``_read``/``store``/``is_expired`` all consult the same mutable blob so
+    # a refresh performed by one caller is visible to concurrent waiters.
+    stored = {"blob": dict(oauth_blob)}
+    store._read = lambda integration: dict(stored["blob"])
+
+    def _store(integration, token):
+        stored["blob"] = dict(token)
+
+    store.store = _store  # type: ignore[method-assign]
+    smart = SmartOAuth(
+        http,
+        token_store=store,
+        state_store=OAuthStateStore(redis_client=fake_redis),
+        cipher=cipher,
+    )
+    # ``is_expired`` reads the blob from ``_read`` (our fixed plant); patch it
+    # to consult the latest stored blob so concurrent refreshes are visible.
+    def _is_expired(integration):
+        blob = stored["blob"]
+        exp = blob.get("expires_at")
+        if not exp:
+            return True
+        if isinstance(exp, str):
+            try:
+                exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            except ValueError:
+                return True
+        return datetime.now(timezone.utc) >= exp
+
+    store.is_expired = _is_expired  # type: ignore[method-assign]
+    smart._test_blob = stored  # type: ignore[attr-defined]
+    return smart
+
+
+@pytest.mark.asyncio
+async def test_concurrent_get_live_token_refreshes_once(monkeypatch):
+    """Two concurrent ``get_live_token`` calls on one expired integration must
+    trigger exactly ONE ``/token`` POST. Pre-fix, both saw ``is_expired=True``
+    and both POSTed — against a single-use refresh_token server the loser's
+    token was consumed → next refresh ``invalid_grant`` → spurious reconnect.
+    """
+    # Squat the poll interval so the waiter doesn't sleep long.
+    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+
+    cipher = SecretCipher(Fernet.generate_key())
+    fake_redis = _FakeRedis()
+
+    refresh_calls = {"n": 0}
+
+    def handler(request):
+        refresh_calls["n"] += 1
+        # Simulate the refresh taking a moment so the waiter actually polls.
+        return httpx.Response(200, json={
+            "access_token": f"at-{refresh_calls['n']}",
+            "refresh_token": f"rt-{refresh_calls['n']}",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+        })
+
+    async with _mock_client(handler) as http:
+        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+        smart = _smart_with_state_store(http, cipher, fake_redis, {
+            "access_token": "at-old",
+            "refresh_token": "rt-old",
+            "token_endpoint": "https://ehr/token",
+            "client_id": "cid",
+            "expires_at": past,  # expired → triggers refresh
+        })
+        integration = SimpleNamespace(id="00000000-0000-0000-0000-000000000010")
+
+        # Two concurrent refreshers.
+        results = await asyncio.gather(
+            smart.get_live_token(integration),
+            smart.get_live_token(integration),
+        )
+
+    assert refresh_calls["n"] == 1, (
+        f"concurrent refresh must hit /token exactly once (single-use token "
+        f"safety); got {refresh_calls['n']}"
+    )
+    # Both callers got a valid token (the refreshed one).
+    assert all(r == "at-1" for r in results), results
+
+
+@pytest.mark.asyncio
+async def test_refresh_lock_fails_open_when_redis_down(monkeypatch):
+    """Redis unavailable → lock acquisition fails open (returns True), so the
+    refresh proceeds unguarded rather than deadlocking. This is the
+    pre-lock behaviour — strictly better than blocking the on-use refresh."""
+    cipher = SecretCipher(Fernet.generate_key())
+
+    class _BrokenRedis:
+        async def set(self, *a, **kw):
+            raise ConnectionError("redis down")
+        async def eval(self, *a, **kw):
+            raise ConnectionError("redis down")
+        async def get(self, *a, **kw):
+            raise ConnectionError("redis down")
+        async def delete(self, *a, **kw):
+            raise ConnectionError("redis down")
+
+    refresh_calls = {"n": 0}
+
+    def handler(request):
+        refresh_calls["n"] += 1
+        return httpx.Response(200, json={
+            "access_token": "at-fresh", "refresh_token": "rt-fresh",
+            "expires_in": 3600, "token_type": "Bearer",
+        })
+
+    async with _mock_client(handler) as http:
+        smart = _smart_with_state_store(http, cipher, _BrokenRedis(), {
+            "access_token": "at-old", "refresh_token": "rt-old",
+            "token_endpoint": "https://ehr/token", "client_id": "cid",
+            "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat(),
+        })
+        result = await smart.get_live_token(SimpleNamespace(id="00000000-0000-0000-0000-000000000011"))
+
+    assert result == "at-fresh"
+    assert refresh_calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_live_token_returns_cached_when_not_expired():
+    """A still-valid token short-circuits before any lock/refresh work."""
+    cipher = SecretCipher(Fernet.generate_key())
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    refresh_calls = {"n": 0}
+
+    def handler(request):
+        refresh_calls["n"] += 1
+        return httpx.Response(200, json={"access_token": "x"})
+
+    async with _mock_client(handler) as http:
+        smart = _smart_with_state_store(http, cipher, _FakeRedis(), {
+            "access_token": "at-live", "refresh_token": "rt-live",
+            "token_endpoint": "https://ehr/token", "client_id": "cid",
+            "expires_at": future,
+        })
+        result = await smart.get_live_token(SimpleNamespace(id="00000000-0000-0000-0000-000000000012"))
+
+    assert result == "at-live"
+    assert refresh_calls["n"] == 0
+
+
+# ---------------------------------------------------------------------------
+# force_refresh lock coordination (Phase 3.2 cleanup)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_acquires_lock_and_refreshes(monkeypatch):
+    """force_refresh on a free lock: acquires, refreshes, releases. Exactly
+    one /token POST."""
+    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    cipher = SecretCipher(Fernet.generate_key())
+    fake_redis = _FakeRedis()
+    refresh_calls = {"n": 0}
+
+    def handler(request):
+        refresh_calls["n"] += 1
+        return httpx.Response(200, json={
+            "access_token": "at-force", "refresh_token": "rt-force",
+            "expires_in": 3600, "token_type": "Bearer",
+        })
+
+    async with _mock_client(handler) as http:
+        smart = _smart_with_state_store(http, cipher, fake_redis, {
+            "access_token": "at-old", "refresh_token": "rt-old",
+            "token_endpoint": "https://ehr/token", "client_id": "cid",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        })
+        result = await smart.force_refresh(
+            SimpleNamespace(id="00000000-0000-0000-0000-000000000020")
+        )
+
+    assert result == "at-force"
+    assert refresh_calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_lock_held_waits_for_leader(monkeypatch):
+    """force_refresh when another caller holds the lock: waits for the
+    leader's refresh rather than burning a second single-use refresh_token.
+    Exactly one /token POST total (no double-refresh)."""
+    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    cipher = SecretCipher(Fernet.generate_key())
+    fake_redis = _FakeRedis()
+    refresh_calls = {"n": 0}
+
+    def handler(request):
+        refresh_calls["n"] += 1
+        return httpx.Response(200, json={
+            "access_token": "at-shared", "refresh_token": "rt-shared",
+            "expires_in": 3600, "token_type": "Bearer",
+        })
+
+    async with _mock_client(handler) as http:
+        smart = _smart_with_state_store(http, cipher, fake_redis, {
+            "access_token": "at-old", "refresh_token": "rt-old",
+            "token_endpoint": "https://ehr/token", "client_id": "cid",
+            "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat(),
+        })
+        integration = SimpleNamespace(id="00000000-0000-0000-0000-000000000021")
+
+        # Pre-acquire the lock so force_refresh hits the held branch. Run the
+        # "leader" refresh concurrently so the waiter has something to observe.
+        async def _leader():
+            acquired = await smart._acquire_refresh_lock(integration)
+            assert acquired
+            try:
+                await smart._do_refresh(integration)
+            finally:
+                await smart._release_refresh_lock(integration)
+
+        await asyncio.gather(_leader(), smart.force_refresh(integration))
+
+    # One refresh from the leader; the waiter must NOT have refreshed again.
+    assert refresh_calls["n"] == 1, (
+        f"force_refresh with a held lock must reuse the leader's refresh "
+        f"(single-use-token safety); got {refresh_calls['n']} /token calls"
+    )
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_no_refresh_token_raises():
+    cipher = SecretCipher(Fernet.generate_key())
+
+    async with _mock_client(lambda r: httpx.Response(200, json={})) as http:
+        smart = _smart_with_state_store(http, cipher, _FakeRedis(), {
+            "access_token": "at-old",
+            "token_endpoint": "https://ehr/token", "client_id": "cid",
+            # no refresh_token
+        })
+        with pytest.raises(IntegrationAuthError, match="no refresh_token"):
+            await smart.force_refresh(
+                SimpleNamespace(id="00000000-0000-0000-0000-000000000022")
+            )

@@ -136,6 +136,27 @@ def verify_hmac_signature(
     return _safe_compare(computed, provided.strip())
 
 
+def _canonical_path_forms(path: str) -> list[str]:
+    """Return the canonical path forms the verifier should accept.
+
+    The client SDKs sign the path **with** a leading slash (``"/map"`` — see
+    ``integrations/health_assistant_bridge/{python,ts}-sdk``), while the
+    FastAPI ``{path:path}`` route capture yields it **without** one
+    (``"map"``). Both forms must verify identically: rather than force every
+    caller onto one convention, the verifier recomputes the HMAC over each
+    candidate form and accepts a match on any.
+
+    Returns the two forms ``path`` and ``path`` with a single leading ``/``
+    toggled. Internal segments and trailing slashes are untouched (they are
+    caller-significant). For an empty path a single empty form is returned.
+    """
+    if not path:
+        return [""]
+    if path.startswith("/"):
+        return [path, path[1:] if len(path) > 1 else ""]
+    return [path, "/" + path]
+
+
 def verify_canonical_signature(
     secret: str,
     method: str,
@@ -152,6 +173,12 @@ def verify_canonical_signature(
 
         <METHOD>\n<path>\n[<timestamp>\n]<raw_body>
 
+    The ``path`` is matched tolerantly: both ``"/map"`` and ``"map"`` verify
+    (see :func:`_canonical_path_forms`). This bridges the client SDKs (which
+    sign the path with a leading slash) and the platform route capture (which
+    yields it without one) without forcing either side to coordinate on a
+    single form.
+
     When ``provided_timestamp`` is supplied:
 
     * It must be an integer epoch second.
@@ -165,19 +192,14 @@ def verify_canonical_signature(
     UUID-as-only-secret default.
 
     Returns ``True`` iff the computed HMAC matches ``provided_signature``
-    AND (when timestamp is supplied) the timestamp is within the allowed
-    skew window. Returns ``False`` when ``secret`` or
-    ``provided_signature`` is empty, or when the timestamp is malformed.
+    for any accepted path form AND (when timestamp is supplied) the
+    timestamp is within the allowed skew window. Returns ``False`` when
+    ``secret`` or ``provided_signature`` is empty, or when the timestamp
+    is malformed.
     """
     if not secret or not provided_signature:
         return False
 
-    canonical_parts: list[bytes] = [
-        method.upper().encode("utf-8"),
-        b"\n",
-        path.encode("utf-8"),
-        b"\n",
-    ]
     if provided_timestamp:
         try:
             ts_int = int(provided_timestamp)
@@ -186,12 +208,28 @@ def verify_canonical_signature(
         now = int(time.time())
         if abs(now - ts_int) > max_skew_seconds:
             return False
-        canonical_parts.append(provided_timestamp.encode("utf-8") + b"\n")
-    canonical_parts.append(raw_body)
-    canonical = b"".join(canonical_parts)
+        ts_suffix = provided_timestamp.encode("utf-8") + b"\n"
+    else:
+        ts_suffix = b""
 
-    computed = hmac.new(secret.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
-    return _safe_compare(computed, provided_signature.strip().lower())
+    method_bytes = method.upper().encode("utf-8")
+    body_bytes = raw_body or b""
+    provided = provided_signature.strip().lower()
+
+    # Recompute the HMAC over each accepted path form; accept on the first
+    # constant-time match. At most two forms (with/without leading slash),
+    # so this is one extra HMAC computation in the worst case — cheap.
+    for candidate_path in _canonical_path_forms(path):
+        canonical = (
+            method_bytes + b"\n"
+            + candidate_path.encode("utf-8") + b"\n"
+            + ts_suffix
+            + body_bytes
+        )
+        computed = hmac.new(secret.encode("utf-8"), canonical, hashlib.sha256).hexdigest()
+        if _safe_compare(computed, provided):
+            return True
+    return False
 
 
 def verify_stripe_signature(

@@ -15,9 +15,6 @@ Two layers:
   transition (PROPOSED → CONFIRMED / DISMISSED / FAILED), delegates the
   approve path to :func:`catalog_proposal_service.apply_proposal`, and
   invokes the provider's ``handle_proposal_resolution`` callback.
-
-The resolver lands in the next commit; for now the module covers
-persistence + dedup only.
 """
 from __future__ import annotations
 

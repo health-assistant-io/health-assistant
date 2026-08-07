@@ -31,6 +31,7 @@ import hashlib
 import json
 import logging
 import secrets
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
@@ -48,6 +49,16 @@ OAUTH_CONFIG_KEY = "_oauth"
 STATE_TTL_SECONDS = 600
 DEFAULT_SCOPES = "openid fhirUser launch patient/*.read offline_access"
 PUSH_SCOPES = "openid fhirUser launch patient/*.read patient/*.write offline_access"
+
+# Per-integration refresh-lock tuning. Two concurrent ``get_live_token``
+# calls on the same integration both saw ``is_expired=True`` and both POSTed
+# ``/token`` — disastrous against SMART servers issuing single-use refresh
+# tokens (the loser's token is already consumed → next refresh ``invalid_grant``
+# → spurious "reconnect" prompt). The lock serializes refreshes; the waiter
+# polls the stored token until the leader finishes.
+REFRESH_LOCK_TTL_SECONDS = 30        # max time a refresh should take
+REFRESH_LOCK_POLL_INTERVAL = 0.5     # waiter sleep between re-reads
+REFRESH_LOCK_MAX_WAIT_SECONDS = 30   # bail after this → fall back to own refresh
 
 # Fields whose values must never appear in an exception message or log line —
 # a partial ``access_token`` or a freshly-issued ``client_secret`` would
@@ -495,6 +506,15 @@ class OAuthStateStore:
             self._redis = redis_client
         return self._redis
 
+    @property
+    def redis(self) -> Any:
+        """The resolved Redis client (lazy, platform default if not injected).
+
+        Exposed so co-located stores (e.g. ``SmartOAuth``'s refresh lock) can
+        share the same connection without re-resolving it.
+        """
+        return self._client()
+
     async def issue(self, state: str, payload: Dict[str, Any]) -> None:
         client = self._client()
         await client.set(
@@ -666,21 +686,33 @@ class SmartOAuth:
         (populated by :meth:`complete_connect`-adjacent persistence in the
         endpoint). Raises :class:`IntegrationAuthError` if the token can't be
         refreshed.
+
+        Serializes refresh across concurrent callers via a per-integration
+        Redis lock: SMART servers commonly issue **single-use** refresh
+        tokens, so two overlapping refreshes would burn one and surface a
+        spurious ``invalid_grant`` → "reconnect" prompt. The first caller
+        to acquire the lock refreshes; others poll the stored token until
+        the new one lands.
         """
         oauth = self.tokens._read(integration)
         if not oauth.get("access_token"):
             raise IntegrationAuthError(f"Integration {integration.id} is not connected.")
         if not self.tokens.is_expired(integration):
             return oauth["access_token"]
-        token = await refresh_token(
-            oauth.get("token_endpoint"),
-            oauth.get("refresh_token"),
-            oauth.get("client_id"),
-            client_secret=oauth.get("client_secret"),
-            http=self.http,
-        )
-        self.tokens.store(integration, token)
-        return token["access_token"]
+        # Expired — coordinate refresh so we don't burn a single-use token.
+        if await self._acquire_refresh_lock(integration):
+            try:
+                # Re-check under lock: a concurrent leader may have just
+                # finished refreshing while we were acquiring.
+                if not self.tokens.is_expired(integration):
+                    return self.tokens._read(integration)["access_token"]
+                token = await self._do_refresh(integration)
+                return token["access_token"]
+            finally:
+                await self._release_refresh_lock(integration)
+        # Another caller holds the lock — wait for the refreshed token,
+        # falling back to our own refresh if the leader stalls past the cap.
+        return await self._await_refreshed_token(integration)
 
     async def force_refresh(self, integration: UserIntegration) -> str:
         """Force a token refresh regardless of expiry (e.g. after a 401 race).
@@ -689,12 +721,31 @@ class SmartOAuth:
         :meth:`get_live_token` returning a token (the server revoked/rotated it
         between the expiry check and the call). Raises
         :class:`IntegrationAuthError` if there is no refresh token.
+
+        Takes the same per-integration refresh lock as :meth:`get_live_token`
+        so a forced refresh doesn't race a concurrent on-use refresh.
         """
         oauth = self.tokens._read(integration)
         if not oauth.get("refresh_token"):
             raise IntegrationAuthError(
                 f"Integration {integration.id} has no refresh_token to force-refresh."
             )
+        # Best-effort lock: force_refresh is the recovery path after a 401
+        # proved the cached token is bad. If the lock is held, wait for the
+        # leader's refresh rather than burning a single-use refresh_token
+        # ourselves — _await_refreshed_token polls the stored token and only
+        # refreshes if the leader stalls past the cap.
+        if await self._acquire_refresh_lock(integration):
+            try:
+                token = await self._do_refresh(integration)
+                return token["access_token"]
+            finally:
+                await self._release_refresh_lock(integration)
+        return await self._await_refreshed_token(integration, max_wait=5.0)
+
+    async def _do_refresh(self, integration: UserIntegration) -> Dict[str, Any]:
+        """Perform a single token refresh + store. Caller holds the lock."""
+        oauth = self.tokens._read(integration)
         token = await refresh_token(
             oauth.get("token_endpoint"),
             oauth.get("refresh_token"),
@@ -703,6 +754,80 @@ class SmartOAuth:
             http=self.http,
         )
         self.tokens.store(integration, token)
+        return token
+
+    # --- per-integration refresh lock ----------------------------------
+
+    def _lock_key(self, integration: UserIntegration) -> str:
+        return f"oauth:refresh:{integration.id}"
+
+    async def _redis_or_none(self) -> Any:
+        """The shared Redis client, or ``None`` if unavailable.
+
+        Failures (Redis down, not configured) return ``None`` so the lock
+        degrades to "no coordination" rather than blocking the refresh —
+        the pre-lock behaviour, which is strictly better than deadlocking.
+        """
+        try:
+            return self.states.redis
+        except Exception:
+            return None
+
+    async def _acquire_refresh_lock(self, integration: UserIntegration) -> bool:
+        """``SET NX EX`` a per-integration refresh lock.
+
+        Returns ``True`` if this caller now holds the lock, ``False`` if
+        another caller holds it, and ``True`` if Redis is unavailable (fail
+        open — proceed with an unguarded refresh rather than stalling).
+        """
+        redis = await self._redis_or_none()
+        if redis is None:
+            return True  # fail open
+        token = secrets.token_urlsafe(16)
+        try:
+            ok = await redis.set(
+                self._lock_key(integration), token,
+                nx=True, ex=REFRESH_LOCK_TTL_SECONDS,
+            )
+        except Exception:
+            return True  # fail open
+        if ok:
+            self._refresh_lock_token = token  # stash for checked release
+            return True
+        return False
+
+    async def _release_refresh_lock(self, integration: UserIntegration) -> None:
+        """Release the lock via a token-checked Lua script (only deletes if
+        we still own it, defending against TTL-expired handoff)."""
+        redis = await self._redis_or_none()
+        token = getattr(self, "_refresh_lock_token", None)
+        if redis is None or not token:
+            return
+        key = self._lock_key(integration)
+        try:
+            await redis.eval(
+                "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+                "return redis.call('DEL', KEYS[1]) else return 0 end",
+                1, key, token,
+            )
+        except Exception:
+            pass  # best-effort; the TTL is the real safety net
+        self._refresh_lock_token = None
+
+    async def _await_refreshed_token(
+        self, integration: UserIntegration, *, max_wait: float = REFRESH_LOCK_MAX_WAIT_SECONDS
+    ) -> str:
+        """Poll the stored token until it's no longer expired (another caller
+        is refreshing under the lock). Returns the new access token. If the
+        leader stalls past ``max_wait``, refreshes ourselves (degraded but
+        correct)."""
+        deadline = asyncio.get_event_loop().time() + max_wait
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(REFRESH_LOCK_POLL_INTERVAL)
+            if not self.tokens.is_expired(integration):
+                return self.tokens._read(integration)["access_token"]
+        # Timed out waiting — do our own refresh.
+        token = await self._do_refresh(integration)
         return token["access_token"]
 
     async def revoke(self, integration: UserIntegration) -> None:
@@ -714,7 +839,17 @@ class SmartOAuth:
         and missing endpoints are swallowed — the integration is deleted
         regardless. This prevents stale tokens from lingering on the remote
         server after the user disconnects.
+
+        Routes through :func:`integrations.sdk.http._retry_request` — the
+        shared retry / backoff / SSRF chokepoint — so a transient 429/5xx is
+        retried and a malicious ``revocation_endpoint`` (e.g. a re-purposed
+        cloud-metadata URL from a compromised discovery document) is blocked
+        by ``net_guard``. ``_request_json`` is not suitable here because RFC
+        7009 responses are typically 200 with an empty body, which the JSON
+        parser would reject.
         """
+        from integrations.sdk.http import _retry_request
+
         try:
             oauth = self.tokens._read(integration)
             revoke_url = oauth.get("revocation_endpoint")
@@ -733,7 +868,14 @@ class SmartOAuth:
                 form_data["client_id"] = oauth["client_id"]
             if oauth.get("client_secret"):
                 form_data["client_secret"] = oauth["client_secret"]
-            resp = await self.http.post(revoke_url, data=form_data)
+            # ``_retry_request`` runs ``assert_safe_url`` (SSRF gate) once
+            # before the loop and applies full-jitter backoff on transient
+            # failures — the same contract every other SDK HTTP call uses.
+            resp = await _retry_request(
+                lambda: self.http.post(revoke_url, data=form_data),
+                url=revoke_url,
+                method="POST",
+            )
             if resp.status_code >= 400:
                 logger.warning(
                     "Token revocation for %s returned HTTP %s — tokens may "

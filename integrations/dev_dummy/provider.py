@@ -1,4 +1,4 @@
-"""Dev Dummy reference provider — demonstrates EVERY SDK capability.
+"""Dev Dummy reference provider — demonstrates the core SDK capabilities.
 
 Each method below is annotated with the SDK hook it demonstrates and the
 behaviour the platform engine expects. Toggles in ``config_flow.py`` let
@@ -7,7 +7,7 @@ what the engine does for each one.
 
 Capabilities demonstrated (search for the §N markers in this file):
 
-§A  ``pull_data`` — abstract pull → ``List[ObservationCreate]``
+§A  ``pull_data`` — pull → ``List[ObservationCreate]``
 §B  Exception mapping — ``IntegrationAuthError`` / ``IntegrationRateLimitError``
 §C  Cursor-based delta sync — ``get_sync_cursor`` / ``set_sync_cursor``
 §D  Debug logging — ``log_debug_payload`` (no-op unless debug enabled)
@@ -26,6 +26,12 @@ Capabilities demonstrated (search for the §N markers in this file):
     ``handle_proposal_resolution``
 §O  Documents — ``supports_documents`` / ``pull_documents``
 §P  Lifecycle — ``push_data`` / ``close`` / ``revoke``
+
+Not demonstrated here (see ``integrations/fhir_server/`` for live examples):
+  - Phase 4 treatment hooks: ``supports_medications`` / ``pull_medications``,
+    ``supports_allergies`` / ``pull_allergies``,
+    ``supports_immunizations`` / ``pull_immunizations``
+  - OAuth / SMART-on-FHIR cloud connect (``SmartOAuth``)
 """
 from __future__ import annotations
 

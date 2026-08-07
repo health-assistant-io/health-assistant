@@ -93,11 +93,13 @@ class DocumentPull(BaseModel):
     protect against runaway providers; over-cap items are dropped with a
     warning.
 
-    Per-document idempotency is the provider's responsibility — the
-    platform has no ``source_integration_id`` + ``external_id`` columns
-    on ``DocumentModel`` today (deferred per parent plan §D.2 — dedup
-    piggybacks on the examination link or the provider's own cursor via
-    ``set_sync_cursor``).
+    Per-document idempotency: set ``external_id`` to the upstream's stable
+    document id. The platform dedups on
+    ``(tenant_id, patient_id, source_integration_id, external_id)`` via a
+    partial unique index (migration ``d1o2c3u4m5e6``) — a re-pull of the same
+    upstream document returns the existing row instead of creating a
+    duplicate. ``source_integration_id`` is supplied by the engine (the
+    integration's own id), so providers only set ``external_id``.
     """
 
     model_config = ConfigDict(extra="forbid")

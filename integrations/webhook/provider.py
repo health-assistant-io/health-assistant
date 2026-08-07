@@ -10,10 +10,6 @@ logger = logging.getLogger(__name__)
 
 class WebhookProvider(BaseHealthProvider):
     domain = "webhook"
-    
-    async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
-        # This is a push-only integration, so pull_data is a no-op
-        return []
 
     async def handle_webhook(self, integration: UserIntegration, payload: Any, request: Any = None) -> List[ObservationCreate]:
         """Process inbound webhook payloads."""

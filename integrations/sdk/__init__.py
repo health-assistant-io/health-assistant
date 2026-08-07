@@ -1,6 +1,12 @@
 from .base import BaseHealthProvider, BaseConfigFlow
 from .observation_builder import ObservationBuilder
 from .secrets import SecretCipher, encrypt_fields, decrypt_fields, mask_fields
+# ``ObservationCreate`` + ``CodingSystem`` are re-exported so providers build
+# observations end-to-end without reaching into ``app.schemas`` /
+# ``app.models.enums`` — parity with the other re-exported create schemas
+# below. The ObservationBuilder depends on CodingSystem already.
+from app.schemas.fhir.observation import ObservationCreate
+from app.models.enums import CodingSystem
 from .auth import (
     SmartOAuth,
     OAuthTokenStore,
@@ -87,6 +93,8 @@ __all__ = [
     "BaseHealthProvider",
     "BaseConfigFlow",
     "ObservationBuilder",
+    "ObservationCreate",
+    "CodingSystem",
     "SecretCipher",
     "encrypt_fields",
     "decrypt_fields",
