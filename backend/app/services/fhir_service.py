@@ -420,7 +420,7 @@ async def create_observation(
         subject=subject,
         value_quantity=value_quantity,
         value_string=value_string,
-        value_codeableConcept=value_codeable_concept,
+        value_codeable_concept=value_codeable_concept,
         component=component,
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
@@ -473,7 +473,7 @@ async def update_observation(
     """Update an existing observation's editable fields.
 
     Only the user-mutable fields are patched: ``value_quantity`` /
-    ``value_codeableConcept`` (branched on biomarker value_type),
+    ``value_codeable_concept`` (branched on biomarker value_type),
     ``effective_datetime``, ``method``, ``comment``, ``unit`` (raw).
     Identity fields (``biomarker_id``, ``patient_id``, ``examination_id``,
     ``code``, ``subject``) are never changed — to re-assign a biomarker,
@@ -533,10 +533,10 @@ async def update_observation(
             )
 
             obs.value_quantity = value_quantity if value_quantity is not None else obs.value_quantity
-            obs.value_codeableConcept = (
+            obs.value_codeable_concept = (
                 value_codeable_concept
                 if value_codeable_concept is not None
-                else obs.value_codeableConcept
+                else obs.value_codeable_concept
             )
             obs.value_string = updates.get("value_string", obs.value_string)
 
@@ -1024,6 +1024,13 @@ async def list_medications(
         }
 
 
+# LOINC codes for high-frequency wearable vitals that should default to telemetry
+# routing when auto-creating a biomarker definition (heart rate, steps, SpO2).
+# Must stay in sync with the Android app's HcType table
+# (app/shared/.../HealthConnectMapper.kt).
+_AUTO_CREATE_TELEMETRY_CODES = {"8867-4", "55423-8", "59408-5"}
+
+
 async def map_observations_to_biomarkers(
     db, observations, auto_create_missing: bool = True
 ) -> Dict[str, Any]:
@@ -1040,9 +1047,7 @@ async def map_observations_to_biomarkers(
     import re
     import logging
 
-    logger = logging.getLogger(__name__)
-
-    # Write-time FHIR gate: drop resources that cannot be projected to valid
+    logger = logging.getLogger(__name__)    # Write-time FHIR gate: drop resources that cannot be projected to valid
     # FHIR before biomarker mapping/persistence. This single chokepoint covers
     # every integration route (background sync, manual sync, webhook, bridge,
     # and the FHIR-server provider's pull_now path) since they all funnel here.
@@ -1065,10 +1070,21 @@ async def map_observations_to_biomarkers(
             text = obs.code.get("text")
 
             bdef = None
+            # Tenant scope: match the observation's own tenant OR a global
+            # (NULL-tenant) definition — NEVER another tenant's biomarker. Without
+            # this, a sync in tenant B would link to tenant A's biomarker for the
+            # same LOINC code, and the tenant-scoped catalog/details lookup 404s
+            # ("biomarker not found") even though the row exists. (audit: the
+            # cross-tenant link discovered via the mobile-app HR sync.)
+            tenant_scope = (
+                BiomarkerDefinition.tenant_id.is_(None)
+                | (BiomarkerDefinition.tenant_id == obs.tenant_id)
+            )
             if loinc_code:
                 res = await db.execute(
                     select(BiomarkerDefinition).where(
-                        BiomarkerDefinition.code == loinc_code
+                        BiomarkerDefinition.code == loinc_code,
+                        tenant_scope,
                     )
                 )
                 bdef = res.scalars().first()
@@ -1076,7 +1092,8 @@ async def map_observations_to_biomarkers(
             if not bdef and text:
                 res = await db.execute(
                     select(BiomarkerDefinition).where(
-                        BiomarkerDefinition.name.ilike(text)
+                        BiomarkerDefinition.name.ilike(text),
+                        tenant_scope,
                     )
                 )
                 bdef = res.scalars().first()
@@ -1084,7 +1101,10 @@ async def map_observations_to_biomarkers(
             if not bdef and text and auto_create_missing:
                 slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
                 res = await db.execute(
-                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == slug)
+                    select(BiomarkerDefinition).where(
+                        BiomarkerDefinition.slug == slug,
+                        tenant_scope,
+                    )
                 )
                 bdef = res.scalars().first()
 
@@ -1105,17 +1125,25 @@ async def map_observations_to_biomarkers(
                     class_concept_id = await resolve_biomarker_class_concept(
                         db, legacy_category, tenant_id=obs.tenant_id
                     )
+                    # High-frequency wearable vitals default to telemetry routing so
+                    # they land in the TimescaleDB store (not FHIR bloat). These are
+                    # the LOINC codes the Android app's HcType table maps (heart rate,
+                    # steps, SpO2). Weight/sleep stay FHIR (point-in-time / duration).
+                    is_telemetry = loinc_code in _AUTO_CREATE_TELEMETRY_CODES
                     bdef = BiomarkerDefinition(
                         slug=slug,
                         coding_system="loinc" if loinc_code else "custom",
                         code=loinc_code,
                         name=text,
                         class_concept_id=class_concept_id,
+                        is_telemetry=is_telemetry,
                         tenant_id=obs.tenant_id,
                     )
                     db.add(bdef)
                     await db.flush()
-                    logger.info(f"Auto-created catalog entry for {text} (slug: {slug})")
+                    logger.info(
+                        f"Auto-created catalog entry for {text} (slug: {slug}, telemetry={is_telemetry})"
+                    )
 
             if bdef:
                 # Hard value-shape contract (plan state-biomarkers Step 5):
@@ -1130,7 +1158,7 @@ async def map_observations_to_biomarkers(
                         bdef,
                         value_quantity=obs.value_quantity,
                         value_string=obs.value_string,
-                        value_codeable_concept=obs.value_codeableConcept,
+                        value_codeable_concept=obs.value_codeable_concept,
                         component=obs.component,
                     )
                     obs.biomarker_id = bdef.id

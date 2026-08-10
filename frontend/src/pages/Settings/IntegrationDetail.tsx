@@ -11,6 +11,7 @@ import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
 import ActionResultModal from '../../components/integrations/ActionResultModal';
+import { BridgeConnectCard } from '../../components/integrations/BridgeConnectCard';
 import PatientPickerModal from '../../components/integrations/PatientPickerModal';
 import { DebugConsole } from '../../components/integrations/DebugConsole';
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
@@ -399,6 +400,13 @@ const IntegrationDetail: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {details.domain === 'health_assistant_bridge' && (
+            <BridgeConnectCard
+              instanceId={details.id}
+              hasApiSecret={Boolean(details.user_config?.api_secret)}
+              connectUrl={details.user_config?.connect_url as string | undefined}
+            />
+          )}
           {details.status === 'PENDING' && (
             <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] p-8 border border-blue-200 dark:border-blue-800 shadow-sm">
               <div className="flex items-center justify-between flex-wrap gap-4">

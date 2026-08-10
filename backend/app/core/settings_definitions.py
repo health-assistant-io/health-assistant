@@ -43,6 +43,12 @@ SETTINGS_CATEGORIES: List[SettingCategory] = [
         description_key="settings.category.notifications_desc",
         order=30,
     ),
+    SettingCategory(
+        key="mobile",
+        label_key="settings.category.mobile",
+        description_key="settings.category.mobile_desc",
+        order=40,
+    ),
 ]
 
 
@@ -323,6 +329,20 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
         label_key="settings.notifications_channel_email",
         description_key="settings.notifications_channel_email_desc",
         order=32,
+    ),
+    # ---------------- Mobile (companion app) ----------------
+    # Presentation-only base URL for the onboarding QR. NOT APP_URL itself —
+    # APP_URL is the OAuth token issuer (security.py) and must stay an env var.
+    SettingDefinition(
+        key="mobile.client_base_url",
+        category="mobile",
+        type=SettingType.STRING,
+        default="",
+        storage=SettingStorage.TIERED,
+        allowed_levels=[SettingLevel.SYSTEM],
+        label_key="settings.mobile_client_base_url",
+        description_key="settings.mobile_client_base_url_desc",
+        order=10,
     ),
 ]
 

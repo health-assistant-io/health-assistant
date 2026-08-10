@@ -56,7 +56,7 @@ def _bio(allowed, multi=False):
 
 
 def _obs(value_cc=None, component=None):
-    return SimpleNamespace(value_codeableConcept=value_cc, component=component)
+    return SimpleNamespace(value_codeable_concept=value_cc, component=component)
 
 
 def _cc(code, system=V3):
@@ -280,7 +280,7 @@ async def _add_observation(tenant_id, patient_id, bio_id, *, value_cc, ts, compo
             subject={"reference": f"Patient/{patient_id}"},
             patient_id=patient_id,
             biomarker_id=bio_id,
-            value_codeableConcept=value_cc,
+            value_codeable_concept=value_cc,
             component=component,
             effective_datetime=ts,
         )

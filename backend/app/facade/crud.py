@@ -760,7 +760,7 @@ def _build_resource_filter(model, key: str, value: str):
         # ``value-concept=http://...|POS`` (system|code pair). We also match
         # the same code under component[].valueCodeableConcept so multi-state
         # panels surface the same way as single-state observations.
-        col = getattr(model, "value_codeableConcept", None)
+        col = getattr(model, "value_codeable_concept", None)
         comp_col = getattr(model, "component", None)
         if col is None:
             return None

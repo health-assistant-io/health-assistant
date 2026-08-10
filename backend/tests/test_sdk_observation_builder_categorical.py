@@ -28,7 +28,7 @@ def _a_tz():
 def _translate_vcc(d):
     """SDK schema → ORM kwarg translation.
 
-    The ORM column is ``value_codeableConcept`` (camelCase — predates the
+    The ORM column is ``value_codeable_concept`` (camelCase — predates the
     snake-case convention); the SDK + REST schemas use
     ``value_codeable_concept``. Mirrors the translation in
     ``integration_sync_service.run_sync`` so tests that build an ORM
@@ -36,7 +36,7 @@ def _translate_vcc(d):
     """
     vcc = d.pop("value_codeable_concept", None)
     if vcc is not None:
-        d["value_codeableConcept"] = vcc
+        d["value_codeable_concept"] = vcc
     return d
 
 

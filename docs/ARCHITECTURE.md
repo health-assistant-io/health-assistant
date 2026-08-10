@@ -65,7 +65,7 @@ The **patient-scoped counterpart** is the unified instance search (`app/instance
 
 To maintain absolute data privacy, Health Assistant relies on a "headless" mobile sync architecture rather than querying third-party clouds (like Google Fit or Apple iCloud). 
 High-frequency device data is routed into TimescaleDB using dynamic `is_telemetry` flags on Biomarker definitions. This enables rapid querying of millions of rows while avoiding FHIR observation bloat. **Note:** This represents an architectural tradeoff—telemetry data is stored outside of strict FHIR compliance for performance reasons and is currently excluded from standard FHIR patient exports.
-A custom React Native companion application is the design for bridging on-device health databases (Android Health Connect / iOS HealthKit) directly to the local FastAPI instance — **note this is a design proposal, not a shipped app** (see the banner at the top of [MOBILE_SYNC_APP.md](MOBILE_SYNC_APP.md)). The current mobile-bridge surface is the [`health_assistant_bridge`](../integrations/health_assistant_bridge/) integration, which ships Python + TS SDKs for pushing observations through the standard Integrations Framework.
+The shipped mobile-bridge surface is the [`health_assistant_bridge`](../integrations/health_assistant_bridge/) integration, which ships Python + TS SDKs for pushing on-device health data (Android Health Connect, iOS HealthKit) directly to the self-hosted instance through the standard Integrations Framework, bypassing third-party clouds entirely.
 
 ### Longitudinal Health Tracking
 

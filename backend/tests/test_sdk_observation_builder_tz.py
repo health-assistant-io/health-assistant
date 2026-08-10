@@ -76,7 +76,7 @@ def test_built_observation_passes_fhir_validation():
     obs_dict = obs_create.model_dump(exclude_unset=True)
     vcc = obs_dict.pop("value_codeable_concept", None)
     if vcc is not None:
-        obs_dict["value_codeableConcept"] = vcc
+        obs_dict["value_codeable_concept"] = vcc
     orm = Observation(**obs_dict)
 
     # Must not raise FhirSerializationError

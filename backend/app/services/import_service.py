@@ -1162,9 +1162,9 @@ class ImportService:
                     value_quantity=orm.get("value_quantity"),
                     value_string=orm.get("value_string"),
                     # The converter emits snake_case value_codeable_concept;
-                    # the ORM column is camelCase value_codeableConcept.
+                    # the ORM column is camelCase value_codeable_concept.
                     # Pre-fix this was silently dropped on round-trip.
-                    value_codeableConcept=orm.get("value_codeable_concept"),
+                    value_codeable_concept=orm.get("value_codeable_concept"),
                     reference_range=orm.get("reference_range"),
                     performer=orm.get("performer"),
                     interpretation=orm.get("interpretation"),
@@ -1184,7 +1184,7 @@ class ImportService:
             effective_datetime=_parse_dt(orm.get("effective_datetime")),
             value_quantity=orm.get("value_quantity"),
             value_string=orm.get("value_string"),
-            value_codeableConcept=orm.get("value_codeable_concept"),
+            value_codeable_concept=orm.get("value_codeable_concept"),
             reference_range=orm.get("reference_range"),
             performer=orm.get("performer"),
             interpretation=orm.get("interpretation"),

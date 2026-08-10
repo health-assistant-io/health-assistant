@@ -11,6 +11,9 @@ import json
 
 logger = logging.getLogger(__name__)
 
+# Per-request document upload byte cap for the bridge's /documents path.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
 # --- Payloads for Two-Way Contract ---
 
 class ClientRecord(BaseModel):
@@ -134,8 +137,312 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 logger.error(f"[{self.domain}] Sync failed: {e}", exc_info=True)
                 return {"success": False, "error": str(e)}
         
+        # --- Phase 4: read/management paths (patient-scoped to the bound instance) ---
+        elif path == "observations/latest" and method == "GET":
+            return await self._read_observations_latest(integration, request)
+        elif path == "observations" and method == "GET":
+            return await self._read_observations(integration, request)
+        elif path == "biomarkers" and method == "GET":
+            return await self._read_biomarkers(integration, request)
+        elif path == "examinations" and method == "GET":
+            return await self._read_examinations(integration, request)
+        elif path == "examinations" and method == "POST":
+            return await self._create_examination(integration, request)
+        elif path.startswith("examinations/") and method == "GET":
+            parts = path.split("/")
+            if len(parts) == 2:
+                return await self._read_examination_detail(integration, parts[1])
+            if len(parts) == 3 and parts[2] == "documents":
+                return await self._list_documents(integration, parts[1], request)
+            raise NotImplementedError(f"GET /{path} is not supported by the bridge API.")
+        elif path.startswith("examinations/") and method == "POST":
+            parts = path.split("/")
+            if len(parts) == 3 and parts[2] == "documents":
+                return await self._upload_document(integration, parts[1], request)
+            raise NotImplementedError(f"POST /{path} is not supported by the bridge API.")
         else:
             raise NotImplementedError(f"Path '{path}' with method '{method}' is not supported by the bridge API.")
+
+    def _bound_patient_id(self, integration: UserIntegration):
+        """The one patient this instance can act on. Every read/create MUST
+        filter by this — the resolved actor carries the OWNER's role (which can
+        be ADMIN), so patient isolation is this explicit filter, not automatic.
+        Mobile-app plan §4 "Patient scoping"."""
+        from uuid import UUID
+        pid = getattr(integration, "patient_id", None)
+        if pid is None:
+            raise ValueError("Bridge instance is not bound to a patient.")
+        return UUID(str(pid))
+
+    @staticmethod
+    def _read_envelope(data: Any, cursor: Optional[str] = None) -> Dict[str, Any]:
+        return {
+            "data": data,
+            "cursor": cursor,
+            "cached_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+
+    async def _read_observations_latest(self, integration: UserIntegration, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from app.services.fhir_service import list_observations
+        patient_id = self._bound_patient_id(integration)
+        try:
+            limit = int(request.query_params.get("limit", "50"))
+        except (TypeError, ValueError):
+            limit = 50
+        async with AsyncSessionLocal() as db:
+            result = await list_observations(
+                tenant_id=integration.tenant_id, patient_id=patient_id, limit=limit
+            )
+        return self._read_envelope(result.get("items", []))
+
+    async def _read_observations(self, integration: UserIntegration, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from app.services.fhir_service import list_observations
+        patient_id = self._bound_patient_id(integration)
+        qp = request.query_params
+        try:
+            limit = min(int(qp.get("limit", "200")), 500)
+        except (TypeError, ValueError):
+            limit = 200
+        async with AsyncSessionLocal() as db:
+            result = await list_observations(
+                tenant_id=integration.tenant_id,
+                patient_id=patient_id,
+                code=qp.get("biomarker"),
+                start_date=qp.get("since"),
+                end_date=qp.get("until"),
+                limit=limit,
+            )
+        return self._read_envelope(result.get("items", []))
+
+    async def _read_biomarkers(self, integration: UserIntegration, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import select, or_
+        from app.models.biomarker_model import BiomarkerDefinition
+        try:
+            limit = min(int(request.query_params.get("limit", "500")), 1000)
+        except (TypeError, ValueError):
+            limit = 500
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(
+                select(BiomarkerDefinition)
+                .where(or_(
+                    BiomarkerDefinition.tenant_id == integration.tenant_id,
+                    BiomarkerDefinition.tenant_id.is_(None),
+                ))
+                .limit(limit)
+            )
+            items = [
+                {
+                    "id": str(b.id),
+                    "name": b.name,
+                    "slug": getattr(b, "slug", None),
+                    "code": b.code,
+                    "coding_system": getattr(b, "coding_system", None),
+                    "unit": getattr(b, "default_unit", None),
+                }
+                for b in res.scalars().all()
+            ]
+        return self._read_envelope(items)
+
+    async def _read_examinations(self, integration: UserIntegration, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import select
+        from app.models.examination_model import ExaminationModel
+        patient_id = self._bound_patient_id(integration)
+        try:
+            limit = min(int(request.query_params.get("limit", "50")), 200)
+        except (TypeError, ValueError):
+            limit = 50
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(
+                select(ExaminationModel)
+                .where(
+                    ExaminationModel.tenant_id == integration.tenant_id,
+                    ExaminationModel.patient_id == patient_id,
+                )
+                .order_by(ExaminationModel.examination_date.desc())
+                .limit(limit)
+            )
+            items = [
+                {
+                    "id": str(e.id),
+                    "examination_date": e.examination_date.isoformat() if e.examination_date else None,
+                    "notes": e.notes,
+                    "patient_notes": e.patient_notes,
+                    "extraction_status": e.extraction_status,
+                }
+                for e in res.scalars().all()
+            ]
+        return self._read_envelope(items)
+
+    async def _read_examination_detail(self, integration: UserIntegration, exam_id: str) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            e = await self._bound_examination(db, integration, exam_id)
+            return {
+                "id": str(e.id),
+                "examination_date": e.examination_date.isoformat() if e.examination_date else None,
+                "notes": e.notes,
+                "patient_notes": e.patient_notes,
+                "extraction_status": e.extraction_status,
+                "diagnoses": e.diagnoses,
+                "impressions": e.impressions,
+            }
+
+    async def _bound_examination(self, db, integration: UserIntegration, exam_id: str):
+        """Load an examination scoped to the bound patient; raises ValueError if
+        the id is malformed or belongs to a different patient. The linchpin of
+        patient isolation for the `/examinations/{id}/*` paths (plan §4)."""
+        from sqlalchemy import select
+        from app.models.examination_model import ExaminationModel
+        from uuid import UUID
+        patient_id = self._bound_patient_id(integration)
+        try:
+            eid = UUID(exam_id)
+        except ValueError:
+            raise ValueError(f"Invalid examination id: {exam_id}")
+        res = await db.execute(
+            select(ExaminationModel).where(
+                ExaminationModel.id == eid,
+                ExaminationModel.tenant_id == integration.tenant_id,
+                ExaminationModel.patient_id == patient_id,
+            )
+        )
+        e = res.scalars().one_or_none()
+        if e is None:
+            raise ValueError("Examination not found for this patient.")
+        return e
+
+    async def _list_documents(self, integration: UserIntegration, exam_id: str, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import select
+        from app.models.document_model import DocumentModel
+        patient_id = self._bound_patient_id(integration)
+        async with AsyncSessionLocal() as db:
+            exam = await self._bound_examination(db, integration, exam_id)
+            res = await db.execute(
+                select(DocumentModel).where(
+                    DocumentModel.examination_id == exam.id,
+                    DocumentModel.tenant_id == integration.tenant_id,
+                    DocumentModel.patient_id == patient_id,
+                    DocumentModel.deleted_at.is_(None),
+                ).order_by(DocumentModel.created_at.desc())
+            )
+            items = [
+                {
+                    "id": str(d.id),
+                    "filename": d.filename,
+                    "status": d.status,
+                    "progress": d.progress,
+                    "external_id": d.external_id,
+                    "created_at": d.created_at.isoformat() if d.created_at else None,
+                }
+                for d in res.scalars().all()
+            ]
+        return self._read_envelope(items)
+
+    async def _upload_document(self, integration: UserIntegration, exam_id: str, request: Any) -> Dict[str, Any]:
+        """Upload a document (base64 JSON) for an examination. Idempotent via the
+        existing ``(tenant, patient, integration, external_id)`` dedup: pass a
+        client ``id``/``client_request_id`` and a re-upload after a network blip
+        returns the same row (no re-write, no OCR re-dispatch)."""
+        import base64
+        from app.core.database import AsyncSessionLocal
+        from app.services.document_service import ingest_document_bytes
+        patient_id = self._bound_patient_id(integration)
+        payload = await request.json()
+        client_id = payload.get("id") or payload.get("client_request_id")
+        filename = payload.get("filename") or "upload.bin"
+        data_b64 = payload.get("data")
+        if not data_b64:
+            raise ValueError("Missing base64 'data' field.")
+        try:
+            content = base64.b64decode(data_b64, validate=True)
+        except Exception:
+            raise ValueError("Invalid base64 'data'.")
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise ValueError(
+                f"Upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB cap."
+            )
+        include_in_extraction = bool(payload.get("include_in_extraction", False))
+        async with AsyncSessionLocal() as db:
+            exam = await self._bound_examination(db, integration, exam_id)
+            doc = await ingest_document_bytes(
+                filename=filename,
+                content=content,
+                content_type=payload.get("content_type"),
+                tenant_id=integration.tenant_id,
+                patient_id=patient_id,
+                owner_id=integration.user_id,
+                db=db,
+                examination_id=exam.id,
+                include_in_extraction=include_in_extraction,
+                source_integration_id=integration.id,
+                external_id=client_id,
+            )
+        return {
+            "id": str(doc.id),
+            "external_id": client_id,
+            "filename": doc.filename,
+            "status": doc.status,
+            "progress": doc.progress,
+        }
+
+    async def _create_examination(self, integration: UserIntegration, request: Any) -> Dict[str, Any]:
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy import select
+        from app.models.fhir.organization import OrganizationModel
+        from app.schemas.examination import ExaminationCreate
+        from app.services.examination_service import create_examination
+        from app.services.integration_actor import resolve_integration_actor
+        payload_data = await request.json()
+        client_id = payload_data.get("id") or payload_data.get("client_request_id")
+        patient_id = self._bound_patient_id(integration)
+        exam_date = None
+        if payload_data.get("date"):
+            try:
+                exam_date = datetime.datetime.fromisoformat(
+                    payload_data["date"].replace("Z", "+00:00")
+                ).date()
+            except ValueError:
+                pass
+        async with AsyncSessionLocal() as db:
+            org_id = None
+            lab_name = payload_data.get("lab_name")
+            if lab_name:
+                org = (await db.execute(
+                    select(OrganizationModel).where(
+                        OrganizationModel.tenant_id == integration.tenant_id,
+                        OrganizationModel.name == lab_name,
+                    )
+                )).scalar_one_or_none()
+                if not org:
+                    org = OrganizationModel(tenant_id=integration.tenant_id, name=lab_name)
+                    db.add(org)
+                    await db.flush()
+                org_id = org.id
+            actor = await resolve_integration_actor(db, integration)
+            payload = ExaminationCreate(
+                patient_id=patient_id,
+                examination_date=exam_date,
+                notes=payload_data.get("notes"),
+                patient_notes=payload_data.get("patient_notes"),
+                category=payload_data.get("category"),
+                organization_id=org_id,
+                diagnoses=payload_data.get("diagnoses") or [],
+                impressions=payload_data.get("impressions"),
+                auto_extract_metadata=False,
+                extraction_status="completed",
+            )
+            exam = await create_examination(
+                db, actor, payload,
+                source_integration_id=integration.id,
+                external_id=client_id,
+            )
+            await db.commit()
+        return {"id": str(exam.id), "external_id": client_id}
 
     def _parse_records(self, records: List[ClientRecord], builder: ObservationBuilder, integration_id: str, instance_name: str, examination_id: Optional[str] = None) -> List[ObservationCreate]:
         observations = []
@@ -369,7 +676,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     obs_dict = obs_data.model_dump(exclude_unset=True) if hasattr(obs_data, "model_dump") else obs_data.dict(exclude_unset=True) if hasattr(obs_data, "dict") else obs_data
                     obs = Observation(**obs_dict)
                     observations.append(obs)
-                    
+
                 if observations:
                     await map_observations_to_biomarkers(db, observations)
 

@@ -203,8 +203,8 @@ async def test_save_observation_state_branch_builds_value_codeable_concept():
     )
 
     obs = _intercept_obs(db)
-    assert obs.value_codeableConcept is not None
-    coding = obs.value_codeableConcept["coding"]
+    assert obs.value_codeable_concept is not None
+    coding = obs.value_codeable_concept["coding"]
     assert coding[0]["code"] == "POS"
     assert coding[0]["system"] == V3
     assert coding[0]["display"] == "Positive"
@@ -279,7 +279,7 @@ async def test_save_observation_state_branch_defaults_system_when_model_omits():
     )
 
     obs = _intercept_obs(db)
-    assert obs.value_codeableConcept["coding"][0]["system"] == V3
+    assert obs.value_codeable_concept["coding"][0]["system"] == V3
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +322,7 @@ async def test_save_observation_quantity_path_unchanged():
     )
 
     obs = _intercept_obs(db)
-    assert obs.value_codeableConcept is None
+    assert obs.value_codeable_concept is None
     assert obs.value_quantity == {"value": 5.5, "unit": "mmol/L"}
     assert obs.raw_value == 5.5
     assert obs.normalized_value is not None

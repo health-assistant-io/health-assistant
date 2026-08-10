@@ -222,7 +222,7 @@ def _state_observation_status(biomarker, obs) -> str:
             return "Abnormal"
         return "Normal" if any_normal else "Unknown"
 
-    pair = _extract_coding_pair(obs.value_codeableConcept)
+    pair = _extract_coding_pair(obs.value_codeable_concept)
     if pair is None:
         return "Unknown"
     return "Normal" if pair in normal_pairs else "Abnormal"
@@ -806,7 +806,7 @@ async def get_biomarker_trends(
         if is_state_biomarker:
             from app.services.observation_value_validator import _extract_coding_pair
 
-            pair = _extract_coding_pair(obs.value_codeableConcept)
+            pair = _extract_coding_pair(obs.value_codeable_concept)
             if pair is not None:
                 state_code, state_system = pair
                 # Resolve display + is_normal from the biomarker's allowed_states.
@@ -822,8 +822,8 @@ async def get_biomarker_trends(
                 if state_display is None:
                     # Fall back to the coding's own display, then the bare code.
                     coding = (
-                        obs.value_codeableConcept.get("coding")
-                        if isinstance(obs.value_codeableConcept, dict)
+                        obs.value_codeable_concept.get("coding")
+                        if isinstance(obs.value_codeable_concept, dict)
                         else None
                     )
                     if isinstance(coding, list) and coding and isinstance(coding[0], dict):
@@ -1598,7 +1598,7 @@ async def get_biomarker_state_history(
 
     history = []
     for obs in observations:
-        pair = _extract_coding_pair(obs.value_codeableConcept)
+        pair = _extract_coding_pair(obs.value_codeable_concept)
         if pair is None:
             continue
         history.append(

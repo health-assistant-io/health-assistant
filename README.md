@@ -252,7 +252,6 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 **Integrations & API**
 - [REST API Reference](docs/API.md) · [FHIR R4 Facade](docs/FHIR_R4_FACADE.md)
 - [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integrations SDK](docs/INTEGRATIONS_SDK.md)
-- [Mobile Sync App](docs/MOBILE_SYNC_APP.md) — headless companion architecture
 
 **Development & operations**
 - [Development Guide](docs/DEVELOPMENT.md) · [CI/CD Deployment](docs/CI_CD_SETUP.md) · [Release Process](docs/RELEASE_PROCESS.md)

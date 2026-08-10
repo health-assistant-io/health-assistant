@@ -1,11 +1,12 @@
 # Client SDK Setup
 
-The Bridge ships two strictly-typed client SDKs in the repository — you don't need to hand-roll the HTTP calls. Both support timeouts, bounded retry with full-jitter backoff, and HMAC signing when an `api_secret` is configured.
+The Bridge ships three strictly-typed client SDKs in the repository — you don't need to hand-roll the HTTP calls. All support timeouts, bounded retry with full-jitter backoff, and HMAC signing when an `api_secret` is configured.
 
 | SDK | Location | Package | Use cases |
 |---|---|---|---|
 | Python (sync + async) | `integrations/health_assistant_bridge/python-sdk/` | `health-assistant-bridge-sdk` | backend scrapers, cron jobs, data-science notebooks |
 | TypeScript | `integrations/health_assistant_bridge/ts-sdk/` | `@health-assistant/bridge-client` | browser extensions, React Native, Node.js scripts |
+| Kotlin | `integrations/health_assistant_bridge/kotlin-sdk/` | `io.healthassistant:kotlin-sdk` | Android (and future iOS via KMP) companion apps |
 
 Both SDKs are versioned (`SDK_VERSION`) and the `/status` endpoint returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
 
@@ -143,8 +144,51 @@ This is why both clients pass `data=`/`body=` (raw bytes) rather than `json=` �
 
 The TS SDK uses Node's `crypto` module for HMAC. It targets Node 18+ (uses global `fetch` + `AbortController`). If you run it in a pure-browser context without Node `crypto` polyfilled, import a `crypto` polyfill or use the Python SDK from a small backend.
 
+## Kotlin
+
+The Kotlin SDK (`io.healthassistant:kotlin-sdk`, currently JVM — converts to Kotlin Multiplatform with an iOS target later) is consumed by the first-party Android app and any Kotlin/JVM client. If your Gradle build lives next to this repo, add it as a composite build:
+
+```kotlin
+// settings.gradle.kts
+includeBuild("../core/integrations/health_assistant_bridge/kotlin-sdk")
+```
+```kotlin
+// build.gradle.kts
+dependencies {
+    implementation("io.healthassistant:kotlin-sdk:0.1.0")
+}
+```
+
+```kotlin
+import io.healthassistant.bridge.BridgeClient
+import io.healthassistant.bridge.ClientRecord
+import io.healthassistant.bridge.SyncPayload
+
+val client = BridgeClient(
+    baseUrl = "https://ha.example",
+    integrationId = "00000000-0000-0000-0000-000000000000",
+    apiSecret = "a-very-long-random-secret", // omit for UUID-only mode
+)
+
+val status = client.getStatus()                       // never signed
+val resp = client.syncData(
+    SyncPayload(clientVersion = "0.1", sourceSystem = "android",
+        records = listOf(ClientRecord(type = "quantitative", code = "8867-4",
+            codingSystem = "loinc", name = "Heart Rate", value = 75.0, unit = "bpm")))
+)
+// Read + management paths (HMAC-signed when the secret is set):
+val body = client.requestText("GET", "/observations/latest")
+client.close()
+```
+
+`getStatus()` is **never** signed; every other call signs when `apiSecret` is
+set. `requestText(...)` returns the response body (throwing `BridgeException`
+on a non-2xx) so callers can decode JSON without depending on ktor. The HMAC
+parity test (`SigningParityTest`) asserts byte-for-byte equality with the
+Python `sign_request` across ASCII / empty / non-ASCII / GET vectors.
+
 ## See also
 
 - [Authentication & Security](authentication.md) — the canonical form + replay window the signing helper reproduces.
-- [API Reference](api-reference.md) — the three endpoints and the payload schemas.
+- [API Reference](api-reference.md) — the push endpoints, the read/management paths, and the payload schemas.
 - [Troubleshooting](troubleshooting.md) — signing failures, timeout, skew-window errors.

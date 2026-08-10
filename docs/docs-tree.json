@@ -148,10 +148,10 @@
         "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate-limit cooldown, cursor sync, OAuth2+PKCE, webhook HMAC helpers, clinical events, examinations, catalog proposals, HITL review, document pull with DB dedup, and notification digests."
       },
       {
-        "id": "mobile-sync-app",
-        "file": "MOBILE_SYNC_APP.md",
-        "title": "Mobile Sync App",
-        "description": "Architecture for a headless mobile companion app that syncs on-device health data (Android Health Connect, iOS HealthKit) to a self-hosted Health Assistant instance."
+        "id": "mobile-sync",
+        "file": "MOBILE_SYNC.md",
+        "title": "Mobile Sync (Android)",
+        "description": "How the self-hosted, open-source Health Assistant Android app reads Health Connect data (heart rate, steps, weight, SpO2, sleep) and pushes it through the Bridge integration to your server — offline-first, privacy-first, no third-party cloud."
       }
     ]
   },

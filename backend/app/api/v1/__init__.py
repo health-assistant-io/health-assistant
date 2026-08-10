@@ -40,6 +40,7 @@ from app.api.v1.endpoints.settings import router as settings_router
 from app.api.v1.endpoints.setup_checklist import router as setup_checklist_router
 from app.api.v1.endpoints.websockets import router as websockets_router
 from app.api.v1.endpoints.oauth import router as oauth_router
+from app.api.v1.endpoints.public_config import router as public_config_router
 from app.core.security import require_session_token
 
 api_router = APIRouter(prefix="/api/v1")
@@ -49,6 +50,7 @@ api_router = APIRouter(prefix="/api/v1")
 # api tokens that authenticate against it. Session-only guard does not apply.
 api_router.include_router(oauth_router)
 api_router.include_router(fhir_r4_router)
+api_router.include_router(public_config_router)
 
 # --- Internal surface: session tokens only (frontend / mobile) -------------
 # The guard rejects ``token_kind="api"`` tokens on every domain route so an

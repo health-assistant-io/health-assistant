@@ -1727,7 +1727,9 @@
       "localization": "Εντοπισμός",
       "localization_desc": "Γλώσσα και μονάδες μέτρησης.",
       "notifications": "Ειδοποιήσεις",
-      "notifications_desc": "Πώς και πότε λαμβάνετε ειδοποιήσεις."
+      "notifications_desc": "Πώς και πότε λαμβάνετε ειδοποιήσεις.",
+      "mobile": "Εφαρμογή κινητού",
+      "mobile_desc": "Πώς η εφαρμογή κινητού συνδέεται σε αυτόν τον διακομιστή."
     },
     "biomarker_precision": "Προεπιλεγμένη ακρίβεια (τιμές ≥ 30)",
     "biomarker_precision_desc": "Δεκαδικά ψηφία για τιμές βιοδεικτών 30 και άνω (p.x. βήματα, γλυκόζη σε mg/dL).",
@@ -1754,6 +1756,8 @@
     "unit_system_desc": "Προτιμώμενες μονάδες μέτρησης.",
     "unit_system_metric": "Μετρικό (kg, cm)",
     "unit_system_imperial": "Αγγλοσαξονικό (lb, ft)",
+    "mobile_client_base_url": "URL σύνδεσης πελάτη",
+    "mobile_client_base_url_desc": "Το βασικό URL που χρησιμοποιεί η εφαρμογή κινητού (π.χ. https://health.example.com). Αφήστε το κενό για χρήση του APP_URL, μετά του URL περιήγησης. Το «URL σύνδεσης» ανά εγγραφή το υπερισχύει.",
     "notifications_enabled": "Ειδοποιήσεις ενεργές",
     "notifications_enabled_desc": "Κύριος διακόπτης για ειδοποιήσεις σε αυτή τη συσκευή.",
     "load_failed": "Φόρτωση ρυθμίσεων απέτυχε",

@@ -370,7 +370,7 @@ class BiomarkerValueType(str, enum.Enum):
       with a ``Unit`` and numeric reference ranges. The default and only
       pre-state-biomarker behavior.
     - ``STATE``    — categorical value stored in
-      ``Observation.value_codeableConcept``, drawn from the biomarker's
+      ``Observation.value_codeable_concept``, drawn from the biomarker's
       ``allowed_states`` set (a controlled vocabulary sourced from HL7
       v3-ObservationInterpretation / SNOMED / DataAbsentReason). The
       "normal set" (``BiomarkerAllowedState.is_normal``) replaces numeric

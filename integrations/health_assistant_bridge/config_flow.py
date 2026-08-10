@@ -47,6 +47,17 @@ class HealthAssistantBridgeConfigFlow(BaseConfigFlow):
                             "X-Api-Timestamp epoch seconds, ±5 min window)."
                         ),
                     },
+                    "connect_url": {
+                        "type": "string",
+                        "title": "Connect URL (optional — for the mobile app)",
+                        "description": (
+                            "The base URL the mobile app should use to reach this "
+                            "server (e.g. https://health.example.com or "
+                            "http://192.168.1.10:8000). Used by the onboarding QR. "
+                            "Leave blank to use the server's APP_URL, then the URL "
+                            "you're browsing from."
+                        ),
+                    },
                 },
                 "required": ["instance_name"],
             },

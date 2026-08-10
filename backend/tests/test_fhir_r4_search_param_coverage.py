@@ -346,7 +346,7 @@ class _FakeStateObservation:
     """Observation with all the value[x] + component slots the new params use."""
     value_quantity = Column("value_quantity", JSONB)
     value_string = Column("value_string", String)
-    value_codeableConcept = Column("value_codeableConcept", JSONB)
+    value_codeable_concept = Column("value_codeable_concept", JSONB)
     component = Column("component", JSONB)
 
 
@@ -357,7 +357,7 @@ def test_value_concept_bare_code_dispatched():
     compiled = _literal_sql(pred)
     assert "POS" in compiled
     # Either valueCodeableConcept or component[].valueCodeableConcept.
-    assert "value_codeableConcept" in compiled
+    assert "value_codeable_concept" in compiled
     assert "component" in compiled
 
 

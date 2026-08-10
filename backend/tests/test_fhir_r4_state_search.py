@@ -91,7 +91,7 @@ async def _insert_observation(
             code={"text": code_text},
             subject={"reference": f"Patient/{patient_id}"},
             patient_id=patient_id,
-            value_codeableConcept=value_cc,
+            value_codeable_concept=value_cc,
             value_string=value_string,
             component=component,
         )

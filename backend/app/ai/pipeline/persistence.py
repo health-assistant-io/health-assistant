@@ -249,7 +249,7 @@ async def save_observation(
             code={"coding": coding, "text": b.name},
             subject={"reference": patient_ref},
             effective_datetime=effective_date,
-            value_codeableConcept=value_cc,
+            value_codeable_concept=value_cc,
             biomarker_id=biomarker_id,
             method=b.method,
             interpretation=_normalize_interpretation(b.interpretation_flag),
@@ -279,7 +279,7 @@ async def save_observation(
         try:
             validate_observation_value(
                 target_bio,
-                value_codeable_concept=obs.value_codeableConcept,
+                value_codeable_concept=obs.value_codeable_concept,
             )
         except Exception as e:
             logger.warning(

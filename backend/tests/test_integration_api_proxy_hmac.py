@@ -250,6 +250,38 @@ async def test_api_proxy_no_secret_legacy_path_with_warning(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_api_proxy_status_is_exempt_from_signature():
+    """GET /status is NEVER signed — it is the connectivity + SDK-discovery
+    probe. Even when ``api_secret`` is set, a missing ``X-Api-Signature``
+    must NOT reject it (the bridge docs + Python/TS/Kotlin SDKs all treat
+    ``/status`` as unsigned). Mobile-app plan §6.1.
+    """
+    integration = _integration(api_secret="topsecret")
+    request = _request("GET", b"", headers={})
+    db = MagicMock()
+    db.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=integration))
+    )
+    db.commit = AsyncMock()
+
+    provider = MagicMock()
+    provider.handle_api_request = AsyncMock(return_value={"status": "active"})
+
+    with patch.object(integrations_endpoint, "integration_registry") as reg:
+        reg.get_provider.return_value = provider
+        result = await integrations_endpoint.integration_api_proxy(
+            domain="health_assistant_bridge",
+            integration_id=str(integration.id),
+            path="status",
+            request=request,
+            db=db,
+        )
+
+    assert result == {"status": "active"}
+    provider.handle_api_request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_api_proxy_with_secret_rejects_missing_signature():
     """api_secret set + no X-Api-Signature header → 401."""
     from fastapi import HTTPException

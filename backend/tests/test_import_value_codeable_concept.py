@@ -6,7 +6,7 @@ Pre-fix: ``import_service._upsert_observation`` silently dropped
 ``value_codeable_concept`` (snake) but the upsert only read
 ``value_quantity`` / ``value_string``, never the CodeableConcept column.
 
-Post-fix: the upsert persists ``value_codeableConcept`` (camelCase ORM
+Post-fix: the upsert persists ``value_codeable_concept`` (camelCase ORM
 column) from the converter's ``value_codeable_concept`` (snake) key, and
 the hard validator runs on the import path.
 """
@@ -117,10 +117,10 @@ async def test_value_codeable_concept_round_trips_through_fhir_import():
                 )
             )
         ).scalar_one()
-        assert obs.value_codeableConcept is not None, (
-            "value_codeableConcept was dropped on import round-trip"
+        assert obs.value_codeable_concept is not None, (
+            "value_codeable_concept was dropped on import round-trip"
         )
-        coding = obs.value_codeableConcept["coding"]
+        coding = obs.value_codeable_concept["coding"]
         assert coding[0]["code"] == "POS"
         assert coding[0]["system"] == V3
         assert coding[0]["display"] == "Positive"

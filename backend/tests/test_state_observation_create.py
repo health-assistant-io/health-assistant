@@ -170,7 +170,7 @@ async def test_create_observation_state_happy_path():
         tenant_id=tenant.id,
     )
     assert obs is not None
-    assert obs.value_codeableConcept == _cc("POS", display="Positive")
+    assert obs.value_codeable_concept == _cc("POS", display="Positive")
     assert obs.value_quantity is None
     assert obs.raw_value is None, "STATE observations must not carry raw_value"
     assert obs.normalized_value is None

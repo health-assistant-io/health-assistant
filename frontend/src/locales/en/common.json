@@ -1788,7 +1788,9 @@
       "localization": "Localization",
       "localization_desc": "Language and measurement units.",
       "notifications": "Notifications",
-      "notifications_desc": "How and when you get notified."
+      "notifications_desc": "How and when you get notified.",
+      "mobile": "Mobile app",
+      "mobile_desc": "How the mobile companion app reaches this server."
     },
     "biomarker_precision": "Default precision (values ≥ 30)",
     "biomarker_precision_desc": "Decimal places for biomarker values of 30 and above (e.g. steps, glucose in mg/dL).",
@@ -1815,6 +1817,8 @@
     "unit_system_desc": "Preferred measurement units.",
     "unit_system_metric": "Metric (kg, cm)",
     "unit_system_imperial": "Imperial (lb, ft)",
+    "mobile_client_base_url": "Client connect URL",
+    "mobile_client_base_url_desc": "The base URL the mobile app uses to reach this server (e.g. https://health.example.com). Leave blank to use the server's APP_URL, then the URL you're browsing from. A per-instance 'Connect URL' overrides this.",
     "notifications_enabled": "Notifications enabled",
     "notifications_enabled_desc": "Master toggle for push and in-app notifications on this device.",
     "load_failed": "Failed to load settings",

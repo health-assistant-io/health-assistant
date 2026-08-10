@@ -190,7 +190,10 @@ class Observation(
     effective_datetime = Column(DateTime(timezone=True), nullable=True)
     value_quantity = Column(JSONB, nullable=True)
     value_string = Column(String, nullable=True)
-    value_codeableConcept = Column(JSONB, nullable=True)
+    # DB column stays "value_codeableConcept" (created by the baseline migration);
+    # the Python attribute is the snake_case ``value_codeable_concept`` to match
+    # the schema/builder and its siblings value_quantity/value_string.
+    value_codeable_concept = Column("value_codeableConcept", JSONB, nullable=True)
     reference_range = Column(JSONB, nullable=True)
     interpretation = Column(JSONB, nullable=True)
     comment = Column(String, nullable=True)
@@ -242,7 +245,7 @@ class Observation(
             else None,
             "value_quantity": self.value_quantity,
             "value_string": self.value_string,
-            "value_codeable_concept": self.value_codeableConcept,
+            "value_codeable_concept": self.value_codeable_concept,
             "reference_range": self.reference_range,
             "interpretation": _flatten_interpretation(self.interpretation),
             "component": self.component,
@@ -293,7 +296,7 @@ class Observation(
                 "effectiveDateTime": fhir_isoformat(self.effective_datetime),
                 "valueQuantity": _clean_quantity(self.value_quantity),
                 "valueString": self.value_string,
-                "valueCodeableConcept": self.value_codeableConcept,
+                "valueCodeableConcept": self.value_codeable_concept,
                 "referenceRange": self.reference_range,
                 "interpretation": _normalize_interpretation(self.interpretation),
                 "component": self.component,

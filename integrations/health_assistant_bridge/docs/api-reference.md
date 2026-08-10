@@ -1,14 +1,19 @@
 # API Reference
 
-The bridge exposes three endpoints under the two-way API proxy:
+The bridge exposes **push** endpoints (`/status`, `/map`, `/sync`) and
+**read/management** endpoints (observations, biomarkers, examinations, and
+their documents) under one two-way API proxy:
 
 ```
 {base_url}/api/v1/integrations/health_assistant_bridge/api/{integration_id}/{path}
 ```
 
-`{integration_id}` is the bridge instance UUID (part of the URL, bound to a patient). `{path}` selects the endpoint. All request/response bodies are JSON.
+`{integration_id}` is the bridge instance UUID (part of the URL, bound to one
+patient). `{path}` selects the endpoint. All request/response bodies are JSON.
 
-When an `api_secret` is configured, `/map` and `/sync` require an HMAC signature — see [Authentication](authentication.md). `/status` is never signed.
+When an `api_secret` is configured, `/map`, `/sync`, and every read/management
+path require an HMAC signature — see [Authentication](authentication.md).
+`/status` is **never** signed (it is the connectivity + SDK-discovery probe).
 
 ---
 
@@ -207,6 +212,82 @@ The `cursor` in the request body is **opaque to the server** — it's stored as-
 
 - **Grouped examinations**: dedup keys on `(tenant, patient, integration_id, examination.id)`. **Always pass the upstream's stable `id`** (the portal's `reportId` / `encounterId`) — without it every sync creates a duplicate exam. A re-pull of the same upstream file is a no-op: the exam and its nested records are skipped.
 - **Flat records**: rely on backend heuristics (matching timestamps + values) — weaker. For structured lab data, prefer grouped examinations with explicit ids.
+
+## Read & management paths
+
+These let a headless client (mobile app, CLI) **read** the bound patient's data
+and **create** examinations / upload documents through the same single
+connection identity. All are HMAC-gated when `api_secret` is set and are
+**scoped to the patient the instance is bound to** — the actor resolved from
+the integration carries the owner's role, so patient isolation is an explicit
+per-path filter, not an automatic consequence of the credential.
+
+### Response envelope (reads)
+
+```json
+{ "data": [ ... ], "cursor": "...|null", "cached_at": "2026-08-09T12:00:00Z" }
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /observations/latest?limit=` | Latest values per biomarker (dashboard cards). |
+| `GET /observations?biomarker=&since=&until=&limit=` | Time series for one biomarker (charts). `biomarker` is the LOINC/SNOMED code; `since`/`until` are ISO 8601; `limit` ≤ 500. |
+| `GET /biomarkers?limit=` | The patient's biomarker catalog (id, name, slug, code, coding system, unit). Includes tenant-scoped + global (`tenant_id IS NULL`) definitions. |
+| `GET /examinations?limit=` | The patient's examinations (newest first; `limit` ≤ 200). |
+| `GET /examinations/{id}` | One examination's detail (notes, status, diagnoses, impressions). |
+| `POST /examinations` | Create an examination (offline-friendly). Idempotent on the client `id`. |
+| `GET /examinations/{id}/documents` | Documents attached to an examination. |
+| `POST /examinations/{id}/documents` | Upload a document for an examination (base64 JSON). Idempotent on the client id. |
+
+**Errors** follow the bridge convention: `ValueError` → HTTP 400 with a
+human-readable `error` string (e.g. an `id` belonging to a different patient
+returns *"Examination not found for this patient."*); unknown paths → HTTP 400.
+
+### POST /examinations
+
+```json
+{
+  "id": "client-generated-uuid-or-stable-id",
+  "date": "2026-08-08T00:00:00Z",
+  "lab_name": "City General Hospital Laboratory",
+  "category": "Biochemical Tests",
+  "notes": "Fasting panel",
+  "patient_notes": "Minor fatigue",
+  "diagnoses": ["Hypertension"],
+  "impressions": null
+}
+```
+
+**Response (200):** `{ "id": "<server uuid>", "external_id": "<your id>" }`.
+
+**Idempotency:** the request flows through `examination_service.create_examination`
+with `source_integration_id` + `external_id` = your `id`, so re-sending the same
+`id` after a network blip returns the same examination — no duplicate.
+
+### POST /examinations/{id}/documents
+
+Upload a document as base64 JSON. The `id`/`client_request_id` makes it
+idempotent via the existing document dedup key
+`(tenant, patient, source_integration_id, external_id)` — a re-upload of the
+same id returns the same row (no re-write, no OCR re-dispatch).
+
+```json
+{
+  "id": "client-generated-id",
+  "filename": "panel.pdf",
+  "content_type": "application/pdf",
+  "data": "<base64-encoded bytes>",
+  "include_in_extraction": false
+}
+```
+
+**Response (200):** `{ "id", "external_id", "filename", "status", "progress" }`.
+
+**Limits:** the decoded payload must not exceed **25 MiB** (over → HTTP 400).
+The filename extension must be on the upload allowlist (`pdf`, `png`, `jpg`,
+`tiff`, `docx`, … — `svg`/`html`/`xml`/`js` are blocked). Set
+`include_in_extraction: false` for headless uploads that should not trigger the
+OCR/NLP pipeline.
 
 ## See also
 

@@ -332,3 +332,105 @@ async def test_parse_records_does_not_leak_interpretation(provider, integration_
     assert obs[1].interpretation is None
 
 
+# ---------------------------------------------------------------------------
+# Phase 4 — read/management paths (patient-scoped to the bound instance).
+# Mobile-app plan §4. The mock-based tests prove the provider passes the bound
+# patient_id to the services (isolation wiring); DB-backed cross-patient
+# integration tests are the gold-standard follow-up.
+# ---------------------------------------------------------------------------
+
+
+def _mock_session_local():
+    """An AsyncSessionLocal mock usable as `async with AsyncSessionLocal() as db:`."""
+    mock_session_local = MagicMock()
+    mock_db = AsyncMock()
+    mock_session_local.return_value.__aenter__.return_value = mock_db
+    mock_session_local.return_value.__aexit__.return_value = None
+    return mock_session_local, mock_db
+
+
+@pytest.mark.asyncio
+async def test_read_observations_latest_scopes_to_bound_patient(provider, integration_mock):
+    """The provider MUST pass the bound patient_id + tenant_id to list_observations
+    so the read is patient-scoped (the resolved actor carries the owner's role)."""
+    captured = {}
+
+    async def fake_list(**kwargs):
+        captured.update(kwargs)
+        return {"items": [{"code": "8867-4", "value": 75.0}], "total": 1}
+
+    request_mock = MagicMock()
+    request_mock.query_params = {}
+
+    mock_session_local, _ = _mock_session_local()
+    with patch("app.core.database.AsyncSessionLocal", mock_session_local), \
+         patch("integrations.health_assistant_bridge.provider.list_observations", create=True, side_effect=fake_list), \
+         patch("app.services.fhir_service.list_observations", side_effect=fake_list):
+        result = await provider.handle_api_request(
+            integration=integration_mock, path="observations/latest", method="GET", request=request_mock,
+        )
+
+    assert captured["patient_id"] == integration_mock.patient_id
+    assert captured["tenant_id"] == integration_mock.tenant_id
+    assert result["data"] == [{"code": "8867-4", "value": 75.0}]
+    assert "cached_at" in result
+
+
+@pytest.mark.asyncio
+async def test_read_paths_require_a_bound_patient(provider, integration_mock):
+    """No patient_id on the instance → ValueError (→ HTTP 400). Patient-scoped
+    by construction means the read refuses rather than falling back to tenant-wide."""
+    integration_mock.patient_id = None
+    request_mock = MagicMock()
+    request_mock.query_params = {}
+
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration_mock, path="observations/latest", method="GET", request=request_mock,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_examination_passes_external_id_for_dedup(provider, integration_mock):
+    """POST /examinations routes through create_examination with the bound
+    patient_id + (source_integration_id, external_id=client id) so retries are
+    idempotent — the service dedups on that key (api-reference.md §Dedup)."""
+    request_mock = AsyncMock()
+    request_mock.json.return_value = {
+        "id": "ext-exam-1",
+        "date": "2026-08-08T00:00:00Z",
+        "category": "Blood Test",
+        "diagnoses": ["Hypertension"],
+    }
+    captured = {}
+
+    async def fake_create(db, actor, payload, *, source_integration_id=None, external_id=None):
+        captured["source"] = source_integration_id
+        captured["external"] = external_id
+        captured["patient_id"] = payload.patient_id
+        exam = MagicMock()
+        exam.id = uuid4()
+        return exam
+
+    mock_session_local, _ = _mock_session_local()
+    with patch("app.core.database.AsyncSessionLocal", mock_session_local), \
+         patch("app.services.examination_service.create_examination", side_effect=fake_create), \
+         patch("app.services.integration_actor.resolve_integration_actor", return_value=MagicMock()):
+        result = await provider.handle_api_request(
+            integration=integration_mock, path="examinations", method="POST", request=request_mock,
+        )
+
+    assert captured["source"] == integration_mock.id
+    assert captured["external"] == "ext-exam-1"
+    assert captured["patient_id"] == integration_mock.patient_id
+    assert result["external_id"] == "ext-exam-1"
+
+
+@pytest.mark.asyncio
+async def test_unknown_path_raises_not_implemented(provider, integration_mock):
+    with pytest.raises(NotImplementedError):
+        await provider.handle_api_request(
+            integration=integration_mock, path="totally/unknown", method="GET", request=MagicMock(),
+        )
+
+

@@ -1554,6 +1554,10 @@ async def integration_api_proxy(
     preserved for backward compatibility, but a warning is logged so
     operators are nudged toward configuring a secret.
 
+    Exception: ``GET /status`` is the unsigned connectivity + SDK-discovery
+    probe and is exempt from signature verification even when ``api_secret``
+    is set (see integrations/health_assistant_bridge/docs/authentication.md).
+
     See ``_verify_api_signature`` for the canonical signing scheme.
     """
     try:
@@ -1586,7 +1590,12 @@ async def integration_api_proxy(
     raw_body = await request.body()
     cfg = getattr(integration, "user_config", None) or {}
     api_secret = _resolve_secret_field(domain, cfg, "api_secret")
-    if api_secret:
+    # GET /status is the connectivity + SDK-discovery probe and is NEVER
+    # signed, even when an api_secret is set — a client must be able to
+    # reach it before establishing a secret handshake. Every other path
+    # remains HMAC-gated when a secret is configured.
+    is_status_probe = path == "status" and request.method == "GET"
+    if api_secret and not is_status_probe:
         provided_sig = request.headers.get("X-Api-Signature")
         provided_ts = request.headers.get("X-Api-Timestamp")
         if not provided_sig or not _verify_api_signature(

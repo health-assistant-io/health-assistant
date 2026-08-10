@@ -604,7 +604,7 @@ async def seed_state_biomarkers(session, tenant_id: UUID, patient_id: UUID, user
                 subject={"reference": f"Patient/{patient_id}"},
                 patient_id=patient_id,
                 biomarker_id=bio.id,
-                value_codeableConcept={
+                value_codeable_concept={
                     "coding": [
                         {
                             "code": state.code,

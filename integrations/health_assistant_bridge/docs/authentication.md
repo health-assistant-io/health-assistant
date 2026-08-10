@@ -48,6 +48,8 @@ The server rejects a request when `abs(server_now - timestamp) > 300` seconds (�
 | `GET /status` | ❌ never | Connectivity probe + SDK-version discovery must work before the client has a secret handshake. |
 | `POST /map` | ✅ | Triggers an LLM call on your account. |
 | `POST /sync` | ✅ | Writes clinical data. |
+| `GET /observations`, `/observations/latest`, `/biomarkers`, `/examinations`, `/examinations/{id}`, `/examinations/{id}/documents` | ✅ | Reads the bound patient's clinical data. |
+| `POST /examinations`, `POST /examinations/{id}/documents` | ✅ | Writes clinical data (examinations, documents). |
 
 ## Server-side verification
 

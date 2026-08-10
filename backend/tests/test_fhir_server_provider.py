@@ -193,7 +193,7 @@ def _local_obs(*, system="http://loinc.org", code="2345-7", performer=None, oid=
         effective_datetime=datetime(2026, 6, 19, 12, 0, tzinfo=timezone.utc),
         value_quantity={"value": value, "unit": "mg/dL", "code": "mg/dL"},
         value_string=None,
-        value_codeableConcept=None,
+        value_codeable_concept=None,
         raw_value=value,
         subject={"reference": "Patient/LOCAL"},
         status="final",
