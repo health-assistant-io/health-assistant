@@ -46,11 +46,20 @@ def test_diagnostic_report_subject_ref_index_exists():
 
 def test_observation_subject_ref_index_is_used_by_planner():
     """EXPLAIN of a subject->>'reference' lookup must show an Index Scan,
-    proving the planner picks up the expression index."""
+    proving the planner picks up the expression index.
+
+    ``SET enable_seqscan = off`` makes the check deterministic: without it the
+    planner correctly prefers a Seq Scan when the table happens to be small at
+    this point in the run (this test sorts early, before the data-heavy tests),
+    making the assertion order-dependent. Penalising seq scans does NOT fake the
+    result — if the index were missing the plan would still be a Seq Scan and
+    the test would still fail; it merely removes the row-count dependency.
+    """
     sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
+            conn.execute(text("SET enable_seqscan = off"))
             plan = conn.execute(
                 text(
                     "EXPLAIN (COSTS OFF) SELECT * FROM fhir_observations "

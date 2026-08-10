@@ -230,14 +230,26 @@ per-path filter, not an automatic consequence of the credential.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /observations/latest?limit=` | Latest values per biomarker (dashboard cards). |
-| `GET /observations?biomarker=&since=&until=&limit=` | Time series for one biomarker (charts). `biomarker` is the LOINC/SNOMED code; `since`/`until` are ISO 8601; `limit` ≤ 500. |
-| `GET /biomarkers?limit=` | The patient's biomarker catalog (id, name, slug, code, coding system, unit). Includes tenant-scoped + global (`tenant_id IS NULL`) definitions. |
+| `GET /observations/latest?limit=` | **Latest value per biomarker** (dashboard cards) — FHIR observations and telemetry (heart rate / steps / SpO₂) merged, one row per biomarker, newest first. |
+| `GET /observations?biomarker=&since=&until=&limit=` | Time series for one biomarker (charts). `biomarker` is the LOINC/SNOMED code **or slug**; `since`/`until` are ISO 8601; `limit` ≤ 500. Telemetry-flagged biomarkers (heart rate `8867-4`, steps `55423-8`, SpO₂ `59408-5`, …) are served from the telemetry store; all other biomarkers from FHIR observations. |
+| `GET /biomarkers?limit=` | The patient's biomarker catalog (id, name, slug, code, coding system, unit, is_telemetry, reference range, value_type). Includes tenant-scoped + global (`tenant_id IS NULL`) definitions, ordered by name. |
 | `GET /examinations?limit=` | The patient's examinations (newest first; `limit` ≤ 200). |
 | `GET /examinations/{id}` | One examination's detail (notes, status, diagnoses, impressions). |
 | `POST /examinations` | Create an examination (offline-friendly). Idempotent on the client `id`. |
 | `GET /examinations/{id}/documents` | Documents attached to an examination. |
 | `POST /examinations/{id}/documents` | Upload a document for an examination (base64 JSON). Idempotent on the client id. |
+
+**Observation item shape.** Every row in `/observations` and `/observations/latest`
+carries the same fields regardless of source (FHIR or telemetry), so a client
+never branches on source. Key fields: `effective_datetime`, `code` (FHIR
+`{coding:[{system, code}]}`), `raw_value`/`normalized_value`/`normalized_unit`,
+`reference_range` (**always the flat `{low, high}` object** — FHIR-list shaped
+ranges are normalized server-side), `interpretation`, `relative_score`,
+`biomarker_id`, `biomarker_slug`, `biomarker_value_type`
+(`quantity`\|`state`), and for STATE biomarkers `value_string` /
+`value_codeable_concept`. Telemetry rows synthesize the same shape from the
+biomarker definition (slug → code/unit/range, `relative_score` computed from the
+definition's reference range).
 
 **Errors** follow the bridge convention: `ValueError` → HTTP 400 with a
 human-readable `error` string (e.g. an `id` belonging to a different patient

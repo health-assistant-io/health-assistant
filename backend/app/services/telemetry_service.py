@@ -11,11 +11,12 @@ uniform metric discriminator.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 _UPLOAD_CHUNK_SIZE = 5000
 
 
-def _coerce_uuid(value: str | UUID | None) -> Optional[UUID]:
+def _coerce_uuid(value: str | UUID | None) -> UUID | None:
     if isinstance(value, UUID):
         return value
     try:
@@ -38,7 +39,7 @@ def _coerce_uuid(value: str | UUID | None) -> Optional[UUID]:
         return None
 
 
-def _parse_iso_date(value: str) -> Optional[datetime]:
+def _parse_iso_date(value: str) -> datetime | None:
     """Parse an ISO-8601 string into a timezone-aware datetime.
 
     Accepts both full datetime (``2026-06-21T10:00:00Z``) and date-only
@@ -59,7 +60,7 @@ def _parse_iso_date(value: str) -> Optional[datetime]:
         return None
 
 
-def _parse_slug_list(metrics: Optional[str]) -> Optional[set]:
+def _parse_slug_list(metrics: str | None) -> set | None:
     """Turn a comma-separated ``metrics`` query param into a slug set.
 
     Returns ``None`` when there's nothing to filter on (caller omits the
@@ -88,7 +89,7 @@ async def upload_telemetry_data(
     if tenant_uuid is None:
         raise ValueError(f"Invalid tenant_id: {tenant_id!r}")
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for point in data_points:
         patient_uuid = _coerce_uuid(getattr(point, "patient_id", None))
         rows.append(
@@ -133,8 +134,8 @@ async def get_telemetry_data(
     device_id: str,
     start_date: str,
     end_date: str,
-    metrics: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    metrics: str | None = None,
+) -> list[dict[str, Any]]:
     """Read raw telemetry rows for a device, scoped to the caller's tenant.
 
     ``metrics`` is an optional comma-separated list of biomarker slugs; when
@@ -172,9 +173,9 @@ async def get_telemetry_summary(
     db: AsyncSession,
     tenant_id: str | UUID,
     target_date: str,
-    device_id: Optional[str] = None,
-    metrics: Optional[str] = None,
-) -> Dict[str, Any]:
+    device_id: str | None = None,
+    metrics: str | None = None,
+) -> dict[str, Any]:
     """Generic per-slug daily aggregates: ``{slug: {min,max,avg,sum,count}}``.
 
     Groups by ``slug`` so every telemetry biomarker is covered without
@@ -220,7 +221,7 @@ async def get_telemetry_summary(
     def _f(v):
         return float(v) if v is not None else None
 
-    out_metrics: Dict[str, Dict[str, Any]] = {}
+    out_metrics: dict[str, dict[str, Any]] = {}
     for row in result.all():
         out_metrics[row.slug] = {
             "min": _f(row.mn),
@@ -239,7 +240,7 @@ async def get_telemetry_anomalies(
     device_id: str,
     metric: str,
     period_days: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Detect anomalies in a device's telemetry stream for one slug.
 
     ``metric`` is interpreted directly as a biomarker slug (no alias map).
@@ -273,3 +274,133 @@ async def get_telemetry_anomalies(
 
     detector = AnomalyDetector()
     return detector.detect_biomarker_anomalies(historical, new_value)
+
+
+# --------------------------------------------------------------------------- #
+#  Patient-scoped readers (bridge read path)                                  #
+# --------------------------------------------------------------------------- #
+
+
+def _bound_dt(value: Any) -> datetime | None:
+    """Coerce a date/datetime string or object into a tz-aware datetime.
+
+    Accepts ISO-8601 strings (via ``_parse_iso_date``) and datetime objects
+    (naive assumed UTC). Returns None on parse failure.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return _parse_iso_date(value)
+
+
+async def _patient_scope_predicate(
+    db: AsyncSession, tenant_uuid: UUID, patient_uuid: UUID
+):
+    """Telemetry patient-scoping predicate, including the legacy fallback.
+
+    Fresh rows always carry ``patient_id`` (``apply_telemetry_split`` persists
+    it from the observation). Pre-migration rows may be NULL; when the tenant
+    has exactly one patient, NULL-patient rows scoped to that tenant are also
+    matched (mirrors ``migrate_biomarker_data``'s single-patient-tenant
+    default). Multi-patient tenants never fall back, so cross-patient
+    isolation is strict.
+    """
+    from app.models.fhir.patient import Patient
+
+    count = await db.execute(
+        select(func.count(Patient.id)).where(Patient.tenant_id == tenant_uuid)
+    )
+    if (count.scalar() or 0) == 1:
+        return or_(
+            TelemetryDataModel.patient_id == patient_uuid,
+            TelemetryDataModel.patient_id.is_(None),
+        )
+    return TelemetryDataModel.patient_id == patient_uuid
+
+
+async def get_patient_telemetry_series(
+    db: AsyncSession,
+    tenant_id: str | UUID,
+    patient_id: str | UUID,
+    slug: str,
+    start_date: Any = None,
+    end_date: Any = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Patient-scoped telemetry series for one biomarker slug.
+
+    Bridge-facing counterpart to ``get_telemetry_data`` (which is device-
+    scoped): filters by the persisted ``patient_id`` instead of a device, so
+    a bound patient can read back every wearable stream regardless of which
+    device produced it. Rows are returned newest-first (the bridge emits them
+    newest-first too). Legacy NULL-patient rows are matched only in
+    single-patient tenants (see ``_patient_scope_predicate``).
+    """
+    tenant_uuid = _coerce_uuid(tenant_id)
+    patient_uuid = _coerce_uuid(patient_id)
+    if tenant_uuid is None or patient_uuid is None:
+        return []
+
+    try:
+        cap = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        cap = 500
+
+    scope = await _patient_scope_predicate(db, tenant_uuid, patient_uuid)
+    query = (
+        select(TelemetryDataModel)
+        .where(
+            TelemetryDataModel.tenant_id == tenant_uuid,
+            TelemetryDataModel.slug == slug,
+            scope,
+        )
+        .order_by(TelemetryDataModel.timestamp.desc())
+        .limit(cap)
+    )
+
+    start_dt = _bound_dt(start_date)
+    if start_dt is not None:
+        query = query.where(TelemetryDataModel.timestamp >= start_dt)
+    end_dt = _bound_dt(end_date)
+    if end_dt is not None:
+        query = query.where(TelemetryDataModel.timestamp <= end_dt)
+
+    result = await db.execute(query)
+    return [row.to_dict() for row in result.scalars().all()]
+
+
+async def get_patient_telemetry_latest(
+    db: AsyncSession,
+    tenant_id: str | UUID,
+    patient_id: str | UUID,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Latest telemetry row per slug for one patient.
+
+    ``DISTINCT ON (slug)`` scoped to tenant + patient — the telemetry side of
+    the bridge's latest-per-biomarker read. Returns the same ``to_dict()``
+    shape as ``get_patient_telemetry_series``.
+    """
+    tenant_uuid = _coerce_uuid(tenant_id)
+    patient_uuid = _coerce_uuid(patient_id)
+    if tenant_uuid is None or patient_uuid is None:
+        return []
+
+    try:
+        cap = max(1, min(int(limit), 500))
+    except (TypeError, ValueError):
+        cap = 50
+
+    scope = await _patient_scope_predicate(db, tenant_uuid, patient_uuid)
+    query = (
+        select(TelemetryDataModel)
+        .where(
+            TelemetryDataModel.tenant_id == tenant_uuid,
+            scope,
+        )
+        .distinct(TelemetryDataModel.slug)
+        .order_by(TelemetryDataModel.slug, TelemetryDataModel.timestamp.desc())
+        .limit(cap)
+    )
+
+    result = await db.execute(query)
+    return [row.to_dict() for row in result.scalars().all()]

@@ -72,6 +72,34 @@ exactly where the web app's charts and analytics read from.
 
 ---
 
+## Reading data back
+
+The same Bridge connection reads the data the app pushed (and everything else
+the bound patient has). Two read paths serve the app's native Home cards and
+Insights charts:
+
+- **`GET /observations/latest?limit=`** — the latest value **per biomarker**,
+  FHIR observations and telemetry merged into one list (newest first). A dense
+  heart-rate series never crowds out the other biomarkers.
+- **`GET /observations?biomarker=&since=&until=`** — the time series for one
+  biomarker. `biomarker` accepts the LOINC code or the slug. Telemetry-flagged
+  biomarkers (heart rate, steps, SpO₂) are served from the telemetry store; all
+  others from FHIR observations. Same response shape for both sources.
+
+`GET /biomarkers?limit=` enumerates the patient's full biomarker catalog —
+telemetry and instance-only lab biomarkers alike — with unit, reference range,
+and `is_telemetry` so the app can drive Home/Insights from it instead of a
+hardcoded list of data types.
+
+Every observation row carries the same fields regardless of source:
+`effective_datetime`, `code`, `raw_value`/`normalized_value`/`normalized_unit`,
+a flat `{low, high}` `reference_range`, `interpretation`, `relative_score`,
+`biomarker_id`, `biomarker_slug`, and `biomarker_value_type` (STATE biomarkers
+also carry `value_string` / `value_codeable_concept`). Telemetry rows synthesize
+this shape from the biomarker definition, so a client never branches on source.
+
+---
+
 ## Control & observability
 
 Two native Compose screens give you full control over what syncs and how it's

@@ -351,28 +351,36 @@ def _mock_session_local():
 
 @pytest.mark.asyncio
 async def test_read_observations_latest_scopes_to_bound_patient(provider, integration_mock):
-    """The provider MUST pass the bound patient_id + tenant_id to list_observations
-    so the read is patient-scoped (the resolved actor carries the owner's role)."""
+    """The provider MUST pass the bound patient_id + tenant_id to the merged
+    FHIR + telemetry reads so the read is patient-scoped (the resolved actor
+    carries the owner's role)."""
     captured = {}
 
     async def fake_list(**kwargs):
-        captured.update(kwargs)
+        captured["fhir"] = kwargs
         return {"items": [{"code": "8867-4", "value": 75.0}], "total": 1}
+
+    async def fake_telemetry(db, **kwargs):
+        captured["telemetry"] = kwargs
+        return []
 
     request_mock = MagicMock()
     request_mock.query_params = {}
 
     mock_session_local, _ = _mock_session_local()
     with patch("app.core.database.AsyncSessionLocal", mock_session_local), \
-         patch("integrations.health_assistant_bridge.provider.list_observations", create=True, side_effect=fake_list), \
-         patch("app.services.fhir_service.list_observations", side_effect=fake_list):
+         patch("integrations.health_assistant_bridge.provider.list_observations_latest", create=True, side_effect=fake_list), \
+         patch("app.services.fhir_service.list_observations_latest", side_effect=fake_list), \
+         patch("app.services.telemetry_service.get_patient_telemetry_latest", side_effect=fake_telemetry):
         result = await provider.handle_api_request(
             integration=integration_mock, path="observations/latest", method="GET", request=request_mock,
         )
 
-    assert captured["patient_id"] == integration_mock.patient_id
-    assert captured["tenant_id"] == integration_mock.tenant_id
-    assert result["data"] == [{"code": "8867-4", "value": 75.0}]
+    assert captured["fhir"]["patient_id"] == integration_mock.patient_id
+    assert captured["fhir"]["tenant_id"] == integration_mock.tenant_id
+    assert captured["telemetry"]["patient_id"] == integration_mock.patient_id
+    assert captured["telemetry"]["tenant_id"] == integration_mock.tenant_id
+    assert result["data"] == [{"code": "8867-4", "value": 75.0, "reference_range": None}]
     assert "cached_at" in result
 
 
