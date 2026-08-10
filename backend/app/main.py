@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.requests import ClientDisconnect
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
 from app.core.config import settings
@@ -292,6 +293,28 @@ async def global_exception_handler(request: Request, exc: Exception):
             "correlation_id": correlation_id,
         },
     )
+
+
+@app.exception_handler(ClientDisconnect)
+async def client_disconnect_handler(request: Request, exc: ClientDisconnect):
+    """Handle clients that close the connection mid-request.
+
+    Triggered when ``await request.body()`` / ``request.stream()`` finds the
+    peer gone (mobile app backgrounded, network drop, user cancel, etc.).
+    This is expected behaviour, not a server fault — log at INFO without a
+    stack trace and return 499 (nginx's "Client Closed Request"). Uvicorn
+    won't actually send the response (the socket is gone), but the status
+    surfaces correctly in access logs / metrics and, crucially, the request
+    no longer trips the generic 500 ``GLOBAL ERROR`` path with a
+    ``correlation_id`` and the noisy ``Database session error:`` follow-up
+    from ``get_db``'s except clause.
+    """
+    logger.info(
+        "Client disconnected mid-request: %s %s",
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(status_code=499, content={"detail": "Client disconnected"})
 
 
 @app.exception_handler(FhirSerializationError)
