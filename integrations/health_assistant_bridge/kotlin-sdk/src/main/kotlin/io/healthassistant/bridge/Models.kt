@@ -10,6 +10,10 @@ data class BridgeStatus(
     @SerialName("last_synced_at") val lastSyncedAt: String? = null,
     val cursor: String? = null,
     @SerialName("latest_sdks") val latestSdks: Map<String, String>? = null,
+    /** The server's frontend/PWA origin (e.g. `http://host:3000`). May be
+     *  loopback (`localhost:PORT`) — the caller rewrites it to the connection's
+     *  reachable host. Null on older servers that don't advertise it. */
+    @SerialName("frontend_base_url") val frontendBaseUrl: String? = null,
 )
 
 @Serializable

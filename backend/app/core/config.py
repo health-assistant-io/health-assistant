@@ -228,7 +228,11 @@ class Settings(BaseSettings):
     OAUTH_AUDIENCE: str = "health-assistant-api"
 
     # URLs
-    FRONTEND_URL: str = "http://localhost:5173"
+    # The frontend/PWA origin (dev default matches the Vite dev port 3000 — the
+    # same default as integrations.py `_frontend_origin()`). Separate from
+    # APP_URL (the OAuth issuer / backend URL); used by /config/public for the
+    # mobile app's frontend-origin deep links.
+    FRONTEND_URL: str = "http://localhost:3000"
     APP_URL: str = "http://localhost:8000"
 
     # AI/OCR - OpenAI Compatible API (used as fallback if no database configuration exists)

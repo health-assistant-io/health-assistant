@@ -259,6 +259,19 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 except (OSError, ValueError) as e:
                     logger.error("Failed to read manifest for sdks: %s", e)
 
+            # The frontend/PWA origin for the mobile app's "Open in browser"
+            # deep links. Returned here (over the ktor connection the app
+            # already uses) so the app doesn't need a second network stack to
+            # discover it. Same resolution as GET /api/v1/config/public.
+            from app.core.database import AsyncSessionLocal
+            from app.core.public_config import resolve_public_config
+
+            try:
+                async with AsyncSessionLocal() as db:
+                    public_urls = await resolve_public_config(db)
+            except Exception:
+                public_urls = await resolve_public_config(None)
+
             return {
                 "status": "active",
                 "integration_id": str(integration.id),
@@ -267,6 +280,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 else None,
                 "cursor": self.get_sync_cursor(integration, "last_timestamp"),
                 "latest_sdks": sdks,
+                "frontend_base_url": public_urls["frontend_base_url"],
             }
 
         elif path == "map" and method == "POST":

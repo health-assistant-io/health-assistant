@@ -41,6 +41,10 @@ async def test_handle_api_request_status(provider, integration_mock):
     assert result["integration_id"] == str(integration_mock.id)
     assert result["cursor"] == "2024-06-15T12:00:00Z"
     assert "last_synced_at" in result
+    # The frontend/PWA origin is advertised on /status so the mobile app can
+    # read it over its existing ktor connection (no second network stack).
+    assert "frontend_base_url" in result
+    assert result["frontend_base_url"]
 
 @pytest.mark.asyncio
 @patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._handle_map_request")
