@@ -344,6 +344,21 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
         description_key="settings.mobile_client_base_url_desc",
         order=10,
     ),
+    # Frontend/PWA origin used for deep links from the mobile app ("Open full
+    # record in browser"). Independent of the connect URL: the web frontend and
+    # the API backend may run on different hosts/ports. Resolution (exposed via
+    # GET /config/public): this setting → mobile.client_base_url → APP_URL.
+    SettingDefinition(
+        key="mobile.frontend_base_url",
+        category="mobile",
+        type=SettingType.STRING,
+        default="",
+        storage=SettingStorage.TIERED,
+        allowed_levels=[SettingLevel.SYSTEM],
+        label_key="settings.mobile_frontend_base_url",
+        description_key="settings.mobile_frontend_base_url_desc",
+        order=11,
+    ),
 ]
 
 

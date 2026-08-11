@@ -1819,6 +1819,8 @@
     "unit_system_imperial": "Imperial (lb, ft)",
     "mobile_client_base_url": "Client connect URL",
     "mobile_client_base_url_desc": "The base URL the mobile app uses to reach this server (e.g. https://health.example.com). Leave blank to use the server's APP_URL, then the URL you're browsing from. A per-instance 'Connect URL' overrides this.",
+    "mobile_frontend_base_url": "Frontend URL",
+    "mobile_frontend_base_url_desc": "The origin of the web frontend/PWA used for deep links from the mobile app (e.g. https://health.example.com:3000). Needed when the web app and the API backend run on different hosts or ports. Leave blank to use the Client connect URL, then APP_URL.",
     "notifications_enabled": "Notifications enabled",
     "notifications_enabled_desc": "Master toggle for push and in-app notifications on this device.",
     "load_failed": "Failed to load settings",

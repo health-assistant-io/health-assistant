@@ -1758,6 +1758,8 @@
     "unit_system_imperial": "Αγγλοσαξονικό (lb, ft)",
     "mobile_client_base_url": "URL σύνδεσης πελάτη",
     "mobile_client_base_url_desc": "Το βασικό URL που χρησιμοποιεί η εφαρμογή κινητού (π.χ. https://health.example.com). Αφήστε το κενό για χρήση του APP_URL, μετά του URL περιήγησης. Το «URL σύνδεσης» ανά εγγραφή το υπερισχύει.",
+    "mobile_frontend_base_url": "URL frontend",
+    "mobile_frontend_base_url_desc": "Η διεύθυνση του web frontend/PWA που χρησιμοποιείται για deep links από την εφαρμογή κινητού (π.χ. https://health.example.com:3000). Απαιτείται όταν το web app και το API backend τρέχουν σε διαφορετικούς hosts ή ports. Αφήστε κενό για χρήση του URL σύνδεσης πελάτη, μετά του APP_URL.",
     "notifications_enabled": "Ειδοποιήσεις ενεργές",
     "notifications_enabled_desc": "Κύριος διακόπτης για ειδοποιήσεις σε αυτή τη συσκευή.",
     "load_failed": "Φόρτωση ρυθμίσεων απέτυχε",
