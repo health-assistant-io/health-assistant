@@ -6,6 +6,7 @@ import {
   getFinalStatus,
   isAbnormal,
   getStatusColorClass,
+  getStatusTextColor,
   type BiomarkerPrecisionProfile,
 } from '../biomarkerUtils';
 
@@ -161,5 +162,30 @@ describe('getStatusColorClass', () => {
 
   it('returns yellow for warning', () => {
     expect(getStatusColorClass('warning')).toContain('yellow');
+  });
+});
+
+describe('getStatusTextColor', () => {
+  it('returns red text for high/abnormal (and no badge chrome)', () => {
+    const cls = getStatusTextColor('High');
+    expect(cls).toContain('red');
+    expect(cls).not.toContain('bg-');
+    expect(cls).not.toContain('border-');
+  });
+
+  it('returns blue text for low', () => {
+    expect(getStatusTextColor('Low')).toContain('blue');
+  });
+
+  it('returns yellow text for warning', () => {
+    expect(getStatusTextColor('warning')).toContain('yellow');
+  });
+
+  it('falls back to default text color for normal (no green tint)', () => {
+    // Normal keeps the default neutral heading color so a healthy reading
+    // doesn't visually shout louder than the rest of the page.
+    const cls = getStatusTextColor('Normal');
+    expect(cls).not.toContain('green');
+    expect(cls).toContain('text-gray-900');
   });
 });

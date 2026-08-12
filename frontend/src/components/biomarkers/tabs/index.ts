@@ -7,5 +7,6 @@ export { BiomarkerInfoTab } from './BiomarkerInfoTab';
 export { BiomarkerHistoryTab } from './BiomarkerHistoryTab';
 export { BiomarkerInsightsTab } from './BiomarkerInsightsTab';
 export { BiomarkerRelationsTab } from './BiomarkerRelationsTab';
+export { BiomarkerSnapshotTab } from './BiomarkerSnapshotTab';
 export { BiomarkerTechnicalTab } from './BiomarkerTechnicalTab';
 export { BiomarkerTrendTab } from './BiomarkerTrendTab';

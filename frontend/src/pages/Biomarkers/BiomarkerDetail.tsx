@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Activity, Calendar, TrendingUp, Box, Share2, Printer, Database, Tag, Info, Plus } from 'lucide-react';
+import { Activity, Calendar, TrendingUp, Box, Share2, Database, Tag, Info, Plus, LayoutDashboard } from 'lucide-react';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { NoPatientState } from '../../components/ui/NoPatientState';
-import { formatUnit, getFinalStatus, getStatusColorClass, formatBiomarkerValue } from '../../utils/biomarkerUtils';
+import { getFinalStatus, getStatusColorClass } from '../../utils/biomarkerUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { TabInfoButton } from '../../components/ui/TabInfoButton';
@@ -13,10 +13,11 @@ import { getBiomarkerTrends } from '../../services/analyticsService';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useTabScroll } from '../../hooks/useTabScroll';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { Biomarker } from '../../types/biomarker';
 import { TimePeriod, DEFAULT_AGGREGATIONS, AggregationBucket, getCutoffDate } from '../../config/timeRanges';
 import { MigrationProgressIndicator } from '../../components/biomarkers/MigrationProgressIndicator';
-import { BiomarkerKpiStrip } from '../../components/biomarkers/BiomarkerKpiStrip';
+import { BiomarkerSnapshotCard } from '../../components/biomarkers/BiomarkerSnapshotCard';
 import { LogBiomarkerReadingModal } from '../../components/biomarkers/LogBiomarkerReadingModal';
 import { EditBiomarkerReadingModal } from '../../components/biomarkers/EditBiomarkerReadingModal';
 import { deleteObservation, getObservation } from '../../services/observationService';
@@ -27,12 +28,13 @@ import {
   BiomarkerHistoryTab,
   BiomarkerInsightsTab,
   BiomarkerRelationsTab,
+  BiomarkerSnapshotTab,
   BiomarkerTechnicalTab,
   BiomarkerTrendTab,
 } from '../../components/biomarkers/tabs';
 
-type BiomarkerTabId = 'trend' | 'info' | 'history' | 'insights' | 'relations' | 'technical';
-const VALID_TABS: BiomarkerTabId[] = ['trend', 'info', 'history', 'insights', 'relations', 'technical'];
+type BiomarkerTabId = 'snapshot' | 'trend' | 'info' | 'history' | 'insights' | 'relations' | 'technical';
+const VALID_TABS: BiomarkerTabId[] = ['snapshot', 'trend', 'info', 'history', 'insights', 'relations', 'technical'];
 
 const BiomarkerDetail: React.FC = () => {
   const { t } = useTranslation();
@@ -40,6 +42,11 @@ const BiomarkerDetail: React.FC = () => {
   const navigate = useNavigate();
   const { currentPatient } = usePatientStore();
   const precisionProfile = useBiomarkerPrecisionProfile();
+
+  // The right sidebar (Patient Snapshot) only renders at xl+. Below that, the
+  // snapshot becomes a tab inside the tab strip so mobile/small-width users
+  // get the same summary without scrolling past a duplicate KPI strip.
+  const isBelowXl = useMediaQuery('(max-width: 1279px)');
 
   const decodedId = decodeURIComponent(biomarkerId || '');
 
@@ -51,26 +58,38 @@ const BiomarkerDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isLogReadingOpen, setIsLogReadingOpen] = useState(false);
   const [editingObservation, setEditingObservation] = useState<Observation | null>(null);
-  // Bumped after a successful manual save so the trend/KPI/history tabs refresh.
+  // Bumped after a successful manual save so the trend/history tabs refresh.
   const [readingNonce, setReadingNonce] = useState(0);
 
   // URL-synced active tab (deep-linkable, matches ExaminationDetail convention).
   // Trend is the default — it's the primary view when opening a biomarker.
-  const initialTab: BiomarkerTabId = VALID_TABS.includes(routeTab as BiomarkerTabId)
-    ? (routeTab as BiomarkerTabId)
-    : 'trend';
+  // The 'snapshot' tab is only valid below xl (it duplicates the sidebar).
+  const sanitizeTab = (tab: string | undefined): BiomarkerTabId => {
+    if (tab && VALID_TABS.includes(tab as BiomarkerTabId)) {
+      if (tab === 'snapshot' && !isBelowXl) return 'trend';
+      return tab as BiomarkerTabId;
+    }
+    return 'trend';
+  };
+  const initialTab: BiomarkerTabId = sanitizeTab(routeTab);
   const [activeTab, setActiveTab] = useState<BiomarkerTabId>(initialTab);
   const tabsRef = React.useRef<HTMLDivElement>(null);
   useTabScroll(tabsRef, activeTab);
 
   // Keep local tab in sync if the URL changes (back/forward navigation).
   useEffect(() => {
-    if (routeTab && VALID_TABS.includes(routeTab as BiomarkerTabId)) {
-      setActiveTab(routeTab as BiomarkerTabId);
-    } else if (!routeTab) {
-      setActiveTab('trend');
-    }
+    setActiveTab(sanitizeTab(routeTab));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeTab]);
+
+  // If the viewport crosses the xl boundary while the user is on the mobile-only
+  // 'snapshot' tab, fall back to 'trend' (the sidebar takes over on desktop).
+  useEffect(() => {
+    if (!isBelowXl && activeTab === 'snapshot') {
+      handleTabChange('trend');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBelowXl]);
 
   const handleTabChange = (tab: BiomarkerTabId) => {
     setActiveTab(tab);
@@ -169,27 +188,6 @@ const BiomarkerDetail: React.FC = () => {
     { label: t('biomarker_catalog.title'), path: '/catalogs?type=biomarker' }
   ], [t]);
 
-  const subtitle = React.useMemo(() => (
-    <div className="flex flex-col space-y-2">
-      <div className="flex items-center space-x-2">
-        <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
-          {biomarker?.category || 'General'}
-        </span>
-        {biomarker?.is_telemetry ? (
-          <span className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 w-fit" title="High-frequency telemetry data from IoT devices">
-            <Activity className="w-3 h-3" />
-            <span>Telemetry</span>
-          </span>
-        ) : (
-          <span className="flex items-center space-x-1 px-2.5 py-1 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 w-fit" title="Standard clinical FHIR data">
-            <Box className="w-3 h-3" />
-            <span>FHIR</span>
-          </span>
-        )}
-      </div>
-    </div>
-  ), [biomarker?.category, biomarker?.is_telemetry]);
-
   const headerIcon = React.useMemo(() => <Activity className="w-8 h-8" />, []);
 
   const interpretation = React.useMemo(() => {
@@ -208,6 +206,35 @@ const BiomarkerDetail: React.FC = () => {
     };
     return getFinalStatus(mockObs);
   }, [trends, biomarker]);
+
+  const subtitle = React.useMemo(() => (
+    <div className="flex flex-col space-y-2">
+      <div className="flex items-center flex-wrap gap-2">
+        <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
+          {biomarker?.category || 'General'}
+        </span>
+        {biomarker?.is_telemetry ? (
+          <span className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 w-fit" title="High-frequency telemetry data from IoT devices">
+            <Activity className="w-3 h-3" />
+            <span>Telemetry</span>
+          </span>
+        ) : (
+          <span className="flex items-center space-x-1 px-2.5 py-1 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800 w-fit" title="Standard clinical FHIR data">
+            <Box className="w-3 h-3" />
+            <span>FHIR</span>
+          </span>
+        )}
+        {trends.length > 0 && (
+          <span
+            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border w-fit ${getStatusColorClass(interpretation)}`}
+            title={t('biomarkers.latest_status_tooltip', 'Latest reading interpretation')}
+          >
+            {interpretation}
+          </span>
+        )}
+      </div>
+    </div>
+  ), [biomarker?.category, biomarker?.is_telemetry, trends.length, interpretation, t]);
 
   const filteredTrends = React.useMemo(() => {
     if (!trends || trends.length === 0) return [];
@@ -334,6 +361,10 @@ const BiomarkerDetail: React.FC = () => {
   }
 
   const TABS: { id: BiomarkerTabId; label: string; icon: React.ComponentType<any> }[] = [
+    // 'snapshot' is mobile-only — it duplicates the right sidebar (hidden below xl).
+    ...(isBelowXl
+      ? [{ id: 'snapshot' as BiomarkerTabId, label: t('biomarkers.tab_snapshot', 'Snapshot'), icon: LayoutDashboard }]
+      : []),
     { id: 'trend', label: t('biomarkers.tab_trend', 'Trend'), icon: TrendingUp },
     { id: 'info', label: t('biomarkers.tab_clinical', 'Clinical'), icon: Info },
     { id: 'history', label: t('biomarkers.tab_history', 'History'), icon: Calendar },
@@ -344,6 +375,13 @@ const BiomarkerDetail: React.FC = () => {
 
   // Full title + explanatory description for the active tab's (i) popover.
   const TAB_INFO: Record<BiomarkerTabId, { title: string; description: string }> = {
+    snapshot: {
+      title: t('biomarkers.patient_snapshot'),
+      description: t(
+        'biomarkers.tab_snapshot_desc',
+        'At-a-glance summary: latest reading, clinical reference range, 6-month average, and total records. The same panel appears in the sidebar on wider screens.',
+      ),
+    },
     trend: { title: t('biomarkers.longitudinal_trend'), description: t('biomarkers.tab_trend_desc') },
     info: { title: t('biomarkers.clinical_significance'), description: t('biomarkers.tab_clinical_desc') },
     history: { title: t('biomarkers.observations'), description: t('biomarkers.tab_history_desc') },
@@ -388,12 +426,6 @@ const BiomarkerDetail: React.FC = () => {
               <Database className="w-4 h-4" />
               <span className="hidden md:inline">{t('biomarkers.manage_in_catalog', 'Manage in Catalog')}</span>
             </a>
-            <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
-              <Share2 className="w-5 h-5" />
-            </button>
-            <button className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-blue-600 transition-all shadow-sm">
-              <Printer className="w-5 h-5" />
-            </button>
           </div>
         }
       />
@@ -401,13 +433,6 @@ const BiomarkerDetail: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Left Column: Primary Visualization & Details */}
         <div className="xl:col-span-2 space-y-6">
-
-          {/* KPI Summary Strip */}
-          <BiomarkerKpiStrip
-            biomarker={biomarker}
-            trends={trends}
-            precisionProfile={precisionProfile}
-          />
 
           {/* Details Section (Tabs) */}
           <div ref={tabsRef} className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm min-h-[550px] flex flex-col scroll-mt-32">
@@ -437,6 +462,18 @@ const BiomarkerDetail: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-hidden">
+              {activeTab === 'snapshot' && (
+                <BiomarkerSnapshotTab
+                  biomarker={biomarker}
+                  trends={trends}
+                  precisionProfile={precisionProfile}
+                  interpretation={interpretation}
+                  migrationStatus={biomarker.meta_data?.migration_status as any}
+                  migrationProgress={biomarker.meta_data?.migration_progress}
+                  migrationError={biomarker.meta_data?.migration_error}
+                  onRetryMigration={handleRetryMigration}
+                />
+              )}
               {activeTab === 'trend' && (
                 <BiomarkerTrendTab
                   biomarker={biomarker}
@@ -470,8 +507,9 @@ const BiomarkerDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Sidebar Stats */}
-        <div className="space-y-6">
+        {/* Right Column: Sidebar Stats — xl+ only. Below xl the snapshot lives
+            in the 'Snapshot' tab and the migration banner inside it. */}
+        <div className="hidden xl:block space-y-6">
           <MigrationProgressIndicator
             status={biomarker.meta_data?.migration_status as any}
             progress={biomarker.meta_data?.migration_progress}
@@ -479,71 +517,12 @@ const BiomarkerDetail: React.FC = () => {
             onRetry={handleRetryMigration}
           />
           <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
-            <div className="flex items-center justify-between mb-8">
-              <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-[0.2em]">{t('biomarkers.patient_snapshot')}</h4>
-              {trends.length > 0 && (
-                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${getStatusColorClass(interpretation)}`}>
-                  {interpretation}
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-8">
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.latest_result')}</p>
-                <div className="flex items-baseline space-x-2">
-                  <span className="text-4xl font-black text-gray-900 dark:text-dark-text tracking-tighter">{trends.length > 0 ? formatBiomarkerValue(trends[trends.length - 1].value, precisionProfile) : '--'}</span>
-                  <span className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase">{trends.length > 0 ? formatUnit(trends[trends.length - 1].unit) : biomarker.preferred_unit_symbol ? formatUnit(biomarker.preferred_unit_symbol) : ''}</span>
-                </div>
-              </div>
-
-              <div className="p-5 bg-gray-50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border shadow-inner">
-                <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('biomarkers.clinical_reference')}</p>
-                <div className="flex items-baseline space-x-2">
-                  {biomarker.value_type === 'state' ? (
-                    /* STATE biomarkers: show the normal set (allowed_states
-                       with is_normal=true) instead of numeric ranges. */
-                    <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                      {(biomarker.allowed_states ?? []).filter((s) => s.is_normal).map((s) => s.display).join(', ') || t('biomarker_catalog.allowed_state_empty', 'No normal set configured')}
-                    </span>
-                  ) : (
-                    <>
-                      <span className={`${biomarker.reference_range_min != null || biomarker.reference_range_max != null ? 'text-xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tighter' : 'text-sm font-medium text-gray-300 dark:text-dark-muted/30 italic'}`}>
-                        {biomarker.reference_range_min != null && biomarker.reference_range_max != null
-                          ? `${biomarker.reference_range_min} - ${biomarker.reference_range_max}`
-                          : biomarker.reference_range_min != null
-                            ? `> ${biomarker.reference_range_min}`
-                            : biomarker.reference_range_max != null
-                              ? `< ${biomarker.reference_range_max}`
-                              : 'undefined'
-                        }
-                      </span>
-                      {(biomarker.reference_range_min != null || biomarker.reference_range_max != null) && (
-                        <span className="text-xs font-bold text-gray-400 dark:text-dark-muted">{trends.length > 0 ? formatUnit(trends[0].unit) : ''}</span>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-50 dark:border-dark-border">
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.avg_6mo')}</p>
-                  <p className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">
-                    {/* STATE biomarkers: averaging is meaningless and the trends
-                        API returns no numeric points. Hide the avg rather than
-                        render NaN. */}
-                    {trends.length > 0 && trends.every((t: any) => typeof t.value === 'number')
-                      ? (trends.reduce((a, b) => a + b.value, 0) / trends.length).toFixed(1)
-                      : '--'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">{t('biomarkers.tests')}</p>
-                  <p className="text-lg font-black text-gray-700 dark:text-dark-text leading-none">{trends.length} <span className="text-[9px] font-bold text-gray-400 uppercase ml-0.5">Rec.</span></p>
-                </div>
-              </div>
-            </div>
+            <BiomarkerSnapshotCard
+              biomarker={biomarker}
+              trends={trends}
+              precisionProfile={precisionProfile}
+              interpretation={interpretation}
+            />
           </div>
         </div>
       </div>

@@ -95,6 +95,20 @@ export const getStatusColorClass = (status: string): string => {
 };
 
 /**
+ * Returns tailwind **text-only** color classes for a status — used to tint the
+ * large numeric readouts (e.g. the latest-value digit) where the full badge
+ * chrome from {@link getStatusColorClass} would be too heavy. Mirrors the same
+ * status→hue mapping.
+ */
+export const getStatusTextColor = (status: string): string => {
+  const s = status.toLowerCase().trim();
+  if (s.includes('high') || s === 'h' || s === 'abnormal') return 'text-red-600 dark:text-red-400';
+  if (s.includes('low') || s === 'l') return 'text-blue-600 dark:text-blue-400';
+  if (s.includes('warning')) return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-gray-900 dark:text-dark-text';
+};
+
+/**
  * Formats medical units to properly display superscripts (e.g., 10^3 -> 10³).
  */
 export const formatUnit = (unit: string): string => {  if (!unit) return '';
