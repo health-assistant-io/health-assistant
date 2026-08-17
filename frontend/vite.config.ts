@@ -27,27 +27,38 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: 'icon.svg',
+            src: 'pwa-192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png'
           },
           {
-            src: 'icon.svg',
+            src: 'pwa-512.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-192-maskable.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: 'pwa-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ],
         shortcuts: [
           {
             name: 'New Examination',
             url: '/examinations/upload',
-            icons: [{ src: 'icon.svg', sizes: '192x192' }]
+            icons: [{ src: 'pwa-192.png', sizes: '192x192', type: 'image/png' }]
           },
           {
             name: 'Upload Result',
             url: '/documents/upload',
-            icons: [{ src: 'icon.svg', sizes: '192x192' }]
+            icons: [{ src: 'pwa-192.png', sizes: '192x192', type: 'image/png' }]
           }
         ]
       },
