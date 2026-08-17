@@ -27,6 +27,7 @@ from sqlalchemy import (
     ForeignKey,
     Enum,
     Index,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -357,6 +358,86 @@ class NotificationSubscription(Base, UUIDMixin, TenantMixin, TimestampMixin):
         }
 
 
+class MobilePushTarget(Base, UUIDMixin, TenantMixin, TimestampMixin):
+    """Per-device native push registration (UnifiedPush / FCM).
+
+    Sibling to :class:`NotificationSubscription` (which holds Web Push / VAPID
+    subscriptions for PWAs). Each row is one mobile device belonging to a
+    user. The push dispatch task (``dispatch_mobile_push``) reads active rows
+    for a recipient user and POSTs the notification payload to the device's
+    endpoint.
+
+    The ``(user_id, device_id)`` pair is unique — re-registering an existing
+    device (e.g. after the user picks a new UnifiedPush distributor) upserts
+    rather than duplicating. ``device_id`` is client-supplied (the mobile app
+    generates a stable per-install id).
+    """
+
+    __tablename__ = "mobile_push_targets"
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Client-supplied stable id (one per app install). Unique per user so the
+    # (user_id, device_id) pair identifies a single device end-to-end.
+    device_id = Column(String(255), nullable=False)
+
+    # ``unifiedpush`` (HTTP POST to a user-chosen distributor endpoint) or
+    # ``fcm`` (Firebase Cloud Messaging). Stored as a free-form string — the
+    # dispatch task switches on it; we deliberately do NOT bind this to a
+    # Python enum so future transports (APNs for iOS, MQTT, etc.) don't need
+    # a migration.
+    platform = Column(String(32), nullable=False)
+
+    # UnifiedPush: the full distributor endpoint URL.
+    # FCM: the registration token FCM gave the client.
+    endpoint_url = Column(Text, nullable=False)
+
+    # Optional Hybrid Encryption (RFC 9180) public key the client generated.
+    # When present, the dispatch task encrypts the payload to this key before
+    # POSTing — so the distributor never sees plaintext. NULL = plaintext
+    # transport (acceptable only over HTTPS endpoints the user controls).
+    encryption_pubkey = Column(Text, nullable=True)
+
+    # App/client metadata for the "Where am I signed in" list.
+    app_version = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_seen_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "device_id": self.device_id,
+            "platform": self.platform,
+            # Never echo the endpoint back in full — mask it so a listDevices
+            # response can't be reused as a credential. The bridge returns
+            # the masked form; the dispatch task reads the raw column.
+            "endpoint_url": (
+                self.endpoint_url[:12] + "…" if self.endpoint_url else None
+            ),
+            "encryption_pubkey": (
+                "set" if self.encryption_pubkey else None
+            ),
+            "app_version": self.app_version,
+            "user_agent": self.user_agent,
+            "is_active": self.is_active,
+            "last_seen_at": self.last_seen_at.isoformat()
+            if self.last_seen_at
+            else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 # Indices for performance
 Index(
     "idx_notification_recipient_user_status",
@@ -377,4 +458,16 @@ Index(
     "idx_trigger_next_run",
     NotificationTrigger.next_trigger,
     NotificationTrigger.enabled,
+)
+# MobilePushTarget: dispatch lookup is by (user_id, is_active); the unique
+# constraint on (user_id, device_id) makes re-registration an upsert.
+Index(
+    "idx_mobile_push_targets_user_active",
+    MobilePushTarget.user_id,
+    MobilePushTarget.is_active,
+)
+UniqueConstraint(
+    MobilePushTarget.user_id,
+    MobilePushTarget.device_id,
+    name="uq_mobile_push_targets_user_device",
 )

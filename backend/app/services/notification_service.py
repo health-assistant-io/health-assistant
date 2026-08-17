@@ -360,13 +360,29 @@ def _infer_recipient_meta(
 
 
 async def _has_push_subscription(session: AsyncSession, user_id: UUID) -> bool:
+    """A user is "push-reachable" if they have either a Web Push subscription
+    (the PWA, ``NotificationSubscription``) OR a registered native mobile
+    device (``MobilePushTarget``). Without the mobile check, ``emit`` would
+    skip the PUSH channel entirely for users who only ever use the mobile
+    app — defeating the purpose of native push."""
     stmt = select(NotificationSubscription.id).where(
         and_(
             NotificationSubscription.user_id == user_id,
             NotificationSubscription.is_active.is_(True),
         )
     )
-    return (await session.execute(stmt)).first() is not None
+    if (await session.execute(stmt)).first() is not None:
+        return True
+    # Mobile push targets (UnifiedPush / FCM) registered by the companion app.
+    from app.models.notification import MobilePushTarget
+
+    mobile_stmt = select(MobilePushTarget.id).where(
+        and_(
+            MobilePushTarget.user_id == user_id,
+            MobilePushTarget.is_active.is_(True),
+        )
+    )
+    return (await session.execute(mobile_stmt)).first() is not None
 
 
 async def _resolve_user_channel_preferences(

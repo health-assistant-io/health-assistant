@@ -201,6 +201,10 @@ async def deliver_notification(notification_id: str):
                 SubscriptionExpired,
             )
 
+            # Lazy-imported so a missing httpx dep on a worker that doesn't
+            # serve mobile push doesn't break Web Push delivery.
+            from app.services.mobile_push_service import dispatch as dispatch_mobile
+
             now = datetime.datetime.now(datetime.timezone.utc)
             for delivery in deliveries:
                 subs_res = await db.execute(
@@ -215,13 +219,11 @@ async def deliver_notification(notification_id: str):
                     )
                 )
                 subscriptions = subs_res.all()
-                if not subscriptions:
-                    delivery.status = NotificationStatus.FAILED
-                    delivery.error = "no active push subscription"
-                    delivery.attempted_at = now
-                    continue
 
                 any_success = False
+                errors: list[str] = []
+
+                # 1) Web Push (the PWA subscriptions).
                 for sub_id, sub_data in subscriptions:
                     try:
                         if send_web_push(sub_data, push_payload):
@@ -243,6 +245,31 @@ async def deliver_notification(notification_id: str):
                         )
                     except Exception as e:
                         logger.error(f"Error sending Web Push to sub {sub_id}: {e}")
+                        errors.append(f"webpush:{sub_id}:{e}")
+
+                # 2) Native mobile push (UnifiedPush / FCM — the companion app
+                #    registrations). A user with NO Web Push subscription but
+                #    an active mobile device must still get the delivery.
+                try:
+                    mobile_results = await dispatch_mobile(
+                        db, user_id=delivery.user_id, payload=push_payload
+                    )
+                    if any(r.get("status") == "sent" for r in mobile_results):
+                        any_success = True
+                    for r in mobile_results:
+                        if r.get("status") == "failed":
+                            errors.append(
+                                f"mobile:{r.get('device_id')}:{r.get('detail')}"
+                            )
+                except Exception as me:
+                    logger.error(
+                        f"Mobile push dispatch failed for user {delivery.user_id}: {me}"
+                    )
+                    errors.append(f"mobile:{me}")
+
+                if not subscriptions and not any_success:
+                    # Truly unreachable — no Web Push AND no mobile device.
+                    errors.insert(0, "no active push subscription")
 
                 delivery.attempted_at = now
                 if any_success:
@@ -251,7 +278,7 @@ async def deliver_notification(notification_id: str):
                     delivery.error = None
                 else:
                     delivery.status = NotificationStatus.FAILED
-                    delivery.error = "all push attempts failed"
+                    delivery.error = "; ".join(errors) or "all push attempts failed"
 
             await db.commit()
             logger.info(f"Delivery pass complete for notification {notification_id}.")

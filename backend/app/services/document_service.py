@@ -1,16 +1,18 @@
-from typing import Optional, List, Any, cast
-from uuid import uuid4, UUID
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
+from uuid import UUID, uuid4
+
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from app.models.document_model import DocumentModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
-from app.utils.image_utils import edit_image
+from app.models.document_model import DocumentModel
 from app.services.fhir_helpers import assert_valid_fhir
+from app.utils.image_utils import edit_image
 
 
 # Ensure upload directory exists and is writable
@@ -49,9 +51,18 @@ UPLOAD_DIR = get_upload_dir()
 ALLOWED_UPLOAD_EXTENSIONS: frozenset[str] = frozenset(
     {
         # Documents
-        ".pdf", ".txt", ".md",
+        ".pdf",
+        ".txt",
+        ".md",
         # Raster images (no svg — svg can embed <script>)
-        ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".tif", ".gif",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+        ".webp",
+        ".tiff",
+        ".tif",
+        ".gif",
         # Medical imaging
         ".dcm",
     }
@@ -64,7 +75,7 @@ _INLINE_BLOCKED_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 
-def _validate_upload_extension(filename: Optional[str]) -> str:
+def _validate_upload_extension(filename: str | None) -> str:
     """Return the lowercased extension if allowed, else raise 400."""
     name = filename or "unknown"
     ext = Path(name).suffix.lower()
@@ -77,7 +88,7 @@ def _validate_upload_extension(filename: Optional[str]) -> str:
     return ext
 
 
-def should_serve_inline(filename: Optional[str]) -> bool:
+def should_serve_inline(filename: str | None) -> bool:
     """True if the file may be served ``inline`` (not an active-content type)."""
     name = filename or ""
     return Path(name).suffix.lower() not in _INLINE_BLOCKED_EXTENSIONS
@@ -108,7 +119,7 @@ async def _read_capped(file, max_bytes: int) -> bytes:
 
 async def _resolve_practitioner_id(
     db: AsyncSession, owner_id: str | UUID, tenant_id: str | UUID
-) -> Optional[UUID]:
+) -> UUID | None:
     """Look up the Practitioner (DoctorModel) id for a given owner user.
 
     Used by upload paths to populate DocumentModel.practitioner_id so that
@@ -135,11 +146,11 @@ async def _resolve_practitioner_id(
 
 async def upload_document(
     file,
-    patient_id: Optional[str],
+    patient_id: str | None,
     owner_id: str | UUID,
     tenant_id: str | UUID,
     db: AsyncSession,
-    examination_id: Optional[str] = None,
+    examination_id: str | None = None,
     include_in_extraction: bool = False,
 ) -> DocumentModel:
     """Upload a document (Starlette ``UploadFile``) and save to database.
@@ -171,16 +182,16 @@ async def ingest_document_bytes(
     *,
     filename: str,
     content: bytes,
-    content_type: Optional[str],
+    content_type: str | None,
     tenant_id: str | UUID,
-    patient_id: Optional[str | UUID],
+    patient_id: str | UUID | None,
     owner_id: str | UUID,
     db: AsyncSession,
-    examination_id: Optional[str | UUID] = None,
+    examination_id: str | UUID | None = None,
     include_in_extraction: bool = True,
-    category_concept_id: Optional[str | UUID] = None,
-    source_integration_id: Optional[str | UUID] = None,
-    external_id: Optional[str] = None,
+    category_concept_id: str | UUID | None = None,
+    source_integration_id: str | UUID | None = None,
+    external_id: str | None = None,
 ) -> DocumentModel:
     """Persist a document from raw bytes — the canonical ingestion path.
 
@@ -249,7 +260,9 @@ async def ingest_document_bytes(
             logger.info(
                 "Document dedup hit for integration=%s external_id=%s "
                 "→ returning existing document %s (no re-OCR)",
-                source_integration_id, external_id, existing.id,
+                source_integration_id,
+                external_id,
+                existing.id,
             )
             return existing
 
@@ -278,7 +291,9 @@ async def ingest_document_bytes(
         tenant_id=tenant_id,
         patient_id=UUID(str(patient_id)) if patient_id else None,
         examination_id=UUID(str(examination_id)) if examination_id else None,
-        category_concept_id=(UUID(str(category_concept_id)) if category_concept_id else None),
+        category_concept_id=(
+            UUID(str(category_concept_id)) if category_concept_id else None
+        ),
         include_in_extraction=include_in_extraction,
         status="uploaded",
         progress=0,
@@ -313,7 +328,9 @@ async def ingest_document_bytes(
             logger.info(
                 "Document dedup race recovered for integration=%s "
                 "external_id=%s → returning document %s",
-                source_integration_id, external_id, existing.id,
+                source_integration_id,
+                external_id,
+                existing.id,
             )
             return existing
         raise
@@ -339,7 +356,8 @@ async def ingest_document_bytes(
             # UX regression is intentional + documented.)
             logger.warning(
                 "Could not dispatch ocr_document for %s: %s",
-                document.id, e,
+                document.id,
+                e,
             )
 
     return document
@@ -349,10 +367,10 @@ async def _find_document_by_integration_key(
     db: AsyncSession,
     *,
     tenant_id: str | UUID,
-    patient_id: Optional[str | UUID],
+    patient_id: str | UUID | None,
     source_integration_id: str | UUID,
     external_id: str,
-) -> Optional[DocumentModel]:
+) -> DocumentModel | None:
     """Look up an existing integration-sourced document by exact dedup key.
 
     Item 3 of the integrations-sdk-improvements plan. Mirrors
@@ -375,8 +393,8 @@ async def _find_document_by_integration_key(
 
 
 async def get_document(
-    document_id: str, db: AsyncSession, tenant_id: Optional[str | UUID] = None
-) -> Optional[DocumentModel]:
+    document_id: str, db: AsyncSession, tenant_id: str | UUID | None = None
+) -> DocumentModel | None:
     """Get document by ID from database.
 
     When ``tenant_id`` is provided the query is scoped to that tenant (audit
@@ -438,13 +456,14 @@ async def enrich_document_entities(doc_dict: dict, db: AsyncSession):
 
 async def get_documents(
     tenant_id: str,
-    owner_id: Optional[str] = None,
+    owner_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    db: Optional[AsyncSession] = None,
-) -> List[DocumentModel]:
+    db: AsyncSession | None = None,
+) -> list[DocumentModel]:
     """Get documents with optional filtering (hides originals if edited versions exist)"""
     from uuid import UUID
+
     from sqlalchemy import not_
 
     # Convert tenant_id to UUID
@@ -480,7 +499,7 @@ async def get_documents(
 
 async def update_document(
     document_id: str, document_update: dict, db: AsyncSession
-) -> Optional[DocumentModel]:
+) -> DocumentModel | None:
     """Update document properties"""
     document = await get_document(document_id, db)
     if not document:
@@ -536,8 +555,8 @@ async def trigger_full_examination_extraction(
     examination_id: str, db: AsyncSession
 ) -> str:
     """Trigger OCR for all included documents in an examination, followed by LLM analysis"""
-    from app.models.examination_model import ExaminationModel
     from app.models.document_model import DocumentModel
+    from app.models.examination_model import ExaminationModel
 
     result = await db.execute(
         select(ExaminationModel).where(ExaminationModel.id == examination_id)
@@ -619,8 +638,8 @@ async def update_document_status(
     document_id: str,
     status: str,
     progress: int,
-    extracted_text: Optional[str] = None,
-    db: Optional[AsyncSession] = None,
+    extracted_text: str | None = None,
+    db: AsyncSession | None = None,
 ) -> None:
     """Update document processing status"""
     if db is None:
@@ -695,7 +714,7 @@ async def edit_document_service(
         )
     except Exception as e:
         logger.error(f"Failed to edit image: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to edit image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to edit image: {e!s}")
 
     # Create database record
     new_document = DocumentModel(
@@ -760,13 +779,20 @@ async def delete_document(
 
     examination_id = document.examination_id
 
-    # Also delete associated FHIR Observations if they were extracted
-    from sqlalchemy import text
+    # Also delete associated FHIR Observations if they were extracted.
+    # ORM delete (audit fix): the previous raw `text("... document_id = :doc_id::uuid")`
+    # silently failed under asyncpg — SQLAlchemy's `text()` bindparam regex
+    # `:name(?!:)` skips a name immediately followed by `:` (the `::uuid`
+    # Postgres cast), so the SQL reached asyncpg as a literal, hit a syntax
+    # error on the `:`, poisoned the transaction, and the subsequent
+    # `await db.delete(document)` aborted with InFailedSQLTransactionError.
+    from sqlalchemy import delete
+
+    from app.models.fhir import Observation
 
     try:
         await db.execute(
-            text("DELETE FROM fhir_observations WHERE document_id = :doc_id::uuid"),
-            {"doc_id": str(document_id)},
+            delete(Observation).where(Observation.document_id == document.id)
         )
     except Exception as e:
         import logging

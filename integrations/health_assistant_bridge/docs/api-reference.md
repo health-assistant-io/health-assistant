@@ -238,6 +238,10 @@ per-path filter, not an automatic consequence of the credential.
 | `POST /examinations` | Create an examination (offline-friendly). Idempotent on the client `id`. |
 | `GET /examinations/{id}/documents` | Documents attached to an examination. |
 | `POST /examinations/{id}/documents` | Upload a document for an examination (base64 JSON). Idempotent on the client id. |
+| `GET /documents?examination_id=&limit=` | Patient-wide document list (newest first; `limit` ≤ 500, default 100). Optional `?examination_id=` narrows to one exam. |
+| `GET /documents/{id}` | One document's metadata (filename, status, progress, `content_type`, `file_size`, `examination_id`). |
+| `GET /documents/{id}/content` | The document's binary content (response body is the file's bytes; `Content-Type` from the filename). |
+| `GET /documents/{id}/preview?page=` | A JPEG page render for PDF/DICOM, or the stored bytes for images. `?page=` selects a page (default 0; clamped). `X-Total-Pages` + `X-Current-Page` headers carry the pagination metadata. |
 
 **Observation item shape.** Every row in `/observations` and `/observations/latest`
 carries the same fields regardless of source (FHIR or telemetry), so a client
@@ -300,6 +304,260 @@ The filename extension must be on the upload allowlist (`pdf`, `png`, `jpg`,
 `tiff`, `docx`, … — `svg`/`html`/`xml`/`js` are blocked). Set
 `include_in_extraction: false` for headless uploads that should not trigger the
 OCR/NLP pipeline.
+
+### Document list + content paths
+
+`GET /documents` (and `GET /documents/{id}`) return items with this shape:
+
+```json
+{
+  "id": "<uuid>",
+  "filename": "panel.pdf",
+  "status": "uploaded",
+  "progress": 0,
+  "external_id": "client-id-or-null",
+  "created_at": "2026-08-12T...",
+  "content_type": "application/pdf",
+  "file_size": 1024,
+  "examination_id": "<uuid>|null"
+}
+```
+
+`content_type` is MIME-guessed from the filename (null when unknown); `file_size`
+is bytes on disk (null when the file is missing). Both are best-effort metadata
+— the canonical content lives at `GET /documents/{id}/content`.
+
+`GET /documents/{id}/content` returns the stored file's bytes as the response
+body, with `Content-Type` from the filename. The bridge's HMAC credential
+authenticates the call; `_bound_document` enforces that the doc belongs to the
+bound patient (cross-patient → HTTP 400 *"Document not found for this patient."*).
+Soft-deleted docs (`deleted_at IS NOT NULL`) are excluded everywhere.
+
+`GET /documents/{id}/preview?page=N` returns:
+- For images (`.png`/`.jpg`/`.jpeg`/`.webp`/`.gif`/`.bmp`): the stored bytes
+  with their guessed MIME (no conversion).
+- For PDF / DICOM: a JPEG page render via the same `convert_to_images`
+  pipeline the PWA's document preview uses. `?page=N` selects the page
+  (default 0; clamped to `[0, len(images))`). `X-Total-Pages` +
+  `X-Current-Page` response headers expose the count.
+
+**Kotlin SDK:** `BridgeClient.requestBytes(method, path)` materialises the body
+of any signed request as `ByteArray` (throws `BridgeException` on non-2xx).
+`getDocumentContent(id)` and `getDocumentPreview(id, page?)` are the typed
+conveniences for the two binary paths.
+
+### Clinical-record reads (Phase 3)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /medications?limit=` | The bound patient's medication instances (newest by `start_date` desc). |
+| `GET /allergies?active=&limit=` | The bound patient's allergy-intolerance instances. `active=true` (default) → only `clinical_status = ACTIVE`; `active=false` → full history. |
+| `GET /vaccines?limit=` | The bound patient's immunizations (newest by `administered_at` desc). |
+| `GET /clinical-events?status=&limit=` | Flat list of the bound patient's events (no nested relations). `?status=ACTIVE` filters to currently-active. |
+| `GET /clinical-events/{id}` | Full nested detail (`to_dict()` shape — `type_details`, `examinations[]`, `observations[]`, `anatomy_links[]`, `occurrences[]`). |
+| `GET /doctors?limit=` | The bound owner's tenant-wide doctor address book (doctors are not patient-scoped). |
+
+Each list item mirrors the matching PWA response schema fields (id, status,
+code/JSONB payload, dates, audit). All patient-scoped paths filter by the
+integration's bound patient + tenant + `deleted_at IS NULL`. Cross-patient →
+HTTP 400 *"not found for this patient."*
+
+**Kotlin SDK:** typed readers `getMedications()`, `getAllergies(active)`,
+`getVaccines()`, `getClinicalEvents(status)`, `getClinicalEventRaw(id)` (the
+detail shape is rich — decode as needed), `getDoctors()`. All return
+`ReadEnvelope<T>`.
+
+### Mutations + extraction status (Phase 4)
+
+| Endpoint | Purpose |
+|---|---|
+| `DELETE /examinations/{id}` | Hard-delete an examination + its documents (file unlink) + defensively clean orphan observations/medications. Patient-scoped. |
+| `DELETE /documents/{id}` | Hard-delete a document (file unlink + row delete + observation cleanup). Patient-scoped. |
+| `POST /documents/{id}/extract` | Trigger the OCR/NLP extraction pipeline (best-effort Celery dispatch — broker-down is swallowed). Returns `{job_id, message}`. |
+| `GET /documents/{id}/extract/status` | Live `{id, status, progress, error_message}` for a document's extraction. |
+| `GET /examinations/{id}/status` | Exam-level extraction state plus the per-document status array. |
+| `GET /examinations/{id}/logs` | TaskLog entries for the exam + its documents (INFO/WARN/ERROR, stages, data payloads). |
+
+**Kotlin SDK:** use `BridgeClient.requestText(method, path)` (or `request` for
+the raw `HttpResponse`) for these — they return either a JSON dict (DELETE,
+POST extract, GET status) or a JSON array (GET logs) that the app decodes
+inline. Typed wrappers may be added in a future phase.
+
+**Notes:**
+- DELETEs are **hard** (matching the PWA endpoints). The bound patient filter
+  rejects cross-patient attempts *before* any side effect.
+- `POST /documents/{id}/extract` is idempotent — re-triggering an
+  already-extracted doc re-runs OCR.
+- The `error_message` on extraction status surfaces broker failures when the
+  Celery dispatch couldn't even queue the task.
+
+### Unified delta — `GET /changes` (Phase 5)
+
+```
+GET /changes?since=<ISO>&types=<csv>&limit=<int>
+```
+
+One round-trip replaces N per-type reads; powers the app's pull-to-refresh +
+the 15-min wake-up poll.
+
+- **`since`** (ISO 8601): the cursor from the previous poll's response. Default:
+  now − 7 days (bounded first-pull window).
+- **`types`** (CSV): subset of `medications,allergies,vaccines,clinical_events,documents,examinations`.
+  Default: all six. Unknown names → HTTP 400.
+- **`limit`** (int): per-type cap, max 2000, default 500.
+
+**Response:**
+```json
+{
+  "data": {
+    "medications": [{"id": "...", "updated_at": "...", "status": "ACTIVE", "code_text": "...", "start_date": "..."}],
+    "allergies":    [{"id": "...", "updated_at": "...", "clinical_status": "ACTIVE", "code_text": "..."}],
+    "vaccines":     [{"id": "...", "updated_at": "...", "status": "completed", "administered_at": "..."}],
+    "clinical_events": [{"id": "...", "updated_at": "...", "status": "ACTIVE", "title": "...", "onset_date": "..."}],
+    "documents":    [{"id": "...", "updated_at": "...", "filename": "...", "status": "...", "examination_id": "..."}],
+    "examinations": [{"id": "...", "updated_at": "...", "examination_date": "...", "extraction_status": "..."}]
+  },
+  "cursor": "<max updated_at across this batch>|null",
+  "cached_at": "...",
+  "since": "<the since the server used>"
+}
+```
+
+**Cursor semantics:** `cursor` advances to `max(updated_at)` across the batch
+when at least one row matched. The client uses the returned cursor as the next
+poll's `since`. A `null` cursor means nothing changed — the client should
+re-use the same `since` next time.
+
+**Limitation:** deletions (soft or hard) are **not** represented in `/changes`.
+A soft-deleted row updates `deleted_at` but the query filters on
+`deleted_at IS NULL`; a hard-deleted row is gone. The client must periodically
+do a full re-sync to discover deletions.
+
+**Kotlin SDK:** `BridgeClient.getChangesRaw(since, types, limit)` returns the
+raw JSON string (the response shape diverges from `ReadEnvelope<List<T>>` —
+decode as a `JsonObject` with per-type arrays).
+
+### Clinical-record mutations (Phase 6)
+
+POST/PUT/DELETE for the resources Phase 3 made readable. Every
+patient-scoped path re-verifies the tenant + patient via a `_bound_*`
+loader *before* any side effect — a cross-patient attempt fails with
+HTTP 400 before the service is called. Creates accept a client-supplied
+`id` (or `client_request_id`) forwarded as `external_id`; re-push is a
+no-op (the partial unique index `(source_integration_id, external_id)`
+catches the duplicate).
+
+```
+POST    /medications                         create (idempotent on external_id)
+PUT     /medications/{id}                    update fields
+DELETE  /medications/{id}                    soft-delete (filtered out of reads)
+
+POST    /allergies                           create
+PUT     /allergies/{id}                      update
+DELETE  /allergies/{id}                      soft-delete
+
+POST    /vaccines                            create
+PUT     /vaccines/{id}                       update
+DELETE  /vaccines/{id}                       soft-delete
+
+POST    /clinical-events                     create (returns to_dict() — rich + nested)
+PUT     /clinical-events/{id}                update (returns to_dict())
+DELETE  /clinical-events/{id}                soft-delete (sets deleted_at)
+POST    /clinical-events/{id}/occurrences    log a recurrence (returns updated event)
+
+POST    /doctors                             create (tenant-scoped, NOT patient-scoped)
+PUT     /doctors/{id}                        update
+DELETE  /doctors/{id}                        hard-delete
+```
+
+**Payload shape:** the create/update body is the resource's own JSON dict
+(the same shape the corresponding Phase 3 read returns). Schema validation
+happens inside the service layer; bad input → HTTP 400. Enum values: see
+the Phase 3 read shapes — `AllergyCategory`/`AllergyCriticality`/
+`AllergyClinicalStatus` are uppercase (`MEDICATION`, `HIGH`, `ACTIVE`);
+`ImmunizationStatus` is lowercase (`completed`, `entered-in-error`,
+`not-done`); `Medication.status` is uppercase (`ACTIVE`/`INTENDED`/…).
+
+**Delete ack:** `{"id": "...", "deleted": true, "message": "..."}`.
+
+**Kotlin SDK:** one `createX`/`updateX(id, payload)`/`deleteX(id)` per
+resource (payload is a `JsonObject` built via `buildJsonObject`); clinical
+events have a `Raw` variant because their `to_dict()` is rich + nested.
+
+### Notification inbox + preferences + triggers (Phase 7)
+
+Notifications are addressed to the **integration owner** (the user who
+onboarded the connection), NOT to the bound patient. A user with multiple
+patients (child + elderly parent) sees one inbox. Every handler keys on
+`integration.user_id` + `integration.tenant_id`; `_bound_patient_id` is
+NOT called (the one exception is `GET /notifications/triggers`, which
+filters biomarker-threshold rules by the bound patient).
+
+```
+GET    /notifications/inbox                  owner inbox
+       ?status=&category=&source=&patient_id=&limit=&offset=
+GET    /notifications/unread-count           {"unread_count": N}
+PATCH  /notifications/{recipient_id}/read    {"status": "success"}
+PATCH  /notifications/{recipient_id}/dismiss {"status": "success"}
+POST   /notifications/read-all               {"status": "success", "marked_read": N}
+
+GET    /notifications/preferences            full preferences hub listing
+PUT    /notifications/preferences/{kind_id}  {"enabled": true|false}
+       body: {"enabled": bool}
+
+GET    /notifications/triggers               biomarker-threshold rules (bound patient)
+POST   /notifications/triggers               create (rule_type required)
+DELETE /notifications/triggers/{id}
+```
+
+`status`/`category`/`source` filter values follow the enum string values
+(`status` is the lowercase `RecipientStatus`: `unread`/`read`/`dismissed`;
+`category` is the lowercase `NotificationCategory`: `reminder`/`alert`/
+`system`/…; `source` is the uppercase `NotificationSource`: `SYSTEM`/
+`INTEGRATION`/…). `kind_id` is the canonical preferences id (`channel:PUSH`,
+`source:INTEGRATION`, `integration:{iid}:{tid}`).
+
+Medication / appointment reminders are NOT here — those live on the device
+(the mobile app's WorkManager), so they fire even when the server is
+unreachable. The bridge surfaces only server-side concepts (threshold rules
+that need the data the server holds).
+
+**Kotlin SDK:** `getNotificationInbox`, `getUnreadNotificationCount`,
+`markNotificationRead/dismissed`, `markAllNotificationsRead`,
+`getNotificationPreferences`, `setNotificationPreference(kindId, enabled)`,
+`getNotificationTriggers`, `createNotificationTrigger(payload)`,
+`deleteNotificationTrigger(id)`.
+
+### Native push device registration (Phase 8)
+
+One row per (user, device) registered for native push. Sibling to the
+PWA's Web Push / VAPID subscriptions. The mobile app registers a device
+on first run after onboarding; the dispatcher fans out to every active
+device on each emitted notification. UnifiedPush default (self-hostable),
+FCM optional per-device.
+
+```
+POST    /notifications/register-device       register / re-register (upsert)
+DELETE  /notifications/register-device/{device_id}  soft-deactivate (sign-out)
+GET    /devices                              "Where am I signed in" list (masked)
+```
+
+**Register payload:** `device_id` (client-stable per-install id),
+`platform` (`unifiedpush` | `fcm`), `endpoint_url` (UnifiedPush
+distributor URL or FCM token), optional `encryption_pubkey`,
+`app_version`, `user_agent`. Re-registering the same `(user, device)`
+upserts — useful when the user picks a new UnifiedPush distributor.
+
+**List response:** endpoint URLs are masked (`https://ntfy.example…`);
+the bridge never echoes a reusable credential back. The dispatch task
+reads the raw column server-side.
+
+**Channel preference is honored upstream:** `notification_service.emit`
+drops the PUSH `NotificationDelivery` row when the user has muted PUSH
+for the notification's kind, so the dispatch task naturally skips.
+
+**Kotlin SDK:** `registerDevice(DeviceRegistration(...))`,
+`unregisterDevice(deviceId)`, `listDevices()`.
 
 ## See also
 
