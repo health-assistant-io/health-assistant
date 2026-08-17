@@ -232,15 +232,16 @@ per-path filter, not an automatic consequence of the credential.
 |---|---|
 | `GET /observations/latest?limit=` | **Latest value per biomarker** (dashboard cards) — FHIR observations and telemetry (heart rate / steps / SpO₂) merged, one row per biomarker, newest first. |
 | `GET /observations?biomarker=&since=&until=&limit=` | Time series for one biomarker (charts). `biomarker` is the LOINC/SNOMED code **or slug**; `since`/`until` are ISO 8601; `limit` ≤ 500. Telemetry-flagged biomarkers (heart rate `8867-4`, steps `55423-8`, SpO₂ `59408-5`, …) are served from the telemetry store; all other biomarkers from FHIR observations. |
-| `GET /biomarkers?limit=` | The patient's biomarker catalog (id, name, slug, code, coding system, unit, is_telemetry, reference range, value_type). Includes tenant-scoped + global (`tenant_id IS NULL`) definitions, ordered by name. |
+| `GET /biomarkers?limit=` | The patient's biomarker catalog (id, name, slug, code, coding system, unit, is_telemetry, reference range, value_type, info). `info` is the Markdown education text. Includes tenant-scoped + global (`tenant_id IS NULL`) definitions, ordered by name. |
 | `GET /examinations?limit=` | The patient's examinations (newest first; `limit` ≤ 200). |
-| `GET /examinations/{id}` | One examination's detail (notes, status, diagnoses, impressions). |
+| `GET /examinations/{id}` | One examination's detail (notes, status, diagnoses, impressions, category, lab_name, external_id). |
 | `POST /examinations` | Create an examination (offline-friendly). Idempotent on the client `id`. |
 | `GET /examinations/{id}/documents` | Documents attached to an examination. |
 | `POST /examinations/{id}/documents` | Upload a document for an examination (base64 JSON). Idempotent on the client id. |
 | `GET /documents?examination_id=&limit=` | Patient-wide document list (newest first; `limit` ≤ 500, default 100). Optional `?examination_id=` narrows to one exam. |
 | `GET /documents/{id}` | One document's metadata (filename, status, progress, `content_type`, `file_size`, `examination_id`). |
 | `GET /documents/{id}/content` | The document's binary content (response body is the file's bytes; `Content-Type` from the filename). |
+| `GET /documents/{id}/text` | The OCR-extracted Markdown text: `{id, extracted_text, status, truncated}` (capped at 512 KiB). |
 | `GET /documents/{id}/preview?page=` | A JPEG page render for PDF/DICOM, or the stored bytes for images. `?page=` selects a page (default 0; clamped). `X-Total-Pages` + `X-Current-Page` headers carry the pagination metadata. |
 
 **Observation item shape.** Every row in `/observations` and `/observations/latest`

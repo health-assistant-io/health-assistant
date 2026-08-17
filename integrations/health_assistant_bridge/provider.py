@@ -392,6 +392,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 return await self._send_document_content(integration, parts[1])
             if len(parts) == 3 and parts[2] == "preview":
                 return await self._send_document_preview(integration, parts[1], request)
+            if len(parts) == 3 and parts[2] == "text":
+                return await self._read_document_text(integration, parts[1])
             if len(parts) == 4 and parts[2] == "extract" and parts[3] == "status":
                 return await self._document_extraction_status(integration, parts[1])
             raise NotImplementedError(
@@ -777,6 +779,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                         "reference_range_min": b.reference_range_min,
                         "reference_range_max": b.reference_range_max,
                         "value_type": vt,
+                        "info": getattr(b, "info", None),
                     }
                 )
         return self._read_envelope(items)
@@ -835,6 +838,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "extraction_status": e.extraction_status,
                 "diagnoses": e.diagnoses,
                 "impressions": e.impressions,
+                "category": e.category,
+                "lab_name": e.organization.name if e.organization else None,
+                "external_id": e.external_id,
             }
 
     async def _bound_examination(self, db, integration: UserIntegration, exam_id: str):
@@ -995,6 +1001,25 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
             return self._document_summary(d)
+
+    async def _read_document_text(
+        self, integration: UserIntegration, doc_id: str
+    ) -> dict[str, Any]:
+        """The OCR-extracted Markdown text of a document (mobile rich content).
+        Returns ``{id, extracted_text, status, truncated}``; the text is capped
+        at 512 KiB with ``truncated: true``. Scoped via ``_bound_document``."""
+        from app.core.database import AsyncSessionLocal
+
+        max_chars = 512 * 1024
+        async with AsyncSessionLocal() as db:
+            d = await self._bound_document(db, integration, doc_id)
+            text = d.extracted_text or ""
+            return {
+                "id": str(d.id),
+                "extracted_text": text[:max_chars],
+                "status": d.status,
+                "truncated": len(text) > max_chars,
+            }
 
     async def _send_document_content(
         self, integration: UserIntegration, doc_id: str

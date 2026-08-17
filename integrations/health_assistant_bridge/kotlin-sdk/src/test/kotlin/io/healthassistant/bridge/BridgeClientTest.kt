@@ -303,13 +303,42 @@ class BridgeClientTest {
     @Test
     fun `getExamination decodes a single detail object`() = runBlocking {
         val secret = "test-secret-16chars!"
-        val payload = """{"id":"e1","examination_date":"2026-08-08","notes":"Annual checkup","patient_notes":null,"extraction_status":"completed","diagnoses":["Hypertension"],"impressions":null}"""
+        val payload = """{"id":"e1","examination_date":"2026-08-08","notes":"Annual checkup","patient_notes":null,"extraction_status":"completed","diagnoses":["Hypertension"],"impressions":null,"category":"lab","lab_name":"Acme Labs","external_id":"ext-1"}"""
         val c = bridge(secret) { respond(payload) }
         val e = c.getExamination("e1")
         assertEquals("e1", e.id)
         assertEquals("Annual checkup", e.notes)
         assertEquals("completed", e.extractionStatus)
         assertEquals(listOf("Hypertension"), e.diagnoses)
+        assertEquals("lab", e.category)
+        assertEquals("Acme Labs", e.labName)
+        assertEquals("ext-1", e.externalId)
+        c.close()
+    }
+
+    @Test
+    fun `getDocumentText decodes extracted markdown`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val payload = """{"id":"d1","extracted_text":"## Results\n- LDL 3.9","status":"completed","truncated":false}"""
+        val c = bridge(secret) { respond(payload) }
+        val t = c.getDocumentText("d1")
+        assertEquals("d1", t.id)
+        assertEquals("## Results\n- LDL 3.9", t.extractedText)
+        assertEquals("completed", t.status)
+        assertEquals(false, t.truncated)
+        c.close()
+    }
+
+    @Test
+    fun `biomarker row decodes info markdown`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val payload = envelopeJson(
+            """[{"id":"b1","name":"LDL","slug":"ldl","code":"13457-7","coding_system":"loinc","unit":"mmol/L","is_telemetry":false,"reference_range_min":0,"reference_range_max":3,"value_type":"numeric","info":"Low-density **lipoprotein** cholesterol."}]"""
+        )
+        val c = bridge(secret) { respond(payload) }
+        val b = c.getBiomarkers().data.first()
+        assertEquals("LDL", b.name)
+        assertEquals("Low-density **lipoprotein** cholesterol.", b.info)
         c.close()
     }
 

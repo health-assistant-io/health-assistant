@@ -108,6 +108,10 @@ class BridgeClient(
     suspend fun getDocumentPreview(docId: String, page: Int? = null): ByteArray =
         requestBytes("GET", "/documents/$docId/preview" + (page?.let { "?page=$it" } ?: ""))
 
+    /** Convenience: `GET /documents/{id}/text` — the OCR-extracted Markdown. */
+    suspend fun getDocumentText(docId: String): DocumentText =
+        readDetail("/documents/$docId/text", DocumentText.serializer())
+
     // --- Typed readers (Phase 2) --------------------------------------
 
     /** Generic helper: GET a path, decode the response as a [ReadEnvelope] of

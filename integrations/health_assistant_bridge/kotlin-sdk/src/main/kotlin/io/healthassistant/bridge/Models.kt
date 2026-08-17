@@ -136,6 +136,8 @@ data class BiomarkerSummary(
     @SerialName("reference_range_min") val referenceRangeMin: Double? = null,
     @SerialName("reference_range_max") val referenceRangeMax: Double? = null,
     @SerialName("value_type") val valueType: String? = null,
+    /** Markdown education text about the biomarker (LLM-generated). */
+    val info: String? = null,
 )
 
 /** An observation row from `GET /observations` / `GET /observations/latest`.
@@ -197,6 +199,19 @@ data class ExaminationSummary(
     @SerialName("extraction_status") val extractionStatus: String? = null,
     val diagnoses: List<String>? = null,
     val impressions: String? = null,
+    val category: String? = null,
+    @SerialName("lab_name") val labName: String? = null,
+    @SerialName("external_id") val externalId: String? = null,
+)
+
+/** `GET /documents/{id}/text` — the OCR-extracted Markdown of a document,
+ *  capped at 512 KiB server-side (`truncated` flags the cut). */
+@Serializable
+data class DocumentText(
+    val id: String,
+    @SerialName("extracted_text") val extractedText: String? = null,
+    val status: String? = null,
+    val truncated: Boolean = false,
 )
 
 // --- Phase 3: clinical-record read models ---
