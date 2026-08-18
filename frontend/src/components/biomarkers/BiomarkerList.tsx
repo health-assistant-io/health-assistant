@@ -14,6 +14,7 @@ import { getStatusColorClass, isAbnormal, formatUnit, formatBiomarkerValue } fro
 import { Perspective } from '../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import { UnmappedBiomarkerMenu } from './UnmappedBiomarkerMenu';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 interface BiomarkerListProps {
   biomarkers?: BiomarkerObservation[];
@@ -720,7 +721,7 @@ export const BiomarkerList = React.memo(({
                   selectedInfo.info.includes('</') || selectedInfo.info.includes('<br') ? (
                     <div 
                       className="text-gray-700 dark:text-dark-text leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: selectedInfo.info }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedInfo.info) }}
                     />
                   ) : (
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedInfo.info}</ReactMarkdown>

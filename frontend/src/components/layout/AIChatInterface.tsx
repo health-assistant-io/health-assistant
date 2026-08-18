@@ -928,7 +928,6 @@ export const AIChatInterface: React.FC<Props> = ({
                                       return <code {...props} className={className}>{children}</code>;
                                     }
                                   }}
-                                  urlTransform={(url) => url}
                                   skipHtml={false}
                                 >
                                   {(() => {

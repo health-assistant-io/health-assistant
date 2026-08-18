@@ -48,6 +48,7 @@ import { useTranslation } from 'react-i18next';
 import { isMobileDevice } from '../../utils/deviceUtils';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 const ExaminationDetail = () => {
   const { t } = useTranslation();
@@ -1098,7 +1099,7 @@ const ExaminationDetail = () => {
                             </div>
                         ) : (
                            <div className={`prose dark:prose-invert max-w-none bg-gray-50/50 dark:bg-dark-bg/30 p-10 rounded-[2.5rem] ${examination?.notes ? 'min-h-[350px]' : 'min-h-[100px] flex items-center justify-center'} border border-gray-100 dark:border-dark-border shadow-inner`}>
-                              {examination?.notes ? <div dangerouslySetInnerHTML={{ __html: examination.notes }} /> : <p className="text-gray-400 italic">{t('examination_detail.overview.no_notes')}</p>}
+                              {examination?.notes ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(examination.notes) }} /> : <p className="text-gray-400 italic">{t('examination_detail.overview.no_notes')}</p>}
                            </div>
                         )}
                     </div>
@@ -1126,7 +1127,7 @@ const ExaminationDetail = () => {
                            </div>
                         ) : (
                           <div className={`prose dark:prose-invert max-w-none bg-blue-50/20 dark:bg-blue-900/5 p-10 rounded-[2.5rem] ${examination?.patient_notes ? 'min-h-[350px]' : 'min-h-[100px] flex items-center justify-center'} border border-blue-100/50 dark:border-blue-900/10 shadow-inner`}>
-                             {examination?.patient_notes ? <div dangerouslySetInnerHTML={{ __html: examination.patient_notes }} /> : <p className="text-gray-400 italic text-sm">{t('examination_detail.overview.patient_notes_empty')}</p>}
+                             {examination?.patient_notes ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(examination.patient_notes) }} /> : <p className="text-gray-400 italic text-sm">{t('examination_detail.overview.patient_notes_empty')}</p>}
                           </div>
                        )}
                     </div>

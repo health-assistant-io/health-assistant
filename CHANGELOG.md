@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (Batch 4 of the 2026-08-18 audit): frontend XSS chains + token lifecycle.**
+  - **FE-H1/H3/M6:** all 12 raw-HTML sinks (examination/patient notes, allergy/medication descriptions, biomarker info, catalog rich text, custom SVG icons) now render through DOMPurify (`utils/sanitize.ts`); the Quill editor sanitizes both markdown-converted and pasted HTML on write.
+  - **FE-H2:** AI chat no longer disables react-markdown's URL sanitizer (`urlTransform` override removed — `javascript:` links from LLM output were clickable).
+  - **FE-H4:** the 401-refresh interceptor now excludes `auth/refresh` (killed an infinite request-recursion loop), uses a single-flight lock shared across concurrent 401s, runs on a bare axios instance, and persists the rotated refresh token.
+  - **FE-M2/M5/L4:** logout wipes the tenant-switch `originalAccessToken`/`originalRefreshToken` (previously survived logout due to a case-sensitive sweep), the `documents` PHI cache, and persisted AI/settings stores; the sweep is now case-insensitive.
+
 - **Security hardening (Batch 3 of the 2026-08-18 audit): integrations framework, MCP client, bridge machine surfaces.**
   - **C-4:** MCP `stdio` transport disabled by default (`MCP_STDIO_ALLOWED_COMMANDS=""`) — it was user-configurable remote code execution (`python -c …` passed the command allowlist). Interpreter inline-code flags (`-c`/`-e`/`-p`/…) are rejected at the argument level even when an operator re-enables stdio.
   - **INT-H1/H2:** webhook + API-proxy routes fail closed — the integration UUID is no longer accepted as a credential. Instances are auto-provisioned with a high-entropy HMAC secret at creation (Fernet-encrypted with row-binding, shown once in the create response).

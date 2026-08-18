@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { marked } from 'marked';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 interface RichTextEditorProps {
   value: string;
@@ -69,10 +70,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     if (!value) return '';
     const isHtml = /<\/?[a-z][\s\S]*>/i.test(value);
     if (!isHtml) {
-      // It's likely Markdown, convert to HTML for the editor
-      return marked.parse(value) as string;
+      // It's likely Markdown, convert to HTML for the editor (sanitized —
+      // the stored value is later re-rendered as HTML).
+      return sanitizeHtml(marked.parse(value) as string);
     }
-    return value;
+    // HTML values are sanitized too — the editor is an entry point for the
+    // stored-XSS chain (audit 2026-08 FE-L2).
+    return sanitizeHtml(value);
   }, [value]);
 
   return (

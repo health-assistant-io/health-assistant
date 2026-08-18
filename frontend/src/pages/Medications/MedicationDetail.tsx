@@ -53,6 +53,7 @@ import { useTabScroll } from '../../hooks/useTabScroll';
 import { startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 function MedicationDetail() {
   const { t } = useTranslation();
@@ -354,7 +355,7 @@ function MedicationDetail() {
                       {!medication.description ? (
                         <p className="italic text-gray-400">{t('medications.no_description')}</p>
                       ) : (medication.description.includes('</') || medication.description.includes('<br')) ? (
-                        <div dangerouslySetInnerHTML={{ __html: medication.description }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(medication.description) }} />
                       ) : (
                         <ReactMarkdown>{medication.description}</ReactMarkdown>
                       )}

@@ -29,6 +29,7 @@ import { getExaminationFacets } from '../../features/instances/facets';
 import { ExaminationPreview } from '../../components/examinations/ExaminationPreview';
 import { PageContainer } from '../../components/ui/PageContainer';
 import { DatePicker } from '../../components/ui/DatePicker';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 function ExaminationList() {
   const { t } = useTranslation();
@@ -754,7 +755,7 @@ function ExaminationList() {
                  <h2 className="text-2xl font-black text-gray-900 dark:text-dark-text uppercase tracking-tight">{selectedInfo.displayName}</h2>
               </div>
               <div className="prose prose-sm dark:prose-invert max-w-none text-gray-600 dark:text-dark-muted italic leading-relaxed">
-                 <div dangerouslySetInnerHTML={{ __html: selectedInfo.info }} />
+                 <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedInfo.info) }} />
               </div>
            </div>
         </div>

@@ -29,6 +29,11 @@ export async function clearAuthData(): Promise<void> {
   const keysToRemove = [
     'accessToken',
     'refreshToken',
+    // Tenant-switch originals (audit 2026-08 FE-M2): the old case-sensitive
+    // substring sweep ('originalAccessToken'.includes('auth') === false)
+    // left a SYSTEM_ADMIN's real tokens on disk after logout.
+    'originalAccessToken',
+    'originalRefreshToken',
     'authStore', // Usually contains user/session info
     'user',
     'selectedPatientId',
@@ -39,6 +44,9 @@ export async function clearAuthData(): Promise<void> {
     'examinationData',
     'activeDocumentId',
     'documentData',
+    // documentSlice persists filename + server file_path + patient_id here
+    // (audit 2026-08 FE-M5) — PHI that must not survive logout.
+    'documents',
     'recentDocuments',
     'activeBiomarkerId',
     'biomarkerData',
@@ -49,16 +57,27 @@ export async function clearAuthData(): Promise<void> {
     'allergyData',
     'activeDoctorId',
     'doctorData',
-    'wearableData'
+    'wearableData',
+    // Persisted AI/tenant configs may carry key-shaped fields (FE-L4).
+    'ai-config-storage',
+    'settings-storage',
   ];
-  
+
   keysToRemove.forEach(key => {
     localStorage.removeItem(key);
   });
-  
-  // Also clear any other prefixed keys if used
+
+  // Also clear any other prefixed keys if used. Case-insensitive matching
+  // on 'auth'/'token' catches 'originalAccessToken' variants (audit
+  // 2026-08 FE-M2).
   Object.keys(localStorage).forEach(key => {
-    if (key.includes('patient') || key.includes('examination') || key.includes('auth')) {
+    const lower = key.toLowerCase();
+    if (
+      lower.includes('patient') ||
+      lower.includes('examination') ||
+      lower.includes('auth') ||
+      lower.includes('token')
+    ) {
       localStorage.removeItem(key);
     }
   });

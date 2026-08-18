@@ -5,6 +5,7 @@ import { Info, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useModalA11y } from '../../../hooks/useModalA11y';
+import { sanitizeHtml } from '../../../utils/sanitize';
 
 export interface BiomarkerInfoModalProps {
   info: string | null;
@@ -49,7 +50,7 @@ export const BiomarkerInfoModal: React.FC<BiomarkerInfoModalProps> = ({ info, na
             info.includes('</') || info.includes('<br') ? (
               <div 
                 className="text-gray-700 dark:text-dark-text leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: info }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(info) }}
               />
             ) : (
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{info}</ReactMarkdown>

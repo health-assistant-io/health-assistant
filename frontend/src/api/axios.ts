@@ -69,22 +69,26 @@ api.interceptors.response.use(
 
     // Check if error is 401 and not already retried
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Don't intercept 401s for auth endpoints to prevent infinite refresh loops and let components handle the error
-      if (originalRequest.url?.includes('auth/login') || originalRequest.url?.includes('auth/register')) {
+      // Don't intercept 401s for auth endpoints to prevent infinite refresh
+      // loops and let components handle the error. MUST include auth/refresh
+      // — a failing refresh that retriggers the interceptor recursed forever
+      // (audit 2026-08 FE-H4).
+      const authUrls = ['auth/login', 'auth/register', 'auth/refresh', 'auth/demo-login'];
+      if (originalRequest.url && authUrls.some((u) => originalRequest.url!.includes(u))) {
         return Promise.reject(error);
       }
 
       originalRequest._retry = true;
-      
+
       const refreshToken = localStorage.getItem('refreshToken');
-      
+
       // If no refresh token, immediately redirect to login
       if (!refreshToken) {
         clearAuthData();
         window.location.href = '/login';
         return Promise.reject(error);
       }
-      
+
       try {
         const newToken = await refreshAccessToken();
         api.defaults.headers.Authorization = `Bearer ${newToken}`;
@@ -97,7 +101,7 @@ api.interceptors.response.use(
         return Promise.reject(refreshError);
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -106,15 +110,39 @@ function isNetworkError(error: any) {
   return error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.message === 'Network Error';
 }
 
-async function refreshAccessToken(): Promise<string> {
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
+// Single-flight refresh (audit 2026-08 FE-H4): N concurrent 401s share one
+// /auth/refresh call. Without the lock, parallel refreshes raced the token
+// rotation server-side and cascaded into forced logouts.
+let refreshInFlight: Promise<string> | null = null;
+
+function refreshAccessToken(): Promise<string> {
+  if (refreshInFlight) {
+    return refreshInFlight;
   }
-  
-  const response = await api.post<{ access_token: string }>('/auth/refresh', { refresh_token: refreshToken });
-  localStorage.setItem('accessToken', response.data.access_token);
-  return response.data.access_token;
+  refreshInFlight = (async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    // Bare axios (NOT the intercepted `api` instance) — going through the
+    // interceptor would re-enter the 401 handler on refresh failure.
+    const response = await axios.post(
+      `${API_BASE_URL}/auth/refresh`,
+      { refresh_token: refreshToken },
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    localStorage.setItem('accessToken', response.data.access_token);
+    // The backend rotates the refresh token on every use — persist the new
+    // one or the next refresh replays the (now revoked) old token.
+    if (response.data.refresh_token) {
+      localStorage.setItem('refreshToken', response.data.refresh_token);
+    }
+    return response.data.access_token as string;
+  })();
+  const clear = () => { refreshInFlight = null; };
+  refreshInFlight.then(clear, clear);
+  return refreshInFlight;
 }
 
 /**

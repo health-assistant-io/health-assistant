@@ -29,6 +29,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useTabScroll } from '../../hooks/useTabScroll';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 /**
  * Allergen catalog detail page. Mirrors `MedicationDetail` — three tabs:
@@ -294,7 +295,7 @@ function AllergyDetail() {
                           {t('medications.no_description', 'No description available.')}
                         </p>
                       ) : allergy.description.includes('</') || allergy.description.includes('<br') ? (
-                        <div dangerouslySetInnerHTML={{ __html: allergy.description }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(allergy.description) }} />
                       ) : (
                         <ReactMarkdown>{allergy.description}</ReactMarkdown>
                       )}
