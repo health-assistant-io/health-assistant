@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: telemetry biomarker trends silently failing since the long-format migration.** Every telemetry trends query (`/analytics/trends` with `aggregation=1 hour|1 day|1 month`) errored with `no top level time_bucket_gapfill in group by clause` — `GROUP BY bucket` resolved to the source column instead of the gapfill expression — and the service fell back to raw FHIR observations, so dashboards showed observation-shaped data instead of OHLC telemetry. Three fixes: (1) the gapfill expression is now the GROUP BY key (positional) with explicit start/end so gap-filling actually works; (2) bound params are explicitly cast (`timestamptz`/`uuid`) — asyncpg's inference resolved them as `text` through the overloaded gapfill signature; (3) new migration `r1e2a3l4t5i6` enables **realtime aggregation** on the three telemetry continuous aggregates (they were `WITH NO DATA` + `materialized_only=true`, so `telemetry_monthly` returned zero rows while the raw hypertable held 260k — realtime union of live buckets is the TimescaleDB-recommended dashboard pattern). Verified against live data: all three aggregation paths now return real OHLC telemetry.
+
 - **Fix: fresh `pip install -r requirements.txt` failed** after the cryptography 50 bump — the unused `fastapi-mail` dependency (never imported; email delivery is not wired) caps `cryptography<50` and made pip's resolver fail on clean environments (Docker builds included). Removed the dead dependency; resolution + `pip-audit` both clean now.
 
 - **Docs: aligned all documentation with the security-hardening changes (2026-08 audit follow-through).**
