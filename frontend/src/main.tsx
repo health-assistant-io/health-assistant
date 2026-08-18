@@ -24,7 +24,8 @@ const root = ReactDOM.createRoot(
 
 root.render(
   <React.StrictMode>
-    <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+    {/* v7: relative-splat-path is the default; the future flag is gone. */}
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </React.StrictMode>

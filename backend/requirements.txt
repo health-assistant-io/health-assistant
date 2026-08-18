@@ -1,6 +1,6 @@
 aiofiles==25.1.0
 aiohappyeyeballs==2.6.2
-aiohttp==3.14.1
+aiohttp==3.14.3
 aiosignal==1.4.0
 aiosmtplib==5.1.1
 alembic==1.18.4
@@ -10,7 +10,7 @@ annotated-types==0.7.0
 anyio==4.13.0
 asyncpg==0.31.0
 attrs==26.1.0
-bcrypt==5.0.0
+bcrypt==4.3.0
 billiard==4.2.4
 blinker==1.9.0
 celery==5.6.3
@@ -22,7 +22,7 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 coverage==7.14.1
-cryptography==49.0.0
+cryptography==50.0.0  # CVE fix (PYSEC-2026-3552); fastapi-mail 1.6.5 caps <50 (email is stubbed) - metadata warning only
 distro==1.9.0
 dnspython==2.8.0
 email-validator==2.3.0
@@ -69,14 +69,14 @@ ormsgpack==1.12.2
 packaging==26.2
 pandas==3.0.3
 pdf2image==1.17.0
-pillow==12.2.0
+pillow==12.3.0
 pluggy==1.6.0
 prometheus_client==0.25.0
 prompt_toolkit==3.0.52
 propcache==0.5.2
 psycopg2-binary==2.9.12
 py-vapid==1.9.4
-pyasn1==0.6.3
+pyasn1==0.6.4
 pycparser==3.0
 pydantic==2.13.4
 pydantic-settings==2.14.2

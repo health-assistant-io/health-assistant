@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (Batch 6 of the 2026-08-18 audit): dependency vulnerabilities — both ecosystems now scan clean.**
+  - Python: `pillow` 12.2.0→12.3.0 (14 advisories, image-parsing surface), `aiohttp` 3.14.1→3.14.3 (3), `cryptography` 49.0.0→50.0.0 (1), `pyasn1` 0.6.3→0.6.4 (3), `mcp` 1.28.0→1.28.1; unused `python-jose`/`ecdsa` removed from the local env. `pip-audit`: **0 known vulnerabilities**.
+  - Frontend: `react-router-dom` 6.30.4→7.18.2 (open-redirect + SSR hydration injection advisories; the removed `future` flag was the only code change needed), plus `postcss`/`nanoid`/`js-yaml`/`brace-expansion`/`fast-uri` transitives via `npm audit fix`. `npm audit`: **0 vulnerabilities**; build + 636 tests green after the major bump.
+
 - **Security hardening (Batch 5 of the 2026-08-18 audit): configuration, containers, TLS posture.**
   - **C-5:** a root `.dockerignore` (committed, un-gitignored) keeps PHI (`uploads/`), secrets (`.env*`, keys), `venv/`, caches and dev docs out of image layers; all Dockerfiles use multi-stage builds with allowlisted `COPY` paths and run as a non-root `ha` user (no compilers in runtime images).
   - **C-5/CFG:** the settings `.env` tree walk-up is disabled outside dev — a baked-in container `.env` can no longer silently downgrade boot guards; production must use real env vars or an explicit `HA_ENV_FILE`.
