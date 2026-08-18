@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (Batch 5 of the 2026-08-18 audit): configuration, containers, TLS posture.**
+  - **C-5:** a root `.dockerignore` (committed, un-gitignored) keeps PHI (`uploads/`), secrets (`.env*`, keys), `venv/`, caches and dev docs out of image layers; all Dockerfiles use multi-stage builds with allowlisted `COPY` paths and run as a non-root `ha` user (no compilers in runtime images).
+  - **C-5/CFG:** the settings `.env` tree walk-up is disabled outside dev — a baked-in container `.env` can no longer silently downgrade boot guards; production must use real env vars or an explicit `HA_ENV_FILE`.
+  - **CFG-H1:** production refuses to boot with placeholder/weak `SECRET_KEY` values (the `.env.example` literal previously passed) — ≥32 chars + entropy required; the DB-password blocklist now also rejects `secure_password_here`.
+  - **CFG-H2:** a TLS-terminating nginx template ships (`docker/nginx-TLS.conf`: 80→443 redirect + ACME webroot + modern ciphers); the HTTP-only `nginx.conf` is explicitly marked dev/VPN-only and no longer publicly proxies `/docs`.
+  - **CFG-H6:** `DEMO_MODE=true` outside dev refuses to boot unless `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` is set explicitly (was a log-warning-only auth bypass).
+  - **CFG-M1/M2:** Redis runs with `requirepass` in prod + standalone compose (`REDIS_PASSWORD` required, healthchecks authenticated); the dev-db compose binds Postgres/Redis to 127.0.0.1 instead of 0.0.0.0.
+  - **CFG-M4:** `DEBUG=true` with a non-dev `APP_ENV` refuses to boot (SQL echo logs PHI with bound parameters).
+  - **API-L1/CFG-L1/CFG-L2:** Swagger/Redoc disabled outside dev unless `ENABLE_API_DOCS=true`; `TrustedHostMiddleware` pins the app to `APP_URL`/`FRONTEND_URL` hosts in production; CORS origins now resolve through pydantic settings (no more `os.getenv` bypass) and `PATCH` is allowed.
+  - `scripts/setup_env.py` generates `REDIS_PASSWORD`, writes `.env` with 0600 permissions, and prints the new key.
+
 - **Security hardening (Batch 4 of the 2026-08-18 audit): frontend XSS chains + token lifecycle.**
   - **FE-H1/H3/M6:** all 12 raw-HTML sinks (examination/patient notes, allergy/medication descriptions, biomarker info, catalog rich text, custom SVG icons) now render through DOMPurify (`utils/sanitize.ts`); the Quill editor sanitizes both markdown-converted and pasted HTML on write.
   - **FE-H2:** AI chat no longer disables react-markdown's URL sanitizer (`urlTransform` override removed — `javascript:` links from LLM output were clickable).

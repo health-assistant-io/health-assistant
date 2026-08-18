@@ -92,18 +92,24 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
 
 
 def test_b10_cors_default_has_no_underscore():
-    """B10: the production CORS fallback origin must be a valid hostname.
+    """B10: the production CORS origin must be a valid hostname.
 
-    Underscores are illegal in DNS names (RFC 1123 §2.1) so the previous
-    ``https://app.health_assistant.com`` could never match a real origin.
+    Underscores are illegal in DNS names (RFC 1123 §2.1). Audit 2026-08
+    CFG-L2: the origin now comes from pydantic ``settings.FRONTEND_URL``
+    (no more os.getenv fallback) — assert that pattern and that the
+    configured value has a clean host.
     """
     import re
 
     src = inspect.getsource(importlib.import_module("app.main"))
-    # Extract the actual default string literal, ignoring comments / docstrings.
-    match = re.search(r'allow_origins=\[os\.getenv\("FRONTEND_URL",\s*"([^"]+)"\)\]', src)
-    assert match, "Could not locate CORS allow_origins fallback in main.py"
-    fallback = match.group(1)
+    match = re.search(r"allow_origins=\[settings\.FRONTEND_URL\]", src)
+    assert match, (
+        "CORS allow_origins must read settings.FRONTEND_URL (pydantic "
+        "resolution), not a raw os.getenv fallback."
+    )
+    from app.core.config import Settings
+
+    fallback = Settings.model_fields["FRONTEND_URL"].default
     assert "_" not in fallback.split("://", 1)[1], (
         f"CORS fallback {fallback!r} contains an underscore in the hostname "
         " — invalid per RFC 1123."
@@ -111,16 +117,14 @@ def test_b10_cors_default_has_no_underscore():
 
 
 def test_b10_cors_default_is_valid_hostname():
-    """B10: sanity-check the fallback hostname parses cleanly."""
+    """B10: sanity-check the configured CORS hostname parses cleanly."""
     import re
 
+    from app.core.config import Settings
 
-    src = inspect.getsource(importlib.import_module("app.main"))
-    match = re.search(r'allow_origins=\[os\.getenv\("FRONTEND_URL",\s*"([^"]+)"\)\]', src)
-    assert match, "Could not locate CORS allow_origins fallback in main.py"
-    fallback = match.group(1)
+    fallback = Settings.model_fields["FRONTEND_URL"].default
     # Validate the host portion is RFC-1123 clean (letters, digits, hyphens, dots).
-    host = fallback.split("://", 1)[1].split("/")[0]
+    host = fallback.split("://", 1)[1].split("/")[0].split(":")[0]
     assert re.fullmatch(r"[a-z0-9.\-]+", host), (
         f"CORS fallback host {host!r} contains illegal characters."
     )
@@ -166,6 +170,7 @@ def test_b13_production_accepts_strong_password():
 
     s = Settings(
         APP_ENV="production",
+        DEBUG=False,
         POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
         SECRET_KEY="a-strong-secret-key-for-test-purposes",
         INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",

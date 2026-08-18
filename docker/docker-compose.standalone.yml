@@ -34,7 +34,7 @@ x-backend-env: &backend-env
   DEBUG: "false"
   POSTGRES_HOST: postgres
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
-  REDIS_URL: redis://redis:6379
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
@@ -97,13 +97,15 @@ services:
     image: redis:7-alpine
     container_name: health-assistant-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\""]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -233,7 +235,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       redis:
         condition: service_healthy

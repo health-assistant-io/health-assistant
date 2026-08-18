@@ -178,6 +178,7 @@ if not os.path.exists(".env.example"):
 secret_key = secrets.token_urlsafe(48)
 postgres_password = secrets.token_urlsafe(24)
 flower_password = secrets.token_urlsafe(24)
+redis_password = secrets.token_urlsafe(24)
 
 # Generate a valid Fernet key (32 bytes, base64url encoded)
 fernet_key_bytes = os.urandom(32)
@@ -201,6 +202,7 @@ config = {
     "SECRET_KEY": secret_key,
     "POSTGRES_PASSWORD": postgres_password,
     "FLOWER_PASSWORD": flower_password,
+    "REDIS_PASSWORD": redis_password,
     "INTEGRATION_SECRET_KEY": integration_secret_key,
     "VAPID_PUBLIC_KEY": vapid_public_key,
     "VAPID_PRIVATE_KEY": vapid_private_key,
@@ -313,7 +315,10 @@ try:
             if not replaced:
                 env_file.write(line)
 
-    print("\n✅ Environment configured successfully!")
+    # Audit 2026-08 CFG-L3: the .env holds SECRET_KEY / DB / Fernet / VAPID
+    # secrets — restrict to owner-only permissions.
+    os.chmod(".env", 0o600)
+    print("\n✅ Environment configured successfully! (permissions set to 600)")
     print("✨ Secure keys have been automatically generated for:")
     print("   - SECRET_KEY")
     print("   - INTEGRATION_SECRET_KEY")
