@@ -1,0 +1,57 @@
+name: Security Scan
+
+on:
+  push:
+    branches: ["main", "security/*"]
+  pull_request:
+  schedule:
+    # Weekly (Monday 06:00 UTC) — catches newly-published advisories in
+    # pinned dependencies even when the code hasn't changed.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-dependency-scan:
+    name: pip-audit (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Audit backend requirements
+        working-directory: backend
+        run: pip-audit -r requirements.txt --no-deps --strict
+
+  frontend-dependency-scan:
+    name: npm audit (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts || npm install --ignore-scripts
+      - name: npm audit (production + dev, zero tolerance)
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+
+  secret-history-scan:
+    name: gitleaks (repo history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

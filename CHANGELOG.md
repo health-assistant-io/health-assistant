@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (P2 of the 2026-08-18 audit): CI scanning + hardening tail.**
+  - New `.github/workflows/security-scan.yml`: weekly + PR-triggered `pip-audit` (strict) and `npm audit` (moderate threshold) and a full-history `gitleaks` secret scan.
+  - Global-search ILIKE patterns escape `%`/`_` wildcards (API-L4) — wildcard-stuffed queries no longer force match-everything scans.
+  - Deleted the dead `app/core/middleware.py` auth stub (wrong role comparison, unreferenced — a trap for future use; AUTH-L5).
+  - The audit report (`dev/audits/SECURITY-AUDIT-2026-08-18.md`) now carries a §10 remediation-status record: 5/5 Critical, 16/16 High fixed; deferred items (offline-cache encryption, token key separation, net_guard IP pinning, MFA, cookie sessions) are explicitly documented as non-blocking with mitigations.
+
 - **Security hardening (P1 follow-ups of the 2026-08-18 audit).**
   - **AUTH-H1:** rate-limit identity now honors `X-Forwarded-For` only up to a configured `TRUSTED_PROXY_COUNT` (default 0 = direct exposure, header ignored) — spoofed XFFs can no longer mint fresh brute-force buckets.
   - **AUTH-L4:** WebSocket auth no longer accepts `?token=` query strings at all (subprotocol-only; JWTs no longer reach proxy logs/browser history).

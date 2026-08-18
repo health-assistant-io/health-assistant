@@ -30,7 +30,11 @@ async def global_search(
     dispatcher so every registered catalog appears automatically.
     """
     tenant_id = current_user.tenant_id
-    search_pattern = f"%{q}%"
+    # Escape LIKE wildcards in user input (API-L4, audit 2026-08): a query
+    # full of %/_ shouldn't force full-scan matching on every row.
+    search_pattern = "%{}%".format(
+        q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
     results = []
 
     # API-M3 (audit 2026-08): the USER role sees only its own linked
@@ -56,8 +60,8 @@ async def global_search(
         .where(
             *patient_where,
             or_(
-                cast(Patient.name, String).ilike(search_pattern),
-                Patient.mrn.ilike(search_pattern),
+                cast(Patient.name, String).ilike(search_pattern, escape="\\"),
+                Patient.mrn.ilike(search_pattern, escape="\\"),
             ),
         )
         .limit(5)
@@ -91,9 +95,9 @@ async def global_search(
         .where(
             *exam_where,
             or_(
-                ExaminationModel.notes.ilike(search_pattern),
-                ExaminationModel.patient_notes.ilike(search_pattern),
-                ExaminationModel.impressions.ilike(search_pattern),
+                ExaminationModel.notes.ilike(search_pattern, escape="\\"),
+                ExaminationModel.patient_notes.ilike(search_pattern, escape="\\"),
+                ExaminationModel.impressions.ilike(search_pattern, escape="\\"),
             ),
         )
         .limit(5)
@@ -121,7 +125,7 @@ async def global_search(
         select(DocumentModel)
         .where(
             *doc_where,
-            DocumentModel.filename.ilike(search_pattern),
+            DocumentModel.filename.ilike(search_pattern, escape="\\"),
         )
         .limit(5)
     )
@@ -146,8 +150,8 @@ async def global_search(
         .where(
             *event_where,
             or_(
-                ClinicalEvent.title.ilike(search_pattern),
-                ClinicalEvent.description.ilike(search_pattern),
+                ClinicalEvent.title.ilike(search_pattern, escape="\\"),
+                ClinicalEvent.description.ilike(search_pattern, escape="\\"),
             ),
         )
         .limit(5)
