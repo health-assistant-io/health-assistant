@@ -714,7 +714,7 @@ async def edit_document_service(
         )
     except Exception as e:
         logger.error(f"Failed to edit image: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to edit image: {e!s}")
+        raise HTTPException(status_code=500, detail="Failed to edit image")
 
     # Create database record
     new_document = DocumentModel(

@@ -337,6 +337,12 @@ class Settings(BaseSettings):
     # operator explicitly enables them (e.g. behind an authenticated gateway).
     ENABLE_API_DOCS: bool = False
 
+    # Audit 2026-08 AUTH-H1: number of TRUSTED reverse-proxy hops that append
+    # to X-Forwarded-For (nginx/traefix + their LB). 0 = direct exposure (the
+    # header is ignored; the socket peer is the rate-limit identity). Set to
+    # 1 when exactly one trusted proxy fronts the app.
+    TRUSTED_PROXY_COUNT: int = 0
+
     # AI/OCR - OpenAI Compatible API (used as fallback if no database configuration exists)
     OCR_PROVIDER: str = "openai"
     OPENAI_API_KEY: Optional[str] = None

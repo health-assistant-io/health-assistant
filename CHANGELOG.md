@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (P1 follow-ups of the 2026-08-18 audit).**
+  - **AUTH-H1:** rate-limit identity now honors `X-Forwarded-For` only up to a configured `TRUSTED_PROXY_COUNT` (default 0 = direct exposure, header ignored) — spoofed XFFs can no longer mint fresh brute-force buckets.
+  - **AUTH-L4:** WebSocket auth no longer accepts `?token=` query strings at all (subprotocol-only; JWTs no longer reach proxy logs/browser history).
+  - **API-L2:** remaining 500-details that echoed exception internals (`examinations` extraction trigger, image edit) replaced with generic messages.
+  - **Docs:** INSTALL.md TLS section rewritten around the new `nginx-TLS.conf` flow (the old text claimed in-stack TLS termination that didn't exist); the prod checklist documents auto-provisioned webhook secrets, `TRUSTED_PROXY_COUNT`, `REDIS_PASSWORD`, and `ENABLE_API_DOCS`; the nonexistent `APP_CSP_CONTENT` reference is gone.
+
 - **Security hardening (Batch 6 of the 2026-08-18 audit): dependency vulnerabilities — both ecosystems now scan clean.**
   - Python: `pillow` 12.2.0→12.3.0 (14 advisories, image-parsing surface), `aiohttp` 3.14.1→3.14.3 (3), `cryptography` 49.0.0→50.0.0 (1), `pyasn1` 0.6.3→0.6.4 (3), `mcp` 1.28.0→1.28.1; unused `python-jose`/`ecdsa` removed from the local env. `pip-audit`: **0 known vulnerabilities**.
   - Frontend: `react-router-dom` 6.30.4→7.18.2 (open-redirect + SSR hydration injection advisories; the removed `future` flag was the only code change needed), plus `postcss`/`nanoid`/`js-yaml`/`brace-expansion`/`fast-uri` transitives via `npm audit fix`. `npm audit`: **0 vulnerabilities**; build + 636 tests green after the major bump.

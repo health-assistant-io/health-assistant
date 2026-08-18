@@ -292,30 +292,33 @@ def test_b11_extract_token_prefers_subprotocol():
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {"sec-websocket-protocol": "bearer, eyJabc.def.ghi"}
-    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws, None))
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
     assert token == "eyJabc.def.ghi"
 
 
-def test_b11_extract_token_falls_back_to_query():
-    """B11: without a subprotocol, the query-string token is used (backward compat)."""
+def test_b11_extract_token_query_fallback_is_removed():
+    """Audit 2026-08 AUTH-L4: the ?token= query fallback is GONE — without a
+    subprotocol there is no accepted auth channel (query tokens landed in
+    proxy access logs / browser history)."""
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {}
-    token = asyncio.get_event_loop().run_until_complete(
-        _extract_token(ws, "legacy-query-token")
-    )
-    assert token == "legacy-query-token"
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
+    assert token is None
 
 
 def test_b11_extract_token_returns_none_when_neither_present():
-    """B11: no token from either source → None → endpoint rejects."""
+    """B11: no token from any source → None → endpoint rejects."""
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {}
-    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws, None))
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
     assert token is None
 
 

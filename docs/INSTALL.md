@@ -224,23 +224,25 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Configure firewall rules
 - [ ] Set up database backups
 - [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`) — just ensure Redis is reachable; it degrades open if Redis is down (audit A2)
-- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS) (audit A7); tighten `APP_CSP_CONTENT` if you serve the SPA from the backend origin
+- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS) (audit A7)
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
-- [ ] **Set webhook secrets** for any integrations that receive webhooks — add `webhook_secret` to each integration's `user_config`; the sender must sign payloads with `HMAC-SHA256`
+- [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation). Senders must sign payloads with `HMAC-SHA256`; unsigned requests are rejected (audit 2026-08)
+- [ ] Set `TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
+- [ ] Set `REDIS_PASSWORD` — the docker stacks require it and Redis runs with `requirepass`
+- [ ] API docs (`/docs`) are disabled in production by default; set `ENABLE_API_DOCS=true` only if you understand the exposure
 
-#### TLS with Let's Encrypt
+#### TLS
 
-The standalone stack terminates TLS at Nginx. The easiest way to add a real certificate on the host in front of the stack is `certbot`:
+Health data must never cross the network in cleartext. The standalone nginx flavor ships HTTP-only for local/VPN use — for any internet-facing deployment pick ONE:
 
-```bash
-sudo apt install certbot python3-certbot-nginx
-```
+1. **In-stack TLS (nginx-TLS.conf):** copy `docker/nginx-TLS.conf`, replace `SERVER_NAME` with your domain, mount your certificate (`fullchain.pem` + `privkey.pem`) as shown in the file header, and mount it over `nginx.conf`. Obtain the certificate on the host with certbot webroot:
 
-```bash
-sudo certbot --nginx -d health.example.com
-```
+   ```bash
+   sudo apt install certbot
+   sudo certbot certonly --webroot -w /var/www/certbot -d health.example.com
+   ```
 
-If you run the **bring-your-own-proxy** flavor, terminate TLS at your existing proxy (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel) instead — the app containers don't need to know about certificates.
+2. **Bring-your-own-proxy:** terminate TLS at your existing proxy (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel) and keep the stack's nginx HTTP-only on an internal network. Set `APP_URL`/`FRONTEND_URL` to the public HTTPS origins (they drive CORS, the OAuth issuer, and TrustedHost validation).
 
 ## Updates
 
