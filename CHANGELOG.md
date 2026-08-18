@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (Batch 2 of the 2026-08-18 audit): API attack surface — intra-tenant PHI boundaries, file-write traversal, SSRF.**
+  - **C-3:** backup-restore document filenames are extension-validated against the upload allowlist — a crafted `documents.json` could previously write arbitrary files via `../` in the "extension".
+  - **API-H1:** `POST /import/ocr` no longer accepts a client-supplied `api_base` (the platform key was exfiltrated to attacker URLs); all import endpoints now cap request bodies at `MAX_UPLOAD_SIZE` and never echo exception strings.
+  - **API-H2:** patient-scope exports access-check every requested `patient_id` — a USER could previously export any tenant patient's full record (incl. raw documents) by UUID.
+  - **API-H3:** AI chat + tool listing validate the client-supplied patient context via `check_patient_access` before any tool pipeline binds it.
+  - **API-H4/H5:** document `preview` enforces owner for USER role; `presign` + `dicom-metadata` fetch tenant-scoped (tenant ADMIN/MANAGER can no longer cross tenants via the admin short-circuit).
+  - **API-M2:** `GET /observations/{id}` enforces the USER patient gate; **API-M3:** global search results (patients, examinations, documents, events) are restricted to the USER's own linked patients; **API-M4:** notification triggers listed/deleted/test-fired by a USER are limited to their own (created-by or own-patient) triggers.
+
 - **Security hardening (Batch 1 of the 2026-08-18 pre-exposure audit, `dev/audits/SECURITY-AUDIT-2026-08-18.md`): authentication & token lifecycle.**
   - **C-1:** `GET /auth/setup-status` no longer returns the live setup token in `setup_url_hint` (env mode) — anonymous callers could bootstrap the instance with it; the launcher composes the one-click URL itself.
   - **C-2:** tenant ADMIN/MANAGER can no longer escalate to `SYSTEM_ADMIN` via `PUT/POST /api/v1/users`; the service layer refuses the role change too, and MANAGERs can no longer change roles at all.

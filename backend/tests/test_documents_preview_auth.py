@@ -12,6 +12,7 @@ Post-fix contract pinned here:
    information leak).
 5. ``SYSTEM_ADMIN`` Bearer JWT is honored regardless of tenant.
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -60,12 +61,13 @@ def _request_with(headers: dict | None = None):
     return request
 
 
-def _doc(tenant_id, filename="report.pdf", file_path="/tmp/report.pdf"):
+def _doc(tenant_id, filename="report.pdf", file_path="/tmp/report.pdf", owner_id=None):
     fake = MagicMock()
     fake.id = uuid.uuid4()
     fake.tenant_id = tenant_id
     fake.filename = filename
     fake.file_path = file_path
+    fake.owner_id = owner_id
     return fake
 
 
@@ -101,9 +103,7 @@ async def test_preview_with_bad_bearer_returns_401():
     request = _request_with({"Authorization": "Bearer not.a.real.token"})
     db = MagicMock()
 
-    with patch(
-        "app.core.security.decode_access_token", return_value=None
-    ):
+    with patch("app.core.security.decode_access_token", return_value=None):
         with pytest.raises(HTTPException) as exc:
             await docs_endpoint.get_document_preview_endpoint(
                 request=request,
@@ -128,12 +128,11 @@ async def test_preview_with_valid_presigned_token_succeeds():
     request = _request_with({})  # no Authorization header
     db = MagicMock()
 
-    with patch(
-        "app.core.security.verify_presigned_token", return_value=True
-    ), patch.object(
-        docs_endpoint, "get_document", new=AsyncMock(return_value=doc)
-    ), patch("pathlib.Path.exists", lambda self: True), patch(
-        "builtins.open", _patched_open()
+    with (
+        patch("app.core.security.verify_presigned_token", return_value=True),
+        patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
+        patch("pathlib.Path.exists", lambda self: True),
+        patch("builtins.open", _patched_open()),
     ):
         result = await docs_endpoint.get_document_preview_endpoint(
             request=request,
@@ -153,9 +152,7 @@ async def test_preview_with_invalid_presigned_token_returns_401():
     request = _request_with({})
     db = MagicMock()
 
-    with patch(
-        "app.core.security.verify_presigned_token", return_value=False
-    ):
+    with patch("app.core.security.verify_presigned_token", return_value=False):
         with pytest.raises(HTTPException) as exc:
             await docs_endpoint.get_document_preview_endpoint(
                 request=request,
@@ -176,7 +173,9 @@ async def test_preview_with_invalid_presigned_token_returns_401():
 async def test_preview_bearer_same_tenant_succeeds():
     tenant_a = uuid.uuid4()
     user = _user(tenant_a)
-    doc = _doc(tenant_a, filename="img.png")
+    # API-H4 (audit 2026-08): a USER-role bearer must own the document
+    # (tenant match alone is no longer sufficient).
+    doc = _doc(tenant_a, filename="img.png", owner_id=user.user_id)
 
     request = _request_with({"Authorization": "Bearer some-jwt"})
     db = MagicMock()
@@ -187,6 +186,7 @@ async def test_preview_bearer_same_tenant_succeeds():
         "tenant_id": str(tenant_a),
         "role": Role.USER.value,
     }
+
     def _fake_open(*a, **kw):
         m = MagicMock()
         m.__enter__ = lambda s: m
@@ -194,10 +194,11 @@ async def test_preview_bearer_same_tenant_succeeds():
         m.read = lambda: b"PNGDATA"
         return m
 
-    with patch("app.core.security.decode_access_token", return_value=payload), patch.object(
-        docs_endpoint, "get_document", new=AsyncMock(return_value=doc)
-    ), patch("pathlib.Path.exists", lambda self: True), patch(
-        "builtins.open", _patched_open()
+    with (
+        patch("app.core.security.decode_access_token", return_value=payload),
+        patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
+        patch("pathlib.Path.exists", lambda self: True),
+        patch("builtins.open", _patched_open()),
     ):
         result = await docs_endpoint.get_document_preview_endpoint(
             request=request,
@@ -228,8 +229,9 @@ async def test_preview_bearer_cross_tenant_returns_404():
         "tenant_id": str(tenant_a),
         "role": Role.USER.value,
     }
-    with patch("app.core.security.decode_access_token", return_value=payload), patch.object(
-        docs_endpoint, "get_document", new=AsyncMock(return_value=doc)
+    with (
+        patch("app.core.security.decode_access_token", return_value=payload),
+        patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
     ):
         with pytest.raises(HTTPException) as exc:
             await docs_endpoint.get_document_preview_endpoint(
@@ -261,6 +263,7 @@ async def test_preview_bearer_system_admin_cross_tenant_succeeds():
         "tenant_id": str(tenant_a),
         "role": Role.SYSTEM_ADMIN.value,
     }
+
     def _fake_open(*a, **kw):
         m = MagicMock()
         m.__enter__ = lambda s: m
@@ -268,10 +271,11 @@ async def test_preview_bearer_system_admin_cross_tenant_succeeds():
         m.read = lambda: b"PNGDATA"
         return m
 
-    with patch("app.core.security.decode_access_token", return_value=payload), patch.object(
-        docs_endpoint, "get_document", new=AsyncMock(return_value=doc)
-    ), patch("pathlib.Path.exists", lambda self: True), patch(
-        "builtins.open", _patched_open()
+    with (
+        patch("app.core.security.decode_access_token", return_value=payload),
+        patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
+        patch("pathlib.Path.exists", lambda self: True),
+        patch("builtins.open", _patched_open()),
     ):
         result = await docs_endpoint.get_document_preview_endpoint(
             request=request,
@@ -291,10 +295,9 @@ async def test_preview_document_not_found_returns_404():
     request = _request_with({})
     db = MagicMock()
 
-    with patch(
-        "app.core.security.verify_presigned_token", return_value=True
-    ), patch.object(
-        docs_endpoint, "get_document", new=AsyncMock(return_value=None)
+    with (
+        patch("app.core.security.verify_presigned_token", return_value=True),
+        patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=None)),
     ):
         with pytest.raises(HTTPException) as exc:
             await docs_endpoint.get_document_preview_endpoint(
@@ -338,7 +341,7 @@ async def test_preview_dead_code_branch_removed():
     assert "detail=str(e)" not in src, (
         "Preview endpoint must not leak raw exception detail (audit A6)."
     )
-    assert "detail=f\"Failed" not in src, (
+    assert 'detail=f"Failed' not in src, (
         "Preview endpoint must not embed str(e) in detail (audit A6)."
     )
     # The function-level generic handler re-raises (lets the global handler

@@ -50,9 +50,11 @@ async def import_backup(
     user_id = _parse_uuid(str(current_user.user_id))
     svc = ImportService(db)
 
+    from app.services.document_service import _read_capped
+
     suffix = Path(file.filename or "").suffix or ".bin"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
+        content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
         tmp.write(content)
         tmp_path = Path(tmp.name)
 
@@ -97,8 +99,10 @@ async def import_fhir(
     tmp_path = None
     try:
         tenant_id = str(current_user.tenant_id)
+        from app.services.document_service import _read_capped
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            content = await file.read()
+            content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
             tmp.write(content)
             tmp_path = Path(tmp.name)
         svc = ImportService(db)
@@ -111,8 +115,9 @@ async def import_fhir(
             tmp_path, tenant_id, patient_id=patient_id, config=config
         )
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Import failed")
+        raise HTTPException(status_code=500, detail="Import failed")
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
@@ -135,8 +140,10 @@ async def import_csv(
     tmp_path = None
     try:
         tenant_id = str(current_user.tenant_id)
+        from app.services.document_service import _read_capped
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-            content = await file.read()
+            content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
             tmp.write(content)
             tmp_path = Path(tmp.name)
         config = CSVImportConfig(delimiter=delimiter, has_header=has_header)
@@ -148,8 +155,9 @@ async def import_csv(
             config=config,
         )
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Import failed")
+        raise HTTPException(status_code=500, detail="Import failed")
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
@@ -160,7 +168,6 @@ async def import_ocr(
     file: UploadFile = File(...),
     patient_id: Optional[str] = Form(None),
     model_name: Optional[str] = Form(None),
-    api_base: Optional[str] = Form(None),
     extract_tables: bool = Form(True),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -177,8 +184,10 @@ async def import_ocr(
     tmp_path = None
     try:
         suffix = Path(filename).suffix
+        from app.services.document_service import _read_capped
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
+            content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
             tmp.write(content)
             tmp_path = Path(tmp.name)
         config = OCRImportConfig(
@@ -186,7 +195,11 @@ async def import_ocr(
             model_name=model_name or settings.OPENAI_MODEL,
             extract_tables=extract_tables,
         )
-        api_base_url = api_base or settings.OPENAI_API_BASE
+        # API-H1 (audit 2026-08): the OCR endpoint always uses the
+        # platform-configured base URL + key. A client-supplied api_base
+        # previously exfiltrated the server's OPENAI_API_KEY to an
+        # attacker host (and was a generic SSRF primitive).
+        api_base_url = settings.OPENAI_API_BASE
         api_key = settings.OPENAI_API_KEY
         model = model_name or settings.OPENAI_MODEL
         tenant_id = str(current_user.tenant_id)
@@ -201,8 +214,9 @@ async def import_ocr(
             model=model,
         )
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Import failed")
+        raise HTTPException(status_code=500, detail="Import failed")
     finally:
         if tmp_path and tmp_path.exists():
             tmp_path.unlink(missing_ok=True)

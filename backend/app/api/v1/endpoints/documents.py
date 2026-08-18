@@ -275,7 +275,15 @@ async def get_presigned_url_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a short-lived token to safely download a document without passing JWT"""
-    document = await get_document(document_id, db)
+    # API-H5 (audit 2026-08): tenant-scoped fetch. Previously the admin
+    # short-circuit skipped BOTH the owner check and any tenant filter, so
+    # a tenant ADMIN/MANAGER could presign (and download) another tenant's
+    # document by UUID.
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -510,7 +518,12 @@ async def get_dicom_metadata_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get metadata for a DICOM document"""
-    document = await get_document(document_id, db)
+    # API-H5 (audit 2026-08): tenant-scoped fetch (see presign).
+    document = await get_document(
+        document_id,
+        db,
+        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id,
+    )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -660,6 +673,15 @@ async def get_document_preview_endpoint(
             raise HTTPException(status_code=403, detail="Tenant mismatch")
         if doc_tenant != caller_tenant:
             # 404 (not 403) so we don't leak that the doc exists in another tenant.
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # API-H4 (audit 2026-08): tenant match alone is not enough for the
+        # USER role — a tenant member must not render other members'
+        # documents. Mirrors the gate on GET /documents/{id}: ADMIN/MANAGER
+        # are tenant-wide, USER must own the document.
+        if token_data.role == Role.USER.value and str(document.owner_id) != str(
+            token_data.user_id
+        ):
             raise HTTPException(status_code=404, detail="Document not found")
 
     from app.ai.processors.ocr.utils import convert_to_images

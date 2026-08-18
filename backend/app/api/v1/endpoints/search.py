@@ -5,6 +5,7 @@ from sqlalchemy import select, or_, cast, String
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
+from app.models.enums import Role
 from app.models.fhir.patient import Patient
 from app.models.examination_model import ExaminationModel
 from app.models.document_model import DocumentModel
@@ -32,11 +33,28 @@ async def global_search(
     search_pattern = f"%{q}%"
     results = []
 
+    # API-M3 (audit 2026-08): the USER role sees only its own linked
+    # patients (and their records) — matches GET /patients. Tenant-wide
+    # entity search previously enumerated every patient's name + MRN to
+    # any tenant member, feeding BOLA discovery elsewhere.
+    own_patient_ids = (
+        select(Patient.id).where(
+            Patient.tenant_id == tenant_id,
+            Patient.user_id == current_user.user_id,
+        )
+        if current_user.role == Role.USER.value
+        else None
+    )
+
+    patient_where = [Patient.tenant_id == tenant_id]
+    if current_user.role == Role.USER.value:
+        patient_where.append(Patient.user_id == current_user.user_id)
+
     # 1. Search Patients
     patients_result = await db.execute(
         select(Patient)
         .where(
-            Patient.tenant_id == tenant_id,
+            *patient_where,
             or_(
                 cast(Patient.name, String).ilike(search_pattern),
                 Patient.mrn.ilike(search_pattern),
@@ -65,10 +83,13 @@ async def global_search(
         )
 
     # 2. Search Examinations
+    exam_where = [ExaminationModel.tenant_id == tenant_id]
+    if own_patient_ids is not None:
+        exam_where.append(ExaminationModel.patient_id.in_(own_patient_ids))
     examinations_result = await db.execute(
         select(ExaminationModel)
         .where(
-            ExaminationModel.tenant_id == tenant_id,
+            *exam_where,
             or_(
                 ExaminationModel.notes.ilike(search_pattern),
                 ExaminationModel.patient_notes.ilike(search_pattern),
@@ -93,10 +114,13 @@ async def global_search(
         )
 
     # 3. Search Documents
+    doc_where = [DocumentModel.tenant_id == tenant_id]
+    if own_patient_ids is not None:
+        doc_where.append(DocumentModel.patient_id.in_(own_patient_ids))
     documents_result = await db.execute(
         select(DocumentModel)
         .where(
-            DocumentModel.tenant_id == tenant_id,
+            *doc_where,
             DocumentModel.filename.ilike(search_pattern),
         )
         .limit(5)
@@ -114,10 +138,13 @@ async def global_search(
         )
 
     # 4. Search Clinical Events
+    event_where = [ClinicalEvent.tenant_id == tenant_id]
+    if own_patient_ids is not None:
+        event_where.append(ClinicalEvent.patient_id.in_(own_patient_ids))
     events_result = await db.execute(
         select(ClinicalEvent)
         .where(
-            ClinicalEvent.tenant_id == tenant_id,
+            *event_where,
             or_(
                 ClinicalEvent.title.ilike(search_pattern),
                 ClinicalEvent.description.ilike(search_pattern),

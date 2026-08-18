@@ -569,9 +569,7 @@ class ImportService:
                         for o in mapped_obs:
                             b_def = b_dict.get(o.biomarker_id)
                             if b_def and b_def.is_telemetry:
-                                slug = (
-                                    b_def.slug.lower() if b_def.slug else ""
-                                )
+                                slug = b_def.slug.lower() if b_def.slug else ""
                                 val = (
                                     getattr(o, "normalized_value", None)
                                     or getattr(o, "raw_value", None)
@@ -1113,14 +1111,17 @@ class ImportService:
             from app.services.observation_value_validator import (
                 validate_observation_payload,
             )
+
             _bio = await self.db.get(BiomarkerDefinition, _bio_id)
             try:
                 validate_observation_payload(_bio, orm)
             except Exception:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "Import observation skipped — value contract violation "
-                    "for biomarker %s", _bio_id,
+                    "for biomarker %s",
+                    _bio_id,
                 )
                 return "skipped", None
 
@@ -1740,9 +1741,10 @@ class ImportService:
                 payload, tenant_id, id_remap
             )
         elif name == "anatomy.json":
-            created["anatomy_structures"], created[
-                "anatomy_relations"
-            ] = await self._restore_anatomy(payload, tenant_id, id_remap)
+            (
+                created["anatomy_structures"],
+                created["anatomy_relations"],
+            ) = await self._restore_anatomy(payload, tenant_id, id_remap)
         elif name == "concept_edges.json":
             created["concept_edges"] = await self._restore_concept_edges(
                 payload, tenant_id, id_remap
@@ -1930,9 +1932,11 @@ class ImportService:
                 # organization_id: remap if the org was created during FHIR
                 # restore; else carry through only if it exists in-tenant.
                 org_id_raw = item.get("organization_id")
-                organization_id = _uuid(
-                    id_remap.get(str(org_id_raw), org_id_raw)
-                ) if org_id_raw else None
+                organization_id = (
+                    _uuid(id_remap.get(str(org_id_raw), org_id_raw))
+                    if org_id_raw
+                    else None
+                )
                 exam = ExaminationModel(
                     tenant_id=tenant_id,
                     patient_id=_uuid(pid),
@@ -1943,7 +1947,9 @@ class ImportService:
                     organization_id=organization_id,
                     source_integration_id=_uuid(item.get("source_integration_id")),
                     external_id=item.get("external_id"),
-                    auto_extract_metadata=bool(item.get("auto_extract_metadata", False)),
+                    auto_extract_metadata=bool(
+                        item.get("auto_extract_metadata", False)
+                    ),
                     diagnoses=item.get("diagnoses"),
                     impressions=item.get("impressions"),
                     extraction_status=item.get("extraction_status"),
@@ -2224,9 +2230,7 @@ class ImportService:
                     return str(existing.id)
                 primary_raw = c.get("primary_kind")
                 try:
-                    primary_kind = (
-                        ConceptKind(primary_raw) if primary_raw else None
-                    )
+                    primary_kind = ConceptKind(primary_raw) if primary_raw else None
                 except ValueError:
                     primary_kind = None
                 new_c = Concept(
@@ -2413,9 +2417,7 @@ class ImportService:
         return struct_count, rel_count
 
     @staticmethod
-    def _remap_anatomy_endpoint(
-        raw: Any, id_remap: Dict[str, str]
-    ) -> Optional[UUID]:
+    def _remap_anatomy_endpoint(raw: Any, id_remap: Dict[str, str]) -> Optional[UUID]:
         if not raw:
             return None
         key = str(raw)
@@ -2675,7 +2677,12 @@ class ImportService:
         id_remap: Dict[str, str],
         owner_id: UUID,
     ) -> int:
-        from app.services.document_service import UPLOAD_DIR as RESOLVED_UPLOAD_DIR
+        from pathlib import PurePosixPath
+
+        from app.services.document_service import (
+            ALLOWED_UPLOAD_EXTENSIONS,
+            UPLOAD_DIR as RESOLVED_UPLOAD_DIR,
+        )
 
         tenant_dir = Path(str(RESOLVED_UPLOAD_DIR)) / str(tenant_id)
         tenant_dir.mkdir(parents=True, exist_ok=True)
@@ -2686,7 +2693,17 @@ class ImportService:
                 if pid and str(pid) in id_remap:
                     pid = id_remap[str(pid)]
                 archive_path = meta.get("_archive_path")
-                target_name = f"{uuid4()}{os.path.splitext(meta.get('filename', ''))[1] or '.bin'}"
+
+                # C-3 (audit 2026-08): the filename's extension is
+                # validated against the same allowlist as interactive
+                # uploads, and anything path-like is stripped. A crafted
+                # documents.json previously let the "extension" contain
+                # '../' traversal → arbitrary file write.
+                raw_filename = str(meta.get("filename") or "")
+                ext = PurePosixPath(raw_filename).suffix.lower()
+                if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+                    ext = ".bin"
+                target_name = f"{uuid4()}{ext}"
                 target_path = tenant_dir / target_name
                 if archive and archive_path:
                     try:
