@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: fresh `pip install -r requirements.txt` failed** after the cryptography 50 bump — the unused `fastapi-mail` dependency (never imported; email delivery is not wired) caps `cryptography<50` and made pip's resolver fail on clean environments (Docker builds included). Removed the dead dependency; resolution + `pip-audit` both clean now.
+
 - **Docs: aligned all documentation with the security-hardening changes (2026-08 audit follow-through).**
   - `docs/API.md` — JWT/session-token model rewritten (1h TTL, `token_kind`/`jti`, DB-revalidating refresh, logout kills the access token), single-use invites with 30-day cap, bootstrap moved to `/auth/setup`, `TRUSTED_PROXY_COUNT` rate-limit note, and the inbound machine-routes table rewritten for mandatory HMAC secrets + mandatory timestamp + query-string MAC + minimal unsigned `/status`; `expires_in` examples 86400→3600.
   - `docs/INTEGRATIONS_SDK.md` §3.16 + secret-handling section — mandatory auto-provisioned per-instance secrets (shown once, Fernet + row-binding), route-level timestamp/query enforcement.
