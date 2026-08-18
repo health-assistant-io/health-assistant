@@ -23,6 +23,7 @@ instance's Debug Mode to inspect URLs, params, status codes, per-resource
 decisions, and HTTP headers (Authorization redacted) in the frontend Debug
 Console.
 """
+
 import datetime as dt
 import logging
 from datetime import datetime, timedelta, timezone
@@ -80,12 +81,12 @@ _PUSH_BATCH_LIMIT = 500
 # ``fhir_medications`` row via the ``intent`` discriminator).
 _ALL_RESOURCES = "all"
 _RESOURCE_TOKENS = (
-    "Condition",          # → clinical events
-    "Encounter",          # → examinations
+    "Condition",  # → clinical events
+    "Encounter",  # → examinations
     "DocumentReference",  # → documents + OCR
-    "Medication",         # → MedicationStatement + MedicationRequest
-    "AllergyIntolerance", # → allergies
-    "Immunization",       # → immunizations
+    "Medication",  # → MedicationStatement + MedicationRequest
+    "AllergyIntolerance",  # → allergies
+    "Immunization",  # → immunizations
 )
 
 
@@ -106,8 +107,11 @@ class FhirServerProvider(BaseHealthProvider):
         # sync_direction was changed to push after initial authorization.
         push_enabled = self._direction(integration) in ("both", "push_only")
         return await self._smart.begin_connect(
-            fhir_base_url, redirect_uri, "Health Assistant",
-            push_enabled=push_enabled, extra_state=extra_state,
+            fhir_base_url,
+            redirect_uri,
+            "Health Assistant",
+            push_enabled=push_enabled,
+            extra_state=extra_state,
         )
 
     async def complete_oauth(self, integration, pending, code):
@@ -191,8 +195,10 @@ class FhirServerProvider(BaseHealthProvider):
                 )
         except (IntegrationAuthError, IntegrationDataError) as e:
             await self.log_debug_payload(
-                integration, "Patient search failed",
-                {"error": str(e), "params": params}, level="warning",
+                integration,
+                "Patient search failed",
+                {"error": str(e), "params": params},
+                level="warning",
             )
             return []
 
@@ -205,6 +211,7 @@ class FhirServerProvider(BaseHealthProvider):
     @staticmethod
     def _summarize_patient(fhir_patient: Dict[str, Any]) -> Dict[str, Any]:
         """Reduce a FHIR Patient to the picker-relevant fields."""
+
         def _name() -> str:
             names = fhir_patient.get("name") or []
             if isinstance(names, dict):
@@ -271,8 +278,15 @@ class FhirServerProvider(BaseHealthProvider):
                 given = raw_name.get("given") or []
                 if isinstance(given, list):
                     given = " ".join(given)
-                name = f"{given} {raw_name.get('family') or ''}".strip() or raw_name.get("text")
-            elif isinstance(raw_name, list) and raw_name and isinstance(raw_name[0], dict):
+                name = (
+                    f"{given} {raw_name.get('family') or ''}".strip()
+                    or raw_name.get("text")
+                )
+            elif (
+                isinstance(raw_name, list)
+                and raw_name
+                and isinstance(raw_name[0], dict)
+            ):
                 n0 = raw_name[0]
                 given = n0.get("given") or []
                 if isinstance(given, list):
@@ -289,7 +303,9 @@ class FhirServerProvider(BaseHealthProvider):
         direction = self._direction(integration)
         if direction in _AUTO_PULL_DISABLED:
             await self.log_debug_payload(
-                integration, "Pull skipped (sync_direction)", {"sync_direction": direction}
+                integration,
+                "Pull skipped (sync_direction)",
+                {"sync_direction": direction},
             )
             return []
         try:
@@ -361,9 +377,7 @@ class FhirServerProvider(BaseHealthProvider):
 
         if persist and observations:
             counts = await self._persist_observations(integration, observations)
-            await self.log_debug_payload(
-                integration, "FHIR pull persisted", counts
-            )
+            await self.log_debug_payload(integration, "FHIR pull persisted", counts)
         return observations
 
     async def _persist_observations(
@@ -392,7 +406,8 @@ class FhirServerProvider(BaseHealthProvider):
                     obs.performer = [
                         {
                             "type": "Integration",
-                            "display": integration.instance_name or integration.provider,
+                            "display": integration.instance_name
+                            or integration.provider,
                             "reference": f"Integration/{integration.id}",
                         }
                     ]
@@ -401,18 +416,30 @@ class FhirServerProvider(BaseHealthProvider):
         return {"fhir": len(orm_obs), "telemetry": 0}
 
     async def _authorized_search(
-        self, integration: UserIntegration, base_url: str, resource_type: str,
-        params: dict, *, max_pages: int = 50,
+        self,
+        integration: UserIntegration,
+        base_url: str,
+        resource_type: str,
+        params: dict,
+        *,
+        max_pages: int = 50,
     ) -> list:
         """SMART search: get a live token, refresh once on a 401 race."""
         token = await self._smart.get_live_token(integration)
         try:
             return await fhir_search(
-                self._http_client, base_url, resource_type, params,
-                access_token=token, max_pages=max_pages,
+                self._http_client,
+                base_url,
+                resource_type,
+                params,
+                access_token=token,
+                max_pages=max_pages,
             )
         except IntegrationAuthError:
-            logger.info("401 on %s search; force-refreshing token and retrying once.", resource_type)
+            logger.info(
+                "401 on %s search; force-refreshing token and retrying once.",
+                resource_type,
+            )
             await self.log_debug_payload(
                 integration,
                 "Token 401 race — force-refreshing",
@@ -420,8 +447,12 @@ class FhirServerProvider(BaseHealthProvider):
             )
             token = await self._smart.force_refresh(integration)
             return await fhir_search(
-                self._http_client, base_url, resource_type, params,
-                access_token=token, max_pages=max_pages,
+                self._http_client,
+                base_url,
+                resource_type,
+                params,
+                access_token=token,
+                max_pages=max_pages,
             )
 
     async def _search_resource(
@@ -465,8 +496,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []  # PENDING (not yet authorized)
 
         effective_cursor_key = (
-            cursor_key if cursor_key is not None
-            else f"last_updated:{resource_type}"
+            cursor_key if cursor_key is not None else f"last_updated:{resource_type}"
         )
         time_window_months = int(config.get("time_window_months") or 12)
         cursor = self._initial_cursor(
@@ -498,12 +528,18 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             if auth_mode == "smart":
                 resources = await self._authorized_search(
-                    integration, fhir_base_url, resource_type, params,
+                    integration,
+                    fhir_base_url,
+                    resource_type,
+                    params,
                     max_pages=max_pages,
                 )
             else:
                 resources = await fhir_search(
-                    self._http_client, fhir_base_url, resource_type, params,
+                    self._http_client,
+                    fhir_base_url,
+                    resource_type,
+                    params,
                     max_pages=max_pages,
                 )
         except (IntegrationAuthError, IntegrationDataError) as e:
@@ -532,7 +568,11 @@ class FhirServerProvider(BaseHealthProvider):
         return resources
 
     async def _fetch_attachment(
-        self, integration: UserIntegration, url: str, *, access_token: Optional[str] = None
+        self,
+        integration: UserIntegration,
+        url: str,
+        *,
+        access_token: Optional[str] = None,
     ) -> bytes:
         """Fetch a DocumentReference attachment as raw bytes.
 
@@ -564,7 +604,29 @@ class FhirServerProvider(BaseHealthProvider):
         else:
             fetch_url = f"{fhir_base_url}/{url.lstrip('/')}"
 
-        headers: Dict[str, str] = {"Accept": "application/fhir+json, application/octet-stream, application/json"}
+        # INT-H3 (audit 2026-08): the attachment URL comes from the REMOTE
+        # server's DocumentReference content — attacker-controlled when the
+        # integration owner points at a hostile server. Every fetch must
+        # pass the SSRF net-guard (blocks loopback/link-local/RFC-1918/
+        # metadata IPs) instead of bypassing it via a raw .get().
+        from integrations.sdk.net_guard import assert_safe_url, SSRFBlockedError
+
+        try:
+            assert_safe_url(fetch_url)
+        except SSRFBlockedError as e:
+            await self.log_debug_payload(
+                integration,
+                "Attachment fetch blocked (SSRF guard)",
+                {"url": fetch_url, "reason": str(e)},
+                level="warning",
+            )
+            return b""
+        except Exception:
+            pass
+
+        headers: Dict[str, str] = {
+            "Accept": "application/fhir+json, application/octet-stream, application/json"
+        }
         if auth_mode == "smart":
             try:
                 token = access_token or await self._smart.get_live_token(integration)
@@ -576,8 +638,10 @@ class FhirServerProvider(BaseHealthProvider):
             response = await self._http_client.get(fetch_url, headers=headers)
         except Exception as e:
             await self.log_debug_payload(
-                integration, "Attachment fetch failed (network)",
-                {"url": fetch_url, "error": str(e)}, level="warning",
+                integration,
+                "Attachment fetch failed (network)",
+                {"url": fetch_url, "error": str(e)},
+                level="warning",
             )
             return b""
         if response.status_code == 401 and auth_mode == "smart":
@@ -588,20 +652,27 @@ class FhirServerProvider(BaseHealthProvider):
                 response = await self._http_client.get(fetch_url, headers=headers)
             except Exception as e:
                 await self.log_debug_payload(
-                    integration, "Attachment fetch failed after refresh",
-                    {"url": fetch_url, "error": str(e)}, level="warning",
+                    integration,
+                    "Attachment fetch failed after refresh",
+                    {"url": fetch_url, "error": str(e)},
+                    level="warning",
                 )
                 return b""
         if response.status_code >= 400:
             await self.log_debug_payload(
-                integration, "Attachment fetch failed (HTTP)",
-                {"url": fetch_url, "status": response.status_code}, level="warning",
+                integration,
+                "Attachment fetch failed (HTTP)",
+                {"url": fetch_url, "status": response.status_code},
+                level="warning",
             )
             return b""
         return response.content
 
     def _initial_cursor(
-        self, integration: UserIntegration, time_window_months: int, key: str = "last_updated"
+        self,
+        integration: UserIntegration,
+        time_window_months: int,
+        key: str = "last_updated",
     ) -> str:
         """The ``_lastUpdated`` floor: saved cursor, else now - time_window."""
         saved = self.get_sync_cursor(integration, key)
@@ -645,7 +716,9 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             resources = await self._search_resource(integration, "Condition")
         except (IntegrationAuthError, IntegrationDataError) as e:
-            logger.warning("fhir_server %s conditions pull failed: %s", integration.id, e)
+            logger.warning(
+                "fhir_server %s conditions pull failed: %s", integration.id, e
+            )
             return []
         out = []
         for res in resources:
@@ -657,7 +730,9 @@ class FhirServerProvider(BaseHealthProvider):
             if ev is not None:
                 out.append(ev)
         await self.log_debug_payload(
-            integration, "FHIR Condition -> events", {"mapped": len(out), "raw": len(resources)},
+            integration,
+            "FHIR Condition -> events",
+            {"mapped": len(out), "raw": len(resources)},
         )
         return out
 
@@ -672,7 +747,9 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             resources = await self._search_resource(integration, "Encounter")
         except (IntegrationAuthError, IntegrationDataError) as e:
-            logger.warning("fhir_server %s encounters pull failed: %s", integration.id, e)
+            logger.warning(
+                "fhir_server %s encounters pull failed: %s", integration.id, e
+            )
             return []
         out = []
         for res in resources:
@@ -684,7 +761,9 @@ class FhirServerProvider(BaseHealthProvider):
             if exam is not None:
                 out.append(exam)
         await self.log_debug_payload(
-            integration, "FHIR Encounter -> exams", {"mapped": len(out), "raw": len(resources)},
+            integration,
+            "FHIR Encounter -> exams",
+            {"mapped": len(out), "raw": len(resources)},
         )
         return out
 
@@ -726,7 +805,9 @@ class FhirServerProvider(BaseHealthProvider):
                         integration, att.get("url") or "", access_token=token
                     )
                 except Exception as fetch_err:
-                    logger.debug("attachment fetch failed for %s: %s", integration.id, fetch_err)
+                    logger.debug(
+                        "attachment fetch failed for %s: %s", integration.id, fetch_err
+                    )
                     content = b""
                 if not content:
                     # An unreachable attachment shouldn't abort the pull;
@@ -745,7 +826,9 @@ class FhirServerProvider(BaseHealthProvider):
                     )
                 )
         await self.log_debug_payload(
-            integration, "FHIR DocumentReference -> pulls", {"mapped": len(out), "raw": len(resources)},
+            integration,
+            "FHIR DocumentReference -> pulls",
+            {"mapped": len(out), "raw": len(resources)},
         )
         return out
 
@@ -775,7 +858,8 @@ class FhirServerProvider(BaseHealthProvider):
         # have no hospital terminology worth contributing.
         try:
             resources = await self._search_resource(
-                integration, "Observation",
+                integration,
+                "Observation",
                 cursor_key="hitl:codes_scanned",
             )
         except (IntegrationAuthError, IntegrationDataError) as e:
@@ -814,7 +898,9 @@ class FhirServerProvider(BaseHealthProvider):
             return []
 
         known_codes = await self._known_biomarker_codes(integration)
-        seen_codes = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+        seen_codes = set(
+            self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or []
+        )
 
         proposals = []
         newly_seen = list(seen_codes)
@@ -843,8 +929,13 @@ class FhirServerProvider(BaseHealthProvider):
             self.set_sync_cursor(integration, "hitl:seen_codes", newly_seen)
 
         await self.log_debug_payload(
-            integration, "FHIR HITL proposals",
-            {"observed": len(observed), "unknown": len(proposals), "known": len(known_codes)},
+            integration,
+            "FHIR HITL proposals",
+            {
+                "observed": len(observed),
+                "unknown": len(proposals),
+                "known": len(known_codes),
+            },
         )
         return proposals
 
@@ -863,11 +954,15 @@ class FhirServerProvider(BaseHealthProvider):
             code = payload.get("code")
             if not code:
                 return
-            seen = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+            seen = set(
+                self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or []
+            )
             seen.add(str(code))
             self.set_sync_cursor(integration, "hitl:seen_codes", list(seen))
         except Exception as e:
-            logger.debug("handle_proposal_resolution failed for %s: %s", integration.id, e)
+            logger.debug(
+                "handle_proposal_resolution failed for %s: %s", integration.id, e
+            )
 
     async def _known_biomarker_codes(self, integration: UserIntegration) -> set:
         """Load the set of LOINC/SNOMED codes already in the local catalog."""
@@ -906,18 +1001,24 @@ class FhirServerProvider(BaseHealthProvider):
             try:
                 resources = await self._search_resource(integration, rtype)
             except (IntegrationAuthError, IntegrationDataError) as e:
-                logger.warning("fhir_server %s %s pull failed: %s", integration.id, rtype, e)
+                logger.warning(
+                    "fhir_server %s %s pull failed: %s", integration.id, rtype, e
+                )
                 continue
             for res in resources:
                 try:
                     rec = mapper(res, patient_id=integration.patient_id)
                 except Exception as map_err:
-                    logger.debug("%s map failed for %s: %s", rtype, integration.id, map_err)
+                    logger.debug(
+                        "%s map failed for %s: %s", rtype, integration.id, map_err
+                    )
                     rec = None
                 if rec is not None:
                     out.append(rec)
         await self.log_debug_payload(
-            integration, "FHIR Medications -> records", {"mapped": len(out)},
+            integration,
+            "FHIR Medications -> records",
+            {"mapped": len(out)},
         )
         return out
 
@@ -932,19 +1033,25 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             resources = await self._search_resource(integration, "AllergyIntolerance")
         except (IntegrationAuthError, IntegrationDataError) as e:
-            logger.warning("fhir_server %s allergies pull failed: %s", integration.id, e)
+            logger.warning(
+                "fhir_server %s allergies pull failed: %s", integration.id, e
+            )
             return []
         out = []
         for res in resources:
             try:
-                rec = allergy_intolerance_to_create(res, patient_id=integration.patient_id)
+                rec = allergy_intolerance_to_create(
+                    res, patient_id=integration.patient_id
+                )
             except Exception as map_err:
                 logger.debug("allergy map failed for %s: %s", integration.id, map_err)
                 rec = None
             if rec is not None:
                 out.append(rec)
         await self.log_debug_payload(
-            integration, "FHIR AllergyIntolerance -> records", {"mapped": len(out), "raw": len(resources)},
+            integration,
+            "FHIR AllergyIntolerance -> records",
+            {"mapped": len(out), "raw": len(resources)},
         )
         return out
 
@@ -959,19 +1066,25 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             resources = await self._search_resource(integration, "Immunization")
         except (IntegrationAuthError, IntegrationDataError) as e:
-            logger.warning("fhir_server %s immunizations pull failed: %s", integration.id, e)
+            logger.warning(
+                "fhir_server %s immunizations pull failed: %s", integration.id, e
+            )
             return []
         out = []
         for res in resources:
             try:
                 rec = immunization_to_create(res, patient_id=integration.patient_id)
             except Exception as map_err:
-                logger.debug("immunization map failed for %s: %s", integration.id, map_err)
+                logger.debug(
+                    "immunization map failed for %s: %s", integration.id, map_err
+                )
                 rec = None
             if rec is not None:
                 out.append(rec)
         await self.log_debug_payload(
-            integration, "FHIR Immunization -> records", {"mapped": len(out), "raw": len(resources)},
+            integration,
+            "FHIR Immunization -> records",
+            {"mapped": len(out), "raw": len(resources)},
         )
         return out
 
@@ -1030,16 +1143,25 @@ class FhirServerProvider(BaseHealthProvider):
         max_pushed_at = None  # tracks the latest updated_at among successful rows
         for obs in pushable:
             outcome = await self._push_one(
-                integration, fhir_base_url, auth_mode, remote_patient, obs,
-                device_id=device_id, prov_counters=prov_counters,
+                integration,
+                fhir_base_url,
+                auth_mode,
+                remote_patient,
+                obs,
+                device_id=device_id,
+                prov_counters=prov_counters,
             )
             if outcome == "created":
                 created += 1
-                if obs.updated_at and (max_pushed_at is None or obs.updated_at > max_pushed_at):
+                if obs.updated_at and (
+                    max_pushed_at is None or obs.updated_at > max_pushed_at
+                ):
                     max_pushed_at = obs.updated_at
             elif outcome == "updated":
                 updated += 1
-                if obs.updated_at and (max_pushed_at is None or obs.updated_at > max_pushed_at):
+                if obs.updated_at and (
+                    max_pushed_at is None or obs.updated_at > max_pushed_at
+                ):
                     max_pushed_at = obs.updated_at
             elif outcome == "skipped":
                 skipped += 1
@@ -1072,7 +1194,9 @@ class FhirServerProvider(BaseHealthProvider):
         # next cycle (was: advanced to `now` unconditionally → failed rows
         # were never retried → silent data loss on transient failures).
         if max_pushed_at is not None:
-            self.set_sync_cursor(integration, "last_pushed_at", max_pushed_at.isoformat())
+            self.set_sync_cursor(
+                integration, "last_pushed_at", max_pushed_at.isoformat()
+            )
         self.set_sync_cursor(integration, "last_push_result", result)
         await self.log_debug_payload(
             integration,
@@ -1083,8 +1207,15 @@ class FhirServerProvider(BaseHealthProvider):
         return result
 
     async def _push_one(
-        self, integration, fhir_base_url, auth_mode, remote_patient, obs,
-        *, device_id=None, prov_counters=None,
+        self,
+        integration,
+        fhir_base_url,
+        auth_mode,
+        remote_patient,
+        obs,
+        *,
+        device_id=None,
+        prov_counters=None,
     ) -> str:
         """Push a single Observation. Returns ``created``/``updated``/``skipped``/``error``.
 
@@ -1096,7 +1227,12 @@ class FhirServerProvider(BaseHealthProvider):
         try:
             body = obs.to_fhir_dict()
         except Exception as e:
-            logger.warning("fhir_server %s push skip (invalid FHIR) %s: %s", integration.id, local_id, e)
+            logger.warning(
+                "fhir_server %s push skip (invalid FHIR) %s: %s",
+                integration.id,
+                local_id,
+                e,
+            )
             await self.log_debug_payload(
                 integration,
                 "Push skip — invalid FHIR projection",
@@ -1117,15 +1253,21 @@ class FhirServerProvider(BaseHealthProvider):
         search_params = {"identifier": f"{_OBS_IDENTIFIER_SYSTEM}|{local_id}"}
         try:
             token = (
-                await self._smart.get_live_token(integration) if auth_mode == "smart" else None
+                await self._smart.get_live_token(integration)
+                if auth_mode == "smart"
+                else None
             )
         except IntegrationAuthError:
             raise
 
         try:
             status, _resp = await fhir_conditional_update(
-                self._http_client, fhir_base_url, "Observation", body,
-                search_params=search_params, access_token=token,
+                self._http_client,
+                fhir_base_url,
+                "Observation",
+                body,
+                search_params=search_params,
+                access_token=token,
             )
         except IntegrationAuthError as e:
             # H1: detect 403 insufficient_scope — the token lacks write
@@ -1145,21 +1287,33 @@ class FhirServerProvider(BaseHealthProvider):
                 return "error"
             try:
                 status, _resp = await fhir_conditional_update(
-                    self._http_client, fhir_base_url, "Observation", body,
-                    search_params=search_params, access_token=token,
+                    self._http_client,
+                    fhir_base_url,
+                    "Observation",
+                    body,
+                    search_params=search_params,
+                    access_token=token,
                 )
             except IntegrationError as retry_err:
                 logger.warning(
                     "fhir_server %s push still failing after token refresh for %s: %s",
-                    integration.id, local_id, retry_err,
+                    integration.id,
+                    local_id,
+                    retry_err,
                 )
                 return "error"
         except IntegrationError as e:
-            logger.warning("fhir_server %s push failed for %s: %s", integration.id, local_id, e)
+            logger.warning(
+                "fhir_server %s push failed for %s: %s", integration.id, local_id, e
+            )
             await self.log_debug_payload(
                 integration,
                 "Push failed",
-                {"observation_id": local_id, "error": str(e), "url": f"{fhir_base_url}/Observation"},
+                {
+                    "observation_id": local_id,
+                    "error": str(e),
+                    "url": f"{fhir_base_url}/Observation",
+                },
                 level="warning",
             )
             return "error"
@@ -1167,7 +1321,11 @@ class FhirServerProvider(BaseHealthProvider):
         await self.log_debug_payload(
             integration,
             "Push result",
-            {"observation_id": local_id, "status": status, "identifier": search_params["identifier"]},
+            {
+                "observation_id": local_id,
+                "status": status,
+                "identifier": search_params["identifier"],
+            },
         )
         if status == 412:
             return "skipped"
@@ -1179,7 +1337,12 @@ class FhirServerProvider(BaseHealthProvider):
         remote_id = (_resp or {}).get("id") if isinstance(_resp, dict) else None
         if remote_id and prov_counters is not None:
             await self._post_remote_provenance(
-                integration, fhir_base_url, auth_mode, remote_id, device_id, prov_counters,
+                integration,
+                fhir_base_url,
+                auth_mode,
+                remote_id,
+                device_id,
+                prov_counters,
             )
 
         if status == 201:
@@ -1187,28 +1350,58 @@ class FhirServerProvider(BaseHealthProvider):
         return "updated"
 
     async def _post_remote_provenance(
-        self, integration, fhir_base_url, auth_mode, remote_obs_id, device_id, counters,
+        self,
+        integration,
+        fhir_base_url,
+        auth_mode,
+        remote_obs_id,
+        device_id,
+        counters,
     ):
         """H3: POST a Provenance resource for the just-pushed Observation."""
         from integrations.sdk.fhir import fhir_create
         from integrations.sdk.exceptions import IntegrationError
 
-        instance_name = (integration.user_config or {}).get("instance_name") or integration.provider
-        agent_who = {"reference": f"Device/{device_id}"} if device_id else {"display": "Health Assistant"}
+        instance_name = (integration.user_config or {}).get(
+            "instance_name"
+        ) or integration.provider
+        agent_who = (
+            {"reference": f"Device/{device_id}"}
+            if device_id
+            else {"display": "Health Assistant"}
+        )
         prov_body = {
             "resourceType": "Provenance",
             "target": [{"reference": f"Observation/{remote_obs_id}"}],
             "recorded": datetime.now(timezone.utc).isoformat(),
-            "activity": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3/ProvenanceEventType", "code": "CREATE"}]},
-            "agent": [{
-                "who": agent_who,
-                "onBehalfOf": {"display": f"Health Assistant (integration: {instance_name})"},
-            }],
+            "activity": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v3/ProvenanceEventType",
+                        "code": "CREATE",
+                    }
+                ]
+            },
+            "agent": [
+                {
+                    "who": agent_who,
+                    "onBehalfOf": {
+                        "display": f"Health Assistant (integration: {instance_name})"
+                    },
+                }
+            ],
         }
         try:
-            token = await self._smart.get_live_token(integration) if auth_mode == "smart" else None
+            token = (
+                await self._smart.get_live_token(integration)
+                if auth_mode == "smart"
+                else None
+            )
             await fhir_create(
-                self._http_client, fhir_base_url, "Provenance", prov_body,
+                self._http_client,
+                fhir_base_url,
+                "Provenance",
+                prov_body,
                 access_token=token,
             )
             counters["provenance_created"] = counters.get("provenance_created", 0) + 1
@@ -1289,7 +1482,12 @@ class FhirServerProvider(BaseHealthProvider):
     async def _push_preview(self, integration) -> Dict[str, Any]:
         """Compute push candidates without sending anything."""
         if not self._config(integration).get("fhir_base_url"):
-            return {"candidates": [], "excluded_echo": 0, "excluded_coding": 0, "since": "—"}
+            return {
+                "candidates": [],
+                "excluded_echo": 0,
+                "excluded_coding": 0,
+                "since": "—",
+            }
         now = dt.datetime.now(dt.timezone.utc)
         since = self._push_since(integration, now)
         candidates = await self._load_push_candidates(integration, since)
@@ -1349,7 +1547,12 @@ class FhirServerProvider(BaseHealthProvider):
                     {"error": str(e), "url": url},
                     level="error",
                 )
-                return {"ok": False, "error": str(e), "auth_mode": auth_mode, "url": url}
+                return {
+                    "ok": False,
+                    "error": str(e),
+                    "auth_mode": auth_mode,
+                    "url": url,
+                }
             req_headers["Authorization"] = f"Bearer {token}"
 
         try:
@@ -1390,7 +1593,8 @@ class FhirServerProvider(BaseHealthProvider):
             }
         cap = (
             body
-            if isinstance(body, dict) and body.get("resourceType") == "CapabilityStatement"
+            if isinstance(body, dict)
+            and body.get("resourceType") == "CapabilityStatement"
             else None
         )
         info: Dict[str, Any] = {
@@ -1419,8 +1623,12 @@ class FhirServerProvider(BaseHealthProvider):
     def get_custom_actions(self) -> List[Dict[str, str]]:
         return [
             {"id": "check_connection", "label": "Check Connection", "style": "default"},
-            {"id": "find_patient", "label": "Find Patient", "style": "primary",
-             "modal": "patient_picker"},
+            {
+                "id": "find_patient",
+                "label": "Find Patient",
+                "style": "primary",
+                "modal": "patient_picker",
+            },
             {"id": "pull_now", "label": "Pull Now", "style": "primary"},
             {"id": "push_now", "label": "Push Now", "style": "primary"},
             {"id": "push_preview", "label": "Push Preview", "style": "default"},
@@ -1444,11 +1652,17 @@ class FhirServerProvider(BaseHealthProvider):
             return await self._action_push_preview(integration)
         if action_id == "reset_cursors":
             return await self._action_reset_cursors(integration)
-        raise NotImplementedError(f"Action '{action_id}' is not implemented by {self.domain}.")
+        raise NotImplementedError(
+            f"Action '{action_id}' is not implemented by {self.domain}."
+        )
 
     async def _action_find_patient(
-        self, integration: UserIntegration, *, query: Optional[str] = None,
-        identifier: Optional[str] = None, **_extra,
+        self,
+        integration: UserIntegration,
+        *,
+        query: Optional[str] = None,
+        identifier: Optional[str] = None,
+        **_extra,
     ) -> Dict[str, Any]:
         """Search the remote server for a patient; auto-suggests by local MRN.
 
@@ -1472,9 +1686,14 @@ class FhirServerProvider(BaseHealthProvider):
             integration, query=query, identifier=identifier
         )
         await self.log_debug_payload(
-            integration, "Find Patient",
-            {"query": query, "identifier": identifier, "auto_suggested": auto_suggested,
-             "matches": len(matches)},
+            integration,
+            "Find Patient",
+            {
+                "query": query,
+                "identifier": identifier,
+                "auto_suggested": auto_suggested,
+                "matches": len(matches),
+            },
         )
         return {
             "query": query,
@@ -1485,7 +1704,10 @@ class FhirServerProvider(BaseHealthProvider):
         }
 
     async def _action_select_patient(
-        self, integration: UserIntegration, *, patient_id: Optional[str] = None,
+        self,
+        integration: UserIntegration,
+        *,
+        patient_id: Optional[str] = None,
         **_extra,
     ) -> Dict[str, Any]:
         """Set ``remote_patient_id`` on the instance (the picker's select step)."""
@@ -1495,7 +1717,9 @@ class FhirServerProvider(BaseHealthProvider):
         new_config["remote_patient_id"] = str(patient_id)
         integration.user_config = new_config
         await self.log_debug_payload(
-            integration, "Selected remote patient", {"remote_patient_id": patient_id},
+            integration,
+            "Selected remote patient",
+            {"remote_patient_id": patient_id},
         )
         return action_result(
             message=f"Linked remote patient {patient_id}.",
@@ -1510,7 +1734,11 @@ class FhirServerProvider(BaseHealthProvider):
                 results=[
                     kv_block(
                         "Details",
-                        {k: v for k, v in info.items() if k != "error" and v is not None},
+                        {
+                            k: v
+                            for k, v in info.items()
+                            if k != "error" and v is not None
+                        },
                     )
                 ],
             )
@@ -1620,7 +1848,9 @@ class FhirServerProvider(BaseHealthProvider):
         return action_result(
             message=f"Reset {len(cleared)} cursor(s). Next sync re-pulls/re-pushes the full window.",
             results=[
-                list_block("Cleared", cleared) if cleared else kv_block("Cleared", {"none": "—"}),
+                list_block("Cleared", cleared)
+                if cleared
+                else kv_block("Cleared", {"none": "—"}),
             ],
         )
 

@@ -17,6 +17,7 @@ Post-fix contract pinned here:
 4. ``_verify_api_signature`` returns False on tampering, missing fields,
    malformed timestamp, or out-of-window skew.
 """
+
 import hashlib
 import hmac
 import time
@@ -24,12 +25,15 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.v1.endpoints import integrations as integrations_endpoint
 from app.api.v1.endpoints.integrations import _verify_api_signature
 
 
-def _sign(secret: str, method: str, path: str, body: bytes = b"", timestamp: int | None = None) -> str:
+def _sign(
+    secret: str, method: str, path: str, body: bytes = b"", timestamp: int | None = None
+) -> str:
     """Mirror the canonical scheme implemented in the route."""
     parts = [method.upper().encode(), b"\n", path.encode(), b"\n"]
     if timestamp is not None:
@@ -47,49 +51,61 @@ def _sign(secret: str, method: str, path: str, body: bytes = b"", timestamp: int
 def test_verify_api_signature_accepts_valid_signature():
     secret = "topsecret"
     sig = _sign(secret, "POST", "/data", b'{"hello":"world"}')
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b'{"hello":"world"}',
-        provided_signature=sig,
-    ) is True
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b'{"hello":"world"}',
+            provided_signature=sig,
+        )
+        is True
+    )
 
 
 def test_verify_api_signature_rejects_tampered_body():
     secret = "topsecret"
     sig = _sign(secret, "POST", "/data", b'{"hello":"world"}')
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b'{"hello":"attacker"}',
-        provided_signature=sig,
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b'{"hello":"attacker"}',
+            provided_signature=sig,
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_rejects_tampered_path():
     secret = "topsecret"
     sig = _sign(secret, "POST", "/legit", b"")
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/admin",
-        raw_body=b"",
-        provided_signature=sig,
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/admin",
+            raw_body=b"",
+            provided_signature=sig,
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_rejects_tampered_method():
     secret = "topsecret"
     sig = _sign(secret, "GET", "/data", b"")
-    assert _verify_api_signature(
-        secret=secret,
-        method="DELETE",
-        path="/data",
-        raw_body=b"",
-        provided_signature=sig,
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="DELETE",
+            path="/data",
+            raw_body=b"",
+            provided_signature=sig,
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_rejects_missing_inputs():
@@ -102,14 +118,17 @@ def test_verify_api_signature_accepts_valid_timestamp():
     secret = "topsecret"
     ts = int(time.time())
     sig = _sign(secret, "POST", "/data", b"body", timestamp=ts)
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b"body",
-        provided_signature=sig,
-        provided_timestamp=str(ts),
-    ) is True
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b"body",
+            provided_signature=sig,
+            provided_timestamp=str(ts),
+        )
+        is True
+    )
 
 
 def test_verify_api_signature_rejects_replay_outside_skew_window():
@@ -117,14 +136,17 @@ def test_verify_api_signature_rejects_replay_outside_skew_window():
     secret = "topsecret"
     old_ts = int(time.time()) - 600  # 10 min ago, > 5 min default skew
     sig = _sign(secret, "POST", "/data", b"body", timestamp=old_ts)
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b"body",
-        provided_signature=sig,
-        provided_timestamp=str(old_ts),
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b"body",
+            provided_signature=sig,
+            provided_timestamp=str(old_ts),
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_rejects_future_timestamp():
@@ -132,28 +154,34 @@ def test_verify_api_signature_rejects_future_timestamp():
     secret = "topsecret"
     future_ts = int(time.time()) + 600
     sig = _sign(secret, "POST", "/data", b"body", timestamp=future_ts)
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b"body",
-        provided_signature=sig,
-        provided_timestamp=str(future_ts),
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b"body",
+            provided_signature=sig,
+            provided_timestamp=str(future_ts),
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_rejects_malformed_timestamp():
     """A non-integer timestamp string is rejected (no 500)."""
     secret = "topsecret"
     sig = _sign(secret, "POST", "/data", b"body")
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b"body",
-        provided_signature=sig,
-        provided_timestamp="not-a-number",
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b"body",
+            provided_signature=sig,
+            provided_timestamp="not-a-number",
+        )
+        is False
+    )
 
 
 def test_verify_api_signature_timestamp_folded_into_payload():
@@ -163,14 +191,17 @@ def test_verify_api_signature_timestamp_folded_into_payload():
     # Sign WITHOUT timestamp, then try to verify WITH timestamp provided.
     sig_no_ts = _sign(secret, "POST", "/data", b"body")
     ts = int(time.time())
-    assert _verify_api_signature(
-        secret=secret,
-        method="POST",
-        path="/data",
-        raw_body=b"body",
-        provided_signature=sig_no_ts,
-        provided_timestamp=str(ts),
-    ) is False
+    assert (
+        _verify_api_signature(
+            secret=secret,
+            method="POST",
+            path="/data",
+            raw_body=b"body",
+            provided_signature=sig_no_ts,
+            provided_timestamp=str(ts),
+        )
+        is False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +240,9 @@ def _request(method: str, body: bytes = b"", headers: dict | None = None):
 
 
 @pytest.mark.asyncio
-async def test_api_proxy_no_secret_legacy_path_with_warning(monkeypatch):
-    """No api_secret → legacy UUID-only path is preserved, but a warning
-    is logged so operators notice the gap."""
+async def test_api_proxy_no_secret_is_rejected(monkeypatch):
+    """Audit 2026-08 H1/H2: no api_secret → 401. The UUID alone is not a
+    credential (legacy UUID-only mode removed)."""
     integration = _integration(api_secret=None)
     request = _request("POST", b'{"x":1}')
     db = MagicMock()
@@ -223,39 +254,27 @@ async def test_api_proxy_no_secret_legacy_path_with_warning(monkeypatch):
     provider = MagicMock()
     provider.handle_api_request = AsyncMock(return_value={"ok": True})
 
-    warnings_seen = []
-
-    def _warn(fmt, *a, **kw):
-        warnings_seen.append(fmt)
-
-    monkeypatch.setattr(integrations_endpoint.logger, "warning", _warn)
-
-    with patch.object(
-        integrations_endpoint, "integration_registry"
-    ):
+    with patch.object(integrations_endpoint, "integration_registry"):
         reg = integrations_endpoint.integration_registry
         reg.get_provider.return_value = provider
-        result = await integrations_endpoint.integration_api_proxy(
-            domain="withings",
-            integration_id=str(integration.id),
-            path="data",
-            request=request,
-            db=db,
-        )
-
-    assert result == {"ok": True}
-    assert any("api_secret" in w for w in warnings_seen), (
-        "Operator must be warned when an integration has no api_secret configured"
-    )
+        with pytest.raises(HTTPException) as exc:
+            await integrations_endpoint.integration_api_proxy(
+                domain="withings",
+                integration_id=str(integration.id),
+                path="data",
+                request=request,
+                db=db,
+            )
+    assert exc.value.status_code == 401
+    provider.handle_api_request.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_api_proxy_status_is_exempt_from_signature():
-    """GET /status is NEVER signed — it is the connectivity + SDK-discovery
-    probe. Even when ``api_secret`` is set, a missing ``X-Api-Signature``
-    must NOT reject it (the bridge docs + Python/TS/Kotlin SDKs all treat
-    ``/status`` as unsigned). Mobile-app plan §6.1.
-    """
+async def test_api_proxy_unsigned_status_is_minimal():
+    """Audit 2026-08 M3: an UNSIGNED GET /status is answered by the platform
+    with a minimal payload (liveness + server_time only — no cursor, SDK
+    versions, or frontend URL) and never reaches the provider. A SIGNED
+    status probe still gets the full provider response."""
     integration = _integration(api_secret="topsecret")
     request = _request("GET", b"", headers={})
     db = MagicMock()
@@ -277,8 +296,8 @@ async def test_api_proxy_status_is_exempt_from_signature():
             db=db,
         )
 
-    assert result == {"status": "active"}
-    provider.handle_api_request.assert_awaited_once()
+    assert set(result.keys()) == {"status", "server_time"}
+    provider.handle_api_request.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -312,9 +331,7 @@ async def test_api_proxy_with_secret_rejects_invalid_signature():
     from fastapi import HTTPException
 
     integration = _integration(api_secret="topsecret")
-    request = _request(
-        "POST", b'{"x":1}', headers={"X-Api-Signature": "deadbeef"}
-    )
+    request = _request("POST", b'{"x":1}', headers={"X-Api-Signature": "deadbeef"})
     db = MagicMock()
     db.execute = AsyncMock(
         return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=integration))
@@ -334,15 +351,14 @@ async def test_api_proxy_with_secret_rejects_invalid_signature():
 
 
 @pytest.mark.asyncio
-async def test_api_proxy_with_secret_accepts_valid_signature():
-    """api_secret set + correctly signed body → handler runs."""
+async def test_api_proxy_with_secret_rejects_signature_without_timestamp():
+    """Audit 2026-08 M2: a valid signature WITHOUT a timestamp is rejected —
+    the timestamp is mandatory (it bounds the replay window)."""
     secret = "topsecret"
     integration = _integration(api_secret=secret)
     body = b'{"x":1}'
     sig = _sign(secret, "POST", "data", body)
-    request = _request(
-        "POST", body, headers={"X-Api-Signature": sig}
-    )
+    request = _request("POST", body, headers={"X-Api-Signature": sig})
     db = MagicMock()
     db.execute = AsyncMock(
         return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=integration))
@@ -354,16 +370,16 @@ async def test_api_proxy_with_secret_accepts_valid_signature():
 
     with patch.object(integrations_endpoint, "integration_registry") as reg:
         reg.get_provider.return_value = provider
-        result = await integrations_endpoint.integration_api_proxy(
-            domain="withings",
-            integration_id=str(integration.id),
-            path="data",
-            request=request,
-            db=db,
-        )
-
-    assert result == {"received": True}
-    provider.handle_api_request.assert_awaited_once()
+        with pytest.raises(HTTPException) as exc:
+            await integrations_endpoint.integration_api_proxy(
+                domain="withings",
+                integration_id=str(integration.id),
+                path="data",
+                request=request,
+                db=db,
+            )
+    assert exc.value.status_code == 401
+    provider.handle_api_request.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -290,7 +290,12 @@ class Settings(BaseSettings):
                 )
         return self
 
-    MCP_STDIO_ALLOWED_COMMANDS: str = "npx,uvx,python,python3,node"
+    # Audit 2026-08 C-4: STDIO spawn = local code execution. Disabled by
+    # default — operators must consciously enable it AND (recommended) run
+    # the workers in an isolated container. Even when enabled, interpreters
+    # that trivially execute arbitrary strings (python/python3/node -c/-e)
+    # are rejected at the arg level (see mcp_client/security.py).
+    MCP_STDIO_ALLOWED_COMMANDS: str = ""
     MCP_MAX_SERVERS_PER_USER: int = 5
     MCP_MAX_TOTAL_STDIO: int = 20
     MCP_REQUEST_TIMEOUT: float = 30.0

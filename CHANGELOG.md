@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security hardening (Batch 3 of the 2026-08-18 audit): integrations framework, MCP client, bridge machine surfaces.**
+  - **C-4:** MCP `stdio` transport disabled by default (`MCP_STDIO_ALLOWED_COMMANDS=""`) — it was user-configurable remote code execution (`python -c …` passed the command allowlist). Interpreter inline-code flags (`-c`/`-e`/`-p`/…) are rejected at the argument level even when an operator re-enables stdio.
+  - **INT-H1/H2:** webhook + API-proxy routes fail closed — the integration UUID is no longer accepted as a credential. Instances are auto-provisioned with a high-entropy HMAC secret at creation (Fernet-encrypted with row-binding, shown once in the create response).
+  - **INT-H3/H4:** SSRF net-guard now covers the `fhir_server` DocumentReference attachment fetch (previously a raw `httpx.get` bypass that could read internal network endpoints and store the bytes as a user-readable document) and MCP http/sse URLs (private/loopback/link-local targets blocked).
+  - **INT-M1:** webhook bare-MAC deliveries get a Redis replay guard (10-min window); the canonical timestamped scheme remains fully replay-proof.
+  - **INT-M2:** API-proxy HMAC now requires `X-Api-Timestamp` (no more unlimited replay) and covers the query string (query tampering on captured requests rejected; Kotlin SDK signing alignment).
+  - **INT-M3:** unsigned `GET /status` returns only `{status, server_time}` — no cursor/SDK-version/frontend-URL oracle (signed status probes get the full payload; `server_time` lets skewed SDK clocks resync).
+  - **INT-M4:** OAuth `redirect_uri` pinned to `APP_URL` instead of the client `Host` header (DCR registration poisoning). Machine routes enforce a 40 MiB body cap; error details no longer echo internals.
+
 - **Security hardening (Batch 2 of the 2026-08-18 audit): API attack surface — intra-tenant PHI boundaries, file-write traversal, SSRF.**
   - **C-3:** backup-restore document filenames are extension-validated against the upload allowlist — a crafted `documents.json` could previously write arbitrary files via `../` in the "extension".
   - **API-H1:** `POST /import/ocr` no longer accepts a client-supplied `api_base` (the platform key was exfiltrated to attacker URLs); all import endpoints now cap request bodies at `MAX_UPLOAD_SIZE` and never echo exception strings.
