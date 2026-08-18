@@ -403,6 +403,7 @@ const IntegrationDetail: React.FC = () => {
           {details.domain === 'health_assistant_bridge' && (
             <BridgeConnectCard
               instanceId={details.id}
+              patientId={currentPatient?.id}
               hasApiSecret={Boolean(details.user_config?.api_secret)}
               connectUrl={details.user_config?.connect_url as string | undefined}
             />

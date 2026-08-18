@@ -1225,6 +1225,75 @@ async def resolve_integration_proposal(
     return response
 
 
+@router.post("/instance/{integration_id}/rotate-secret")
+async def rotate_instance_secret(
+    integration_id: str,
+    patient_id: str,
+    field: str = "api_secret",
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Rotate a machine (HMAC) secret for an integration instance.
+
+    Audit 2026-08 H1/H2 pairing follow-up: the stored plaintext can never be
+    re-displayed (Fernet-encrypted, row-bound), so the recovery path for
+    instances created before mandatory secrets — or whose creation-time
+    plaintext was lost — is rotation. Mints a fresh secret, stores it
+    encrypted with the instance id as context, and returns the plaintext
+    EXACTLY ONCE. The previous secret stops working immediately.
+
+    ``field``: ``api_secret`` (default; bridge/API-proxy clients) or
+    ``webhook_secret`` (inbound webhook senders).
+    """
+    if field not in ("api_secret", "webhook_secret"):
+        raise HTTPException(
+            status_code=400, detail="field must be api_secret or webhook_secret"
+        )
+
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.patient_id == patient_id,
+    )
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration instance not found")
+
+    try:
+        from integrations.sdk.secrets import SecretCipher
+
+        cipher = SecretCipher.from_settings()
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=str(e),
+        )
+
+    new_secret = _generate_integration_secret()
+    cfg = dict(getattr(integration, "user_config", None) or {})
+    cfg[field] = cipher.encrypt_value(new_secret, context=str(integration.id))
+    integration.user_config = cfg
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    flag_modified(integration, "user_config")
+    await db.commit()
+
+    return {
+        field: new_secret,
+        "secret_notice": (
+            "Store this secret now — it is shown only once and the previous "
+            "secret stopped working the moment this was generated."
+        ),
+    }
+
+
 @router.post("/instance/{integration_id}/sync")
 async def sync_integration(
     integration_id: str,
@@ -1688,9 +1757,7 @@ async def integration_webhook(
                 domain,
                 webhook_notif_err,
             )
-        raise HTTPException(
-            status_code=500, detail=f"Webhook processing failed: {e!s}"
-        )
+        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {e!s}")
 
 
 @router.api_route(

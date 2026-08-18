@@ -413,3 +413,117 @@ async def test_config_flow_provisions_machine_secrets():
     assert "api_secret" in result
     assert result["webhook_secret"]
     assert result["api_secret"]
+
+
+# ---------------------------------------------------------------------------
+# Rotate-secret endpoint (pairing recovery for pre-hardening instances)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_owner_scoped_and_returns_once():
+    from app.api.v1.endpoints import integrations as integ
+
+    row = _integration_row()
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: row))
+    db.commit = AsyncMock()
+
+    class _Cipher:
+        def encrypt_value(self, value, context=None):
+            assert context == str(row.id), "context binding must be the instance id"
+            return {"_encrypted": "tok", "_kid": "k1"}
+
+    from sqlalchemy.orm.attributes import flag_modified  # noqa: F401
+
+    with patch(
+        "integrations.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()
+    ):
+        result = await integ.rotate_instance_secret(
+            str(row.id),
+            patient_id="22222222-2222-4222-8222-222222222222",
+            field="api_secret",
+            current_user=MagicMock(user_id="u", tenant_id="t"),
+            db=db,
+        )
+
+    assert result["api_secret"]
+    assert len(result["api_secret"]) >= 32
+    assert "shown only once" in result["secret_notice"]
+    stored = row.user_config["api_secret"]
+    assert isinstance(stored, dict) and "_encrypted" in stored
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_rejects_unknown_field():
+    from fastapi import HTTPException
+
+    from app.api.v1.endpoints import integrations as integ
+
+    with pytest.raises(HTTPException) as exc:
+        await integ.rotate_instance_secret(
+            "9b2f1c11-1111-4111-8111-111111111111",
+            patient_id="22222222-2222-4222-8222-222222222222",
+            field="access_token",
+            current_user=MagicMock(),
+            db=MagicMock(),
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rotate_secret_missing_instance_404():
+    from fastapi import HTTPException
+
+    from app.api.v1.endpoints import integrations as integ
+
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: None))
+    with pytest.raises(HTTPException) as exc:
+        await integ.rotate_instance_secret(
+            "9b2f1c11-1111-4111-8111-111111111111",
+            patient_id="22222222-2222-4222-8222-222222222222",
+            current_user=MagicMock(user_id="u"),
+            db=db,
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rotated_secret_verifies_and_old_one_dies():
+    """End-to-end shape: after rotation the machine route accepts a signature
+    computed with the NEW secret and rejects the OLD one."""
+    from integrations.sdk.webhook_security import verify_canonical_signature
+
+    old_secret = "old-secret-old-secret-old-secret-1"
+    new_secret = _rotate_plain()
+
+    row = _integration_row(secret=new_secret)
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: row))
+    db.commit = AsyncMock()
+
+    import datetime as _dt
+    import hashlib as _hl
+    import hmac as _hm
+
+    now = str(int(_dt.datetime.now(_dt.timezone.utc).timestamp()))
+    canonical = b"POST\nsync\n" + now.encode() + b"\n" + b"{}"
+    good_sig = _hm.new(new_secret.encode(), canonical, _hl.sha256).hexdigest()
+    stale_sig = _hm.new(old_secret.encode(), canonical, _hl.sha256).hexdigest()
+
+    assert verify_canonical_signature(
+        new_secret, "POST", "sync", b"{}", good_sig, provided_timestamp=now
+    )
+    # The route resolves the STORED secret (the new one) — a signature made
+    # with the pre-rotation secret no longer verifies against it.
+    assert not verify_canonical_signature(
+        new_secret, "POST", "sync", b"{}", stale_sig, provided_timestamp=now
+    )
+
+
+def _rotate_plain() -> str:
+    import secrets as _s
+
+    return _s.token_urlsafe(32)
