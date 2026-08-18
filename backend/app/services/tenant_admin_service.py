@@ -23,19 +23,21 @@ import asyncio
 import logging
 import secrets
 from datetime import timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core import token_store
 from app.core.config import settings
 from app.core.security import (
-    create_access_token,
     create_invite_token,
+    create_refresh_token,
+    create_session_access_token,
 )
 from app.models.audit_model import AuditLog
 from app.models.document_model import DocumentModel
@@ -102,7 +104,7 @@ class TenantAdminService:
         return tenant
 
     async def _ensure_unique_slug(
-        self, slug: str, *, exclude_id: Optional[UUID] = None
+        self, slug: str, *, exclude_id: UUID | None = None
     ) -> str:
         """Return a slug guaranteed unique within the tenants table.
 
@@ -133,11 +135,11 @@ class TenantAdminService:
     async def list_tenants(
         self,
         *,
-        search: Optional[str] = None,
-        is_active: Optional[bool] = None,
+        search: str | None = None,
+        is_active: bool | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[list[TenantModel], int]:
+    ) -> tuple[list[TenantModel], int]:
         limit = max(1, min(limit, 250))
         offset = max(0, offset)
 
@@ -216,7 +218,7 @@ class TenantAdminService:
             owner=UserSummary.model_validate(owner) if owner else None,
         )
 
-    async def _load_owner(self, owner_id: Optional[UUID]) -> Optional[UserModel]:
+    async def _load_owner(self, owner_id: UUID | None) -> UserModel | None:
         if owner_id is None:
             return None
         result = await self.db.execute(
@@ -381,9 +383,21 @@ class TenantAdminService:
         access_claims = {**base_claims, "tenant_id": str(tenant.id)}
         refresh_claims = {**base_claims, "tenant_id": str(tenant.id)}
 
-        access_token = create_access_token(access_claims, expires_delta=access_expires)
-        refresh_token = create_access_token(
+        # Typed + registered tokens (audit 2026-08 H5): the refresh token
+        # is a real refresh token (jti-tracked, revocable, rejected as a
+        # bearer credential) and the access token carries a session jti so
+        # logout-all kills the switched session too.
+        access_token, access_jti = create_session_access_token(
+            access_claims, expires_delta=access_expires
+        )
+        await token_store.register_session(
+            str(actor.user_id), access_jti, int(access_expires.total_seconds())
+        )
+        refresh_token, refresh_jti = create_refresh_token(
             refresh_claims, expires_delta=refresh_expires
+        )
+        await token_store.register_refresh(
+            str(actor.user_id), refresh_jti, int(refresh_expires.total_seconds())
         )
 
         await log_audit_action(
@@ -422,11 +436,17 @@ class TenantAdminService:
             "tenant_id": str(original_tenant_id),
             "role": actor.role,
         }
-        access_token = create_access_token(
+        access_token, access_jti = create_session_access_token(
             restored_claims, expires_delta=access_expires
         )
-        refresh_token = create_access_token(
+        await token_store.register_session(
+            str(original_user_id), access_jti, int(access_expires.total_seconds())
+        )
+        refresh_token, refresh_jti = create_refresh_token(
             restored_claims, expires_delta=refresh_expires
+        )
+        await token_store.register_refresh(
+            str(original_user_id), refresh_jti, int(refresh_expires.total_seconds())
         )
 
         await log_audit_action(
@@ -453,10 +473,10 @@ class TenantAdminService:
         self,
         tenant_id: UUID,
         *,
-        search: Optional[str] = None,
+        search: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[list[UserModel], int]:
+    ) -> tuple[list[UserModel], int]:
         limit = max(1, min(limit, 250))
         offset = max(0, offset)
         query = select(UserModel).where(UserModel.tenant_id == tenant_id)
@@ -545,21 +565,25 @@ class TenantAdminService:
     async def mint_invite(
         self,
         tenant_id: UUID,
-        email: Optional[str],
+        email: str | None,
         role: str,
         expires_days: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if role == Role.SYSTEM_ADMIN.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="SYSTEM_ADMIN cannot be granted via invite.",
             )
         tenant = await self._get_tenant_or_404(tenant_id)
-        token = create_invite_token(
+        expires_days = max(1, min(int(expires_days), 30))
+        token, invite_jti_value = create_invite_token(
             tenant_id=str(tenant.id),
             email=email,
             role=role,
             expires_days=expires_days,
+        )
+        await token_store.register_invite(
+            invite_jti_value, int(timedelta(days=expires_days).total_seconds())
         )
         return {
             "invite_token": token,
@@ -576,10 +600,10 @@ class TenantAdminService:
         self,
         tenant_id: UUID,
         *,
-        action: Optional[str] = None,
+        action: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[list[AuditLog], int]:
+    ) -> tuple[list[AuditLog], int]:
         limit = max(1, min(limit, 250))
         offset = max(0, offset)
         query = select(AuditLog).where(AuditLog.tenant_id == tenant_id)

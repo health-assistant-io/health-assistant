@@ -7,6 +7,7 @@ fields. The endpoint behaviour already has its own suite
 (``tests/test_auth_setup.py``); we extend coverage for the mode-specific
 paths that previously didn't exist.
 """
+
 from __future__ import annotations
 
 import time
@@ -246,7 +247,10 @@ async def test_setup_status_reports_token_mode_for_each_mode():
 
 
 @pytest.mark.asyncio
-async def test_setup_status_emits_setup_url_hint_only_in_env_mode():
+async def test_setup_status_never_emits_the_token_even_in_env_mode():
+    """Audit 2026-08 C-1: the status endpoint must NEVER return the setup
+    token value — anonymous callers could bootstrap the instance with it.
+    The launcher (which holds the env token) composes the URL itself."""
     from app.api.v1.endpoints import auth as auth_endpoint
     from unittest.mock import AsyncMock
 
@@ -263,9 +267,8 @@ async def test_setup_status_emits_setup_url_hint_only_in_env_mode():
     ):
         result = await auth_endpoint.setup_status(request=req, db=MagicMock())
 
-    assert result.setup_url_hint is not None
-    assert "launcher-secret" in result.setup_url_hint
-    assert result.setup_url_hint.startswith("https://example.com/setup?token=")
+    assert result.setup_url_hint is None
+    assert result.setup_token_required is True
 
 
 @pytest.mark.asyncio
@@ -327,10 +330,14 @@ def test_config_rejects_unknown_mode():
 
     # Settings has its own顾_ validators (DB creds, secret key, VAPID).
     # Build with bare-minimum env to satisfy the prod guards, then flip mode.
-    with patch.dict("os.environ", {
-        "APP_ENV": "development",
-        "SETUP_TOKEN_MODE": "bogus",
-    }, clear=False):
+    with patch.dict(
+        "os.environ",
+        {
+            "APP_ENV": "development",
+            "SETUP_TOKEN_MODE": "bogus",
+        },
+        clear=False,
+    ):
         with pytest.raises((ValidationError, ValueError)):
             Settings()
 
@@ -338,11 +345,15 @@ def test_config_rejects_unknown_mode():
 def test_config_env_mode_with_empty_token_falls_back_to_log():
     from app.core.config import Settings
 
-    with patch.dict("os.environ", {
-        "APP_ENV": "development",
-        "SETUP_TOKEN_MODE": "env",
-        "SETUP_BOOTSTRAP_TOKEN": "",
-    }, clear=False):
+    with patch.dict(
+        "os.environ",
+        {
+            "APP_ENV": "development",
+            "SETUP_TOKEN_MODE": "env",
+            "SETUP_BOOTSTRAP_TOKEN": "",
+        },
+        clear=False,
+    ):
         s = Settings()
         assert s.SETUP_TOKEN_MODE == "log"  # downgraded
 
@@ -351,10 +362,14 @@ def test_config_rejects_grace_below_one_minute():
     from app.core.config import Settings
     from pydantic import ValidationError
 
-    with patch.dict("os.environ", {
-        "APP_ENV": "development",
-        "SETUP_TOKEN_MODE": "time",
-        "SETUP_TOKEN_GRACE_MINUTES": "0",
-    }, clear=False):
+    with patch.dict(
+        "os.environ",
+        {
+            "APP_ENV": "development",
+            "SETUP_TOKEN_MODE": "time",
+            "SETUP_TOKEN_GRACE_MINUTES": "0",
+        },
+        clear=False,
+    ):
         with pytest.raises((ValidationError, ValueError)):
             Settings()

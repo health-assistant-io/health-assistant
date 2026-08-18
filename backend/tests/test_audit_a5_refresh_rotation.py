@@ -115,7 +115,11 @@ class TestEndpointsWired:
         from app.api.v1.endpoints import auth
 
         # /refresh must revoke the old jti + register a new one (rotation).
-        src = inspect.getsource(auth.refresh_token)
+        # Registration now happens in the shared _issue_session_tokens
+        # helper (which refresh calls) — assert against the whole module.
+        src = inspect.getsource(auth.refresh_token) + inspect.getsource(
+            auth._issue_session_tokens
+        )
         assert "revoke_refresh" in src
         assert "register_refresh" in src
         assert "decode_refresh_token" in src

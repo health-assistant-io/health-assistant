@@ -108,11 +108,22 @@ async def main():
     import argparse
     parser = argparse.ArgumentParser(description="Create a Health Assistant System Administrator")
     parser.add_argument("--email", type=str, default="sysadmin@health-assistant.local", help="Admin email")
-    parser.add_argument("--password", type=str, default="admin123", help="Admin password")
+    parser.add_argument(
+        "--password",
+        type=str,
+        default=None,
+        help="Admin password (required — no insecure default)",
+    )
     parser.add_argument("--tenant", type=str, default="System Management", help="Tenant name if creation needed")
     
     args = parser.parse_args()
-    
+
+    if not args.password or len(args.password) < 8:
+        parser.error(
+            "--password is required and must be at least 8 characters "
+            "(the insecure admin123 default was removed for safety)."
+        )
+
     print("Health Assistant - Creating System Admin")
     print("-" * 40)
     

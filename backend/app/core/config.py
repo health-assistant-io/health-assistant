@@ -213,7 +213,10 @@ class Settings(BaseSettings):
         return self
 
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_HOURS: int = 24
+    # Short-lived stateless access tokens (audit 2026-08 M4): a stolen
+    # session token is revocable via the jti store, but defense in depth
+    # keeps the unrevocable window small. 24h was far too long for PHI.
+    JWT_EXPIRATION_HOURS: int = 1
 
     # OAuth2 / SMART-on-FHIR — the FHIR R4 facade is the public interop
     # surface; external systems authenticate via the client-credentials grant
