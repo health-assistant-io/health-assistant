@@ -11,14 +11,14 @@ You set an `api_secret` on the instance but your client didn't sign the request.
 - pass the `api_secret` / `apiSecret` to the client constructor so it auto-signs `/map` and `/sync`, or
 - if you hand-rolled the request, compute the headers with `sign_request()` / `signRequest()` and send them.
 
-`/status` is never signed — if you're seeing this on `/status`, the instance isn't actually configured with a secret (or you hit the wrong instance id).
+An **unsigned** `GET /status` is the one accepted unsigned probe (returns the minimal `{status, server_time}`); every other unsigned request is rejected — secrets are mandatory on all bridge instances (audit 2026-08). If you're seeing 401 on a signed route, check the canonical form below first.
 
 ### "Invalid or expired request signature."
 
 The signature didn't verify. Five common causes, in order of likelihood:
 
 1. **Body mismatch** — the bytes the client signed aren't the bytes the server received. The SDKs avoid this by serializing the JSON to bytes once and sending those exact bytes (never letting `requests`/`fetch` re-serialize). If you hand-rolled it, sign `Buffer.from(JSON.stringify(payload))` and send *those* bytes as the body — don't pass `json=` to a library that re-serializes.
-2. **Wrong path** — the signature covers `METHOD\n<path>\n…` where `path` is the part *after* the integration id with a leading `/` (`/map`, `/sync`). A full URL or a missing leading slash fails.
+2. **Wrong path** — the signature covers `METHOD\n<path>\n<timestamp>\n<raw_body>` where `path` is the part *after* the integration id with a leading `/` (`/map`, `/sync`), **including any query string** (`/observations?limit=5`). A full URL or a missing leading slash fails (leading slash is tolerated both ways). `X-Api-Timestamp` is **mandatory**.
 3. **Skew window** — `X-Api-Timestamp` is more than ±5 minutes from the server's clock. Sync the client clock (NTP) or generate the timestamp closer to the request.
 4. **Wrong `api_secret`** — you configured a different secret on the server than the one the client is signing with. The masked UI shows `"***"` for the stored value; check the raw secret in your config.
 5. **Method case** — the canonical form uppercases the method. The SDKs handle this; a hand-rolled signer must too (`POST`, not `post`).

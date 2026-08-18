@@ -79,7 +79,7 @@ Docker is the fastest way to get Health Assistant — a self-hosted, open-source
    docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
    ```
 
-   The `admin@example.com` / `securepassword` values are **placeholders** — replace them. Running the script with no flags falls back to `sysadmin@health-assistant.local` / `admin123` (fine for a throwaway local VM, **never** for anything exposed).
+   The `admin@example.com` / `securepassword` values are **placeholders** — replace them. `--password` is **required** (≥8 chars) — the insecure `admin123` default was removed (audit 2026-08); the script exits with an error if you omit it.
 
    **Clinical Catalogs (auto-seeded on every startup):**
    The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy, first), diseases, medications, vaccines, clinical event types, allergies, **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these — they reconcile to the JSON seed files on every start.

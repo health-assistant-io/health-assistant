@@ -108,8 +108,13 @@ a short-lived **invite token** minted by that tenant's admin.
 1. **Admin mints invite** — `POST /api/v1/auth/invite` (ADMIN, MANAGER,
    or SYSTEM_ADMIN only). The admin can optionally bind the token to a
    specific email, choose a role (USER/ADMIN/MANAGER), and set an expiry
-   (default 7 days). `SYSTEM_ADMIN` is **never** grantable via invite —
-   that role is bootstrap-only by design.
+   (default 7 days, **capped at 30**). Invites are **single-use** — the jti
+   is consumed atomically on first registration (audit 2026-08 M3).
+   `SYSTEM_ADMIN` is **never** grantable via invite — or via
+   `PUT /api/v1/users/{id}` / `POST /api/v1/users` by a tenant ADMIN/MANAGER
+   (audit 2026-08 C-2); only an existing SYSTEM_ADMIN (or first-run bootstrap)
+   can create that role. Changing a user's role **revokes all their live
+   tokens** so the new role takes effect immediately (they just re-login).
    ```bash
    curl -X POST https://your-host/api/v1/auth/invite \
         -H "Authorization: Bearer $ADMIN_JWT" \

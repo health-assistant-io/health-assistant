@@ -17,7 +17,7 @@ When the bridge is reachable from the public internet, a URL-bound UUID isn't st
 
 - The secret is **Fernet-encrypted at rest** (via `INTEGRATION_SECRET_KEY`) and masked as `"***"` on read — it never leaves the server in plaintext.
 - It must be **at least 16 characters** for adequate HMAC strength.
-- When set, `/map` and `/sync` require a valid `X-Api-Signature` + `X-Api-Timestamp` header pair. `/status` is **never** signed — a client probes connectivity and discovers SDK versions without a secret handshake.
+- **An `api_secret` is mandatory** — every bridge instance is provisioned with one at creation (shown once in the config-flow response; the platform stores it Fernet-encrypted). All data routes require a valid `X-Api-Signature` + `X-Api-Timestamp` pair. An **unsigned** `GET /status` remains the pre-pairing connectivity probe but returns only `{status, server_time}` (use `server_time` to resync a skewed clock); the full status payload requires a signature.
 - Leave the secret empty/blank to clear it and revert to UUID-only mode.
 
 ## The signed canonical form
@@ -25,14 +25,15 @@ When the bridge is reachable from the public internet, a URL-bound UUID isn't st
 The signature covers this canonical string:
 
 ```
-<METHOD>\n<path>\n<timestamp>\n<raw_body>
+<METHOD>\n<path>[?query]\n<timestamp>\n<raw_body>
 ```
 
 | Component | Value |
 |---|---|
 | `METHOD` | The HTTP method, uppercased (`POST`). |
 | `path` | The API path component **after** the integration id, with a leading `/` (`/map` or `/sync`). |
-| `timestamp` | Integer epoch seconds (the same value sent in `X-Api-Timestamp`). |
+| `timestamp` | Integer epoch seconds (the same value sent in `X-Api-Timestamp`). **Mandatory** — a request without it is rejected 401 (audit 2026-08 M2). |
+| `query` | When the request URL carries query parameters, they are part of the signed path (`path?query`) — the MAC covers them so they cannot be tampered with on a captured request. |
 | `raw_body` | The **exact** request body bytes the client sends — not a re-serialization. The signature and the HTTP body must come from the same bytes. |
 
 The header `X-Api-Signature` is the hex HMAC-SHA256 of the canonical string keyed by the `api_secret`. `X-Api-Timestamp` is the integer timestamp string.
@@ -45,7 +46,8 @@ The server rejects a request when `abs(server_now - timestamp) > 300` seconds (�
 
 | Endpoint | Signed when `api_secret` set? | Why |
 |---|---|---|
-| `GET /status` | ❌ never | Connectivity probe + SDK-version discovery must work before the client has a secret handshake. |
+| `GET /status` (unsigned) | ❌ never | Minimal pre-pairing probe: `{status, server_time}` only. |
+| `GET /status` (signed) | ✅ always | Full status payload (SDK versions, cursor, frontend URL). |
 | `POST /map` | ✅ | Triggers an LLM call on your account. |
 | `POST /sync` | ✅ | Writes clinical data. |
 | `GET /observations`, `/observations/latest`, `/biomarkers`, `/examinations`, `/examinations/{id}`, `/examinations/{id}/documents` | ✅ | Reads the bound patient's clinical data. |

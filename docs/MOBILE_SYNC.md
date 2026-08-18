@@ -19,7 +19,7 @@ your server, never anywhere else.
 ## How it connects
 
 The app treats **one Bridge integration instance as its single connection
-identity**: one base URL, one instance UUID, one optional HMAC secret, bound to
+identity**: one base URL, one instance UUID, one **mandatory HMAC secret** (auto-provisioned at instance creation, shown once — audit 2026-08), bound to
 **one patient** on the server. The app never holds the user's login token.
 Onboard by scanning a QR code, pasting a connection code, or entering the
 details manually; the app probes `GET /status`, stores the credential in

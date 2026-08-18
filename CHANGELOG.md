@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Docs: aligned all documentation with the security-hardening changes (2026-08 audit follow-through).**
+  - `docs/API.md` — JWT/session-token model rewritten (1h TTL, `token_kind`/`jti`, DB-revalidating refresh, logout kills the access token), single-use invites with 30-day cap, bootstrap moved to `/auth/setup`, `TRUSTED_PROXY_COUNT` rate-limit note, and the inbound machine-routes table rewritten for mandatory HMAC secrets + mandatory timestamp + query-string MAC + minimal unsigned `/status`; `expires_in` examples 86400→3600.
+  - `docs/INTEGRATIONS_SDK.md` §3.16 + secret-handling section — mandatory auto-provisioned per-instance secrets (shown once, Fernet + row-binding), route-level timestamp/query enforcement.
+  - `docs/INTEGRATIONS_FRAMEWORK.md` — webhook flow rewritten (UUID routes, never authenticates).
+  - `docs/API_LAYERS.md` — Layer-1 session token description updated (claims, TTL, revocation).
+  - `docs/TENANCY_AND_USER_MANAGEMENT.md` — invite single-use semantics, SYSTEM_ADMIN grant restrictions (`/users` blocked for tenant admins), role-change token revocation.
+  - `docs/SEEDING_AND_DEMOS.md` — the `DEMO_MODE_ACCEPT_UNAUTHENTICATED` fail-closed gate.
+  - `docs/INSTALL.md` — `create_system_admin.py --password` is required (no `admin123` fallback).
+  - `docs/MOBILE_SYNC.md` + bridge SDK docs (`authentication.md`, `troubleshooting.md`, Kotlin README) — mandatory-secret language, canonical form incl. query string + mandatory timestamp, unsigned-`/status` minimal payload + clock resync.
+  - `.env.example` — `TRUSTED_PROXY_COUNT`, `ENABLE_API_DOCS`, `DEMO_MODE_ACCEPT_UNAUTHENTICATED`, disabled-by-default `MCP_STDIO_ALLOWED_COMMANDS`, placeholder-refusal notes for `SECRET_KEY`.
+  - `dev/audits/setup-token-modes.md` — deprecation banner for `setup_url_hint` (audit C-1); frontend `Setup.tsx` comment cleaned up.
+
 - **Security hardening (P2 of the 2026-08-18 audit): CI scanning + hardening tail.**
   - New `.github/workflows/security-scan.yml`: weekly + PR-triggered `pip-audit` (strict) and `npm audit` (moderate threshold) and a full-history `gitleaks` secret scan.
   - Global-search ILIKE patterns escape `%`/`_` wildcards (API-L4) — wildcard-stuffed queries no longer force match-everything scans.

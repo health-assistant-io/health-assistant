@@ -100,8 +100,11 @@ concerns instead:
 
 The frontend authenticates with `POST /auth/login` and receives a signed
 session JWT (HS256). Every request sends `Authorization: Bearer <jwt>`. The
-token carries `user_id`, `tenant_id`, `role`, and `sub`; trust is in the token
-(no DB lookup per request). Tenant and patient scoping is enforced on every
+token carries `user_id`, `tenant_id`, `role`, `sub`, `token_kind="session"`
+and a `jti` registered in the server-side session store — logout, user deletion
+and role changes revoke it immediately (default TTL: **1 hour**; refresh tokens
+are separate, typed, rotated on use, and re-validate the user row from the DB).
+Tenant and patient scoping is enforced on every
 endpoint — see [TENANCY_AND_USER_MANAGEMENT.md](TENANCY_AND_USER_MANAGEMENT.md).
 
 Session tokens are rejected on the FHIR facade (Layer 2 is external-only) and
