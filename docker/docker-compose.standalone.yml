@@ -289,7 +289,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]
+    # No `command` override: the frontend image's default CMD serves the built
+    # SPA on 3000 via `serve`. `npm run preview` needs the source tree +
+    # package.json, which the production image intentionally does not ship.
     logging: *default-logging
     networks:
       - health-assistant-network
