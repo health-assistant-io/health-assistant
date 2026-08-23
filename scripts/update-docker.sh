@@ -50,13 +50,20 @@ if [ -z "$NO_PULL" ]; then
     fi
 fi
 
-# Regenerate .env if it was deleted (setup_env.py refuses to overwrite).
+# Regenerate .env if it was deleted (setup_env.py refuses to overwrite). Track
+# freshness so the leftover-volume guard can flag a password mismatch.
+ENV_WAS_FRESH=0
 if [ ! -f ".env" ]; then
     python3 scripts/setup_env.py
+    ENV_WAS_FRESH=1
 fi
 
 echo -e "${GREEN}Pulling latest images...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull
+
+# Leftover-volume guard: a freshly regenerated .env mints new credentials that
+# can't match a leftover postgres_data volume from a previous install.
+check_leftover_db_volume "$ENV_WAS_FRESH"
 
 echo -e "${GREEN}Restarting the stack...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d

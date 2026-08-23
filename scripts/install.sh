@@ -43,7 +43,10 @@ check_cwd
 check_docker
 
 # Generate .env on first run only (setup_env.py refuses to overwrite an
-# existing one).
+# existing one). ENV_WAS_FRESH tracks whether we just minted new credentials —
+# needed to detect a leftover DB volume from a previous install (see
+# check_leftover_db_volume in lib-docker.sh).
+ENV_WAS_FRESH=0
 if [ ! -f ".env" ]; then
     if ! command -v python3 &> /dev/null; then
         die "python3 is required to generate .env. Install Python 3, or copy .env.example to .env and edit it manually."
@@ -53,6 +56,7 @@ if [ ! -f ".env" ]; then
     if [ $? -ne 0 ]; then
         die "Environment setup failed — fix the errors above and re-run."
     fi
+    ENV_WAS_FRESH=1
 else
     echo -e "${GREEN}.env already exists — leaving it untouched.${NC}"
 fi
@@ -62,6 +66,11 @@ if [ -n "$ENV_ONLY" ]; then
     echo "  $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d"
     exit 0
 fi
+
+# Leftover-volume guard: a fresh .env's new POSTGRES_PASSWORD can't match a
+# postgres_data volume left by a previous install on this host (postgres only
+# applies the password on first init). Offer to reset it before starting.
+check_leftover_db_volume "$ENV_WAS_FRESH"
 
 echo -e "${GREEN}Starting the standalone stack...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d

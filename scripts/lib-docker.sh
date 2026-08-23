@@ -48,6 +48,50 @@ require_env() {
     fi
 }
 
+# Leftover-volume guard — call after freshly (re)generating .env.
+#
+# On a fresh clone, a leftover Postgres volume from a *previous* install on
+# this Docker host silently survives `docker compose up -d`. The postgres
+# container only applies POSTGRES_PASSWORD when the data dir is empty — once a
+# volume is initialized it keeps the OLD password, so the freshly generated
+# .env's new password makes `alembic upgrade head` (and the backend) fail with
+# "password authentication failed for user admin".
+#
+# Usage: check_leftover_db_volume "$ENV_WAS_FRESH"
+#   ENV_WAS_FRESH=1 → this install just minted new credentials; if the compose
+#   project's postgres volume already exists, offer to reset it (destructive)
+#   or abort so the user can restore their previous .env.
+check_leftover_db_volume() {
+    [ "$1" = "1" ] || return 0
+    local PROJECT PG_VOL RESET
+    PROJECT="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS config --format json 2>/dev/null \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin).get("name",""))' 2>/dev/null || true)"
+    # Fallback: the compose file lives in docker/, so the default project is "docker".
+    [ -z "$PROJECT" ] && PROJECT="docker"
+    PG_VOL="${PROJECT}_postgres_data"
+    if docker volume inspect "$PG_VOL" >/dev/null 2>&1; then
+        echo -e "${YELLOW}"
+        echo -e "${YELLOW}Leftover database volume detected: ${PG_VOL}${NC}"
+        echo -e "${YELLOW}It was initialized by a previous install with a DIFFERENT password than the"
+        echo -e "${YELLOW}.env just generated. Starting now would fail with \"password authentication"
+        echo -e "${YELLOW}failed for user admin\" in the migrate step.${NC}"
+        read -r -p "$(echo -e 'Reset this volume for a clean fresh install? (destructive) [y/N]: ')" RESET
+        if [[ "$RESET" =~ ^[Yy] ]]; then
+            if ! docker volume rm "$PG_VOL" >/dev/null 2>&1; then
+                # Volume in use by a running stack from the previous install —
+                # bring it down (volumes are preserved by `down`, then removed).
+                echo -e "${YELLOW}Volume in use — stopping the previous stack first...${NC}"
+                $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+                docker volume rm "$PG_VOL" >/dev/null 2>&1 \
+                    || die "Could not remove ${PG_VOL}. Stop the old stack manually and re-run."
+            fi
+            echo -e "${GREEN}Volume removed — starting from a clean database.${NC}"
+        else
+            die "Aborted. Restore your previous .env (it holds the matching POSTGRES_PASSWORD) and re-run, or remove the volume manually: docker volume rm ${PG_VOL}"
+        fi
+    fi
+}
+
 # Wait for the backend healthcheck (container name is hardcoded by the
 # standalone compose file, so this works regardless of the compose project
 # name). Exits non-zero on timeout with a log hint.
