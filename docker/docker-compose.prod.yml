@@ -275,7 +275,7 @@ services:
     ports:
       - "${FLOWER_BIND:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
     environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     depends_on:
       redis:
         condition: service_healthy

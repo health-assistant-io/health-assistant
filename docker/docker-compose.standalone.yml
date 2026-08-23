@@ -258,7 +258,7 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       FLOWER_URL_PREFIX: /flower
     depends_on:
       redis:
