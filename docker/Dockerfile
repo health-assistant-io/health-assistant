@@ -26,6 +26,7 @@ COPY --from=deps /usr/local/bin /usr/local/bin
 # Application code — allowlisted paths only (.dockerignore guards the rest).
 COPY backend/app /app/backend/app
 COPY backend/alembic /app/backend/alembic
+COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/scripts /app/backend/scripts
 COPY backend/requirements.txt backend/pytest.ini /app/backend/
 COPY integrations /app/integrations

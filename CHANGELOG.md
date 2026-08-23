@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: `migrate` service failed with `No 'script_location' key found in configuration`.** The backend Docker image (`docker/Dockerfile`) never copied `backend/alembic.ini`, so `alembic upgrade head` inside the `migrate` container had no `script_location` and exited 255 — the backend, worker, and beat then never booted on a fresh `install.sh` run. The image now ships `alembic.ini` at `/app/backend/alembic.ini`, where Alembic expects it.
+
 ## [v0.5.0] - 2026-08-23
 
 - **Beginner-first install & setup overhaul.** A single command now takes a fresh clone to a running Docker stack, and advanced options are hidden from first-timers without losing any feature.
