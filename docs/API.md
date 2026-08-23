@@ -51,10 +51,16 @@ Include a JWT in the `Authorization` header:
 Authorization: Bearer <your-jwt-token>
 ```
 
-JWTs are HS256, carry `user_id`, `tenant_id`, `role`, and `sub`, and are validated
-by `get_current_user` (no DB lookup — trust is in the token). `get_current_user_ws`
-is the WebSocket variant and reads the token from the `["bearer", <jwt>]`
-`Sec-WebSocket-Protocol` subprotocol.
+Session JWTs are HS256, carry `user_id`, `tenant_id`, `role`, `sub`, a
+`token_kind="session"` claim and a `jti` registered in the server-side session
+store — so `logout`, user deletion and role changes take effect immediately (not
+at token expiry). Default lifetime is **1 hour** (`JWT_EXPIRATION_HOURS`); refresh
+tokens are typed (`type=refresh`), jti-tracked, rotated on every use, and are
+**never** accepted as bearer credentials. Refresh tokens re-validate the user row
+from the DB (existence + `is_active` + current role/tenant) on every use.
+`get_current_user_ws` is the WebSocket variant and reads the token **only** from
+the `["bearer", <jwt>]` `Sec-WebSocket-Protocol` subprotocol (the `?token=`
+query-string fallback was removed — query strings land in proxy logs).
 
 ### Tenant & patient scoping
 
@@ -74,7 +80,10 @@ patients in their tenant. The canonical check is `check_patient_access` in
 ### Rate limiting
 
 The auth endpoints are rate-limited per client IP via Redis fixed-window counters
-(`app/core/rate_limit.py`). Degrades open if Redis is unreachable.
+(`app/core/rate_limit.py`). Degrades open if Redis is unreachable. The client IP
+honors `X-Forwarded-For` **only** up to `TRUSTED_PROXY_COUNT` (default `0` = direct
+exposure, header ignored) — set it to your proxy-chain depth so spoofed headers
+can't mint fresh buckets.
 
 | Endpoint | Cap |
 |---|---|
@@ -88,23 +97,18 @@ The auth endpoints are rate-limited per client IP via Redis fixed-window counter
 | Method | Path | Body | Response | Notes |
 |---|---|---|---|---|
 | `POST` | `/auth/login` | `OAuth2PasswordRequestForm` (`username`, `password`) | `TokenResponse` | Issues access + refresh JWTs. |
-| `POST` | `/auth/register` | `UserRegister` | `UserResponse` | Two paths: **bootstrap** (no `tenant_id`) creates a new tenant + "Default Household" org; the first user ever is promoted to `SYSTEM_ADMIN` (race-protected via `pg_advisory_xact_lock`), subsequent bootstraps become `ADMIN`. **Join** requires `tenant_id` + a valid `invite_token` JWT. |
-| `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. `SYSTEM_ADMIN` cannot be granted via invite. |
+| `POST` | `/auth/setup` | `SetupRequest` (`email`, `password`, `tenant_name`, `setup_token?`) | `TokenResponse` | First-run bootstrap — creates the initial tenant + `SYSTEM_ADMIN`. Only callable while uninitialized (410 after). Protected by the one-time setup token for non-localhost/non-dev requests (see `app/core/setup_token.py`). |
+| `POST` | `/auth/register` | `UserRegister` | `UserResponse` | **Join** an existing tenant — requires `tenant_id` + a valid **single-use** `invite_token` JWT (consumed atomically on first use; TTL capped at 30 days). The invite is validated *before* the email-exists check so unauthenticated callers can't enumerate emails. Bootstrap lives at `/auth/setup`. |
+| `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`, capped at 30) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. Tokens are single-use; `SYSTEM_ADMIN` cannot be granted via invite. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
-| `POST` | `/auth/refresh` | `{refresh_token}` | `TokenResponse` | **Rotates** the refresh token (audit A5): the presented `jti` is revoked and a brand-new refresh token is returned. Access tokens can no longer be replayed here (the `type=refresh` claim is enforced). |
-| `POST` | `/auth/logout` | `{refresh_token}` | `{revoked: true}` | Revokes one refresh token's `jti`. |
-| `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh token for the calling user. |
+| `POST` | `/auth/refresh` | `{refresh_token}` | `TokenResponse` | **Rotates** the refresh token (audit A5) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
+| `POST` | `/auth/logout` | `{refresh_token}` | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the bearer credential itself stops working immediately. |
+| `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user. |
 
 #### Register examples
 
 ```json
-// Path 1 — bootstrap a new tenant
-{
-  "email": "user@example.com",
-  "password": "securepassword123"
-}
-
-// Path 2 — join an existing tenant (invite required)
+// Join an existing tenant (single-use invite required; bootstrap uses POST /auth/setup)
 {
   "email": "newmember@family.com",
   "password": "securepassword123",
@@ -120,7 +124,7 @@ Login response shape:
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "Bearer",
-  "expires_in": 86400
+  "expires_in": 3600
 }
 ```
 
@@ -191,7 +195,7 @@ curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -d "username=alice@example.com" \
   -d "password=secret123" | jq
 # → { "access_token": "eyJ...", "refresh_token": "eyJ...",
-#     "token_type": "Bearer", "expires_in": 86400 }
+#     "token_type": "Bearer", "expires_in": 3600 }
 
 export TOKEN="<access_token from above>"
 
@@ -951,12 +955,18 @@ Per-integration-instance notification preferences are managed via the unified [`
 |---|---|---|---|---|---|
 | `POST` | `/integrations/{domain}/notification-action/{integration_id}/{action_id}` | any (tenant-scoped; caller must own the integration) | JSON passthrough | provider ActionResult | Dispatches a clicked action button (`type="post"`) on an integration-authored notification to `provider.handle_notification_action`. 400 if provider lacks `supports_notifications`. |
 
-### Inbound routes (tokenless)
+### Inbound machine routes (HMAC — secrets are mandatory)
+
+Every webhook/API-capable integration instance is **auto-provisioned with a
+per-instance HMAC secret at creation** (Fernet-encrypted with row binding, shown
+**once** in the config-flow response — store it immediately). The integration
+UUID is an identifier, never a credential: instances without a secret are
+rejected with 401 (fail-closed). Bodies are capped at 40 MiB.
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/integrations/{domain}/webhook/{integration_id}` | HMAC via `webhook_secret` (optional) | raw Request body | `{message, metrics_synced}` | Verifies HMAC-SHA256 over raw body if `webhook_secret` is set. Supported signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` prefix tolerated). Without a configured secret the integration UUID is the only credential (legacy mode). Verification delegates to `integrations.sdk.webhook_security.verify_hmac_signature` — the same helper provider `handle_webhook` implementations use (see [INTEGRATIONS_SDK.md §3.16](INTEGRATIONS_SDK.md#316-webhook-signature-verification-reusable-helpers)). Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
-| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | HMAC via `api_secret` (optional) | raw Request body | provider-defined | Generic two-way API proxy. With `api_secret` set, request MUST carry `X-Api-Signature` (HMAC-SHA256 of `METHOD\n<path>\n[<timestamp>\n]<raw_body>`) + optional `X-Api-Timestamp` (±5-min skew window). Without `api_secret`, UUID-only legacy mode with a logged warning (audit B8). |
+| `POST` | `/integrations/{domain}/webhook/{integration_id}` | **mandatory** HMAC via `webhook_secret` | raw Request body (≤40 MiB) | `{message, metrics_synced}` | Signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` tolerated). **Replay protection:** with `X-Webhook-Timestamp` the canonical timestamped scheme applies (±5-min skew); bare body-MACs are deduplicated via a 10-minute Redis replay guard. Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
+| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | **mandatory** HMAC via `api_secret` | raw Request body (≤40 MiB) | provider-defined | Two-way API proxy. Requires `X-Api-Signature` = HMAC-SHA256 of `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` **and** a mandatory `X-Api-Timestamp` (±5-min skew; no timestamp → 401). The MAC covers the **query string**, so query params can't be tampered on a captured request. `GET /status` without a signature returns only `{status, server_time}` (pairing probe + clock resync); a *signed* status probe returns the full provider payload. |
 
 See [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable)
 for the notification-action contract.

@@ -42,6 +42,17 @@ async def create_user_endpoint(
     current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
 ):
     """Create a new user within a tenant"""
+    # SYSTEM_ADMIN is bootstrap-only: a tenant ADMIN must never be able to
+    # mint a platform operator (audit 2026-08 C-2). Only an existing
+    # SYSTEM_ADMIN may create another one.
+    if user_in.role == Role.SYSTEM_ADMIN.value and (
+        current_user.role != Role.SYSTEM_ADMIN.value or user_in.tenant_id is not None
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="SYSTEM_ADMIN accounts can only be created by a SYSTEM_ADMIN.",
+        )
+
     # Verify email doesn't exist
     existing_user = await get_user_by_email(user_in.email)
     if existing_user:
@@ -133,6 +144,8 @@ async def update_user_endpoint(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Update user information"""
+    from app.core import token_store
+
     is_self = str(current_user.user_id) == user_id
     is_admin = current_user.role in [
         Role.ADMIN.value,
@@ -150,13 +163,38 @@ async def update_user_endpoint(
         None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
     )
 
-    # If updating role, must be admin
-    if role and not is_admin:
-        raise HTTPException(status_code=403, detail="Only admins can change roles")
+    # If updating role, must be a real admin (MANAGERs manage content, not
+    # accounts), and SYSTEM_ADMIN grants require a SYSTEM_ADMIN caller
+    # (audit 2026-08 C-2 — tenant ADMIN/MANAGER must not escalate).
+    if role:
+        if current_user.role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
+            raise HTTPException(status_code=403, detail="Only admins can change roles")
+        if (
+            role == Role.SYSTEM_ADMIN.value
+            and current_user.role != Role.SYSTEM_ADMIN.value
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="SYSTEM_ADMIN can only be granted by a SYSTEM_ADMIN.",
+            )
 
-    user = await update_user(user_id, email, role, settings, tenant_id=tenant_id)
+    user = await update_user(
+        user_id,
+        email,
+        role,
+        settings,
+        tenant_id=tenant_id,
+        allow_system_admin=current_user.role == Role.SYSTEM_ADMIN.value,
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # A role change must take effect immediately: kill every live session
+    # and refresh token so stale privileged claims cannot outlive the
+    # change (audit 2026-08 H2). The demoted user simply re-logs-in.
+    if role and str(user.id) != str(current_user.user_id):
+        await token_store.revoke_everything(str(user.id))
+
     return user
 
 
@@ -166,6 +204,8 @@ async def delete_user_endpoint(
     current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
 ):
     """Delete user"""
+    from app.core import token_store
+
     # Enforce tenant isolation for non-system admins
     tenant_id = (
         None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
@@ -174,4 +214,8 @@ async def delete_user_endpoint(
     success = await delete_user(user_id, tenant_id=tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Deleted users must lose access at once — not when their tokens
+    # happen to expire (audit 2026-08 H2).
+    await token_store.revoke_everything(user_id)
     return {"message": "User deleted successfully"}

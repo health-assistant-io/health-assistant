@@ -9,12 +9,38 @@ from app.schemas.user import TokenData
 from fastapi import HTTPException, status, Header, Depends, Request
 
 
+def _fit_bcrypt(password: str) -> bytes:
+    """Encode a password for bcrypt, truncating to bcrypt's 72-byte limit.
+
+    bcrypt silently truncates (<=3.x) or raises (>=4.1/5.x) on longer
+    input; both hash and verify must use identical fitting so behavior is
+    uniform across library versions. UTF-8 multibyte passwords are cut on
+    a byte boundary within the limit.
+    """
+    return password.encode("utf-8")[:72]
+
+
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_hash() -> str:
+    """A fixed bcrypt hash verified against when the user does not exist.
+
+    Keeps login timing uniform between "unknown email" and "wrong
+    password" so response time cannot enumerate registered accounts.
+    """
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = get_password_hash("timing-equalizer-dummy-password")
+    return _DUMMY_HASH
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     try:
         # bcrypt expects bytes
         return bcrypt.checkpw(
-            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+            _fit_bcrypt(plain_password), hashed_password.encode("utf-8")
         )
     except Exception:
         return False
@@ -23,7 +49,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """Hash a password"""
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    return bcrypt.hashpw(_fit_bcrypt(password), salt).decode("utf-8")
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
@@ -43,6 +69,38 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     )
 
     return encoded_jwt
+
+
+SESSION_TOKEN_KIND = "session"
+
+
+def create_session_access_token(
+    data: dict, expires_delta: timedelta | None = None
+) -> tuple[str, str]:
+    """Create a session access JWT. Returns ``(token, jti)``.
+
+    The token carries ``token_kind="session"`` + a random ``jti``; the
+    caller must register the jti via ``token_store.register_session`` for
+    logout/revocation to work. Claims carried over: ``user_id`` (required),
+    ``tenant_id``, ``role``, ``sub`` + any extras (demo, switched-set).
+    """
+    to_encode = data.copy()
+    if expires_delta is None:
+        expires_delta = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    expire = datetime.now(timezone.utc) + expires_delta
+    jti = uuid4().hex
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "jti": jti,
+            "token_kind": SESSION_TOKEN_KIND,
+        }
+    )
+    return (
+        jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM),
+        jti,
+    )
 
 
 def decode_access_token(token: str) -> dict:
@@ -73,7 +131,9 @@ REFRESH_TOKEN_TYPE = "refresh"
 REFRESH_TOKEN_DAYS = 7
 
 
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> tuple[str, str]:
+def create_refresh_token(
+    data: dict, expires_delta: timedelta | None = None
+) -> tuple[str, str]:
     """Create a refresh JWT. Returns ``(token, jti)``.
 
     The token embeds ``type="refresh"`` and a random ``jti``; the caller must
@@ -85,7 +145,12 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     expire = datetime.now(timezone.utc) + expires_delta
     jti = uuid4().hex
     to_encode.update(
-        {"exp": expire, "iat": datetime.now(timezone.utc), "type": REFRESH_TOKEN_TYPE, "jti": jti}
+        {
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "type": REFRESH_TOKEN_TYPE,
+            "jti": jti,
+        }
     )
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM
@@ -108,7 +173,12 @@ def decode_refresh_token(token: str) -> dict | None:
 
 
 def verify_access_token(token: str) -> dict:
-    """Verify access token and return payload"""
+    """Verify access token and return payload.
+
+    Rejects refresh-typed tokens: a refresh token must never be usable as
+    a bearer credential on the domain API (its 7-day lifetime would make
+    logout meaningless — audit 2026-08 H3).
+    """
     payload = decode_access_token(token)
     if not payload:
         return None
@@ -117,7 +187,13 @@ def verify_access_token(token: str) -> dict:
     if exp and datetime.now(timezone.utc).timestamp() > float(exp):
         return None
 
+    if payload.get("type") == REFRESH_TOKEN_TYPE:
+        return None
+
     return payload
+
+
+_NON_SESSION_SUBS = {"invite", "download"}
 
 
 def get_token(request: Request, authorization: str = Header(None)):
@@ -141,15 +217,46 @@ def get_token(request: Request, authorization: str = Header(None)):
     )
 
 
-def get_current_user(token: str = Depends(get_token)):
-    """Get current user from JWT token"""
+async def get_current_user(token: str = Depends(get_token)):
+    """Get current user from JWT token.
+
+    Accepts session tokens only: refresh tokens, invite tokens, presigned
+    download tokens and OAuth api tokens are all rejected. When the token
+    carries a ``jti`` (all tokens minted via ``create_session_access_token``)
+    the server-side session store is consulted so logout / user deletion /
+    role changes take effect immediately.
+    """
     from app.schemas.user import TokenData
+    from app.core import token_store
 
     payload = verify_access_token(token)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("token_kind") == "api" or payload.get("sub") in _NON_SESSION_SUBS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    jti = payload.get("jti")
+    if jti and not await token_store.is_session_active(str(user_id), jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -183,9 +290,9 @@ class RoleChecker:
         return current_user
 
 
-def get_current_user_id(token: str = Depends(get_token)) -> str:
+async def get_current_user_id(token: str = Depends(get_token)) -> str:
     """Get current user ID from JWT token"""
-    payload = get_current_user(token)
+    payload = await get_current_user(token)
     return str(payload.user_id)
 
 
@@ -220,8 +327,13 @@ def create_invite_token(
     email: str | None = None,
     role: str = "USER",
     expires_days: int = 7,
-) -> str:
-    """Mint a tenant-scoped invite token.
+) -> tuple[str, str]:
+    """Mint a tenant-scoped, **single-use** invite token.
+
+    Returns ``(token, jti)``. The caller must register the jti via
+    ``token_store.register_invite``; the register endpoint consumes it
+    atomically on first use so a leaked invite cannot onboard an
+    unlimited number of accounts (audit 2026-08 M3).
 
     Used by ``POST /auth/invite`` (admin-only) to onboard a new member into
     the admin's tenant. The token:
@@ -233,20 +345,44 @@ def create_invite_token(
       MANAGER). SYSTEM_ADMIN is forbidden here — bootstrap is the only
       path that grants SYSTEM_ADMIN.
     - Default TTL is 7 days; the issuing admin can shorten via the
-      ``expires_days`` arg.
+      ``expires_days`` arg (capped at 30 by the endpoint).
     """
     if role == Role.SYSTEM_ADMIN.value:
         raise ValueError("SYSTEM_ADMIN cannot be granted via invite token")
+    expires_days = max(1, min(int(expires_days), 30))
+    jti = uuid4().hex
     to_encode = {
         "sub": "invite",
         "tenant_id": str(tenant_id),
         "role": role,
+        "jti": jti,
         "exp": datetime.now(timezone.utc) + timedelta(days=expires_days),
         "iat": datetime.now(timezone.utc),
     }
     if email:
         to_encode["email"] = email
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return (
+        jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM),
+        jti,
+    )
+
+
+def _decode_invite(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
+    except jwt.PyJWTError:
+        return None
+    if payload.get("sub") != "invite":
+        return None
+    return payload
+
+
+def invite_jti(token: str) -> str | None:
+    """Return the single-use ``jti`` of an invite token, if present."""
+    payload = _decode_invite(token)
+    return payload.get("jti") if payload else None
 
 
 def verify_invite_token(
@@ -254,20 +390,15 @@ def verify_invite_token(
     expected_tenant_id: str,
     expected_email: str | None = None,
 ) -> tuple[bool, str | None]:
-    """Verify a tenant invite token.
+    """Verify a tenant invite token (signature + scope only).
 
-    Returns ``(ok, role)``: ``ok`` is True iff the token is well-formed,
-    unexpired, scoped to ``expected_tenant_id``, and (if ``expected_email``
-    is supplied) bound to that email. ``role`` is the role to grant
-    (defaults to ``USER``); SYSTEM_ADMIN is never returned.
+    Single-use consumption is the register endpoint's job (it needs the
+    async token store): call ``token_store.consume_invite(invite_jti(token))``
+    after this returns ok. Legacy tokens without a jti are still
+    signature-verified; they simply cannot be single-use.
     """
-    try:
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
-        )
-    except jwt.PyJWTError:
-        return (False, None)
-    if payload.get("sub") != "invite":
+    payload = _decode_invite(token)
+    if not payload:
         return (False, None)
     if payload.get("tenant_id") != str(expected_tenant_id):
         return (False, None)
@@ -281,10 +412,23 @@ def verify_invite_token(
 
 
 async def get_current_user_ws(token: str):
-    """Get current user for WebSocket connection"""
+    """Get current user for WebSocket connection.
+
+    Session tokens only: refresh tokens are rejected (via
+    ``verify_access_token``), api/invite/download tokens and tokens
+    without a ``user_id`` claim are refused.
+    """
     payload = verify_access_token(token)
-    if not payload:
+    if not payload or not payload.get("user_id"):
         raise Exception("Invalid token")
+    if payload.get("token_kind") == "api" or payload.get("sub") in _NON_SESSION_SUBS:
+        raise Exception("Invalid token")
+    jti = payload.get("jti")
+    if jti:
+        from app.core import token_store
+
+        if not await token_store.is_session_active(str(payload["user_id"]), jti):
+            raise Exception("Invalid token")
     from app.schemas.user import TokenData
 
     return TokenData(**payload)

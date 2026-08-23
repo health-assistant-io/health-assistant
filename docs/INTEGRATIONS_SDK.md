@@ -369,6 +369,14 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 If the key is missing, saving config with secret fields fails fast with a 400 — no plaintext secrets are ever stored. Integrations with no secret fields are unaffected.
 
+**Platform-provisioned machine secrets (audit 2026-08 H1/H2):** additionally,
+when a provider implements `handle_webhook` / `handle_api_request`, instance
+creation automatically generates `webhook_secret` / `api_secret`
+(`secrets.token_urlsafe(32)`), stores them as context-bound encrypted wrappers
+inside `user_config`, and returns the plaintexts **once** in the config-flow
+response (`{..., webhook_secret, api_secret, secret_notice}`). Senders/clients
+must sign with them; unsigned machine traffic is rejected.
+
 **Key rotation** (non-disruptive): set `INTEGRATION_SECRET_KEY` to the new key and `INTEGRATION_SECRET_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB.
 
 **SSRF defense**: every outbound SDK HTTP call (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, OAuth discovery/token calls) passes through `integrations.sdk.net_guard.assert_safe_url` — which rejects cloud-metadata (`169.254.169.254`), loopback, link-local, private, and reserved addresses before the request leaves the process. Default is deny-private; set `INTEGRATION_ALLOWED_HOSTS` or `INTEGRATION_BLOCK_PRIVATE_RANGES=false` for a trusted self-hosted target on the LAN.
@@ -1115,7 +1123,16 @@ For each pulled record the engine resolves a `TokenData` actor via `resolve_inte
 
 ### 3.16 Webhook Signature Verification (Reusable Helpers)
 
-The platform provisions two tokenless routes per integration instance — a webhook receiver and a wildcard two-way API proxy. Both can require an HMAC signature when the integration configures a secret. Signature verification was previously inlined in two places (the platform endpoint layer + each provider that wanted to validate inside `handle_webhook`); the algorithm is now in one reusable SDK module.
+The platform provisions two machine routes per integration instance — a webhook
+receiver and a wildcard two-way API proxy. **HMAC secrets are mandatory**
+(audit 2026-08): every webhook/API-capable instance is auto-provisioned with a
+per-instance secret at creation (Fernet-encrypted with the instance id as
+context binding, returned **once** in the config-flow response — like an OAuth
+client secret). The integration UUID is an identifier, never a credential;
+secret-less instances are rejected 401 on both routes. Request bodies are capped
+at 40 MiB. Signature verification was previously inlined in two places (the
+platform endpoint layer + each provider that wanted to validate inside
+`handle_webhook`); the algorithm is now in one reusable SDK module.
 
 #### `integrations.sdk.webhook_security`
 
@@ -1136,7 +1153,7 @@ from integrations.sdk import (
 |---|---|
 | `verify_hmac_signature(secret, raw_body, provided_signature, *, accepted_prefixes=("sha256=", "sha256:"))` | Constant-time HMAC-SHA256 of `raw_body`. Strips the conventional GitHub/Slack `sha256=` / `sha256:` prefixes before comparing. Returns `False` on empty or non-ASCII inputs. **No replay protection** — captured payloads can be replayed; use `verify_stripe_signature` or `verify_canonical_signature` when you need replay defense. |
 | `verify_stripe_signature(secret, payload, header_value, *, tolerance=300)` | Parses Stripe's `t=<epoch>,v1=<hex>` header, folds the timestamp into the MAC (`HMAC-SHA256(secret, "{t}.{payload}")`), and checks a ±`tolerance` skew window (default 300s) so captured signatures can't be replayed after the window closes. The replay-protected counterpart to `verify_hmac_signature`. |
-| `verify_canonical_signature(secret, method, path, raw_body, provided_signature, *, provided_timestamp=None, max_skew_seconds=300)` | Constant-time HMAC-SHA256 over `METHOD\n<path>\n[<timestamp>\n]<raw_body>`. When `provided_timestamp` is set, the timestamp is folded into the signed payload (so a captured signature can't be replayed) and the request is rejected if skew exceeds `max_skew_seconds`. Used by the two-way API proxy when `user_config["api_secret"]` is set. |
+| `verify_canonical_signature(secret, method, path, raw_body, provided_signature, *, provided_timestamp=None, max_skew_seconds=300)` | Constant-time HMAC-SHA256 over `METHOD\n<path>\n[<timestamp>\n]<raw_body>`. When `provided_timestamp` is set, the timestamp is folded into the signed payload (so a captured signature can't be replayed) and the request is rejected if skew exceeds `max_skew_seconds`. Used by the two-way API proxy (`user_config["api_secret"]`, platform-provisioned) and by the webhook route when the sender supplies `X-Webhook-Timestamp`. **Route-level enforcement (audit 2026-08):** the API proxy requires `X-Api-Timestamp` (401 without it) and signs the full `path?query` so query params are tamper-proof. |
 | `get_signature_header(headers, *, names=DEFAULT_WEBHOOK_SIGNATURE_HEADERS)` | Case-insensitive lookup over the conventional header names (`X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256`). Providers with their own header convention (e.g. dev_dummy's `X-DevDummy-Signature`) pass `names=` explicitly. |
 
 #### Provider-side example

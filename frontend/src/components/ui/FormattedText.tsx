@@ -11,6 +11,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { detectTextFormat } from '../../utils/textFormat';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 interface FormattedTextProps {
   value?: string | null;
@@ -28,7 +29,7 @@ export const FormattedText: React.FC<FormattedTextProps> = ({ value, className =
     return (
       <div
         className={`prose dark:prose-invert max-w-none prose-sm text-gray-700 dark:text-dark-muted ${className}`}
-        dangerouslySetInnerHTML={{ __html: value }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(value) }}
       />
     );
   }

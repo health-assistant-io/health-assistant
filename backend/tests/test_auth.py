@@ -150,9 +150,12 @@ async def test_setup_success(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
-async def test_register_email_exists(
+async def test_register_email_exists_requires_invite(
     mock_get_user_by_email, async_client: AsyncClient, mock_user
 ):
+    """Audit 2026-08 M2: the email-exists check runs AFTER invite
+    validation — without a valid invite the caller gets a generic 403
+    and cannot enumerate registered emails."""
     mock_get_user_by_email.return_value = mock_user
 
     response = await async_client.post(
@@ -164,8 +167,8 @@ async def test_register_email_exists(
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Email already registered"
+    assert response.status_code == 403
+    assert "invite" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -188,11 +191,13 @@ async def test_validate_token_invalid(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.endpoints.auth.get_user_by_id")
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
 async def test_refresh_token(
-    mock_get_user_by_email, async_client: AsyncClient, mock_user
+    mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
 ):
     mock_get_user_by_email.return_value = mock_user
+    mock_get_user_by_id.return_value = mock_user
 
     # First login to get a refresh token
     login_response = await async_client.post(
@@ -220,3 +225,60 @@ async def test_refresh_token(
     new_payload = decode_refresh_token(data["refresh_token"])
     assert new_payload is not None
     assert new_payload.get("type") == "refresh"
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.auth.get_user_by_id")
+@patch("app.api.v1.endpoints.auth.get_user_by_email")
+async def test_refresh_deleted_user_rejected(
+    mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
+):
+    """Audit 2026-08 H2: a deleted user's refresh chain must die at the
+    next refresh — the user row is re-loaded from the DB every time."""
+    mock_get_user_by_email.return_value = mock_user
+    mock_get_user_by_id.return_value = None
+
+    login_response = await async_client.post(
+        "/api/v1/auth/login",
+        data={"username": "test@example.com", "password": "testpassword123"},
+    )
+    refresh_token = login_response.json()["refresh_token"]
+
+    refresh_response = await async_client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+    )
+    assert refresh_response.status_code == 401
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.auth.get_user_by_id")
+@patch("app.api.v1.endpoints.auth.get_user_by_email")
+async def test_refresh_inactive_user_rejected(
+    mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
+):
+    """Audit 2026-08 H4: is_active=false blocks the refresh chain too."""
+    mock_user.is_active = False
+    mock_get_user_by_email.return_value = mock_user
+    mock_get_user_by_id.return_value = mock_user
+
+    refresh_response = await async_client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": "some-invalid-token"},
+    )
+    assert refresh_response.status_code == 401
+
+
+@pytest.mark.asyncio
+@patch("app.api.v1.endpoints.auth.get_user_by_email")
+async def test_login_inactive_user_rejected(
+    mock_get_user_by_email, async_client: AsyncClient, mock_user
+):
+    """Audit 2026-08 H4: disabled accounts cannot log in."""
+    mock_user.is_active = False
+    mock_get_user_by_email.return_value = mock_user
+
+    response = await async_client.post(
+        "/api/v1/auth/login",
+        data={"username": "test@example.com", "password": "testpassword123"},
+    )
+    assert response.status_code == 403

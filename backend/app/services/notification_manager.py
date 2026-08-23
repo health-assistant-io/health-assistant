@@ -220,6 +220,33 @@ class NotificationManager:
             return [t.to_dict() for t in rows]
 
     @staticmethod
+    async def list_triggers_for_user(
+        tenant_id: Union[str, UUID], user_id: Union[str, UUID]
+    ) -> List[dict]:
+        """List triggers a USER may see: created by them, or targeting a
+        patient linked to them (audit 2026-08 M4 — previously tenant-wide)."""
+        if not DATABASE_AVAILABLE:
+            return []
+        from sqlalchemy import or_, select as sa_select
+
+        from app.models.fhir.patient import Patient
+
+        async with AsyncSessionLocal() as session:
+            own_patients = sa_select(Patient.id).where(
+                Patient.tenant_id == UUID(str(tenant_id)),
+                Patient.user_id == UUID(str(user_id)),
+            )
+            stmt = select(NotificationTrigger).where(
+                NotificationTrigger.tenant_id == UUID(str(tenant_id)),
+                or_(
+                    NotificationTrigger.created_by == UUID(str(user_id)),
+                    NotificationTrigger.patient_id.in_(own_patients),
+                ),
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            return [t.to_dict() for t in rows]
+
+    @staticmethod
     async def delete_trigger(trigger_id: UUID, tenant_id: Union[str, UUID]) -> dict:
         """Delete a single trigger by id (tenant-scoped; cross-tenant = no-op)."""
         if not DATABASE_AVAILABLE:

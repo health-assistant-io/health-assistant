@@ -9,6 +9,7 @@ B11: WebSocket endpoint passed the auth token in the URL query string
 B15: Webhook route treated the integration_id as the only secret. Now
      supports HMAC-SHA256 verification via ``user_config["webhook_secret"]``.
 """
+
 import asyncio
 import hashlib
 import hmac
@@ -188,9 +189,10 @@ async def test_b15_webhook_accepts_valid_signature(async_client):
 
 
 @pytest.mark.asyncio
-async def test_b15_webhook_no_secret_keeps_legacy_behaviour(async_client):
-    """B15: integrations without webhook_secret fall back to the legacy
-    integration_id-as-secret behaviour (backward compatibility)."""
+async def test_b15_webhook_no_secret_is_rejected(async_client):
+    """Audit 2026-08 H1: integrations without webhook_secret are REJECTED
+    (the legacy UUID-as-secret fallback is gone — the UUID is an
+    identifier, not a credential)."""
     from app.core.database import get_db
     from app.main import app
     from app.models.enums import IntegrationStatus
@@ -231,13 +233,14 @@ async def test_b15_webhook_no_secret_keeps_legacy_behaviour(async_client):
             "app.api.v1.endpoints.integrations.integration_registry.get_provider",
             return_value=fake_provider,
         ):
-            # No signature header at all — should still work (legacy path).
+            # No secret configured → 401, provider never invoked.
             response = await async_client.post(
                 f"/api/v1/integrations/dev_dummy/webhook/{integration_id}",
                 json={"event": "test"},
             )
 
-        assert response.status_code == 200, response.text
+        assert response.status_code == 401, response.text
+        fake_provider.handle_webhook.assert_not_awaited()
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -269,14 +272,14 @@ def test_b11_no_unawaited_sleep_in_endpoint():
             # cadence now comes from get_message(timeout=...).
             args = node.args
             if args and isinstance(args[0], ast.Constant) and args[0].value == 0.1:
-                raise AssertionError(
-                    "WebSocket endpoint still has asyncio.sleep(0.1)."
-                )
+                raise AssertionError("WebSocket endpoint still has asyncio.sleep(0.1).")
 
 
 def test_b11_endpoint_logs_errors_before_closing_1011():
     """B11: the except branch must log before close(1011) (was silent)."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
+    src = inspect.getsource(
+        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
+    )
     # Find the exception handler block.
     assert "logger.warning" in src or "logger.error" in src, (
         "WebSocket endpoint does not log errors before close(1011)."
@@ -289,44 +292,49 @@ def test_b11_extract_token_prefers_subprotocol():
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {"sec-websocket-protocol": "bearer, eyJabc.def.ghi"}
-    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws, None))
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
     assert token == "eyJabc.def.ghi"
 
 
-def test_b11_extract_token_falls_back_to_query():
-    """B11: without a subprotocol, the query-string token is used (backward compat)."""
+def test_b11_extract_token_query_fallback_is_removed():
+    """Audit 2026-08 AUTH-L4: the ?token= query fallback is GONE — without a
+    subprotocol there is no accepted auth channel (query tokens landed in
+    proxy access logs / browser history)."""
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {}
-    token = asyncio.get_event_loop().run_until_complete(
-        _extract_token(ws, "legacy-query-token")
-    )
-    assert token == "legacy-query-token"
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
+    assert token is None
 
 
 def test_b11_extract_token_returns_none_when_neither_present():
-    """B11: no token from either source → None → endpoint rejects."""
+    """B11: no token from any source → None → endpoint rejects."""
     from app.api.v1.endpoints.websockets import _extract_token
 
     ws = MagicMock()
+    ws.scope = {}
     ws.headers = {}
-    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws, None))
+    token = asyncio.get_event_loop().run_until_complete(_extract_token(ws))
     assert token is None
 
 
 def test_b11_keepalive_ping_present():
     """B11: a periodic ping must be sent so intermediaries don't drop the socket."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
-    assert "ping" in src.lower(), (
-        "WebSocket endpoint has no keepalive ping."
+    src = inspect.getsource(
+        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
     )
+    assert "ping" in src.lower(), "WebSocket endpoint has no keepalive ping."
 
 
 def test_b11_poll_timeout_reduced():
     """B11: the effective poll cadence comes from get_message timeout, not a sleep."""
-    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
+    src = inspect.getsource(
+        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
+    )
     # The 1.0 second timeout replaces the old 10 Hz busy-loop.
     assert "timeout=1.0" in src or "_POLL_TIMEOUT_SECONDS" in src, (
         "WebSocket endpoint must use a 1s poll timeout."

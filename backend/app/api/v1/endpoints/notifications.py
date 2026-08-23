@@ -307,26 +307,66 @@ async def list_triggers(
 
     With ``patient_id``: scoped to that patient (access-checked). Without:
     tenant-wide (ADMIN/MANAGER/SYSTEM_ADMIN) or just the caller's own
-    patient-linked triggers (USER). Used by the Notification Center
-    "Reminders" tab, which is global, not patient-scoped.
+    triggers (USER — created by them or linked to their own patients),
+    matching the docstring's long-standing promise (audit 2026-08 M4).
     """
     if patient_id:
         await check_patient_access(patient_id, current_user, db)
         return await NotificationManager.list_triggers_for_patient(
             patient_id=patient_id, tenant_id=current_user.tenant_id
         )
+    if current_user.role == Role.USER.value:
+        return await NotificationManager.list_triggers_for_user(
+            tenant_id=current_user.tenant_id, user_id=current_user.user_id
+        )
     return await NotificationManager.list_triggers_for_tenant(
         tenant_id=current_user.tenant_id
     )
+
+
+async def _check_trigger_ownership(
+    trigger_id: UUID, current_user: TokenData, db: AsyncSession
+) -> None:
+    """API-M4: a USER may only delete/test-fire triggers they created (or
+    that target their own linked patients). Admins are tenant-wide."""
+    if current_user.role != Role.USER.value:
+        return
+    from sqlalchemy import select
+
+    from app.models.notification import NotificationTrigger
+    from app.models.fhir.patient import Patient
+
+    result = await db.execute(
+        select(NotificationTrigger.created_by, NotificationTrigger.patient_id).where(
+            NotificationTrigger.id == trigger_id,
+            NotificationTrigger.tenant_id == current_user.tenant_id,
+        )
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Trigger not found")
+    created_by, trig_patient_id = row
+    if created_by is not None and str(created_by) == str(current_user.user_id):
+        return
+    if trig_patient_id is not None:
+        patient = await db.execute(
+            select(Patient.user_id).where(Patient.id == trig_patient_id)
+        )
+        owner = patient.scalar_one_or_none()
+        if owner is not None and str(owner) == str(current_user.user_id):
+            return
+    raise HTTPException(status_code=404, detail="Trigger not found")
 
 
 @router.delete("/triggers/{trigger_id}")
 async def delete_trigger(
     trigger_id: str,
     current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a scheduled trigger (tenant-scoped; cross-tenant = no-op)."""
     trigger_uuid = _coerce_uuid(trigger_id, "trigger_id")
+    await _check_trigger_ownership(trigger_uuid, current_user, db)
     return await NotificationManager.delete_trigger(
         trigger_id=trigger_uuid, tenant_id=current_user.tenant_id
     )
@@ -336,9 +376,11 @@ async def delete_trigger(
 async def test_trigger(
     trigger_id: str,
     current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Immediately fire a trigger for testing."""
     trigger_uuid = _coerce_uuid(trigger_id, "trigger_id")
+    await _check_trigger_ownership(trigger_uuid, current_user, db)
     ok = await NotificationManager.fire_trigger_by_id(
         trigger_id=trigger_uuid, tenant_id=current_user.tenant_id
     )

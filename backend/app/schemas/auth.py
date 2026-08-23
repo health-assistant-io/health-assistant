@@ -101,8 +101,9 @@ class SetupStatus(BaseModel):
     setup_url_hint: Optional[str] = Field(
         None,
         description=(
-            "Only set in 'env' mode when uninitialized + token still "
-            "active: the '/setup?token=<value>' one-click URL."
+            "Deprecated: always null. The endpoint never returns the setup "
+            "token value — in 'env' mode the launcher (which holds the "
+            "token) composes the one-click URL itself."
         ),
     )
     demo_mode: bool = Field(

@@ -11,6 +11,7 @@ Post-fix contract pinned here:
 3. SYSTEM_ADMIN role can never be granted via invite token (setup is
    the only SYSTEM_ADMIN grantor).
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -45,10 +46,15 @@ async def test_register_existing_tenant_without_invite_returns_403():
     tenant_id = uuid.uuid4()
     db = MagicMock()
 
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "get_tenant", new=AsyncMock(return_value=MagicMock(id=tenant_id))
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            auth_endpoint,
+            "get_tenant",
+            new=AsyncMock(return_value=MagicMock(id=tenant_id)),
+        ),
     ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
@@ -74,14 +80,19 @@ async def test_register_existing_tenant_with_invalid_invite_returns_403():
     db = MagicMock()
 
     # Token minted for OTHER_TENANT — must not work for tenant_id.
-    bad_token = create_invite_token(
+    bad_token, _bjti = create_invite_token(
         tenant_id=str(other_tenant_id), email="attacker@evil.com"
     )
 
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "get_tenant", new=AsyncMock(return_value=MagicMock(id=tenant_id))
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            auth_endpoint,
+            "get_tenant",
+            new=AsyncMock(return_value=MagicMock(id=tenant_id)),
+        ),
     ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
@@ -102,20 +113,33 @@ async def test_register_existing_tenant_with_valid_invite_succeeds():
     tenant_id = uuid.uuid4()
     db = MagicMock()
 
-    valid_token = create_invite_token(
+    valid_token, _vjti = create_invite_token(
         tenant_id=str(tenant_id), email="newuser@family.com", role="USER"
     )
 
     fake_new_user = MagicMock()
     fake_new_user.email = "newuser@family.com"
 
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "get_tenant", new=AsyncMock(return_value=MagicMock(id=tenant_id))
-    ), patch.object(
-        auth_endpoint, "service_create_user", new=AsyncMock(return_value=fake_new_user)
-    ) as creating:
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            auth_endpoint,
+            "get_tenant",
+            new=AsyncMock(return_value=MagicMock(id=tenant_id)),
+        ),
+        patch.object(
+            auth_endpoint,
+            "service_create_user",
+            new=AsyncMock(return_value=fake_new_user),
+        ) as creating,
+        patch.object(
+            auth_endpoint.token_store,
+            "consume_invite",
+            new=AsyncMock(return_value=True),
+        ) as consuming,
+    ):
         await auth_endpoint.register(
             user_data=UserRegister(
                 email="newuser@family.com",
@@ -127,6 +151,7 @@ async def test_register_existing_tenant_with_valid_invite_succeeds():
         )
 
     creating.assert_awaited_once()
+    consuming.assert_awaited_once()
     args, kwargs = creating.await_args
     assert kwargs.get("role") == Role.USER.value
     assert kwargs.get("tenant_id") == str(tenant_id)
@@ -140,14 +165,19 @@ async def test_register_existing_tenant_with_email_mismatch_invite_returns_403()
     tenant_id = uuid.uuid4()
     db = MagicMock()
 
-    valid_token = create_invite_token(
+    valid_token, _vjti = create_invite_token(
         tenant_id=str(tenant_id), email="specific@family.com"
     )
 
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(
-        auth_endpoint, "get_tenant", new=AsyncMock(return_value=MagicMock(id=tenant_id))
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            auth_endpoint,
+            "get_tenant",
+            new=AsyncMock(return_value=MagicMock(id=tenant_id)),
+        ),
     ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
@@ -168,9 +198,12 @@ async def test_register_nonexistent_tenant_returns_404():
     from fastapi import HTTPException
 
     db = MagicMock()
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ), patch.object(auth_endpoint, "get_tenant", new=AsyncMock(return_value=None)):
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
+        ),
+        patch.object(auth_endpoint, "get_tenant", new=AsyncMock(return_value=None)),
+    ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
                 user_data=UserRegister(
@@ -186,18 +219,37 @@ async def test_register_nonexistent_tenant_returns_404():
 
 @pytest.mark.asyncio
 async def test_register_duplicate_email_returns_400():
+    """With a VALID invite, a duplicate email still returns 400 — the
+    invite is validated (and consumed) before the email check now, so an
+    invite-less caller cannot enumerate emails (audit 2026-08 M2)."""
     from fastapi import HTTPException
 
     existing = MagicMock()
+    tenant_id = uuid.uuid4()
     db = MagicMock()
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=existing)
+    valid_token, _vjti = create_invite_token(tenant_id=str(tenant_id))
+    with (
+        patch.object(
+            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            auth_endpoint,
+            "get_tenant",
+            new=AsyncMock(return_value=MagicMock(id=tenant_id)),
+        ),
+        patch.object(
+            auth_endpoint.token_store,
+            "consume_invite",
+            new=AsyncMock(return_value=True),
+        ),
     ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
                 user_data=UserRegister(
                     email="dup@family.com",
                     password="password123",
+                    tenant_id=str(tenant_id),
+                    invite_token=valid_token,
                 ),
                 db=db,
             )

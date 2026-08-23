@@ -153,13 +153,14 @@ class TestEncryptFailClosed:
 
 # --------------------------------------------------------------------------- A12
 class TestWSTokenFallbackDeprecation:
-    def test_extract_token_warns_on_query_fallback(self):
+    def test_extract_token_query_fallback_removed(self):
+        """Audit 2026-08 AUTH-L4: the ?token= query fallback is gone
+        entirely (it leaked JWTs into proxy logs / browser history)."""
         import inspect
         from app.api.v1.endpoints import websockets
 
         src = inspect.getsource(websockets._extract_token)
-        assert "deprecated" in src.lower()
-        assert "logger.warning" in src
+        assert "removed" in src.lower()
 
 
 # --------------------------------------------------------------------------- A13

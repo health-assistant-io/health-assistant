@@ -42,9 +42,14 @@ def _authorize_scope(scope: ExportScope, current_user: TokenData) -> None:
             )
 
 
-def _validate_patient_scoping(
-    scope: ExportScope, patient_ids: Optional[List[str]], current_user: TokenData
+async def _validate_patient_scoping(
+    scope: ExportScope,
+    patient_ids: Optional[List[str]],
+    current_user: TokenData,
+    db: AsyncSession,
 ) -> Optional[List[str]]:
+    from app.services.access import check_patient_access
+
     if scope == ExportScope.PATIENT:
         if not patient_ids:
             raise HTTPException(
@@ -61,6 +66,11 @@ def _validate_patient_scoping(
                 status_code=400,
                 detail="patient_ids is required for group-scoped export.",
             )
+        # API-H2 (audit 2026-08): every requested patient is access-checked.
+        # Previously a USER could export ANY tenant patient's full record
+        # (observations, medications, raw documents) by UUID.
+        for pid in patient_ids:
+            await check_patient_access(pid, current_user, db)
     return patient_ids
 
 
@@ -84,8 +94,8 @@ async def create_export(
     - `catalog_only` — biomarker/unit + clinical-event-type definitions (`.catalog.json`).
     """
     _authorize_scope(request.scope, current_user)
-    patient_ids = _validate_patient_scoping(
-        request.scope, request.patient_ids, current_user
+    patient_ids = await _validate_patient_scoping(
+        request.scope, request.patient_ids, current_user, db
     )
 
     tenant_id = _parse_uuid(str(current_user.tenant_id))

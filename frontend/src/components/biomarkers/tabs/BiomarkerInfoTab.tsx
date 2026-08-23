@@ -10,6 +10,7 @@ import { Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Biomarker } from '../../../types/biomarker';
+import { sanitizeHtml } from '../../../utils/sanitize';
 
 interface BiomarkerInfoTabProps {
   biomarker: Biomarker;
@@ -25,7 +26,7 @@ export const BiomarkerInfoTab: React.FC<BiomarkerInfoTabProps> = ({ biomarker })
           {biomarker.info.includes('</') || biomarker.info.includes('<br') ? (
             <div
               className="font-medium"
-              dangerouslySetInnerHTML={{ __html: biomarker.info }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(biomarker.info) }}
             />
           ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{biomarker.info}</ReactMarkdown>

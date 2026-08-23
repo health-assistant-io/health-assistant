@@ -120,11 +120,25 @@ async def update_observation_endpoint(
 async def get_observation_endpoint(
     observation_id: str,
     current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get observation by ID (tenant-scoped at the service layer)"""
     observation = await get_observation(observation_id, current_user.tenant_id)
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
+
+    # API-M2 (audit 2026-08): USER role may only read observations of
+    # patients linked to them — same gate as PUT.
+    if current_user.role == Role.USER.value:
+        patient_id = getattr(observation, "patient_id", None)
+        if patient_id:
+            await check_patient_access(str(patient_id), current_user, db)
+        else:
+            subject_ref = (observation.subject or {}).get("reference", "")
+            if subject_ref.startswith("Patient/"):
+                await check_patient_access(
+                    subject_ref.split("/", 1)[1], current_user, db
+                )
     return observation
 
 

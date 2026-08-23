@@ -19,6 +19,7 @@ import { stripHtml } from '../../utils/examinationUtils';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
 import { Biomarker, BiomarkerObservation } from '../../types/biomarker';
 import biomarkerService from '../../services/biomarkerService';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 interface ExaminationPreviewProps {
   selectedExam: any;
@@ -157,7 +158,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 <div className="bg-gray-50/50 dark:bg-dark-bg/30 border border-gray-100 dark:border-dark-border rounded-2xl p-5">
                   <div 
                     className="text-gray-700 dark:text-dark-text leading-relaxed prose prose-sm max-w-none prose-blue dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: selectedExam.notes }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedExam.notes) }}
                   />
                 </div>
               </div>
@@ -172,7 +173,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 <div className="bg-green-50/30 dark:bg-green-900/10 border border-green-100/50 dark:border-green-900/30 rounded-2xl p-5">
                   <div 
                     className="text-gray-700 dark:text-dark-text leading-relaxed prose prose-sm max-w-none prose-green dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: selectedExam.patient_notes }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedExam.patient_notes) }}
                   />
                 </div>
               </div>

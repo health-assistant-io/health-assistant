@@ -6,6 +6,7 @@ fastmcp installed. The end-to-end test that exercises the connection
 manager with a real in-memory FastMCP server is guarded by
 ``pytest.importorskip('fastmcp')``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +39,7 @@ from integrations.mcp_client.tool_adapter import (
 
 # --------------------------------------------------------------------------- fixtures
 
+
 @pytest.fixture(autouse=True)
 def _mcp_settings(monkeypatch):
     """Provide deterministic MCP settings + a Fernet key for all tests."""
@@ -53,10 +55,12 @@ def _mcp_settings(monkeypatch):
     monkeypatch.setenv("MCP_ALLOW_INSECURE_HTTP", "False")
     # Clear the cached settings so the new env vars take effect.
     from app.core.config import get_settings
+
     get_settings.cache_clear()
 
 
 # --------------------------------------------------------------------------- security
+
 
 class TestStdioCommandValidation:
     def test_allowlisted_bare_command_accepted(self):
@@ -101,7 +105,11 @@ class TestHttpUrlValidation:
         assert "insecure" in reason.lower()
 
     def test_http_allowed_when_insecure_flag(self):
-        assert validate_http_url("http://localhost:9000", allow_insecure=True)[0]
+        # allow_insecure still permits plain http:// — but ONLY for public
+        # hosts; localhost/private targets stay blocked by the SSRF
+        # net-guard (audit 2026-08 INT-H4).
+        assert not validate_http_url("http://localhost:9000", allow_insecure=True)[0]
+        assert validate_http_url("http://example.com/mcp", allow_insecure=True)[0]
 
     def test_non_http_scheme_rejected(self):
         assert not validate_http_url("ftp://x")[0]
@@ -138,6 +146,7 @@ class TestSslContext:
 
 # --------------------------------------------------------------------------- cipher
 
+
 class TestSecretCipher:
     def test_roundtrip_string(self):
         c = SecretCipher("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=")
@@ -157,7 +166,7 @@ class TestSecretCipher:
             "headers": {"X-Custom": "y"},
             "auth_token": "tok",
             "url": "https://x.com",  # NOT secret
-            "command": "npx",        # NOT secret
+            "command": "npx",  # NOT secret
         }
         enc = encrypt_fields(config, ["env", "headers", "auth_token"])
         assert "_encrypted" in enc["env"]
@@ -182,13 +191,17 @@ class TestSecretCipher:
         assert c.decrypt_value({"k": "v"}) == {"k": "v"}
 
     def test_missing_key_raises(self, monkeypatch):
-        with pytest.raises(RuntimeError, match="INTEGRATION_SECRET_KEY is not configured"):
+        with pytest.raises(
+            RuntimeError, match="INTEGRATION_SECRET_KEY is not configured"
+        ):
             SecretCipher(None)
 
 
 class TestMaskFields:
     def test_secrets_masked(self):
-        out = mask_fields({"env": {"K": "V"}, "auth_token": "tok", "url": "u"}, ["env", "auth_token"])
+        out = mask_fields(
+            {"env": {"K": "V"}, "auth_token": "tok", "url": "u"}, ["env", "auth_token"]
+        )
         assert out["env"] == "***"
         assert out["auth_token"] == "***"
         assert out["url"] == "u"
@@ -228,11 +241,15 @@ class TestConfigFlowSdkHooks:
         import asyncio
 
         cf = McpClientConfigFlow()
-        enc = asyncio.run(cf.prepare_for_storage({
-            "env": {"K": "V"},
-            "auth_token": "tok",
-            "url": "https://x.com",
-        }))
+        enc = asyncio.run(
+            cf.prepare_for_storage(
+                {
+                    "env": {"K": "V"},
+                    "auth_token": "tok",
+                    "url": "https://x.com",
+                }
+            )
+        )
         assert "_encrypted" in enc["env"]
         assert "_encrypted" in enc["auth_token"]
         assert enc["url"] == "https://x.com"
@@ -252,19 +269,25 @@ class TestConfigFlowSdkHooks:
 
         class DummyCF(BaseConfigFlow):
             domain = "dummy"
-            async def get_schema(self): return {}
-            async def validate_input(self, i): return i
+
+            async def get_schema(self):
+                return {}
+
+            async def validate_input(self, i):
+                return i
 
         cf = DummyCF()
         assert cf.get_secret_fields() == []
         assert cf.max_instances_per_user is None
         # prepare_for_storage is a no-op (no secret fields -> no cipher)
         import asyncio
+
         out = asyncio.run(cf.prepare_for_storage({"url": "x"}))
         assert out == {"url": "x"}
 
 
 # --------------------------------------------------------------------------- tool adapter
+
 
 class TestNamespacing:
     def test_basic_namespace(self):
@@ -361,6 +384,7 @@ class TestDescriptionTruncation:
 
 # --------------------------------------------------------------------------- adapter end-to-end
 
+
 class TestAdapterEndToEnd:
     """Exercise filter_and_adapt_tools against a real in-memory FastMCP server."""
 
@@ -400,7 +424,9 @@ class TestAdapterEndToEnd:
                 tools = await mcp_connection_manager.list_tools(integration)
                 assert {t.name for t in tools} == {"echo", "add"}
 
-                lc_tools = filter_and_adapt_tools(integration, tools, mcp_connection_manager)
+                lc_tools = filter_and_adapt_tools(
+                    integration, tools, mcp_connection_manager
+                )
                 assert {t.name for t in lc_tools} == {
                     "mcp__echoserver__echo",
                     "mcp__echoserver__add",
@@ -442,7 +468,10 @@ class TestAdapterEndToEnd:
             integration = MagicMock()
             integration.id = uuid.uuid4()
             integration.instance_name = "S"
-            integration.user_config = {"disabled_tools": ["drop"], "tool_result_max_bytes": 1024}
+            integration.user_config = {
+                "disabled_tools": ["drop"],
+                "tool_result_max_bytes": 1024,
+            }
 
             client = Client(mcp)
             conn = _Connection(client, "http", 4)
@@ -451,7 +480,9 @@ class TestAdapterEndToEnd:
             mcp_connection_manager._connections[integration.id] = conn
             try:
                 tools = await mcp_connection_manager.list_tools(integration)
-                lc_tools = filter_and_adapt_tools(integration, tools, mcp_connection_manager)
+                lc_tools = filter_and_adapt_tools(
+                    integration, tools, mcp_connection_manager
+                )
                 names = {t.name for t in lc_tools}
                 assert "mcp__s__keep" in names
                 assert "mcp__s__drop" not in names
@@ -462,6 +493,7 @@ class TestAdapterEndToEnd:
 
 
 # --------------------------------------------------------------------------- aggregator
+
 
 class TestAggregator:
     """Test the generic integration_tool_aggregator with mocked DB + registry."""
@@ -477,11 +509,13 @@ class TestAggregator:
     def _patch_registry(self, monkeypatch, providers):
         """providers: dict {domain: provider_mock}."""
         from app.core import integration_registry as reg_mod
+
         fake_registry = MagicMock()
         fake_registry.get_provider.side_effect = lambda d: providers.get(d)
         monkeypatch.setattr(reg_mod, "integration_registry", fake_registry)
         # Also patch the aggregator's own import site.
         from app.ai.tools import aggregator as agg_mod
+
         monkeypatch.setattr(agg_mod, "integration_registry", fake_registry)
 
     def test_no_instances_returns_empty(self, monkeypatch):
@@ -493,7 +527,9 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            integration_tool_aggregator.aggregate(
+                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
         )
         assert out == []
 
@@ -511,22 +547,29 @@ class TestAggregator:
 
         mcp_provider = MagicMock()
         mcp_provider.supports_tools.return_value = True
+
         async def fake_get_tools(integration):
             t = MagicMock()
             t.name = "mcp__mcp__tool"
             return [t]
+
         mcp_provider.get_tools = fake_get_tools
 
         webhook_provider = MagicMock()
         webhook_provider.supports_tools.return_value = False  # not a tool provider
 
-        self._patch_registry(monkeypatch, {
-            "mcp_client": mcp_provider,
-            "webhook": webhook_provider,
-        })
+        self._patch_registry(
+            monkeypatch,
+            {
+                "mcp_client": mcp_provider,
+                "webhook": webhook_provider,
+            },
+        )
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            integration_tool_aggregator.aggregate(
+                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
         )
         assert len(out) == 1
         # webhook was skipped (supports_tools False), mcp was picked up
@@ -545,18 +588,22 @@ class TestAggregator:
 
         provider = MagicMock()
         provider.supports_tools.return_value = True
+
         async def fake_get_tools(integration):
             if integration is bad:
                 raise RuntimeError("connection refused")
             t = MagicMock()
             t.name = "mcp__good__tool"
             return [t]
+
         provider.get_tools = fake_get_tools
 
         self._patch_registry(monkeypatch, {"mcp_client": provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            integration_tool_aggregator.aggregate(
+                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
         )
         # Only the good instance's tool should appear.
         assert len(out) == 1
@@ -564,7 +611,9 @@ class TestAggregator:
     def test_caps_total_tools(self, monkeypatch):
         from app.ai.tools import aggregator as integration_tool_aggregator
 
-        monkeypatch.setattr(integration_tool_aggregator.settings, "INTEGRATION_MAX_TOOLS_PER_SESSION", 1)
+        monkeypatch.setattr(
+            integration_tool_aggregator.settings, "INTEGRATION_MAX_TOOLS_PER_SESSION", 1
+        )
 
         inst = self._make_integration("mcp_client", "Cap")
 
@@ -575,18 +624,22 @@ class TestAggregator:
 
         provider = MagicMock()
         provider.supports_tools.return_value = True
+
         async def fake_get_tools(integration):
             t1 = MagicMock()
             t1.name = "a"
             t2 = MagicMock()
             t2.name = "b"
             return [t1, t2]
+
         provider.get_tools = fake_get_tools
 
         self._patch_registry(monkeypatch, {"mcp_client": provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            integration_tool_aggregator.aggregate(
+                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
         )
         assert len(out) == 1  # capped at 1
 
@@ -604,16 +657,20 @@ class TestAggregator:
 
         ws_provider = MagicMock()
         ws_provider.supports_tools.return_value = True
+
         async def fake_get_tools(integration):
             t = MagicMock()
             t.name = "web_search"
             return [t]
+
         ws_provider.get_tools = fake_get_tools
 
         self._patch_registry(monkeypatch, {"web_search": ws_provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            integration_tool_aggregator.aggregate(
+                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
         )
         assert len(out) == 1
         assert out[0].name == "web_search"
@@ -621,17 +678,20 @@ class TestAggregator:
 
 # --------------------------------------------------------------------------- config flow
 
+
 class TestConfigFlow:
     def test_validates_http_url(self):
         from integrations.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
-            cf.validate_input({
-                "instance_name": "X",
-                "transport": "http",
-                "url": "https://example.com/mcp",
-            })
+            cf.validate_input(
+                {
+                    "instance_name": "X",
+                    "transport": "http",
+                    "url": "https://example.com/mcp",
+                }
+            )
         )
         assert out["transport"] == "http"
 
@@ -641,11 +701,13 @@ class TestConfigFlow:
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
             asyncio.run(
-                cf.validate_input({
-                    "instance_name": "X",
-                    "transport": "http",
-                    "url": "http://example.com/mcp",
-                })
+                cf.validate_input(
+                    {
+                        "instance_name": "X",
+                        "transport": "http",
+                        "url": "http://example.com/mcp",
+                    }
+                )
             )
 
     def test_validates_stdio_command(self):
@@ -653,12 +715,14 @@ class TestConfigFlow:
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
-            cf.validate_input({
-                "instance_name": "X",
-                "transport": "stdio",
-                "command": "npx",
-                "args": ["-y", "server"],
-            })
+            cf.validate_input(
+                {
+                    "instance_name": "X",
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "server"],
+                }
+            )
         )
         assert out["command"] == "npx"
 
@@ -668,12 +732,14 @@ class TestConfigFlow:
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
             asyncio.run(
-                cf.validate_input({
-                    "instance_name": "X",
-                    "transport": "stdio",
-                    "command": "rm",
-                    "args": ["-rf", "/"],
-                })
+                cf.validate_input(
+                    {
+                        "instance_name": "X",
+                        "transport": "stdio",
+                        "command": "rm",
+                        "args": ["-rf", "/"],
+                    }
+                )
             )
 
     def test_rejects_missing_instance_name(self):
@@ -681,10 +747,13 @@ class TestConfigFlow:
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
-            asyncio.run(cf.validate_input({"transport": "http", "url": "https://x.com"}))
+            asyncio.run(
+                cf.validate_input({"transport": "http", "url": "https://x.com"})
+            )
 
 
 # --------------------------------------------------------------------------- provider
+
 
 class TestProvider:
     def test_pull_data_noop(self):
@@ -711,10 +780,13 @@ class TestProvider:
 
         # Patch the connection manager to raise.
         import integrations.mcp_client.connection_manager as cm_mod
+
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
+
         async def boom(integration):
             raise RuntimeError("connection refused")
+
         fake_cm.list_tools = boom
         cm_mod.mcp_connection_manager = fake_cm
         try:
@@ -733,8 +805,10 @@ class TestProvider:
         integration.instance_name = "TestServer"
 
         import integrations.mcp_client.connection_manager as cm_mod
+
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
+
         async def fake_list_tools(integration):
             t1 = MagicMock()
             t1.name = "echo"
@@ -743,6 +817,7 @@ class TestProvider:
             t2.name = "add"
             t2.description = "Add numbers"
             return [t1, t2]
+
         fake_cm.list_tools = fake_list_tools
         cm_mod.mcp_connection_manager = fake_cm
         try:
@@ -770,14 +845,19 @@ class TestProvider:
         integration.instance_name = "TestServer"
 
         import integrations.mcp_client.connection_manager as cm_mod
+
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
+
         async def fake_health(integration):
             return {"status": "connected", "transport": "stdio", "tools": 3}
+
         fake_cm.health = fake_health
         cm_mod.mcp_connection_manager = fake_cm
         try:
-            out = asyncio.run(provider.execute_custom_action(integration, "test_connection"))
+            out = asyncio.run(
+                provider.execute_custom_action(integration, "test_connection")
+            )
             assert "results" in out
             assert out["results"][0]["type"] == "kv"
             assert out["results"][0]["items"]["Status"] == "Connected"
@@ -799,9 +879,15 @@ class TestProvider:
         provider = McpClientProvider()
         # Only GET /status is allowed.
         with pytest.raises(NotImplementedError):
-            asyncio.run(provider.handle_api_request(MagicMock(), "tools", "POST", MagicMock()))
+            asyncio.run(
+                provider.handle_api_request(MagicMock(), "tools", "POST", MagicMock())
+            )
         with pytest.raises(NotImplementedError):
-            asyncio.run(provider.handle_api_request(MagicMock(), "call/my_tool", "POST", MagicMock()))
+            asyncio.run(
+                provider.handle_api_request(
+                    MagicMock(), "call/my_tool", "POST", MagicMock()
+                )
+            )
 
 
 class TestDisplayBlocks:
@@ -809,6 +895,7 @@ class TestDisplayBlocks:
 
     def test_kv_block(self):
         from integrations.sdk import kv_block
+
         b = kv_block("Conn", {"Status": "Connected", "Tools": 3})
         assert b["type"] == "kv"
         assert b["title"] == "Conn"
@@ -816,12 +903,14 @@ class TestDisplayBlocks:
 
     def test_list_block(self):
         from integrations.sdk import list_block
+
         b = list_block("Tools", ["echo", "add"])
         assert b["type"] == "list"
         assert b["items"] == ["echo", "add"]
 
     def test_table_block(self):
         from integrations.sdk import table_block
+
         b = table_block("T", ["Name", "Desc"], [["echo", "Echos"], ["add", "Adds"]])
         assert b["type"] == "table"
         assert b["columns"] == ["Name", "Desc"]
@@ -829,40 +918,47 @@ class TestDisplayBlocks:
 
     def test_json_block(self):
         from integrations.sdk import json_block
+
         b = json_block("Raw", {"k": "v"})
         assert b["type"] == "json"
         assert b["data"] == {"k": "v"}
 
     def test_text_block(self):
         from integrations.sdk import text_block
+
         b = text_block("Note", "hello world")
         assert b["type"] == "text"
         assert b["content"] == "hello world"
 
     def test_code_block_with_language(self):
         from integrations.sdk import code_block
+
         b = code_block("Cmd", "curl x", "bash")
         assert b["type"] == "code"
         assert b["language"] == "bash"
 
     def test_code_block_without_language(self):
         from integrations.sdk import code_block
+
         b = code_block("Cmd", "curl x")
         assert "language" not in b
 
     def test_action_result_with_message_and_results(self):
         from integrations.sdk import action_result, list_block
+
         r = action_result("Discovered 2 tools", [list_block("Tools", ["a", "b"])])
         assert r["message"] == "Discovered 2 tools"
         assert len(r["results"]) == 1
 
     def test_action_result_message_only(self):
         from integrations.sdk import action_result
+
         r = action_result("just a toast")
         assert r == {"message": "just a toast"}
         assert "results" not in r
 
     def test_action_result_extra_fields(self):
         from integrations.sdk import action_result, list_block
+
         r = action_result("msg", [list_block("T", ["x"])], tools=["x"])
         assert r["tools"] == ["x"]  # backwards-compat extra field

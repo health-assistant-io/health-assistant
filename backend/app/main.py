@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import ClientDisconnect
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
@@ -248,13 +249,21 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to close integrations on shutdown: {e}")
 
 
-# Create FastAPI app
+# Create FastAPI app. API docs (audit 2026-08 API-L1) are exposed only in
+# dev/test or when the operator explicitly sets ENABLE_API_DOCS=true — the
+# full authenticated-endpoint surface should not be advertised on an
+# internet-exposed instance.
+_docs_enabled = settings.ENABLE_API_DOCS or settings.APP_ENV in (
+    "development",
+    "test",
+    "testing",
+)
 app = FastAPI(
     title=settings.APP_NAME,
     description="Universal Health Data Platform API - Restored",
     version=settings.VERSION,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -349,10 +358,10 @@ async def domain_error_handler(request: Request, exc: DomainError):
     ``status_code``. Logged at INFO (these are expected client errors, not server
     faults) — unlike the global 500 handler, no correlation id is needed.
     """
-    logger.info("Domain error [%s] %s: %s", exc.status_code, type(exc).__name__, exc.detail)
-    return JSONResponse(
-        status_code=exc.status_code, content={"detail": exc.detail}
+    logger.info(
+        "Domain error [%s] %s: %s", exc.status_code, type(exc).__name__, exc.detail
     )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 @app.exception_handler(CatalogPermissionDenied)
@@ -410,7 +419,9 @@ async def security_headers_middleware(request: Request, call_next):
     # setdefault so an explicit per-route value wins. See documents.py.
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
     return response
 
 
@@ -431,12 +442,36 @@ else:
     # RFC 1123 compliant (no underscores); FRONTEND_URL env is the source of truth.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[os.getenv("FRONTEND_URL", "https://app.health-assistant.com")],
+        # Audit 2026-08 CFG-L2: read FRONTEND_URL through pydantic settings
+        # (picks up .env files consistently) instead of a raw os.getenv that
+        # silently ignored .env-only configuration.
+        allow_origins=[settings.FRONTEND_URL],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
     )
+
+# Audit 2026-08 CFG-L1/INT-M4: Host-header validation. The integrations
+# OAuth flow builds redirect URIs from the request Host by fallback —
+# pinning the app to its configured host(s) blocks Host-header poisoning
+# and DCR registration attacks. Dev allows any host (LAN access).
+if settings.APP_ENV == "development":
+    _trusted_hosts = ["*"]
+else:
+    _trusted_hosts = []
+    for _u in (settings.APP_URL, settings.FRONTEND_URL):
+        try:
+            from urllib.parse import urlparse
+
+            _h = urlparse(_u).hostname
+            if _h:
+                _trusted_hosts.append(_h)
+        except Exception:
+            pass
+    if not _trusted_hosts:
+        _trusted_hosts = ["*"]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
 
 # Include routers
 app.include_router(api_router)

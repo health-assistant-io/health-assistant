@@ -15,13 +15,14 @@ A lightweight server-side ping (every 30s) keeps intermediaries from
 timing the connection out.
 """
 
-from datetime import datetime, timezone
 import asyncio
 import logging
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from app.core.security import get_current_user_ws
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from app.core.redis import redis_client
+from app.core.security import get_current_user_ws
 from app.schemas.user import TokenData
 
 logger = logging.getLogger(__name__)
@@ -36,16 +37,16 @@ _POLL_TIMEOUT_SECONDS = 1.0
 _PING_INTERVAL_SECONDS = 30
 
 
-async def _extract_token(websocket: WebSocket, query_token: str | None) -> str | None:
-    """B11: prefer the Sec-WebSocket-Protocol subprotocol over the URL query
-    string so the token is not logged by reverse proxies or browser history.
+async def _extract_token(websocket: WebSocket) -> str | None:
+    """B11: the Sec-WebSocket-Protocol subprotocol is the ONLY accepted auth
+    channel (audit 2026-08 AUTH-L4 removed the ``?token=`` query fallback —
+    query strings land in proxy logs and browser history).
 
     Clients connect with ``new WebSocket(url, ["bearer", "<token>"])``. We
     accept the token that follows the ``bearer`` sentinel. Subprotocols are
     read from the ASGI ``scope["subprotocols"]`` list (the canonical location
     uvicorn populates) and, as a fallback, from the raw
-    ``Sec-WebSocket-Protocol`` header. If neither yields a token, fall back to
-    the legacy ``?token=`` query parameter.
+    ``Sec-WebSocket-Protocol`` header.
     """
     # 1. ASGI scope subprotocols (canonical; uvicorn/Starlette populate this).
     scope_subs = websocket.scope.get("subprotocols") or []
@@ -66,29 +67,23 @@ async def _extract_token(websocket: WebSocket, query_token: str | None) -> str |
     for part in parts:
         if part.lower() != "bearer" and part.count(".") >= 2:
             return part
-    # Legacy fallback: the ?token= query string. This exposes the JWT in
-    # reverse-proxy access logs and browser history (audit A12). Emit a
-    # deprecation warning so operators notice and migrate clients to the
-    # subprotocol form; will be removed in a future release.
-    if query_token:
-        logger.warning(
-            "WebSocket auth used the deprecated ?token= query-string fallback "
-            "(client should use Sec-WebSocket-Protocol subprotocol instead)."
-        )
-    return query_token
+    # Audit 2026-08 AUTH-L4: the ?token= query-string fallback is REMOVED —
+    # query strings land in reverse-proxy access logs and browser history.
+    # Clients must use the Sec-WebSocket-Protocol subprotocol form
+    # (new WebSocket(url, ["bearer", token])).
+    return None
 
 
 @router.websocket("/tasks")
 async def websocket_tasks_endpoint(
     websocket: WebSocket,
-    token: str = Query(default=None),
 ):
     """Live task-progress stream for the caller's tenant.
 
-    Auth: prefer Sec-WebSocket-Protocol subprotocol (``["bearer", token]``);
-    fall back to ``?token=`` for legacy clients (B11).
+    Auth: Sec-WebSocket-Protocol subprotocol ONLY (``["bearer", token]``) —
+    the ``?token=`` query fallback was removed (audit 2026-08 AUTH-L4).
     """
-    resolved_token = await _extract_token(websocket, token)
+    resolved_token = await _extract_token(websocket)
     if not resolved_token:
         # No token from either source — reject before accepting the socket.
         await websocket.close(code=1008)
@@ -173,7 +168,6 @@ async def websocket_tasks_endpoint(
 @router.websocket("/notifications")
 async def websocket_notifications_endpoint(
     websocket: WebSocket,
-    token: str = Query(default=None),
 ):
     """Live per-user notification stream.
 
@@ -182,7 +176,7 @@ async def websocket_notifications_endpoint(
     at concrete user ids by ``notification_service.emit``). Auth + connection
     hygiene mirror ``/ws/tasks`` (subprotocol-preferred token).
     """
-    resolved_token = await _extract_token(websocket, token)
+    resolved_token = await _extract_token(websocket)
     if not resolved_token:
         await websocket.close(code=1008)
         return

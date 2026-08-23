@@ -22,30 +22,32 @@ fixed: invite-token verification + the advisory-lock bootstrap (now in
 """
 
 from datetime import timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import setup_token, token_store
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit
 from app.core.security import (
     REFRESH_TOKEN_DAYS,
-    create_access_token,
+    _dummy_hash,
     create_invite_token,
     create_refresh_token,
+    create_session_access_token,
     decode_refresh_token,
     get_current_user,
-    get_password_hash,
     get_current_user_id,
+    get_password_hash,
+    get_token,
+    invite_jti,
+    verify_access_token,
     verify_invite_token,
     verify_password,
 )
-from app.core import token_store
-from app.core import setup_token
 from app.models.enums import Role
 from app.models.user_model import UserModel
 from app.schemas.auth import (
@@ -59,7 +61,10 @@ from app.schemas.user import TokenData, UserResponse
 from app.services.tenant_service import create_tenant, get_tenant
 from app.services.user_service import (
     create_user as service_create_user,
+)
+from app.services.user_service import (
     get_user_by_email,
+    get_user_by_id,
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -77,6 +82,35 @@ async def _is_initialized(db: AsyncSession) -> bool:
     return (result.scalar() or 0) > 0
 
 
+async def _issue_session_tokens(claims: dict) -> TokenResponse:
+    """Mint a session access token + rotating refresh token pair.
+
+    The access token's jti is registered in the session store so logout /
+    user deletion / role changes can revoke it immediately; the refresh
+    token's jti is registered for rotation + revocation.
+    """
+    access_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    access_token, access_jti = create_session_access_token(
+        claims, expires_delta=access_expires
+    )
+    await token_store.register_session(
+        claims["user_id"], access_jti, int(access_expires.total_seconds())
+    )
+    refresh_expires = timedelta(days=REFRESH_TOKEN_DAYS)
+    refresh_token, refresh_jti = create_refresh_token(
+        data=claims, expires_delta=refresh_expires
+    )
+    await token_store.register_refresh(
+        claims["user_id"], refresh_jti, int(refresh_expires.total_seconds())
+    )
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=int(access_expires.total_seconds()),
+    )
+
+
 @router.get("/setup-status", response_model=SetupStatus)
 async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     """First-run status — drives the frontend's login-vs-setup decision.
@@ -86,34 +120,22 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     the wizard, the CLI script, or the legacy register path).
     ``setup_token_required`` tells the wizard whether to collect the
     one-time setup token (per-mode: see ``app/core/setup_token.py``).
-    ``token_mode`` + ``setup_url_hint`` surface the resolved mode + an
-    optional one-click URL hint so the wizard + launcher can tailor UX
-    without re-reading env vars.
+
+    SECURITY: this endpoint never returns the setup token itself. In
+    ``env`` mode the launcher already holds the token (it set it); it
+    composes the one-click URL itself. Echoing the token here let any
+    anonymous caller bootstrap the instance (audit 2026-08 C-1).
     """
     initialized = await _is_initialized(db)
     mode = setup_token.current_mode()
     token_required = (
         False if initialized else setup_token.is_setup_token_required(request)
     )
-    setup_url_hint: Optional[str] = None
-    # Only surface the URL hint in env mode, while uninitialized, and while
-    # the active token still exists (before /auth/setup cleared it).
-    if (
-        not initialized
-        and mode == "env"
-        and setup_token.get() is not None
-    ):
-        scheme = request.url.scheme if request.url.scheme else "http"
-        host_header = request.headers.get("host") or "localhost"
-        token = setup_token.get() or ""
-        from urllib.parse import quote
-
-        setup_url_hint = f"{scheme}://{host_header}/setup?token={quote(token)}"
     return SetupStatus(
         initialized=initialized,
         setup_token_required=token_required,
         token_mode=mode,
-        setup_url_hint=setup_url_hint,
+        setup_url_hint=None,
         demo_mode=settings.DEMO_MODE,
     )
 
@@ -202,30 +224,13 @@ async def setup(
     setup_token.clear()
 
     # Issue login tokens (mirrors /auth/login) so the caller is signed in.
-    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     token_claims = {
         "sub": new_user_obj.email,
         "user_id": str(new_user_obj.id),
         "tenant_id": str(new_user_obj.tenant_id),
         "role": Role.SYSTEM_ADMIN.value,
     }
-    access_token = create_access_token(
-        data=token_claims, expires_delta=access_token_expires
-    )
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
-    refresh_token, jti = create_refresh_token(
-        data=token_claims, expires_delta=refresh_token_expires
-    )
-    await token_store.register_refresh(
-        str(new_user_obj.id), jti, int(refresh_token_expires.total_seconds())
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer",
-        expires_in=int(access_token_expires.total_seconds()),
-    )
+    return await _issue_session_tokens(token_claims)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -236,45 +241,36 @@ async def login(
     """Authenticate user and return tokens"""
     user = await get_user_by_email(form_data.username)
 
-    if not user or not verify_password(
-        form_data.password, getattr(user, "hashed_password", "")
-    ):
+    # Uniform timing + message: verify against a dummy hash when the user
+    # does not exist so response time cannot enumerate accounts (audit
+    # 2026-08 M1).
+    stored_hash = (
+        getattr(user, "hashed_password", "") if user is not None else _dummy_hash()
+    )
+    authenticated = user is not None and verify_password(
+        form_data.password, stored_hash
+    )
+    if not authenticated:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     token_claims = {
         "sub": user.email,
         "user_id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "role": getattr(user.role, "value", user.role),
     }
-    access_token = create_access_token(
-        data=token_claims,
-        expires_delta=access_token_expires,
-    )
-
-    # Refresh tokens are typed + jti-tracked so they can be rotated/revoked
-    # (audit A5). The jti is registered server-side; /auth/refresh replaces
-    # it with a fresh one on each use.
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
-    refresh_token, jti = create_refresh_token(
-        data=token_claims,
-        expires_delta=refresh_token_expires,
-    )
-    await token_store.register_refresh(
-        str(user.id), jti, int(refresh_token_expires.total_seconds())
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer",
-        expires_in=int(access_token_expires.total_seconds()),
-    )
+    return await _issue_session_tokens(token_claims)
 
 
 @router.post("/demo-login", response_model=TokenResponse)
@@ -305,7 +301,12 @@ async def demo_login(
             ),
         )
 
-    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo account is disabled.",
+        )
+
     token_claims = {
         "sub": user.email,
         "user_id": str(user.id),
@@ -313,25 +314,7 @@ async def demo_login(
         "role": getattr(user.role, "value", user.role),
         "demo": True,
     }
-    access_token = create_access_token(
-        data=token_claims,
-        expires_delta=access_token_expires,
-    )
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
-    refresh_token, jti = create_refresh_token(
-        data=token_claims,
-        expires_delta=refresh_token_expires,
-    )
-    await token_store.register_refresh(
-        str(user.id), jti, int(refresh_token_expires.total_seconds())
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer",
-        expires_in=int(access_token_expires.total_seconds()),
-    )
+    return await _issue_session_tokens(token_claims)
 
 
 @router.post("/register", response_model=UserResponse)
@@ -347,13 +330,12 @@ async def register(
     wizard) or the ``create_system_admin.py`` CLI. Every registration
     here requires a ``tenant_id`` plus a valid invite token minted by
     that tenant's admin via ``POST /auth/invite``.
-    """
-    user = await get_user_by_email(user_data.email)
-    if user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
 
+    The invite is validated (and consumed — single-use) BEFORE the
+    email-exists check, so an unauthenticated caller cannot use the
+    "Email already registered" error to enumerate accounts without a
+    valid invite (audit 2026-08 M2).
+    """
     if not user_data.tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -364,7 +346,14 @@ async def register(
             ),
         )
 
-    hashed_password = get_password_hash(user_data.password)
+    if not user_data.invite_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "An invite token is required to join an existing tenant. "
+                "Ask the tenant administrator to issue one via POST /auth/invite."
+            ),
+        )
 
     # Joining an existing tenant — require a valid invite token.
     tenant = await get_tenant(user_data.tenant_id)
@@ -374,15 +363,6 @@ async def register(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tenant not found",
-        )
-
-    if not user_data.invite_token:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "An invite token is required to join an existing tenant. "
-                "Ask the tenant administrator to issue one via POST /auth/invite."
-            ),
         )
 
     ok, granted_role = verify_invite_token(
@@ -395,6 +375,23 @@ async def register(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid, expired, or tenant-mismatched invite token.",
         )
+
+    # Single-use: atomically consume the invite's jti (Redis GETDEL
+    # semantics). Fails closed when Redis is unavailable so an outage
+    # cannot convert single-use invites into unlimited ones.
+    invite_jti_value = invite_jti(user_data.invite_token)
+    if invite_jti_value and not await token_store.consume_invite(invite_jti_value):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This invite token has already been used.",
+        )
+
+    if await get_user_by_email(user_data.email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
+        )
+
+    hashed_password = get_password_hash(user_data.password)
 
     role = granted_role or Role.USER.value
     new_user = await service_create_user(
@@ -415,7 +412,7 @@ async def create_invite(
     current_user: TokenData = Depends(get_current_user),
     _rl=Depends(rate_limit("invite", max_requests=10, window=60)),
 ):
-    """Mint a tenant invite token.
+    """Mint a tenant invite token (single-use, TTL capped at 30 days).
 
     Admin/Manager/System-admin only. The token is scoped to the caller's
     tenant (the ``tenant_id`` query param, if supplied, must match it).
@@ -448,11 +445,18 @@ async def create_invite(
             detail="SYSTEM_ADMIN cannot be granted via invite. Use the bootstrap path.",
         )
 
-    token = create_invite_token(
+    # Cap the TTL: an invite is a short-lived onboarding artifact, not a
+    # standing credential (audit 2026-08 M3).
+    expires_days = max(1, min(int(expires_days), 30))
+
+    token, invite_jti_value = create_invite_token(
         tenant_id=target_tenant,
         email=email,
         role=role,
         expires_days=expires_days,
+    )
+    await token_store.register_invite(
+        invite_jti_value, int(timedelta(days=expires_days).total_seconds())
     )
     return {
         "invite_token": token,
@@ -475,10 +479,16 @@ async def refresh_token(
 ):
     """Refresh access token (with rotation — audit A5).
 
-    The presented refresh token's ``jti`` must be active server-side. On
-    success a NEW refresh token is issued and the old ``jti`` is revoked, so a
-    stolen refresh token stops working the moment the legitimate user refreshes
-    (rotation), and logout/``revoke_refresh`` can invalidate a token early.
+    The presented refresh token's ``jti`` must be active server-side. The
+    user row is re-loaded from the DB on every refresh (audit 2026-08 H2):
+    a deleted or deactivated user is refused, and the new claims (email,
+    tenant, role) are rebuilt from the database — never from the old
+    token — so role changes and tenant moves take effect at the next
+    refresh even if the old token predates them.
+
+    Switched SYSTEM_ADMIN sessions preserve their switch metadata: the
+    target tenant is re-validated to still exist and be active before the
+    switched context is extended.
     """
     payload = decode_refresh_token(token_data.refresh_token)
     if not payload:
@@ -497,53 +507,79 @@ async def refresh_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    user = await get_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is disabled.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    db_role = getattr(user.role, "value", user.role)
+    db_tenant_id = str(user.tenant_id)
+
     token_claims = {
-        "sub": payload.get("sub"),
-        "user_id": user_id,
-        "tenant_id": payload.get("tenant_id"),
-        "role": payload.get("role"),
+        "sub": user.email,
+        "user_id": str(user.id),
+        "tenant_id": db_tenant_id,
+        "role": db_role,
     }
     if payload.get("demo"):
         token_claims["demo"] = True
-    access_token_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
-    access_token = create_access_token(
-        data=token_claims,
-        expires_delta=access_token_expires,
-    )
 
-    # Rotate: revoke the consumed jti and issue a fresh one.
+    if payload.get("switched"):
+        # Preserve the tenant-switch context, but re-validate the target
+        # tenant is still there. Privileges (role) still come from the DB.
+        scoped_tenant_id = payload.get("scoped_tenant_id") or payload.get("tenant_id")
+        target = await get_tenant(scoped_tenant_id)
+        if target is None or not getattr(target, "is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Switched session target tenant is gone; switch back and re-authenticate.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        token_claims.update(
+            {
+                "tenant_id": str(target.id),
+                "original_tenant_id": payload.get("original_tenant_id"),
+                "original_user_id": payload.get("original_user_id"),
+                "switched": True,
+                "scoped_tenant_id": str(target.id),
+            }
+        )
+
+    # Rotate: revoke the consumed jti (refresh + any session it maps to)
+    # and issue a fresh pair.
     await token_store.revoke_refresh(user_id, jti)
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_DAYS)
-    new_refresh, new_jti = create_refresh_token(
-        data=token_claims,
-        expires_delta=refresh_token_expires,
-    )
-    await token_store.register_refresh(
-        user_id, new_jti, int(refresh_token_expires.total_seconds())
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=new_refresh,
-        token_type="bearer",
-        expires_in=int(access_token_expires.total_seconds()),
-    )
+    return await _issue_session_tokens(token_claims)
 
 
 @router.post("/logout")
 async def logout(
     token_data: TokenRefresh,
     current_user: TokenData = Depends(get_current_user),
+    token: str = Depends(get_token),
 ):
-    """Revoke the presented refresh token (audit A5).
+    """Revoke the presented refresh token AND the caller's access token.
 
-    Access tokens are stateless JWTs and cannot be revoked without a blocklist
-    (their short lifetime is the mitigation); this revokes the refresh token so
-    no new access tokens can be minted from it.
+    The access token's ``jti`` (from the Authorization header) is deleted
+    from the session store, so the bearer credential itself stops working
+    immediately — not just at the next refresh (audit 2026-08 H3).
     """
     payload = decode_refresh_token(token_data.refresh_token)
     if payload and payload.get("user_id") and payload.get("jti"):
         await token_store.revoke_refresh(payload["user_id"], payload["jti"])
+    access_payload = verify_access_token(token)
+    if access_payload and access_payload.get("jti"):
+        await token_store.revoke_session(
+            str(access_payload["user_id"]), access_payload["jti"]
+        )
     return {"revoked": True}
 
 
@@ -551,6 +587,6 @@ async def logout(
 async def logout_all(
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Revoke every refresh token for the current user (audit A5)."""
-    count = await token_store.revoke_all_refresh(current_user.user_id)
+    """Revoke every refresh + session access token for the current user."""
+    count = await token_store.revoke_everything(current_user.user_id)
     return {"revoked": count}

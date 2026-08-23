@@ -1145,18 +1145,24 @@ async def get_biomarker_trends(
         safe_bucket = bucket if bucket in _ALLOWED_TELEMETRY_BUCKETS else "1 hour"
 
         sql = f"""
-            SELECT 
-                time_bucket_gapfill(INTERVAL '{safe_bucket}', {time_col}) AS bucket,
+            SELECT
+                time_bucket_gapfill(
+                    INTERVAL '{safe_bucket}',
+                    {time_col},
+                    CAST(:start_date AS timestamptz),
+                    CAST(:end_date AS timestamptz)
+                ) AS bucket,
                 device_id,
                 {avg_expr} as avg_val,
                 {max_expr} as max_val,
                 {min_expr} as min_val
             FROM {table_name}
-            WHERE tenant_id = :tenant_id
-              AND {time_col} >= :start_date AND {time_col} <= :end_date
+            WHERE tenant_id = CAST(:tenant_id AS uuid)
+              AND {time_col} >= CAST(:start_date AS timestamptz)
+              AND {time_col} <= CAST(:end_date AS timestamptz)
               AND slug = :slug
-            GROUP BY bucket, device_id
-            ORDER BY bucket
+            GROUP BY 1, device_id
+            ORDER BY 1
         """
 
         try:

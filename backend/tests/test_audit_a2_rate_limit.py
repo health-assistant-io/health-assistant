@@ -40,11 +40,34 @@ def fake_redis(monkeypatch):
 
 
 class TestClientIP:
-    def test_uses_forwarded_first_hop(self):
-        req = FakeRequest(forwarded="203.0.113.5, 10.0.0.1")
-        assert rl_mod._client_ip(req) == "203.0.113.5"
+    def test_xff_ignored_without_trusted_proxies(self, monkeypatch):
+        """Audit 2026-08 AUTH-H1: X-Forwarded-For is untrusted by default —
+        the first (client-controllable) hop must not become the bucket key."""
+        from unittest.mock import MagicMock
 
-    def test_falls_back_to_peer(self):
+        monkeypatch.setattr(
+            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=0)
+        )
+        req = FakeRequest(ip="10.0.0.9", forwarded="203.0.113.5, 10.0.0.1")
+        assert rl_mod._client_ip(req) == "10.0.0.9"
+
+    def test_uses_client_hop_with_trusted_proxy(self, monkeypatch):
+        """With 1 trusted proxy, the RIGHTMOST hop is the peer nginx actually
+        saw (the real client); anything left of it is spoofable."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(
+            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=1)
+        )
+        req = FakeRequest(ip="10.0.0.1", forwarded="203.0.113.5, 10.0.0.1")
+        assert rl_mod._client_ip(req) == "10.0.0.1"
+
+    def test_falls_back_to_peer(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(
+            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=1)
+        )
         assert rl_mod._client_ip(FakeRequest(ip="10.0.0.9")) == "10.0.0.9"
 
 

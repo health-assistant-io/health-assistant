@@ -48,6 +48,7 @@ def test_b11_vapid_keys_required_in_production(monkeypatch):
         Settings(
             _env_file=None,  # ignore .env / .env.test files
             APP_ENV="production",
+            DEBUG=False,
             SECRET_KEY="strong-secret-key-for-jwt-signing-1234567890",
             INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
             DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
@@ -83,6 +84,7 @@ def test_b11_vapid_keys_present_in_production_ok():
     s = Settings(
         _env_file=None,
         APP_ENV="production",
+        DEBUG=False,
         SECRET_KEY="strong-secret-key-for-jwt-signing-1234567890",
         INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",

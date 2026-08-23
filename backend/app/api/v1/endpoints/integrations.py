@@ -1,28 +1,88 @@
-from typing import Any, Dict, List, Optional
-import os
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+import hashlib
 import logging
-from uuid import UUID
+import os
+import secrets as _py_secrets
+from typing import Any
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from integrations.sdk.auth import OAuthStateStore
+from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.schemas.user import TokenData
-from app.models.user_integration import UserIntegration
-from app.models.fhir.patient import Patient
-from app.models.enums import IntegrationStatus
 from app.core.integration_registry import integration_registry
+from app.core.rate_limit import rate_limit, rate_limit_integration
+from app.core.redis import redis_client
+from app.core.security import get_current_user
+from app.models.enums import IntegrationStatus
+from app.models.fhir.patient import Patient
+from app.models.user_integration import UserIntegration
+from app.schemas.user import TokenData
 from app.services.system_integration_service import (
     get_disabled_domains,
     is_domain_disabled,
 )
-from integrations.sdk.auth import OAuthStateStore
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
-from app.core.rate_limit import rate_limit, rate_limit_integration
 
 logger = logging.getLogger(__name__)
+
+# Machine-route request body cap (audit 2026-08 M4). The tokenless webhook +
+# api-proxy routes previously read unbounded bodies into RAM; 25 MiB matches
+# the bridge's post-decode document cap (its base64 inflates ~1.37x, so the
+# JSON body of a max document is ~34 MiB — allow headroom).
+_MACHINE_BODY_CAP_BYTES = 40 * 1024 * 1024
+
+
+def _provider_overrides(provider: Any, hook: str) -> bool:
+    """True when the provider class actually implements ``hook`` (vs the
+    SDK base's safe default)."""
+    from integrations.base import BaseHealthProvider as _CoreBase
+    from integrations.sdk.base import BaseHealthProvider as _SdkBase
+
+    fn = getattr(type(provider), hook, None)
+    if fn is None:
+        return False
+    return fn is not getattr(_SdkBase, hook, None) and fn is not getattr(
+        _CoreBase, hook, None
+    )
+
+
+def _generate_integration_secret() -> str:
+    """A high-entropy per-instance machine secret (audit 2026-08 H1/H2)."""
+    return _py_secrets.token_urlsafe(32)
+
+
+async def _check_machine_body_cap(request: Request) -> bytes:
+    """Read the request body with a hard cap (413 beyond it)."""
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit():
+        if int(content_length) > _MACHINE_BODY_CAP_BYTES:
+            raise HTTPException(status_code=413, detail="Request body too large")
+    raw = await request.body()
+    if len(raw) > _MACHINE_BODY_CAP_BYTES:
+        raise HTTPException(status_code=413, detail="Request body too large")
+    return raw
+
+
+async def _is_recent_replay(scope: str, key_material: bytes) -> bool:
+    """Redis GETDEL-style replay guard for bare-MAC webhook deliveries.
+
+    Records a fingerprint of (signature, body) for 10 minutes; a second
+    identical delivery within the window is rejected. Best-effort: a Redis
+    outage degrades to accept (availability) — the canonical timestamped
+    scheme remains the strong protection.
+    """
+    fingerprint = hashlib.sha256(key_material).hexdigest()
+    key = f"replay:{scope}:{fingerprint}"
+    try:
+        acquired = await redis_client.set(key, "1", nx=True, ex=600)
+        return acquired is None or acquired is False
+    except Exception as e:
+        logger.warning("Replay guard unavailable (allowing): %s", e)
+        return False
+
 
 router = APIRouter()
 
@@ -32,7 +92,7 @@ def _frontend_origin() -> str:
     return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 
-@router.get("/available", response_model=List[Dict[str, Any]])
+@router.get("/available", response_model=list[dict[str, Any]])
 async def list_available_integrations(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -49,7 +109,7 @@ async def list_available_integrations(
     return [m for m in manifests if m.get("domain") not in disabled_domains]
 
 
-@router.get("/active", response_model=List[Dict[str, Any]])
+@router.get("/active", response_model=list[dict[str, Any]])
 async def list_active_integrations(
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
@@ -82,14 +142,15 @@ async def get_integration_documentation(
     domain: str,
     file: str = None,
     current_user: TokenData = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get the markdown documentation for an integration if it exists.
 
     Requires an authenticated user (any role). Path traversal is mitigated
     via ``os.path.basename``.
     """
-    import os
     import json
+    import os
+
     from app.core.integration_registry import integration_registry
 
     # We don't check if it's enabled here, so users can read docs before enabling.
@@ -159,7 +220,7 @@ async def get_integration_documentation(
     }
 
 
-@router.get("/{domain}/config-flow", response_model=Dict[str, Any])
+@router.get("/{domain}/config-flow", response_model=dict[str, Any])
 async def get_config_flow(
     domain: str,
     current_user: TokenData = Depends(get_current_user),
@@ -181,11 +242,11 @@ async def get_config_flow(
     return await config_flow.get_schema()
 
 
-@router.post("/{domain}/config-flow", response_model=Dict[str, Any])
+@router.post("/{domain}/config-flow", response_model=dict[str, Any])
 async def submit_config_flow(
     domain: str,
     patient_id: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     integration_id: str = None,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -287,7 +348,47 @@ async def submit_config_flow(
             config_flow.is_oauth
             and validated_config.get("auth_mode", "smart") == "smart"
         )
+
+        # Audit 2026-08 H1/H2: every webhook- or API-capable instance is
+        # provisioned with a machine secret (HMAC) — the integration UUID is
+        # an identifier, never a credential. The plaintext is returned ONCE
+        # here (like OAuth client secrets) and stored Fernet-encrypted with
+        # the instance id as context binding. The machine routes below
+        # reject instances without a configured secret.
+        provider = integration_registry.get_provider(domain)
+        generated: dict[str, str] = {}
+        instance_uuid = uuid4()
+        wants_webhook = provider is not None and _provider_overrides(
+            provider, "handle_webhook"
+        )
+        wants_api = provider is not None and _provider_overrides(
+            provider, "handle_api_request"
+        )
+        try:
+            from integrations.sdk.secrets import SecretCipher
+
+            cipher = SecretCipher.from_settings()
+            if wants_webhook and not validated_config.get("webhook_secret"):
+                generated["webhook_secret"] = _generate_integration_secret()
+                validated_config["webhook_secret"] = cipher.encrypt_value(
+                    generated["webhook_secret"], context=str(instance_uuid)
+                )
+            if wants_api and not validated_config.get("api_secret"):
+                generated["api_secret"] = _generate_integration_secret()
+                validated_config["api_secret"] = cipher.encrypt_value(
+                    generated["api_secret"], context=str(instance_uuid)
+                )
+        except RuntimeError:
+            # No Fernet key configured — the machine routes will 503 rather
+            # than accept UUID-only traffic (fail-closed).
+            logger.warning(
+                "INTEGRATION_SECRET_KEY unset; cannot provision machine secret "
+                "for %s instance. Webhook/API routes will refuse this instance.",
+                domain,
+            )
+
         new_integration = UserIntegration(
+            id=instance_uuid,
             user_id=current_user.user_id,
             patient_id=patient.id,
             provider=domain,
@@ -301,7 +402,17 @@ async def submit_config_flow(
         db.add(new_integration)
 
     await db.commit()
-    return {"message": "Integration configured successfully."}
+    response_payload: dict[str, Any] = {
+        "message": "Integration configured successfully."
+    }
+    if generated:
+        # Show-once machine secrets (mirrors OAuth client-secret UX).
+        response_payload.update(generated)
+        response_payload["secret_notice"] = (
+            "Store these secrets now — they are shown only once and are "
+            "required to sign webhook/API requests (HMAC-SHA256)."
+        )
+    return response_payload
 
 
 # ---------------- OAuth round-trip (opt-in via config_flow.is_oauth) ----------------
@@ -356,7 +467,13 @@ async def oauth_start(
     if not existing:
         raise HTTPException(status_code=404, detail="Integration instance not found")
 
-    redirect_uri = f"{str(request.base_url).rstrip('/')}/api/v1/integrations/{domain}/oauth/callback"
+    # INT-M4 (audit 2026-08): pin the redirect URI to the configured
+    # public APP_URL — never the client-supplied Host header (DCR
+    # registration poisoning).
+    from app.core.config import get_settings as _gs
+
+    app_url = (_gs().APP_URL or str(request.base_url).rstrip("/")).rstrip("/")
+    redirect_uri = f"{app_url}/api/v1/integrations/{domain}/oauth/callback"
     try:
         authorize_url, state = await provider.begin_oauth(
             existing,
@@ -440,11 +557,12 @@ async def get_integration_details(
     db: AsyncSession = Depends(get_db),
 ):
     """Get detailed information about an active integration."""
-    from app.models.user_integration import UserIntegration, IntegrationSyncLog
-    from app.models.fhir.patient import Observation
+    from sqlalchemy import desc, func
+
     from app.models.biomarker_model import BiomarkerDefinition
     from app.models.examination_model import ExaminationModel
-    from sqlalchemy import desc, func
+    from app.models.fhir.patient import Observation
+    from app.models.user_integration import IntegrationSyncLog, UserIntegration
 
     try:
         integration_uuid = UUID(integration_id)
@@ -649,8 +767,9 @@ async def get_integration_debug_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch debug logs for a specific integration instance."""
-    from app.models.user_integration import UserIntegration, IntegrationDebugLog
     from sqlalchemy import desc
+
+    from app.models.user_integration import IntegrationDebugLog, UserIntegration
 
     try:
         integration_uuid = UUID(integration_id)
@@ -769,7 +888,7 @@ async def execute_custom_action(
     integration_id: str,
     action_id: str,
     patient_id: str,
-    payload: Optional[Dict[str, Any]] = Body(default=None),
+    payload: dict[str, Any] | None = Body(default=None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -821,7 +940,7 @@ async def execute_custom_action(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Custom action {action_id} failed for {domain}: {e}")
-        raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Action failed: {e!s}")
 
 
 @router.post("/{domain}/notification-action/{integration_id}/{action_id}")
@@ -829,7 +948,7 @@ async def execute_notification_action(
     domain: str,
     integration_id: str,
     action_id: str,
-    payload: Dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -881,7 +1000,7 @@ async def execute_notification_action(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Notification action %s failed for %s: %s", action_id, domain, e)
-        raise HTTPException(status_code=500, detail=f"Action failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Action failed: {e!s}")
 
 
 # ---------------------------------------------------------------------------
@@ -932,13 +1051,13 @@ async def _load_owned_integration(
 
 @router.get(
     "/instance/{integration_id}/proposals",
-    response_model=List[Dict[str, Any]],
+    response_model=list[dict[str, Any]],
 )
 async def list_integration_proposals(
     integration_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> Any:
@@ -950,14 +1069,14 @@ async def list_integration_proposals(
     paused integration's pending queue is still reviewable.
     """
     from app.models.enums import HitlTaskStatus
-    from app.services import integration_proposal_service as proposal_svc
     from app.schemas.integration_proposal import IntegrationProposalResponse
+    from app.services import integration_proposal_service as proposal_svc
 
     integration = await _load_owned_integration(
         integration_id, current_user=current_user, db=db
     )
 
-    status_filter: Optional[HitlTaskStatus] = None
+    status_filter: HitlTaskStatus | None = None
     if status is not None:
         try:
             status_filter = HitlTaskStatus(status.lower())
@@ -978,16 +1097,14 @@ async def list_integration_proposals(
         offset=offset,
     )
     return [
-        IntegrationProposalResponse.model_validate(p).model_dump(
-            mode="json"
-        )
+        IntegrationProposalResponse.model_validate(p).model_dump(mode="json")
         for p in proposals
     ]
 
 
 @router.get(
     "/instance/{integration_id}/proposals/{proposal_id}",
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
 )
 async def get_integration_proposal(
     integration_id: str,
@@ -996,8 +1113,8 @@ async def get_integration_proposal(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Fetch one HITL proposal by id (scoped to the owned integration)."""
-    from app.services import integration_proposal_service as proposal_svc
     from app.schemas.integration_proposal import IntegrationProposalResponse
+    from app.services import integration_proposal_service as proposal_svc
 
     integration = await _load_owned_integration(
         integration_id, current_user=current_user, db=db
@@ -1012,19 +1129,17 @@ async def get_integration_proposal(
     )
     if proposal is None:
         raise HTTPException(status_code=404, detail="Proposal not found")
-    return IntegrationProposalResponse.model_validate(proposal).model_dump(
-        mode="json"
-    )
+    return IntegrationProposalResponse.model_validate(proposal).model_dump(mode="json")
 
 
 @router.post(
     "/instance/{integration_id}/proposals/{proposal_id}/resolve",
-    response_model=Dict[str, Any],
+    response_model=dict[str, Any],
 )
 async def resolve_integration_proposal(
     integration_id: str,
     proposal_id: str,
-    body: Dict[str, Any],
+    body: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -1048,11 +1163,11 @@ async def resolve_integration_proposal(
     Re-resolve from a terminal state returns 409 (idempotent contract).
     """
     from app.models.enums import Role
-    from app.services import integration_proposal_service as proposal_svc
     from app.schemas.integration_proposal import (
         IntegrationProposalResolveRequest,
         IntegrationProposalResponse,
     )
+    from app.services import integration_proposal_service as proposal_svc
 
     integration = await _load_owned_integration(
         integration_id, current_user=current_user, db=db
@@ -1065,9 +1180,7 @@ async def resolve_integration_proposal(
     try:
         req = IntegrationProposalResolveRequest(**body)
     except Exception as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid resolve body: {exc}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid resolve body: {exc}")
 
     # Catalog writes (biomarker / medication / concept / edge) require
     # ADMIN+ under the catalog policy. USER-role callers can list + view
@@ -1102,14 +1215,83 @@ async def resolve_integration_proposal(
             raise HTTPException(status_code=409, detail=str(exc))
         raise HTTPException(status_code=400, detail=str(exc))
 
-    response = IntegrationProposalResponse.model_validate(
-        result.proposal
-    ).model_dump(mode="json")
+    response = IntegrationProposalResponse.model_validate(result.proposal).model_dump(
+        mode="json"
+    )
     response["applied_entity_id"] = (
         str(result.applied_entity_id) if result.applied_entity_id else None
     )
     response["error"] = result.error
     return response
+
+
+@router.post("/instance/{integration_id}/rotate-secret")
+async def rotate_instance_secret(
+    integration_id: str,
+    patient_id: str,
+    field: str = "api_secret",
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Rotate a machine (HMAC) secret for an integration instance.
+
+    Audit 2026-08 H1/H2 pairing follow-up: the stored plaintext can never be
+    re-displayed (Fernet-encrypted, row-bound), so the recovery path for
+    instances created before mandatory secrets — or whose creation-time
+    plaintext was lost — is rotation. Mints a fresh secret, stores it
+    encrypted with the instance id as context, and returns the plaintext
+    EXACTLY ONCE. The previous secret stops working immediately.
+
+    ``field``: ``api_secret`` (default; bridge/API-proxy clients) or
+    ``webhook_secret`` (inbound webhook senders).
+    """
+    if field not in ("api_secret", "webhook_secret"):
+        raise HTTPException(
+            status_code=400, detail="field must be api_secret or webhook_secret"
+        )
+
+    try:
+        integration_uuid = UUID(integration_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid integration ID")
+
+    stmt = select(UserIntegration).where(
+        UserIntegration.id == integration_uuid,
+        UserIntegration.user_id == current_user.user_id,
+        UserIntegration.patient_id == patient_id,
+    )
+    result = await db.execute(stmt)
+    integration = result.scalar_one_or_none()
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration instance not found")
+
+    try:
+        from integrations.sdk.secrets import SecretCipher
+
+        cipher = SecretCipher.from_settings()
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=str(e),
+        )
+
+    new_secret = _generate_integration_secret()
+    cfg = dict(getattr(integration, "user_config", None) or {})
+    cfg[field] = cipher.encrypt_value(new_secret, context=str(integration.id))
+    integration.user_config = cfg
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    flag_modified(integration, "user_config")
+    await db.commit()
+
+    return {
+        field: new_secret,
+        "secret_notice": (
+            "Store this secret now — it is shown only once and the previous "
+            "secret stopped working the moment this was generated."
+        ),
+    }
 
 
 @router.post("/instance/{integration_id}/sync")
@@ -1181,7 +1363,12 @@ async def sync_integration(
     }
 
 
-def _resolve_secret_field(domain: str, config: Dict[str, Any], field_name: str) -> Optional[str]:
+def _resolve_secret_field(
+    domain: str,
+    config: dict[str, Any],
+    field_name: str,
+    context: str | None = None,
+) -> str | None:
     """Return the plaintext value of a secret config field, decrypting if needed.
 
     Integration config flows declare secret fields via ``get_secret_fields()``
@@ -1205,6 +1392,22 @@ def _resolve_secret_field(domain: str, config: Dict[str, Any], field_name: str) 
         return None
     flow = integration_registry.get_config_flow(domain)
     secret_fields = flow.get_secret_fields() if flow else []
+    if (
+        field_name not in secret_fields
+        and isinstance(raw, dict)
+        and "_encrypted" in raw
+    ):
+        # Platform-provisioned machine secret (audit 2026-08 H1/H2): stored
+        # as a context-bound encrypted wrapper even though the config flow
+        # doesn't declare the field. Decrypt directly with the instance id
+        # as context.
+        try:
+            from integrations.sdk.secrets import SecretCipher
+
+            decrypted = SecretCipher.from_settings().decrypt_value(raw, context=context)
+            return decrypted if isinstance(decrypted, str) and decrypted else None
+        except Exception:
+            return None
     if field_name not in secret_fields:
         # Not declared secret — return as-is (already plaintext).
         return raw if isinstance(raw, str) else None
@@ -1218,7 +1421,9 @@ def _resolve_secret_field(domain: str, config: Dict[str, Any], field_name: str) 
         logger.warning(
             "Failed to decrypt %s for integration domain=%s: %s "
             "(key rotation mismatch? set INTEGRATION_SECRET_KEY_PREVIOUS).",
-            field_name, domain, e,
+            field_name,
+            domain,
+            e,
         )
         return None
 
@@ -1306,17 +1511,20 @@ async def integration_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
     _rl_ip=Depends(rate_limit("integration_webhook", max_requests=120, window=60)),
-    _rl_int=Depends(rate_limit_integration("integration_webhook", max_requests=60, window=60)),
+    _rl_int=Depends(
+        rate_limit_integration("integration_webhook", max_requests=60, window=60)
+    ),
 ) -> Any:
     """
     Handle incoming webhooks for a specific integration.
 
-    When a ``webhook_secret`` is configured on the integration's
-    ``user_config``, the request MUST carry a valid HMAC-SHA256 signature
-    header; otherwise the request is rejected with 401. Integrations without
-    a configured secret retain the legacy behaviour (integration_id acts as
-    the secret) for backward compatibility — operators are encouraged to set
-    a webhook_secret.
+    Audit 2026-08 H1/M1: a webhook secret is REQUIRED — the integration
+    UUID is an identifier, not a credential (it leaks via logs/history and
+    cannot be rotated). Every request must carry a valid HMAC-SHA256
+    signature over the raw body. When ``X-Webhook-Timestamp`` is present,
+    the canonical timestamped scheme applies (replay-proof within the skew
+    window); otherwise the bare body-MAC is accepted with a Redis-backed
+    replay guard against identical deliveries.
     """
     try:
         integration_uuid = UUID(integration_id)
@@ -1343,33 +1551,57 @@ async def integration_webhook(
             status_code=400, detail="Provider does not support webhooks"
         )
 
-    # If the integration configured a ``webhook_secret``, verify the
-    # HMAC-SHA256 signature of the raw body before processing. This
-    # prevents unauthorized POSTs even if the integration UUID leaks.
-    # Read the raw body ONCE here so the signature check and the downstream
-    # JSON parse share the exact bytes.
-    raw_body = await request.body()
+    # Read the raw body ONCE (capped — audit M4) so the signature check and
+    # the downstream JSON parse share the exact bytes.
+    raw_body = await _check_machine_body_cap(request)
 
     cfg = getattr(integration, "user_config", None) or {}
-    webhook_secret = _resolve_secret_field(domain, cfg, "webhook_secret")
-    if webhook_secret:
-        # Accept any of the conventional signature headers.
-        provided_sig = (
-            request.headers.get("X-Webhook-Signature")
-            or request.headers.get("X-Webhook-Signature-256")
-            or request.headers.get("X-Hub-Signature-256")
+    webhook_secret = _resolve_secret_field(
+        domain, cfg, "webhook_secret", context=str(integration.id)
+    )
+    if not webhook_secret:
+        # Fail closed: no secret configured → no unauthenticated writes
+        # into the health record (audit 2026-08 H1).
+        raise HTTPException(
+            status_code=401,
+            detail="Webhook secret not configured for this integration.",
         )
-        if not provided_sig or not _verify_webhook_signature(
-            webhook_secret, raw_body, provided_sig
+
+    provided_sig = (
+        request.headers.get("X-Webhook-Signature")
+        or request.headers.get("X-Webhook-Signature-256")
+        or request.headers.get("X-Hub-Signature-256")
+    )
+    provided_ts = request.headers.get("X-Webhook-Timestamp")
+
+    sig_ok = False
+    if provided_sig and provided_ts:
+        sig_ok = _verify_api_signature(
+            webhook_secret,
+            method="POST",
+            path="",
+            raw_body=raw_body,
+            provided_signature=provided_sig,
+            provided_timestamp=provided_ts,
+        )
+    elif provided_sig:
+        sig_ok = _verify_webhook_signature(webhook_secret, raw_body, provided_sig)
+        if sig_ok and await _is_recent_replay(
+            f"wh:{integration.id}", provided_sig.encode("utf-8") + b"\n" + raw_body
         ):
-            logger.warning(
-                "Webhook signature verification failed for %s (Integration: %s)",
-                domain,
-                integration_id,
-            )
+            logger.warning("Webhook replay rejected for integration %s", integration_id)
             raise HTTPException(
                 status_code=401, detail="Webhook signature verification failed"
             )
+    if not sig_ok:
+        logger.warning(
+            "Webhook signature verification failed for %s (Integration: %s)",
+            domain,
+            integration_id,
+        )
+        raise HTTPException(
+            status_code=401, detail="Webhook signature verification failed"
+        )
 
     from app.models.user_integration import IntegrationSyncLog
 
@@ -1525,9 +1757,7 @@ async def integration_webhook(
                 domain,
                 webhook_notif_err,
             )
-        raise HTTPException(
-            status_code=500, detail=f"Webhook processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {e!s}")
 
 
 @router.api_route(
@@ -1541,22 +1771,20 @@ async def integration_api_proxy(
     request: Request,
     db: AsyncSession = Depends(get_db),
     _rl_ip=Depends(rate_limit("integration_api_proxy", max_requests=120, window=60)),
-    _rl_int=Depends(rate_limit_integration("integration_api_proxy", max_requests=60, window=60)),
+    _rl_int=Depends(
+        rate_limit_integration("integration_api_proxy", max_requests=60, window=60)
+    ),
 ) -> Any:
     """
     Handle generic two-way API requests for a specific integration.
 
-    Audit item B8: the integration UUID is no longer the only credential.
-    When an integration configures ``api_secret`` in its ``user_config``,
-    this route requires a valid ``X-Api-Signature`` header (HMAC-SHA256
-    of ``METHOD\\n<path>\\n[<timestamp>\\n]<raw_body>``) before any work
-    is done. Without the secret the legacy UUID-only behaviour is
-    preserved for backward compatibility, but a warning is logged so
-    operators are nudged toward configuring a secret.
-
-    Exception: ``GET /status`` is the unsigned connectivity + SDK-discovery
-    probe and is exempt from signature verification even when ``api_secret``
-    is set (see integrations/health_assistant_bridge/docs/authentication.md).
+    Audit 2026-08 H1/H2/M2/M3: an ``api_secret`` is REQUIRED — instances
+    are provisioned with one automatically at creation. Requests must carry
+    ``X-Api-Signature`` (HMAC-SHA256 of ``METHOD\\n<path>[?query]\\n<timestamp>\\n<raw_body>``)
+    AND ``X-Api-Timestamp`` (mandatory — kills the unlimited-replay hole).
+    The MAC covers the query string, so query parameters cannot be tampered
+    with on a captured request. ``GET /status`` remains the unsigned
+    pairing/connectivity probe but returns only minimal fields.
 
     See ``_verify_api_signature`` for the canonical signing scheme.
     """
@@ -1585,45 +1813,56 @@ async def integration_api_proxy(
             status_code=400, detail="Provider does not support API requests"
         )
 
-    # API-secret verification (B8). The raw body MUST be read once so
-    # downstream JSON parsing shares the exact bytes used to verify.
-    raw_body = await request.body()
+    # Body cap (audit M4) — read once; signature + JSON parse share bytes.
+    raw_body = await _check_machine_body_cap(request)
     cfg = getattr(integration, "user_config", None) or {}
-    api_secret = _resolve_secret_field(domain, cfg, "api_secret")
-    # GET /status is the connectivity + SDK-discovery probe and is NEVER
-    # signed, even when an api_secret is set — a client must be able to
-    # reach it before establishing a secret handshake. Every other path
-    # remains HMAC-gated when a secret is configured.
+    api_secret = _resolve_secret_field(
+        domain, cfg, "api_secret", context=str(integration.id)
+    )
+
+    # GET /status without a signature stays the pre-pairing connectivity
+    # probe (QR flow) but leaks nothing beyond liveness + server time
+    # (audit M3; server_time also lets SDKs resync skewed clocks). A SIGNED
+    # status probe falls through to the provider and returns the full
+    # payload (SDK versions, cursor, frontend URL).
     is_status_probe = path == "status" and request.method == "GET"
-    if api_secret and not is_status_probe:
-        provided_sig = request.headers.get("X-Api-Signature")
-        provided_ts = request.headers.get("X-Api-Timestamp")
-        if not provided_sig or not _verify_api_signature(
-            api_secret,
-            method=request.method,
-            path=path,
-            raw_body=raw_body,
-            provided_signature=provided_sig,
-            provided_timestamp=provided_ts,
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail=(
-                    "Invalid or missing X-Api-Signature. This integration has an "
-                    "api_secret configured; supply an HMAC-SHA256 of "
-                    "METHOD\\n<path>\\n[<timestamp>\\n]<raw_body> in X-Api-Signature."
-                ),
-            )
-    else:
-        # Legacy UUID-only mode. Log once per call so operators notice the
-        # gap and configure an api_secret. (We don't rate-limit the log to
-        # avoid needing per-integration state.)
-        logger.warning(
-            "Integration %s (provider=%s) has no api_secret configured — "
-            "API proxy is relying solely on the UUID, which is not a credential. "
-            "Set user_config.api_secret to enable HMAC verification (audit B8).",
-            integration_id,
-            domain,
+    provided_sig = request.headers.get("X-Api-Signature")
+    provided_ts = request.headers.get("X-Api-Timestamp")
+    if is_status_probe and not provided_sig:
+        return {
+            "status": "active",
+            "server_time": int(
+                datetime.datetime.now(datetime.timezone.utc).timestamp()
+            ),
+        }
+
+    if not api_secret:
+        # Fail closed — no secret, no machine API (audit H1/H2).
+        raise HTTPException(
+            status_code=401,
+            detail="API secret not configured for this integration.",
+        )
+
+    if not provided_ts:
+        # Mandatory timestamp (audit M2) — without it a captured signature
+        # was replayable forever.
+        raise HTTPException(
+            status_code=401,
+            detail="Missing X-Api-Timestamp header.",
+        )
+    query = request.url.query
+    signed_path = path + (f"?{query}" if isinstance(query, str) and query else "")
+    if not provided_sig or not _verify_api_signature(
+        api_secret,
+        method=request.method,
+        path=signed_path,
+        raw_body=raw_body,
+        provided_signature=provided_sig,
+        provided_timestamp=provided_ts,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing X-Api-Signature.",
         )
 
     try:
@@ -1646,4 +1885,4 @@ async def integration_api_proxy(
             f"API request failed for {domain} (Integration: {integration_id}): {e}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=f"API request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API request failed: {e!s}")

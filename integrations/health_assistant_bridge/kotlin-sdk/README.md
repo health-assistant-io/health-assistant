@@ -9,7 +9,7 @@ Kotlin client for the [Health Assistant Bridge](../) two-way API proxy. Mirrors
 val client = BridgeClient(
     baseUrl = "https://health.example.io",
     integrationId = "<instance uuid>",
-    apiSecret = "<optional hmac secret>",
+    apiSecret = "<per-instance hmac secret — mandatory, shown once at instance creation>",
 )
 
 val status = client.getStatus()                       // never signed

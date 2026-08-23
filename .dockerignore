@@ -1,0 +1,52 @@
+# Root .dockerignore — the build context is the repo root (docs/INSTALL.md).
+# Keeps PHI (uploads/), secrets (.env*), the local virtualenv, caches, and
+# dev artifacts out of image layers (audit 2026-08 C-5).
+
+# VCS + CI
+.git
+.gitignore
+.github
+.gitea
+
+# Secrets — never bake env files into images (config.py walks up the tree
+# and would silently load the first .env it finds inside the container).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+
+# PHI + local data
+uploads/
+logging/
+backend/uploads/
+backend/logging/
+**/data/*.local.json
+
+# Python
+venv/
+**/__pycache__/
+*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# Dev + docs + non-runtime dirs
+dev/
+docs/
+.opencode/
+*.md
+!README.md
+docker/
+scripts/
+assets/
+.claude
+.cursor

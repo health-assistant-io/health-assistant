@@ -99,6 +99,23 @@ def _classify_stream_error(exc: Exception) -> tuple[str, str]:
     return ("generic", "")
 
 
+async def _validate_patient_context(
+    context_or_id, current_user: TokenData, db: AsyncSession
+) -> None:
+    """API-H3 (audit 2026-08): a client-supplied patient_id is access-checked
+    before any AI tool pipeline binds it. Previously a USER could chat about
+    (and export via tools) any tenant patient's PHI."""
+    from app.services.access import check_patient_access
+
+    pid = (
+        context_or_id.get("patient_id")
+        if isinstance(context_or_id, dict)
+        else context_or_id
+    )
+    if pid:
+        await check_patient_access(pid, current_user, db)
+
+
 @router.post("/assist", response_model=AIAssistanceResponse)
 async def assist_user(
     request: AIAssistanceRequest,
@@ -106,6 +123,7 @@ async def assist_user(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Get AI-driven assistance for various tasks (form filling, chat, etc.)"""
+    await _validate_patient_context(request.context, current_user, db)
     service = AIAssistanceService(db)
 
     try:
@@ -151,6 +169,7 @@ async def assist_user_stream(
             detail="Streaming is only supported for chat tasks",
         )
 
+    await _validate_patient_context(request.context, current_user, db)
     service = AIAssistanceService(db)
 
     async def event_generator():
@@ -245,6 +264,7 @@ async def list_tools(
     from app.ai.tools import get_tools
     from app.ai.tools.aggregator import aggregate as integration_aggregate
 
+    await _validate_patient_context(patient_id, current_user, db)
     built_in_tools = get_tools(
         db,
         current_user.tenant_id,

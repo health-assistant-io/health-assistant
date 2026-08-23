@@ -1,6 +1,7 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import { HelpCircle } from 'lucide-react';
+import { sanitizeSvg } from '../../utils/sanitize';
 
 export interface IconConfig {
   type: 'lucide' | 'custom_svg';
@@ -36,7 +37,7 @@ export const DynamicIcon: React.FC<DynamicIconProps> = ({
       <div 
         className={`${className} flex items-center justify-center [&>svg]:w-full [&>svg]:h-full`}
         style={{ width: size, height: size, color: color }}
-        dangerouslySetInnerHTML={{ __html: icon.value }} 
+        dangerouslySetInnerHTML={{ __html: sanitizeSvg(icon.value) }} 
       />
     );
   }

@@ -192,3 +192,22 @@ Python `sign_request` across ASCII / empty / non-ASCII / GET vectors.
 - [Authentication & Security](authentication.md) — the canonical form + replay window the signing helper reproduces.
 - [API Reference](api-reference.md) — the push endpoints, the read/management paths, and the payload schemas.
 - [Troubleshooting](troubleshooting.md) — signing failures, timeout, skew-window errors.
+
+## Pairing (obtaining / renewing an api_secret)
+
+Secrets are mandatory on every data route. The plaintext is shown exactly
+once — at instance creation (config-flow response) or when you generate a
+**pairing code**:
+
+1. Open the integration's detail page in the web app → **Connect your mobile
+   app** card → **Show pairing code**.
+2. The card calls `POST /api/v1/integrations/instance/{id}/rotate-secret`
+   (owner-only, `patient_id` + `field=api_secret`), which mints a fresh
+   secret, stores it encrypted, and returns it once.
+3. The QR / connection code then carries all three segments —
+   `base_url|integration_id|api_secret` — which the app's scanner and the
+   paste field accept directly. No typing.
+
+Rotating invalidates the previous secret immediately: devices paired with an
+older code must regenerate + re-scan. Senders that lost their secret use the
+same button.

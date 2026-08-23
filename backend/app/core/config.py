@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
-from typing import Optional
+from typing import Optional, ClassVar
 from functools import lru_cache
 
 
@@ -24,6 +24,14 @@ def _resolve_env_file() -> Optional[str]:
     explicit = os.getenv("HA_ENV_FILE")
     if explicit:
         return explicit
+
+    # Audit 2026-08 C-5: outside development the tree walk-up is disabled —
+    # a baked-in .env inside a container (or a stray file above the app dir)
+    # would otherwise be silently loaded and could downgrade every boot
+    # guard. Production must set HA_ENV_FILE explicitly or use real env vars.
+    app_env = os.getenv("APP_ENV", "development")
+    if app_env not in ("development", "test", "testing"):
+        return None
 
     here = Path(__file__).resolve().parent
     for parent in [here, *here.parents]:
@@ -98,7 +106,10 @@ class Settings(BaseSettings):
         active_password = parsed_url.password or ""
 
         if self.APP_ENV not in ("development", "test", "testing"):
-            if active_password in weak_passwords:
+            if (
+                active_password in weak_passwords
+                or active_password == "secure_password_here"
+            ):
                 raise ValueError(
                     "A strong database password must be provided in the DATABASE_URL "
                     f"for APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
@@ -117,6 +128,23 @@ class Settings(BaseSettings):
     def assemble_redis_connection(self) -> "Settings":
         if not self.REDIS_URL:
             self.REDIS_URL = f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}"
+        return self
+
+    @model_validator(mode="after")
+    def _validate_debug_flag(self) -> "Settings":
+        """Audit 2026-08 CFG-M4: DEBUG=true outside dev/test refuses to boot.
+
+        DEBUG enables SQLAlchemy ``echo`` (every SQL statement WITH bound
+        parameters — PHI — lands in logs) and verbose 500 details; a
+        ``production`` + ``DEBUG=true`` misconfiguration previously booted
+        fine and silently logged patient data.
+        """
+        if self.DEBUG and self.APP_ENV not in ("development", "test", "testing"):
+            raise ValueError(
+                f"DEBUG=true is not allowed with APP_ENV={self.APP_ENV!r} — it "
+                "logs SQL bound parameters (PHI) and leaks error internals. "
+                "Set DEBUG=false or APP_ENV=development."
+            )
         return self
 
     # Security
@@ -172,17 +200,30 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _warn_demo_mode(self) -> "Settings":
-        """Loud warning when DEMO_MODE is on.
+        """Loud warning + explicit opt-in gate when DEMO_MODE is on.
 
-        Demo mode exposes /auth/demo-login (credential-free login as the demo
-        user) and is meant only for public demos / screenshot captures. We
-        allow it in any APP_ENV (the live demo deliberately runs in
-        production mode) but warn on every boot so an operator never
-        accidentally leaves it on for a real deployment.
+        Demo mode exposes /auth/demo-login (credential-free login as the
+        demo user, ADMIN role) — an authentication bypass by design. In any
+        non-dev APP_ENV it additionally requires
+        ``DEMO_MODE_ACCEPT_UNAUTHENTICATED=true`` so a single flipped env
+        var (or a baked-in .env) cannot silently open a real instance
+        (audit 2026-08 CFG-H6).
         """
         if self.DEMO_MODE:
             import logging
 
+            if self.APP_ENV not in ("development", "test", "testing"):
+                accept = (
+                    os.getenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", "").strip().lower()
+                )
+                if accept not in ("1", "true", "yes"):
+                    raise ValueError(
+                        "DEMO_MODE=true in APP_ENV="
+                        f"{self.APP_ENV!r} refuses to boot: demo-login is a "
+                        "credential-free authentication bypass. If this is a "
+                        "throwaway public demo, set "
+                        "DEMO_MODE_ACCEPT_UNAUTHENTICATED=true explicitly."
+                    )
             logging.warning(
                 "\n══════════════════════════════════════════════════════\n"
                 " ⚠️  DEMO MODE IS ENABLED\n"
@@ -193,6 +234,50 @@ class Settings(BaseSettings):
                 self.DEMO_USER_EMAIL,
             )
         return self
+
+    # Known placeholder values that must never boot as real secrets in
+    # production (audit 2026-08 CFG-H1) — the .env.example literals plus a
+    # few obvious defaults.
+    _PLACEHOLDER_SECRETS: ClassVar[frozenset] = frozenset(
+        {
+            "change_this_to_a_secure_random_string",
+            "changeme",
+            "change_me",
+            "change-this",
+            "placeholder",
+            "replace_me",
+            "replace-me",
+            "todo",
+            "insecure",
+            "secure_password_here",
+            "your_secret_key_here",
+            "your-secret-key",
+            "secret",
+            "password",
+            "admin123",
+        }
+    )
+
+    @staticmethod
+    def _is_acceptable_secret(value: str) -> bool:
+        """A production secret must not be a known placeholder and must
+        carry meaningful entropy (>=32 chars, not a simple repeated/short
+        pattern)."""
+        import re as _re
+
+        v = (value or "").strip()
+        if len(v) < 32:
+            return False
+        if v.lower() in Settings._PLACEHOLDER_SECRETS:
+            return False
+        # Reject trivially weak compositions (all same char, all digits).
+        if len(set(v.lower())) <= 4:
+            return False
+        if v.isdigit():
+            return False
+        if _re.fullmatch(r"[a-z]+", v.lower()):
+            return False
+        return True
 
     @model_validator(mode="after")
     def _validate_secret_key(self) -> "Settings":
@@ -210,10 +295,23 @@ class Settings(BaseSettings):
                     f"A strong SECRET_KEY must be provided via environment variables for APP_ENV={self.APP_ENV!r}. "
                     "Refusing to boot without one."
                 )
+        if self.APP_ENV not in ("development", "test", "testing") and (
+            self.SECRET_KEY.strip().lower() in self._PLACEHOLDER_SECRETS
+            or not self._is_acceptable_secret(self.SECRET_KEY)
+        ):
+            raise ValueError(
+                "SECRET_KEY looks like a placeholder or is too weak (need >= 32 "
+                "chars with real entropy). Generate one with: python -c "
+                '"from secrets import token_urlsafe; print(token_urlsafe(48))". '
+                "Refusing to boot with a publicly-known signing key."
+            )
         return self
 
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_HOURS: int = 24
+    # Short-lived stateless access tokens (audit 2026-08 M4): a stolen
+    # session token is revocable via the jti store, but defense in depth
+    # keeps the unrevocable window small. 24h was far too long for PHI.
+    JWT_EXPIRATION_HOURS: int = 1
 
     # OAuth2 / SMART-on-FHIR — the FHIR R4 facade is the public interop
     # surface; external systems authenticate via the client-credentials grant
@@ -234,6 +332,16 @@ class Settings(BaseSettings):
     # mobile app's frontend-origin deep links.
     FRONTEND_URL: str = "http://localhost:3000"
     APP_URL: str = "http://localhost:8000"
+
+    # Audit 2026-08 API-L1: API docs (Swagger/Redoc) are dev-only unless an
+    # operator explicitly enables them (e.g. behind an authenticated gateway).
+    ENABLE_API_DOCS: bool = False
+
+    # Audit 2026-08 AUTH-H1: number of TRUSTED reverse-proxy hops that append
+    # to X-Forwarded-For (nginx/traefix + their LB). 0 = direct exposure (the
+    # header is ignored; the socket peer is the rate-limit identity). Set to
+    # 1 when exactly one trusted proxy fronts the app.
+    TRUSTED_PROXY_COUNT: int = 0
 
     # AI/OCR - OpenAI Compatible API (used as fallback if no database configuration exists)
     OCR_PROVIDER: str = "openai"
@@ -287,7 +395,12 @@ class Settings(BaseSettings):
                 )
         return self
 
-    MCP_STDIO_ALLOWED_COMMANDS: str = "npx,uvx,python,python3,node"
+    # Audit 2026-08 C-4: STDIO spawn = local code execution. Disabled by
+    # default — operators must consciously enable it AND (recommended) run
+    # the workers in an isolated container. Even when enabled, interpreters
+    # that trivially execute arbitrary strings (python/python3/node -c/-e)
+    # are rejected at the arg level (see mcp_client/security.py).
+    MCP_STDIO_ALLOWED_COMMANDS: str = ""
     MCP_MAX_SERVERS_PER_USER: int = 5
     MCP_MAX_TOTAL_STDIO: int = 20
     MCP_REQUEST_TIMEOUT: float = 30.0

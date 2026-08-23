@@ -9,10 +9,15 @@ Design notes:
   is defence-in-depth, not an availability gate — mirroring the
   ``DATABASE_AVAILABLE`` philosophy). A closed failure mode would let a Redis
   outage lock every user out.
-- Keyed by client IP (+ optional identifier). The IP is read from
-  ``X-Forwarded-For`` (first hop) when a trusted proxy set it, else the peer.
+- Keyed by client IP (+ optional identifier). Proxy trust is EXPLICIT
+  (audit 2026-08 AUTH-H1): ``TRUSTED_PROXY_COUNT`` declares how many
+  rightmost ``X-Forwarded-For`` hops the ingress stack appends; only that
+  suffix is honored. With no configured proxies the header is ignored and
+  the socket peer is used — a spoofable header can no longer mint fresh
+  rate-limit buckets per request.
 - Returns a FastAPI dependency suitable for ``Depends(...)``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,15 +25,24 @@ import time
 
 from fastapi import HTTPException, Request, status
 
+from app.core.config import get_settings
 from app.core.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
 
 def _client_ip(request: Request) -> str:
+    settings = get_settings()
+    trusted = settings.TRUSTED_PROXY_COUNT
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if forwarded and trusted > 0:
+        # The ingress appends the real client then (optionally) further
+        # proxies. The RIGHTMOST ``trusted`` entries are ours; anything to
+        # the left of that is client-supplied and spoofable.
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if len(hops) > trusted:
+            return hops[-trusted]
+        return hops[0] if hops else "unknown"
     return request.client.host if request.client else "unknown"
 
 

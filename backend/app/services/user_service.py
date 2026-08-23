@@ -1,14 +1,15 @@
-from typing import Optional
-from uuid import UUID
 import logging
-from sqlalchemy import select, update, delete
-from app.models.user_model import UserModel, Role
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from uuid import UUID
+
+from sqlalchemy import delete, select, update
+
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
+from app.models.user_model import Role, UserModel
 
 logger = logging.getLogger(__name__)
 
 
-async def get_user_by_email(email: str) -> Optional[UserModel]:
+async def get_user_by_email(email: str) -> UserModel | None:
     """Get user by email"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_email")
@@ -22,8 +23,8 @@ async def get_user_by_email(email: str) -> Optional[UserModel]:
 
 
 async def get_user_by_id(
-    user_id: str | UUID, tenant_id: Optional[UUID] = None
-) -> Optional[UserModel]:
+    user_id: str | UUID, tenant_id: UUID | None = None
+) -> UserModel | None:
     """Get user by ID, optionally filtered by tenant"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_id")
@@ -83,12 +84,19 @@ async def create_user(
 
 async def update_user(
     user_id: str | UUID,
-    email: Optional[str] = None,
-    role: Optional[str] = None,
-    settings: Optional[dict] = None,
-    tenant_id: Optional[UUID] = None,
-) -> Optional[UserModel]:
-    """Update user information, optionally filtered by tenant"""
+    email: str | None = None,
+    role: str | None = None,
+    settings: dict | None = None,
+    tenant_id: UUID | None = None,
+    allow_system_admin: bool = False,
+) -> UserModel | None:
+    """Update user information, optionally filtered by tenant.
+
+    ``role="SYSTEM_ADMIN"`` is refused unless ``allow_system_admin=True``
+    (defense in depth — the API layer is the real gate; the service is
+    the last chokepoint so a future caller cannot reintroduce the
+    escalation by accident).
+    """
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for update_user")
         return None
@@ -103,6 +111,11 @@ async def update_user(
     if email:
         update_data["email"] = email
     if role:
+        if role == Role.SYSTEM_ADMIN.value and not allow_system_admin:
+            logger.warning(
+                "update_user: refused SYSTEM_ADMIN role change for %s", user_id
+            )
+            return None
         try:
             update_data["role"] = Role(role)
         except ValueError:
@@ -124,7 +137,7 @@ async def update_user(
     return await get_user_by_id(user_id, tenant_id=tenant_id)
 
 
-async def delete_user(user_id: str | UUID, tenant_id: Optional[UUID] = None) -> bool:
+async def delete_user(user_id: str | UUID, tenant_id: UUID | None = None) -> bool:
     """Delete user, optionally filtered by tenant"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for delete_user")

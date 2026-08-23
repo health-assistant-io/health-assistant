@@ -298,7 +298,12 @@ jobs:
             DEBUG=false
             SECRET_KEY=${{ secrets.SECRET_KEY }}
             INTEGRATION_SECRET_KEY=${{ secrets.INTEGRATION_SECRET_KEY }}
-            JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS || '24' }}
+            # Default 1h since the 2026-08 security audit (was 24h).
+            JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS || '1' }}
+            # Reverse-proxy chain depth for rate-limit identity (audit 2026-08
+            # AUTH-H1). This stack fronts the backend with a host proxy on
+            # 127.0.0.1, so exactly 1 trusted hop.
+            TRUSTED_PROXY_COUNT=${{ secrets.TRUSTED_PROXY_COUNT || '1' }}
             
             # PostgreSQL Secrets
             POSTGRES_DB=${{ secrets.POSTGRES_DB || 'health_assistant' }}
@@ -308,6 +313,10 @@ jobs:
             
             # Redis Secrets
             REDIS_PORT=${{ env.REDIS_PORT }}
+            # REQUIRED (audit 2026-08 CFG-M1): Redis runs with requirepass and
+            # the compose file refuses to start without this. Set the
+            # REDIS_PASSWORD repo secret before the next deploy.
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
             
             # Ports exposed by container
             BACKEND_PORT=${{ env.BACKEND_PORT }}

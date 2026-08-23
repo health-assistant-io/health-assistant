@@ -429,7 +429,7 @@ async def extract_examination_data(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to trigger extraction: {e}"
+            status_code=500, detail="Failed to trigger extraction"
         )
 
 

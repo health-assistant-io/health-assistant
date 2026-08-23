@@ -298,6 +298,11 @@ capture tooling in §3). A loud warning is logged on every boot while demo
 mode is on.
 
 > **Never enable `DEMO_MODE` on an instance that holds real health data.**
+>
+> **Fail-closed gate (audit 2026-08 CFG-H6):** with `APP_ENV` set to anything
+> other than `development`/`test`, `DEMO_MODE=true` **refuses to boot** unless
+> you also set `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` explicitly. A single
+> flipped env var can no longer silently open a real instance.
 > It bypasses authentication entirely — anyone who reaches the app is
 > signed in as the demo user with no credentials.
 

@@ -56,8 +56,9 @@ function Setup() {
 
   // If the system is already initialized, there's nothing to set up —
   // bounce to login. This also guards against someone bookmarking /setup.
-  // The status response carries token_mode + setup_url_hint so we can
-  // tailor the hint per deployment (see dev/audits/setup-token-modes.md).
+  // The status response carries token_mode (setup_url_hint is deprecated —
+  // always null since audit 2026-08 C-1; launchers compose the ?token= URL
+  // themselves, which the effect below pre-fills from).
   useEffect(() => {
     // Pre-fill the token from ?token=... — the launcher URL in env mode
     // carries the bootstrap token so the user clicks once and is done.

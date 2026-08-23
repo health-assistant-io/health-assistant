@@ -1,19 +1,21 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Install dependencies (repo-root context: paths are relative to repo root)
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 
-# Copy application code
 COPY frontend/ .
-
-# Build application
 RUN npm run build
 
-# Expose port
+FROM node:20-alpine AS runtime
+# Static serve the built SPA with a tiny hardened server (non-root).
+WORKDIR /app
+RUN npm install -g serve@14 \
+    && addgroup -S ha && adduser -S ha -G ha
+COPY --from=build --chown=ha:ha /app/dist /app/dist
+
+USER ha
 EXPOSE 3000
 
-# Run application
-CMD ["npm", "run", "preview"]
+CMD ["serve", "-s", "/app/dist", "-l", "3000", "--no-clipboard"]

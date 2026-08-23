@@ -155,6 +155,8 @@ Reproducible screenshots captured against a seeded clinical dataset — see the 
 
 ### Production (Docker, recommended)
 
+The fastest path from a fresh clone to a running instance — one command:
+
 ```bash
 git clone https://github.com/health-assistant-io/health-assistant.git
 ```
@@ -164,7 +166,15 @@ cd health-assistant
 ```
 
 ```bash
-python scripts/setup_env.py          # generates SECRET_KEY, Fernet key, POSTGRES_PASSWORD, VAPID pair
+./scripts/install.sh    # asks the app URL, generates secure keys, starts the standalone stack
+```
+
+The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, starts the stack, and prints your URLs plus a one-click first-run setup link.
+
+Prefer explicit steps? The manual equivalent:
+
+```bash
+python3 scripts/setup_env.py          # Quick Start is the default — generates SECRET_KEY, Fernet key, POSTGRES_PASSWORD, VAPID pair
 ```
 
 ```bash
