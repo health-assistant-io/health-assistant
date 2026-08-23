@@ -3,17 +3,20 @@
 # Health Assistant — one-command Docker install
 #
 # Takes a fresh clone to a running standalone stack: pre-flight → generate
-# .env (interactive, Quick Start default) → docker compose up -d → wait for
-# backend healthy → summary.
+# .env (interactive, Quick Start default) → pull latest images → docker compose
+# up -d → wait for backend healthy → summary.
 #
 # Usage:
 #   ./scripts/install.sh             # install + start the standalone stack
 #   ./scripts/install.sh --env-only  # generate .env only, don't start
 #   ./scripts/install.sh --no-wait   # skip the backend health-wait
+#   ./scripts/install.sh --no-pull   # don't fetch newer images (offline reuse)
 #   ./scripts/install.sh -h|--help   # print this help and exit
 #
-# Idempotent: safe to re-run after `git pull` — compose up -d is a no-op when
-# the stack is already running and .env is never overwritten.
+# Idempotent: safe to re-run after `git pull` — it pulls the latest published
+# images (so stale local images from a previous install are refreshed), compose
+# up -d is a no-op when the stack is already running, and .env is never
+# overwritten.
 #
 # Windows: requires WSL2 or Git-Bash (bash).
 
@@ -31,6 +34,7 @@ while [[ "$#" -gt 0 ]]; do
         -h|--help) print_help ;;
         --env-only) ENV_ONLY=1 ;;
         --no-wait) NO_WAIT=1 ;;
+        --no-pull) NO_PULL=1 ;;
         *)
             echo -e "${RED}Unknown parameter: $1 (try --help)${NC}" >&2
             exit 1
@@ -71,6 +75,14 @@ fi
 # postgres_data volume left by a previous install on this host (postgres only
 # applies the password on first init). Offer to reset it before starting.
 check_leftover_db_volume "$ENV_WAS_FRESH"
+
+# Pull the latest published images so a re-run over a previous install's stale
+# local images (or the :latest tag) actually refreshes them. --no-pull skips
+# this for offline reuse. compose up -d itself only pulls missing images.
+if [ -z "$NO_PULL" ]; then
+    echo -e "${GREEN}Pulling the latest images...${NC}"
+    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull
+fi
 
 echo -e "${GREEN}Starting the standalone stack...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d

@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: `install.sh` could start stale local images from a previous install.** The script only ran `docker compose up -d`, and Compose pulls an image only when it's absent locally — so re-running `install.sh` on a host with old images from an earlier install silently used those stale images (missing recent fixes). It now runs `docker compose pull` before `up -d` to refresh to the latest published images; new `--no-pull` flag skips the pull for offline reuse. (`update-docker.sh` already pulled.)
+
 - **Fix: Flower could not connect to Redis (`HELLO must be called with the client already authenticated`).** Both compose files set Flower's `CELERY_BROKER_URL` to `redis://redis:6379/0` — no password — while the Redis container runs with `--requirepass`, so the Celery monitoring UI crashed on startup (Flower's healthcheck then failed and the UI showed an error page). The broker URL now includes the password (`redis://:${REDIS_PASSWORD}@redis:6379/0`), matching worker/beat.
 
 - **Fix: `migrate` service failed with `No 'script_location' key found in configuration`.** The backend Docker image (`docker/Dockerfile`) never copied `backend/alembic.ini`, so `alembic upgrade head` inside the `migrate` container had no `script_location` and exited 255 — the backend, worker, and beat then never booted on a fresh `install.sh` run. The image now ships `alembic.ini` at `/app/backend/alembic.ini`, where Alembic expects it.
