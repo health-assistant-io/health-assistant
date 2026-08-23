@@ -80,6 +80,11 @@ POST_BASELINE_TABLES: dict[str, str] = {
     # OAuth2 client registry for the FHIR facade (api access layers plan).
     # (plan: dev/plans/api-access-layers-2026-07-23.md).
     "oauth_clients": "o1a2u3t4h5n6_create_oauth_clients",
+    # Native (mobile) push target registry — Phase 8 of the bridge SDK
+    # enhancement plan. Created with raw SQL (``CREATE TABLE IF NOT EXISTS``)
+    # rather than ``op.create_table``.
+    # (plan: dev/plans/bridge-sdk-integrations-enhancement-2026-08-12.md).
+    "mobile_push_targets": "m1o2b3i4l5e6_add_mobile_push_targets",
 }
 
 
@@ -97,9 +102,14 @@ def test_every_model_table_is_created_by_the_baseline(table):
             f"POST_BASELINE_TABLES lists {table!r} as added by "
             f"{migration!r}, but {migration_path.name} doesn't exist"
         )
-        assert (
-            f"op.create_table('{table}'" in migration_path.read_text()
-        ), (
+        migration_src = migration_path.read_text()
+        # Most follow-up migrations use ``op.create_table``; a few create the
+        # table via raw SQL (``CREATE TABLE IF NOT EXISTS``). Accept either.
+        created = (
+            f"op.create_table('{table}'" in migration_src
+            or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src
+        )
+        assert created, (
             f"POST_BASELINE_TABLES lists {table!r} as added by "
             f"{migration_path.name}, but that migration doesn't create it"
         )
