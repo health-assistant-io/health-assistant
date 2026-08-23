@@ -1,185 +1,101 @@
-# Health Assistant — Self-Hosted Installation Guide
+# Self-Hosted Installation Guide
 
-## Quick Start (Recommended)
+Health Assistant is a self-hosted, open-source health records platform. You own the data and the infrastructure. This guide covers installing it on your own machine or server with Docker; a single command takes you from a fresh clone to a running, configured instance. For running from source with hot-reload, see the [Development Guide](./DEVELOPMENT.md).
 
-Docker is the fastest way to get Health Assistant — a self-hosted, open-source health records platform — up and running. This quick start takes you from a fresh clone to a working install in seven steps: clone, generate secure keys, boot the stack, create your admin account, and sign in. Everything (UI, API, API docs) is served behind a single Nginx proxy on port 80.
+## Quick Start — Docker (recommended)
 
-### Setup
+Docker is the fastest way to get up and running. Everything (UI, API, task monitor) is served behind a single built-in Nginx proxy on port 80. You'll need: **Docker** with **Docker Compose** (Linux, WSL2, or macOS), **Git**, and **Python 3** (used only once to generate your secure keys). The stack needs about 2–3 GB of free RAM.
 
-1. **Install Docker** and Docker Compose on your system.
-2. **Clone the repository:**
+1. **Install Docker and Docker Compose**, then **clone the repository:**
+
    ```bash
    git clone https://github.com/health-assistant-io/health-assistant.git
-   ```
-
-   ```bash
    cd health-assistant
    ```
 
-3. **Initialize environment & secure keys:**
-   **Option A: Interactive Setup (Recommended)**
-   Run the setup script to copy the template to `.env`, **automatically generate secure passwords and cryptographic keys**, and interactively configure your environment settings (URLs, workers, debug mode, Web Push contact email):
-   ```bash
-   python scripts/setup_env.py
-   ```
-   The script generates: `SECRET_KEY`, `INTEGRATION_SECRET_KEY` (Fernet), `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, and a VAPID P-256 key pair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`). In Full Setup mode it also prompts for `VAPID_ADMIN_EMAIL` with a smart default derived from the APP_URL you enter (e.g. `https://health.example.com` → suggests `admin@health.example.com`).
-
-   **Option B: Manual setup**
-   If you cannot run the Python script, copy the template manually:
-   ```bash
-   cp .env.example .env
-   ```
-   *Note: If you choose manual setup, you **must** generate your own `SECRET_KEY`, `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, and `INTEGRATION_SECRET_KEY` (a base64url-encoded 32-byte Fernet key) and manually paste them into the `.env` file.*
-
-4. **Configure remaining settings:**
-   Open the newly created `.env` file in your preferred text editor. While your secure keys are set (if you used Option A), you should review and adjust other configurations like ports, `APP_URL`, or optional settings (email, AI, etc.) according to your environment.
-
-5. **Start the application:**
-   ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
-   ```
-   *(Note: This uses the recommended "Standalone" flavor with a built-in Nginx proxy on port 80. If you already run a reverse proxy like Traefik/Nginx, or if you want to set up a development environment, see the advanced sections below).*
-
-6. **Create your admin account (first-run wizard):**
-   Open [http://localhost](http://localhost) in your browser. On a fresh install the app detects that no admin exists and redirects you to the **setup wizard** instead of the login screen. Fill in:
-
-   - **Organization name** (the initial tenant — e.g. "My Organization"),
-   - **Admin email** and **password** (you choose these — there are no defaults),
-   - **Setup token**, *only if prompted*. This token prints to the backend container logs on first boot and is required for remote (non-localhost) access to prevent a stranger claiming your instance before you do. Localhost and dev deployments skip it.
-
-   Retrieve the token with:
+2. **Run the installer:**
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"
+   ./scripts/install.sh
    ```
 
-   On submit, the wizard creates your `SYSTEM_ADMIN` account + tenant and logs you straight in.
+   The installer:
+   - checks that Docker is installed and running,
+   - generates your `.env` file — it asks **one question** (the public app URL — press Enter on this machine to accept `http://localhost`), generates all secure keys and passwords automatically, and skips advanced options you don't need,
+   - starts the standalone stack and waits until the backend reports healthy,
+   - prints the URLs to open.
 
-   > **Setup-token modes (`SETUP_TOKEN_MODE`)** — for stores, automation, and LAN/firewalled installs you don't have to use the log-grep flow. Pick one of four modes (see `dev/audits/setup-token-modes.md`):
-   >
-   > | Mode | Behaviour | Recommended deploy |
-   > |---|---|---|
-   > | `log` (default) | Backend prints a one-time token to container logs; wizard requires it for non-localhost / non-dev. | Manual Docker installs behind an internet-exposed reverse proxy. The default — existing installs behave identically. |
-   > | `env` | Seed the token from `SETUP_BOOTSTRAP_TOKEN`; the launcher composes the wizard URL with `?token=<value>`. One-click, no log-grep. | Store bundlers (Umbrel/Runtipi/CasaOS/Cosmos) + Ansible/Terraform provisioning. `setup_env.py` Full Setup mode prompts for this and prints the ready-to-use launcher URL. |
-   > | `time` | Tokenless for `SETUP_TOKEN_GRACE_MINUTES` (default 30) after first boot, then required (lazy-falls-back to `log` if no env token was set). | LAN/firewalled installs where the operator is the only one who can reach the app in the first half hour. |
-   > | `disabled` | Never require. Logs a security warning on every fresh boot. | Only behind a firewall / VPN / `127.0.0.1` bind — opt-in only. |
-   >
-   > Localhost requests and dev/test envs always skip the token in every mode. Store-bundle recipe (env mode):
-   > ```env
-   > SETUP_TOKEN_MODE=env
-   > SETUP_BOOTSTRAP_TOKEN=<generated 24-char secret>
-   > ```
-   > Launch URL: `https://<your-host>/setup?token=<same value>`. The wizard auto-fills and the user clicks one button.
+   That's it. `install.sh` is safe to re-run after an update — it never overwrites an existing `.env`.
+
+   > **Prefer explicit steps?** The manual equivalent is `python3 scripts/setup_env.py` (Quick Start is the default), then `docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d`. Or edit `.env` by hand from the template — see [Advanced & Reference](#advanced--reference).
+
+3. **Create your admin account (first-run setup wizard):**
+
+   Open the app URL the installer prints. On a fresh install the app detects that no admin exists and redirects you to the **setup wizard** instead of the login screen. Fill in the **organization name**, and choose an **admin email and password**.
 
    > **There are no default login credentials.** The email and password you enter in the wizard are the ones you sign in with from then on.
 
-   **Headless / automation alternative.** If you're provisioning via Docker/Ansible and can't use a browser, create the admin from the CLI instead:
+   - **Localhost** installs (`http://localhost`) need **no setup token**.
+   - **Domain or LAN** installs get a **one-click setup URL** (`http://your-host/setup?token=…`) printed by the installer — the token is filled in for you; just click.
+   - If you used the manual commands instead, retrieve the token from the backend logs: `docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"`.
+
+4. **Verify it's working:**
 
    ```bash
-   docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+   curl http://localhost/health
+   # Expected: {"status":"healthy",...}
    ```
 
-   The `admin@example.com` / `securepassword` values are **placeholders** — replace them. `--password` is **required** (≥8 chars) — the insecure `admin123` default was removed (audit 2026-08); the script exits with an error if you omit it.
+   Open the app URL in your browser and you'll see the login screen.
 
-   **Clinical Catalogs (auto-seeded on every startup):**
-   The application runs a single ordered seed pipeline on boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy, first), diseases, medications, vaccines, clinical event types, allergies, **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these — they reconcile to the JSON seed files on every start.
+### What the installer configures (and what it doesn't)
 
-   The anatomy graph ships as `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/concept_edges.json` (edges, including anatomy hierarchy edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
+Quick Start writes production-oriented settings (`APP_ENV=production`, `DEBUG=false`, `TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
 
-   The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs are still available if you ever need to **force a re-seed** outside the startup pipeline, but they are no longer required for first-time setup. Specialized deployments can also import custom anatomy expansion packs — see [Optional: anatomy expansion packs](#optional-anatomy-expansion-packs) at the end of this guide.
-
-7. **Access the application:**
-   Once the services are running, open your web browser and navigate to:
-   - **Application (frontend UI):** [http://localhost](http://localhost) — this is what you'll use day-to-day. The standalone stack serves the UI, the API, and the API docs behind a single Nginx proxy on port 80.
-   - **API docs (Swagger):** [http://localhost/docs](http://localhost/docs) — interactive developer reference for the backend REST API.
-   - **Health check:** [http://localhost/health](http://localhost/health) — returns `{"status":"healthy",...}`.
-   - **Flower (task monitor):** [http://localhost/flower/](http://localhost/flower/) — Celery worker dashboard (behind the same proxy).
-
-   > Using the **bring-your-own-proxy** flavor instead? The UI/API aren't exposed publicly by default — they bind to `127.0.0.1`. Point your reverse proxy at the frontend (`:3000`) and backend (`:8000`) ports as described under [Production Deployment](#production-deployment). The `:3000` / `:8000` ports below only apply to the **development setup** (see [Development Guide](./DEVELOPMENT.md)).
-
----
-
-## First-Time Sign-In
-
-There are **two ways** the first admin account is created. You only need one.
-
-**Path A — the setup wizard (what this guide uses).** Step 6 above: open the URL, the app detects the fresh install, and the wizard creates your `SYSTEM_ADMIN` + tenant. You're logged in immediately after.
-
-**Path B — the CLI script (headless/automation).** `create_system_admin.py` (shown in step 6's callout) writes the admin + tenant directly to the database. Useful for Docker/Ansible provisioning where no browser is available.
-
-Once signed in, additional users join by **invite token** — an admin mints one via the in-app user management or `POST /auth/invite`, and the invitee registers with it. Open self-sign-up is disabled by design. See the [Tenancy & User Management guide](./TENANCY_AND_USER_MANAGEMENT.md) for the invite flow.
-
-You can optionally **link your user account to a Patient record** (so the dashboard and biomarker trends show your own data) or to a Doctor record (for clinical staff) from **Profile** in the app. For the full first-hour walkthrough — adding a person, uploading a lab report, configuring the AI, connecting a wearable — see the [Getting Started Guide](./GETTING_STARTED_GUIDE.md).
-
-## Development Setup
-
-If you are looking to contribute to the codebase or run the application from source with hot-reloading, please see our dedicated [Development Guide](./DEVELOPMENT.md) instead of this installation manual.
-
-## Verification
-
-Once running via the standalone setup (Option A), Nginx exposes the application on port 80. You can test it using the following commands:
-
-### Test Backend
-
-```bash
-curl http://localhost/health
-# Expected: {"status":"healthy","database":"connected","redis":"not_configured"}
-```
-
-> The `redis` field reports `not_configured` because the health handler
-> doesn't probe Redis directly — it's a static string. Redis connectivity
-> is exercised indirectly through the Celery worker and WebSocket paths.
-> If the worker is up (check Flower at `/flower/`), Redis is fine.
-
-### Test Frontend
-
-Open http://localhost in your browser. You should see the login screen.
+- **AI features** — OCR, document extraction, and the chat assistant need an **AI provider key**, configured in-app (System Admin → AI) or via the `OPENAI_*` env vars. The app runs fine without one; you just don't get the AI features.
+- **Demo mode, the Flower task monitor, and anatomy expansion packs** exist but aren't needed for a first install — see [Advanced & Reference](#advanced--reference).
+- **TLS** is not automated — for an internet-facing domain, add HTTPS after install (see [TLS](#tls)).
 
 ## Production Deployment
 
-When deploying to production, modify the variables within your `.env` file to ensure the system is secure:
-
-- Update `APP_ENV` to `production`
-- Update `DEBUG` to `false`
-- Update `DATABASE_URL` and `REDIS_URL` to point to your production instances rather than `localhost` (if using external databases).
+Before exposing an instance to the internet, review the [Security Checklist](#security-checklist) and the [TLS](#tls) section.
 
 ### Deployment Flavors
 
-We provide two different production deployment configurations depending on your infrastructure setup:
+We provide two production deployment configurations:
 
 #### Flavor 1: Standalone (All-in-One)
-**Recommended for fresh VPS deployments.** 
-This flavor includes a fully configured Nginx reverse proxy running inside a Docker container. It routes traffic securely to the internal services and exposes only port 80 to the public web.
+
+**Recommended for fresh VPS deployments.** Includes a fully configured Nginx reverse proxy running in a container. It routes traffic to the internal services and exposes only port 80.
 
 ```bash
-# Start the standalone production stack
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
-*Note: Before running, you may want to edit `docker/nginx.conf` to set your actual `server_name` instead of the default catch-all `_`.*
+
+*Note: edit `docker/nginx.conf` to set your actual `server_name` instead of the default catch-all `_`.*
 
 #### Flavor 2: Bring-Your-Own-Proxy
-**Recommended if you already run a proxy server (Traefik, Nginx Proxy Manager, Cloudflare Tunnel, etc.).**
-This flavor runs the application containers without an internal proxy. By default, the `backend`, `frontend`, and `flower` services bind securely to `127.0.0.1` on the host machine to prevent direct external access. You are responsible for configuring your proxy to route traffic to these local ports.
+
+**Recommended if you already run a proxy server** (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel, etc.). Runs the application containers without an internal proxy; `backend`, `frontend`, and `flower` bind securely to `127.0.0.1`. Point your proxy at the frontend (`:3000`) and backend (`:8000`).
 
 ```bash
-# Start the bring-your-own-proxy production stack
 docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 ```
 
 ### Container images & custom registries
 
-The compose files pull **pre-built images** — they have no `build:` step, so `docker compose up` fetches images from a registry rather than building locally. This applies to every flavor above and to the quick start. By default the images come from the public GitHub Container Registry:
+The compose files pull **pre-built images** — there is no `build:` step. By default they come from the GitHub Container Registry:
 
 ```
 ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest
 ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest
 ```
 
-Three environment variables (set in `.env`) redirect the images without editing the compose file:
+Three `.env` variables redirect the images without editing the compose file:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REGISTRY` | `ghcr.io` | Point at your own registry or mirror (a private registry, an air-gapped mirror, etc.) |
+| `REGISTRY` | `ghcr.io` | Your own registry or mirror |
 | `REPOSITORY` | `health-assistant-io/health-assistant` | Your namespace or fork |
 | `IMAGE_TAG` | `latest` | Pin a specific release for reproducible deploys |
 
@@ -189,24 +105,11 @@ Three environment variables (set in `.env`) redirect the images without editing 
 IMAGE_TAG=0.3.2   # example — use a tag published to your registry (see CHANGELOG.md)
 ```
 
-**Use your own registry** — a fork that publishes its own images, or an internal mirror. Add to `.env`:
-
-```bash
-REGISTRY=registry.yourdomain.tld
-REPOSITORY=myorg/health-assistant
-```
-
-**Run from source** — no registry, offline, or a modified build. Since the compose files only pull, build and tag the images locally first; `docker compose up` then reuses the local images instead of pulling:
+**Run from source** — no registry, offline, or a modified build. Build and tag the images locally first; `docker compose up` then reuses them:
 
 ```bash
 docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest -f docker/Dockerfile .
-```
-
-```bash
 docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest -f docker/Dockerfile.frontend .
-```
-
-```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
@@ -214,7 +117,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 
 - [ ] Change `SECRET_KEY` to a secure random value *(handled by `setup_env.py` if used)*
 - [ ] **Set `INTEGRATION_SECRET_KEY`** (Fernet key) *(handled by `setup_env.py` if used)*
-- [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). Easiest path: `python scripts/setup_env.py` generates both keys and prompts for the email automatically. Manual alternative: `npx web-push generate-vapid-keys` for the key pair, then set `VAPID_ADMIN_EMAIL` to a real address you monitor (push services use it to contact you about delivery issues). *(Optional in development — Web Push is silently skipped when keys are missing.)*
+- [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). Easiest path: `python3 scripts/setup_env.py` generates both keys and prompts for the email automatically. Manual alternative: `npx web-push generate-vapid-keys`, then set `VAPID_ADMIN_EMAIL` to a real address you monitor. *(Optional in development — Web Push is silently skipped when keys are missing.)*
 - [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value *(handled by `setup_env.py` if used)*
 - [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** *(handled by `setup_env.py` if used)*
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
@@ -223,10 +126,10 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
 - [ ] Set up database backups
-- [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`) — just ensure Redis is reachable; it degrades open if Redis is down (audit A2)
-- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS) (audit A7)
+- [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`)
+- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS)
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
-- [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation). Senders must sign payloads with `HMAC-SHA256`; unsigned requests are rejected (audit 2026-08)
+- [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation); unsigned requests are rejected
 - [ ] Set `TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
 - [ ] Set `REDIS_PASSWORD` — the docker stacks require it and Redis runs with `requirepass`
 - [ ] API docs (`/docs`) are disabled in production by default; set `ENABLE_API_DOCS=true` only if you understand the exposure
@@ -235,7 +138,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 
 Health data must never cross the network in cleartext. The standalone nginx flavor ships HTTP-only for local/VPN use — for any internet-facing deployment pick ONE:
 
-1. **In-stack TLS (nginx-TLS.conf):** copy `docker/nginx-TLS.conf`, replace `SERVER_NAME` with your domain, mount your certificate (`fullchain.pem` + `privkey.pem`) as shown in the file header, and mount it over `nginx.conf`. Obtain the certificate on the host with certbot webroot:
+1. **In-stack TLS (`nginx-TLS.conf`):** copy `docker/nginx-TLS.conf`, replace `SERVER_NAME` with your domain, mount your certificate (`fullchain.pem` + `privkey.pem`) as shown in the file header, and mount it over `nginx.conf`. Obtain the certificate on the host with certbot webroot:
 
    ```bash
    sudo apt install certbot
@@ -248,25 +151,24 @@ Health data must never cross the network in cleartext. The standalone nginx flav
 
 ### Docker (recommended)
 
-This is the update path for the standalone / prod compose stacks described above:
+Keep a Docker install up to date with one command:
+
+```bash
+./scripts/update-docker.sh
+```
+
+It pulls the latest code (best-effort — a dirty tree won't break your running install), refreshes the container images, restarts the stack, and waits for the backend to become healthy again.
+
+Prefer the explicit four-step sequence? The manual equivalent is:
 
 ```bash
 git pull
-```
-
-```bash
-python scripts/setup_env.py   # only needed when .env.example gained new required vars
-```
-
-```bash
+python3 scripts/setup_env.py   # only needed when .env.example gained new required vars
 docker compose --env-file .env -f docker/docker-compose.standalone.yml pull
-```
-
-```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
-The application runs its seed pipeline on every boot, so new catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist).
+The application runs its seed pipeline on every boot, so catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist).
 
 ### From source (development)
 
@@ -306,48 +208,87 @@ lsof -i :8000
 lsof -i :3000
 ```
 
-Then kill it, e.g. for port 8000:
+Then kill it, e.g. for port 80:
 
 ```bash
-lsof -ti:8000 | xargs kill -9
+lsof -ti:80 | xargs kill -9
 ```
+
+### Backend Not Becoming Healthy (first boot)
+
+The installer waits up to three minutes. If it times out, check the backend logs for the cause:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend --tail=100
+```
+
+Common causes: an existing `.env` with stale or placeholder secrets, or a port conflict (see above). Delete `.env` and re-run `./scripts/install.sh` to regenerate clean secrets.
 
 ### Backend Import Errors
 
 ```bash
-cd backend
-```
-
-```bash
-source venv/bin/activate
-```
-
-```bash
-python -c "from app.main import app"   # should print nothing (no errors)
-```
-
-### Frontend Build Errors
-
-```bash
-cd frontend
-```
-
-```bash
-npm run build   # surfaces TypeScript / ESLint errors
+cd backend && source venv/bin/activate && python -c "from app.main import app"
 ```
 
 ### Database Connection Error
 
 - Check `DATABASE_URL` in `.env`.
-- Ensure PostgreSQL is running: `systemctl status postgresql` (or `docker compose … ps`).
-- Verify the database exists: `psql -U admin -l`.
-- Remember PostgreSQL needs the **TimescaleDB** extension — a plain Postgres will crash on the telemetry hypertable migration. The compose files ship a compatible image.
+- Ensure PostgreSQL is running: `docker compose --env-file .env -f docker/docker-compose.standalone.yml ps`.
+- Remember PostgreSQL needs the **TimescaleDB extension** — a plain Postgres will crash on the telemetry hypertable migration. The compose files ship a compatible image.
 
-## Optional: anatomy expansion packs
+## Advanced & Reference
 
-The base anatomy catalog (54 nodes) ships with the app and is seeded automatically on every boot. For specialized deployments (e.g. ophthalmology, neurology) you can import custom anatomy packs.
+### Manual `.env` setup
 
-From a local file:
+If you prefer not to use `setup_env.py`, copy the template and fill in the required values yourself:
+
+```bash
+cp .env.example .env
+```
+
+You **must** generate your own `SECRET_KEY`, `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, `REDIS_PASSWORD`, and `INTEGRATION_SECRET_KEY` (a base64url-encoded 32-byte Fernet key), plus the VAPID pair for production, and paste them into the `.env` file. `setup_env.py`'s Keys Only mode (`python3 scripts/setup_env.py --mode=3`) generates just the keys and leaves everything else at the template defaults.
+
+### Setup-token modes
+
+The first-run wizard's token protects a fresh instance from being claimed by a stranger before you do. Four modes exist (see `dev/audits/setup-token-modes.md`):
+
+| Mode | Behaviour | Recommended deploy |
+|---|---|---|
+| `log` (default) | Backend prints a one-time token to container logs; wizard requires it for non-localhost / non-dev. | Manual Docker installs behind an internet-exposed reverse proxy. |
+| `env` | Seed the token from `SETUP_BOOTSTRAP_TOKEN`; the launcher composes the wizard URL with `?token=<value>`. One-click, no log-grep. | Store bundlers (Umbrel/Runtipi/CasaOS/Cosmos) + Ansible/Terraform provisioning. Quick Start chooses this automatically for domain/LAN URLs. |
+| `time` | Tokenless for `SETUP_TOKEN_GRACE_MINUTES` (default 30) after first boot, then required (lazy-falls-back to `log` if no env token was set). | LAN/firewalled installs where the operator is the only one who can reach the app in the first half hour. |
+| `disabled` | Never require. Logs a security warning on every fresh boot. | Only behind a firewall / VPN / `127.0.0.1` bind — opt-in only. |
+
+Localhost requests and dev/test envs always skip the token in every mode. Store-bundle recipe (env mode):
+
+```env
+SETUP_TOKEN_MODE=env
+SETUP_BOOTSTRAP_TOKEN=<generated 24-char secret>
+```
+
+Launch URL: `https://<your-host>/setup?token=<same value>`. The wizard auto-fills and the user clicks one button.
+
+### Headless / automation alternative
+
+If you're provisioning via Docker/Ansible and can't use a browser, create the admin from the CLI instead:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend python scripts/create_system_admin.py --email admin@example.com --password securepassword --tenant "My Organization"
+```
+
+The `admin@example.com` / `securepassword` values are **placeholders** — replace them. `--password` is **required** (≥8 chars).
+
+### First-run seeding & catalogs
+
+The application runs an ordered seed pipeline on every boot (`SeedService.seed_all()` — see [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md)) that idempotently upserts: **concepts** (taxonomy), diseases, medications, vaccines, clinical event types, allergies, the **anatomy graph** (54 body structures + topology edges), **concept edges** (including specialty→organ links), the **default biomarker catalog** (units + standard lab-test definitions), and **biomarker panels**. No manual action is required for any of these.
+
+The anatomy graph ships as `backend/data/seeds/anatomy_structures.json` (nodes) and `backend/data/seeds/concept_edges.json` (edges) — powering the Anatomy Explorer UI and body-location selection in clinical events.
+
+The standalone `scripts/seed_default_catalog.py` / `scripts/seed_anatomy.py` CLIs can **force a re-seed** outside the startup pipeline, and specialized deployments can import custom anatomy expansion packs — see [Optional: anatomy expansion packs](#optional-anatomy-expansion-packs).
+
+### Optional: anatomy expansion packs
+
+The base anatomy catalog (54 nodes) ships with the app and is seeded automatically on every boot. For specialized deployments (e.g. ophthalmology, neurology) you can import custom anatomy packs:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
