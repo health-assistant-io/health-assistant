@@ -11,12 +11,21 @@
 #   ./scripts/install.sh --env-only  # generate .env only, don't start
 #   ./scripts/install.sh --no-wait   # skip the backend health-wait
 #   ./scripts/install.sh --no-pull   # don't fetch newer images (offline reuse)
+#   ./scripts/install.sh --reset     # wipe stack data volumes, then reinstall
+#   ./scripts/install.sh --reset --yes   # same, no confirmation prompt
+#   ./scripts/install.sh --reset --yes --reset-all  # also wipe user uploads
 #   ./scripts/install.sh -h|--help   # print this help and exit
 #
 # Idempotent: safe to re-run after `git pull` — it pulls the latest published
 # images (so stale local images from a previous install are refreshed), compose
 # up -d is a no-op when the stack is already running, and .env is never
 # overwritten.
+#
+# --reset force-refreshes the data: stops the stack and deletes the
+# postgres_data + redis_data volumes (and uploads with --reset-all) before
+# pulling and starting fresh — for when a previous install left stale/corrupt
+# volumes behind even though .env still exists. Destructive; requires
+# confirmation unless --yes.
 #
 # Windows: requires WSL2 or Git-Bash (bash).
 
@@ -35,6 +44,9 @@ while [[ "$#" -gt 0 ]]; do
         --env-only) ENV_ONLY=1 ;;
         --no-wait) NO_WAIT=1 ;;
         --no-pull) NO_PULL=1 ;;
+        --reset) RESET=1 ;;
+        --yes) RESET_YES=1 ;;
+        --reset-all) RESET_ALL=1 ;;
         *)
             echo -e "${RED}Unknown parameter: $1 (try --help)${NC}" >&2
             exit 1
@@ -69,6 +81,18 @@ if [ -n "$ENV_ONLY" ]; then
     echo -e "${GREEN}Done — .env is ready. Start the stack with:${NC}"
     echo "  $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d"
     exit 0
+fi
+
+# --reset: force-refresh the data before starting. Wipes the stack's data
+# volumes (postgres + redis; uploads with --reset-all) even when .env already
+# exists — covers stale/corrupt volumes from a previous install. After a reset
+# the leftover-volume guard below is moot (volumes are gone).
+if [ -n "$RESET" ]; then
+    RESET_ARGS=""
+    [ -n "$RESET_YES" ] && RESET_ARGS="$RESET_ARGS --yes"
+    [ -n "$RESET_ALL" ] && RESET_ARGS="$RESET_ARGS --all"
+    # shellcheck disable=SC2086
+    reset_stack_data $RESET_ARGS
 fi
 
 # Leftover-volume guard: a fresh .env's new POSTGRES_PASSWORD can't match a

@@ -48,6 +48,17 @@ require_env() {
     fi
 }
 
+# Resolve the compose project name so we can reason about named volumes.
+# Fallback: the compose file lives in docker/, so the default project is
+# "docker" (matches reset-dev-db.sh).
+resolve_compose_project() {
+    local PROJECT
+    PROJECT="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS config --format json 2>/dev/null \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin).get("name",""))' 2>/dev/null || true)"
+    [ -z "$PROJECT" ] && PROJECT="docker"
+    printf '%s' "$PROJECT"
+}
+
 # Leftover-volume guard — call after freshly (re)generating .env.
 #
 # On a fresh clone, a leftover Postgres volume from a *previous* install on
@@ -64,10 +75,7 @@ require_env() {
 check_leftover_db_volume() {
     [ "$1" = "1" ] || return 0
     local PROJECT PG_VOL RESET
-    PROJECT="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS config --format json 2>/dev/null \
-        | python3 -c 'import sys,json; print(json.load(sys.stdin).get("name",""))' 2>/dev/null || true)"
-    # Fallback: the compose file lives in docker/, so the default project is "docker".
-    [ -z "$PROJECT" ] && PROJECT="docker"
+    PROJECT="$(resolve_compose_project)"
     PG_VOL="${PROJECT}_postgres_data"
     if docker volume inspect "$PG_VOL" >/dev/null 2>&1; then
         echo -e "${YELLOW}"
@@ -90,6 +98,65 @@ check_leftover_db_volume() {
             die "Aborted. Restore your previous .env (it holds the matching POSTGRES_PASSWORD) and re-run, or remove the volume manually: docker volume rm ${PG_VOL}"
         fi
     fi
+}
+
+# Force-refresh data volumes (install.sh --reset).
+#
+# Stops the stack and removes the compose project's named data volumes
+# (postgres_data + redis_data; uploads only with --reset-all), so the next
+# `up -d` starts from empty storage. Unlike check_leftover_db_volume this is
+# unconditional — it fires even when .env already exists, covering the case of
+# an old install whose volumes are stale/corrupt but whose .env is kept.
+#
+# Usage: reset_stack_data [--yes] [--all]
+#   --yes  skip the confirmation prompt
+#   --all  also remove the uploads volume (user files)
+reset_stack_data() {
+    local PROJECT PG_VOL REDIS_VOL UPLOADS_VOL ASSUME_YES=0 INCLUDE_UPLOADS=0 arg
+    for arg in "$@"; do
+        case "$arg" in
+            --yes) ASSUME_YES=1 ;;
+            --all) INCLUDE_UPLOADS=1 ;;
+        esac
+    done
+    PROJECT="$(resolve_compose_project)"
+    PG_VOL="${PROJECT}_postgres_data"
+    REDIS_VOL="${PROJECT}_redis_data"
+    UPLOADS_VOL="${PROJECT}_uploads"
+
+    echo
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}  THIS WILL PERMANENTLY DELETE THE STACK'S DATA${NC}"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  Project:   ${PROJECT}"
+    echo -e "  Volumes:   ${RED}${PG_VOL}${NC}, ${RED}${REDIS_VOL}${NC}"
+    if [ "$INCLUDE_UPLOADS" = "1" ]; then
+        echo -e "             ${RED}${UPLOADS_VOL}${NC} (--reset-all)"
+    else
+        echo -e "             ${UPLOADS_VOL} preserved (use --reset-all to wipe user files)"
+    fi
+    echo -e "  .env:      kept (never overwritten)"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$ASSUME_YES" != "1" ]; then
+        read -r -p "Type 'yes' to confirm and reset: " REPLY
+        [ "$REPLY" = "yes" ] || die "Aborted — nothing was changed."
+    fi
+
+    # Stop the stack first (volumes in use can't be removed). `down` without -v
+    # preserves named volumes; we remove them explicitly below.
+    echo -e "${YELLOW}Stopping the stack...${NC}"
+    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+
+    for VOL in "$PG_VOL" "$REDIS_VOL" $([ "$INCLUDE_UPLOADS" = "1" ] && echo "$UPLOADS_VOL"); do
+        if docker volume inspect "$VOL" >/dev/null 2>&1; then
+            docker volume rm "$VOL" >/dev/null 2>&1 \
+                && echo -e "${GREEN}Removed ${VOL}${NC}" \
+                || echo -e "${YELLOW}Could not remove ${VOL} (left in place)${NC}"
+        else
+            echo -e "${GREEN}${VOL} did not exist — nothing to remove.${NC}"
+        fi
+    done
+    echo -e "${GREEN}Data reset complete — the stack will start from empty storage.${NC}"
 }
 
 # Wait for the backend healthcheck (container name is hardcoded by the
