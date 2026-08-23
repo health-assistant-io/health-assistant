@@ -24,11 +24,9 @@ COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.
 COPY --from=deps /usr/local/bin /usr/local/bin
 
 # Application code — allowlisted paths only (.dockerignore guards the rest).
-COPY backend/app /app/backend/app
-COPY backend/alembic /app/backend/alembic
-COPY backend/alembic.ini /app/backend/alembic.ini
-COPY backend/scripts /app/backend/scripts
-COPY backend/requirements.txt backend/pytest.ini /app/backend/
+# Consolidated multi-source COPY so new backend files (e.g. alembic.ini) can't
+# silently miss the image.
+COPY backend/app backend/alembic backend/alembic.ini backend/scripts backend/requirements.txt backend/pytest.ini /app/backend/
 COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).

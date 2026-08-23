@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - **Fix: `migrate` service failed with `No 'script_location' key found in configuration`.** The backend Docker image (`docker/Dockerfile`) never copied `backend/alembic.ini`, so `alembic upgrade head` inside the `migrate` container had no `script_location` and exited 255 — the backend, worker, and beat then never booted on a fresh `install.sh` run. The image now ships `alembic.ini` at `/app/backend/alembic.ini`, where Alembic expects it.
+  - Cleanup: the backend/worker Dockerfiles' application-code `COPY`s are consolidated into a single multi-source line so a future new `backend/` file (like `alembic.ini`) can't silently miss the image again; `backend/alembic.ini` no longer carries the stale placeholder `sqlalchemy.url = …admin123…` (the URL is injected at runtime by `alembic/env.py:get_url()` from `app.core.config`).
 
 ## [v0.5.0] - 2026-08-23
 

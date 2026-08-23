@@ -20,10 +20,9 @@ FROM base AS runtime
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
 
-COPY backend/app /app/backend/app
-COPY backend/alembic /app/backend/alembic
-COPY backend/scripts /app/backend/scripts
-COPY backend/requirements.txt backend/pytest.ini /app/backend/
+# Application code — allowlisted paths only. Consolidated multi-source COPY so
+# new backend files (e.g. alembic.ini) can't silently miss the image.
+COPY backend/app backend/alembic backend/alembic.ini backend/scripts backend/requirements.txt backend/pytest.ini /app/backend/
 COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
