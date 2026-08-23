@@ -55,3 +55,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for organization-owned repos (gitleaks-action v2 breaks on
+          # orgs without a license). Free OSS license: gitleaks.io.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
