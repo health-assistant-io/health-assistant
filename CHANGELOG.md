@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-08-23
+
 - **Beginner-first install & setup overhaul.** A single command now takes a fresh clone to a running Docker stack, and advanced options are hidden from first-timers without losing any feature.
   - New `scripts/install.sh` — one-command Docker install: pre-flight checks (cwd, Docker, daemon, compose), generates `.env` interactively (Quick Start default), starts the standalone stack, waits for the backend healthcheck, then prints the app URL + a one-click first-run setup link. Idempotent (never overwrites `.env`); flags `--env-only` / `--no-wait`.
   - New `scripts/update-docker.sh` — documented Docker update path in one command: `git pull --ff-only` (warn-and-continue so a dirty tree never bricks a running install), image pull, restart, wait-for-healthy. Flags `--no-pull` / `--no-wait`.
