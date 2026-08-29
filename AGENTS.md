@@ -66,3 +66,19 @@ bridge changes commit here in `core/`.
 | Android app / KMP / Kotlin SDK / bridge read paths | `mobile` |
 | Docs, docs-tree.json, SEO, positioning | `documentation` |
 | Version bump / release / CHANGELOG | `versioning` |
+| New shared-looking UI / family UI library | `ha-assistant-ui` |
+
+## Shared UI library (assistant-ui)
+
+`@neuronection/assistant-ui` is **our first-party family library**
+(sibling checkout `Projects/assistant-ui`), shared with study- and
+career-assistant — see the `ha-assistant-ui` skill. Core rules:
+
+- **Check the library first for NEW generic UI** — no new local copies of
+  things the family ships (its README has the component index; the bulk
+  migration of `frontend/src/components/ui` is roadmap Phase 3, don't do
+  it ad hoc).
+- First-party means mutable: if the API doesn't fit, change the library
+  (two-app rule + `scripts/verify-in-app.mjs` — details in the skill),
+  never fork or wrap it.
+- Styling via `--as-*` tokens / `data-as-*` only.
