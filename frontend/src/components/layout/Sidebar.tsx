@@ -9,7 +9,8 @@ import {
   User,
   Bell,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Info
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -174,7 +175,10 @@ function Sidebar() {
     // 5. AI Assistant
     { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
 
-    // 6. Administration (merged System + Tenant, role-gated)
+    // 6. About
+    { path: '/about', labelKey: 'common.about', icon: Info },
+
+    // 7. Administration (merged System + Tenant, role-gated)
     {
       path: '/administration',
       labelKey: 'common.administration',
