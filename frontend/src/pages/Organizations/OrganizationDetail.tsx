@@ -102,7 +102,7 @@ function OrganizationDetail() {
         subtitle={organization.type?.[0]?.coding?.[0]?.display || 'Medical Facility'}
         icon={<Building2 className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('organizations.title'), path: '/organizations' }
+          { label: t('organizations.title'), href: '/organizations' }
         ]}
         showBackButton={true}
       />

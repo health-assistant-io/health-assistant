@@ -99,7 +99,7 @@ function Patients() {
       <PageHeader
         title={t('patients.directory')}
         subtitle={t('patients.manage_profiles')}
-        icon={<Users className="w-8 h-8" />}
+        icon={<Users className="size-5" />}
         breadcrumbs={[]}
       />
 

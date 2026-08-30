@@ -16,7 +16,7 @@ interface Props {
   size?: 'sm' | 'md';
 }
 
-export const AIBadge: React.FC<Props> = ({ 
+export const ActiveTaskBadge: React.FC<Props> = ({ 
   className = '', 
   showText = true, 
   workflow,

@@ -6,7 +6,7 @@ import { usePatientStore } from '../../../store/slices/patientSlice';
 import { getAnomalies, BiomarkerAnomaly } from '../../../services/analyticsService';
 import { formatBiomarkerValue, formatUnit } from '../../../utils/biomarkerUtils';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 const severityConfig: Record<string, { icon: React.ReactNode; classes: string }> = {
   critical: { icon: <AlertTriangle className="w-4 h-4" />, classes: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-400' },
@@ -75,7 +75,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <CardTitle
+        <DashboardCardTitle
           to="/biomarkers"
           title={t('dashboard.cards.anomaly_alerts', { defaultValue: 'Anomaly Detection' })}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"

@@ -117,7 +117,7 @@ function AllergyList() {
           defaultValue: 'Allergies for {{name}}',
           name: `${currentPatient.name?.given?.join(' ') ?? ''} ${currentPatient.name?.family ?? ''}`.trim(),
         })}
-        icon={<ShieldAlert className="w-8 h-8" />}
+        icon={<ShieldAlert className="size-5" />}
         breadcrumbs={[]}
       />
 

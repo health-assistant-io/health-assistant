@@ -132,7 +132,7 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
                   <InfoTooltip 
                     className="p-1"
                     content="Time ranges automatically aggregate high-frequency telemetry metrics into optimized buckets (e.g., hourly, daily) while preserving exact measurements for standard clinical data."
-                    position="left"
+                    side="left"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -297,7 +297,7 @@ function BiomarkerTrends() {
       <PageHeader
         title={t('biomarkers.title')}
         subtitle={t('biomarkers.subtitle')}
-        icon={<TrendingUp className="w-8 h-8" />}
+        icon={<TrendingUp className="size-5" />}
         breadcrumbs={[]}
         showBackButton={true}
       />

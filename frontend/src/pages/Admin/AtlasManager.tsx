@@ -59,7 +59,7 @@ export const AtlasManager: React.FC = () => {
       <PageHeader
         title={t('anatomy.atlas_manager', { defaultValue: 'Anatomy Atlas' })}
         subtitle={t('anatomy.atlas_subtitle', { defaultValue: 'Manage body figures and views' })}
-        icon={<ImageIcon className="w-6 h-6 text-blue-500" />}
+        icon={<ImageIcon className="size-5" />}
       />
       <PageContainer className="px-6 pt-2 pb-6">
         <div className="flex items-center justify-between mb-4">
@@ -306,7 +306,7 @@ const FigureForm: React.FC<FigureFormProps> = ({ isOpen, onClose, figure, onSave
   const labelCls = "text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1 block";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={isEdit ? t('anatomy.atlas_edit', { defaultValue: 'Edit Figure' }) : t('anatomy.atlas_add', { defaultValue: 'Add Figure' })} className="max-w-3xl">
+    <Modal open={isOpen} onOpenChange={(o) => !o && onClose()} title={isEdit ? t('anatomy.atlas_edit', { defaultValue: 'Edit Figure' }) : t('anatomy.atlas_add', { defaultValue: 'Add Figure' })} className="max-w-3xl">
       <div className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
         {error && <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl px-3 py-2">{error}</div>}
 

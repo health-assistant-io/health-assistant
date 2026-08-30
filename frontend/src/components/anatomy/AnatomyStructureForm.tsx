@@ -87,8 +87,8 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={isEditing ? t('anatomy.edit_title') : t('anatomy.add_custom_title')}
       className="max-w-lg"
     >

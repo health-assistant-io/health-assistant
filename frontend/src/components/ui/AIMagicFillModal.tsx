@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sparkles, Wand2, Loader2 } from 'lucide-react';
 import { getAIAssistance } from '../../services/aiAssistanceService';
-import { AIBadge } from './AIBadge';
+import { ActiveTaskBadge } from './ActiveTaskBadge';
 import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface Props {
@@ -74,7 +74,7 @@ export const AIMagicFillModal: React.FC<Props> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-2xl font-black text-brand-navy dark:text-dark-text tracking-tight uppercase">{title}</h2>
-                <AIBadge taskType={taskType} />
+                <ActiveTaskBadge taskType={taskType} />
               </div>
               <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-[0.2em] mt-1">{subtitle}</p>
             </div>

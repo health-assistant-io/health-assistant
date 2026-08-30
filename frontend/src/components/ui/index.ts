@@ -6,7 +6,7 @@ export { default as Table } from './Table';
 export { default as PageHeader } from './PageHeader';
 export { LoadingState } from './LoadingState';
 export { NoPatientState } from './NoPatientState';
-export { AIBadge } from './AIBadge';
+export { ActiveTaskBadge } from './ActiveTaskBadge';
 export { Portal } from './Portal';
 export * from './InfoTooltip';
 export { DatePicker } from './DatePicker';

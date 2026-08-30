@@ -344,6 +344,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
                 {t('vaccinations.modal.administered_on')}
               </label>
               <DatePicker
+                placeholder={t('common.select_date', 'Select date')}
                 value={form.administered_at}
                 onChange={(d) => setForm({ ...form, administered_at: d })}
                 allowClear

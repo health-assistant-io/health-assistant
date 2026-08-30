@@ -3,6 +3,7 @@ import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AITaskAssignment, AIProvider, AIModel } from '../../api/aiConfig';
 import { Search, ChevronDown, Check, X, Cpu, Settings as SettingsIcon, Trash2, Globe, Shield, User, AudioLines, type LucideIcon } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { ModelPicker } from '@neuronection/assistant-ui';
 
 interface TaskTypeDef {
   value: string;
@@ -287,84 +288,25 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
                       Select Provider & Model
                     </label>
-                    <div className="relative">
-                      <div 
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-dark-surface outline-none flex items-center justify-between cursor-pointer"
-                        onClick={() => setIsDropdownOpen(isOpen ? null : (assignment?.id || `new-${taskType.value}`))}
-                      >
-                        <span className={(assignment || editData.model_id) ? "text-gray-900 dark:text-dark-text" : "text-gray-400"}>
-                          {isEditing 
-                            ? ((providers.find(p => p.id === editData.provider_id)?.name || "Select Provider") + " / " + (models.find(m => m.id === editData.model_id)?.name || "Select Model"))
-                            : "Choose a model..."
-                          }
-                        </span>
-                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                      </div>
-
-                      {isOpen && (
-                        <div className="absolute z-20 w-full mt-1 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                          <div className="p-2 border-b border-gray-100 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                              <input
-                                type="text"
-                                autoFocus
-                                placeholder="Search models or providers..."
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 dark:text-dark-text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </div>
-                          </div>
-                          
-                          <div className="max-h-60 overflow-y-auto">
-                            {filteredGroupedModels.length > 0 ? (
-                              filteredGroupedModels.map((group) => (
-                                <div key={group.provider.id}>
-                                  <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-dark-bg/50 border-y border-gray-100 dark:border-dark-border">
-                                    {group.provider.name}
-                                  </div>
-                                  {group.models.map((m) => (
-                                    <div
-                                      key={m.id}
-                                      className={`px-4 py-2.5 text-sm flex items-center justify-between cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${(isEditing ? editData.model_id === m.id : false) ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-dark-text'}`}
-                                      onClick={() => {
-                                        if (isEditing) {
-                                          handleEditChange('provider_id', group.provider.id);
-                                          handleEditChange('model_id', m.id);
-                                        } else {
-                                          handleCreateAssignment(taskType.value, group.provider.id, m.id);
-                                        }
-                                        setIsDropdownOpen(null);
-                                        setSearchTerm('');
-                                      }}
-                                    >
-                                      <div className="flex flex-col">
-                                        <span className="font-medium">{m.name}</span>
-                                        <span className="text-[10px] text-gray-400">{m.model_name}</span>
-                                      </div>
-                                      {(isEditing ? editData.model_id === m.id : false) && <Check className="w-4 h-4" />}
-                                    </div>
-                                  ))}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="px-4 py-6 text-sm text-gray-400 italic text-center">
-                                No models found matching "{searchTerm}"
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {isOpen && (
-                        <div 
-                          className="fixed inset-0 z-10" 
-                          onClick={() => setIsDropdownOpen(null)}
-                        />
-                      )}
-                    </div>
+                    <ModelPicker
+                      providers={groupedModels.map(group => ({
+                        id: group.provider.id,
+                        name: group.provider.name,
+                        models: group.models.map(m => ({ id: m.id, name: m.name })),
+                      }))}
+                      value={(isEditing ? editData.model_id : currentModel?.id) ?? ''}
+                      onChange={(modelId: string) => {
+                        const group = groupedModels.find(g => g.models.some(m => m.id === modelId));
+                        if (isEditing) {
+                          handleEditChange('provider_id', group?.provider.id);
+                          handleEditChange('model_id', modelId);
+                        } else {
+                          handleCreateAssignment(taskType.value, group?.provider.id, modelId);
+                        }
+                      }}
+                      placeholder="Choose a model..."
+                      searchPlaceholder="Search models or providers..."
+                    />
                   </div>
 
                   {isEditing && (

@@ -67,8 +67,8 @@ export const CatalogAuditHistoryModal: React.FC<
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={t('catalogs.audit_history_title')}
       className="max-w-xl"
     >

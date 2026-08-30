@@ -4,6 +4,7 @@ import { AIProvider } from '../../api/aiConfig';
 import { Database, Settings, Trash2, Plus, X, Check, Search, Globe, Shield, User } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { SearchableDropdown } from '../ui/SearchableDropdown';
+import { ProviderForm } from '@neuronection/assistant-ui';
 import { COUNTRIES } from '../../utils/countryUtils';
 
 interface ProviderManagerProps {
@@ -147,16 +148,18 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Friendly Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
-                placeholder="e.g. Production OpenAI"
-              />
-            </div>
+            <ProviderForm
+              name={formData.name}
+              onNameChange={(name) => setFormData({ ...formData, name })}
+              baseUrl={formData.api_base}
+              onBaseUrlChange={(api_base) => setFormData({ ...formData, api_base })}
+              apiKey={formData.api_key}
+              onApiKeyChange={(api_key) => setFormData({ ...formData, api_key })}
+              nameLabel="Friendly Name"
+              baseUrlLabel="API Base URL"
+              apiKeyLabel="API Key (Sensitive)"
+              keyPlaceholder="sk-..."
+            >
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-1">Type</label>
               <select
@@ -188,6 +191,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                 placeholder="sk-..."
               />
             </div>
+            </ProviderForm>
             <div className="flex items-center space-x-6 md:col-span-2 pt-2 ml-1">
               <label className="flex items-center cursor-pointer group">
                 <input
@@ -376,35 +380,20 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                   className="mt-5 pt-4 border-t border-gray-100 dark:border-dark-border space-y-4"
                   onClick={e => e.stopPropagation()}
                 >
+                  <ProviderForm
+                    name={editData.name ?? provider.name ?? ''}
+                    onNameChange={(name) => handleEditChange('name', name)}
+                    baseUrl={editData.api_base ?? provider.api_base ?? ''}
+                    onBaseUrlChange={(api_base) => handleEditChange('api_base', api_base)}
+                    apiKey={editData.api_key ?? ''}
+                    onApiKeyChange={(api_key) => handleEditChange('api_key', api_key)}
+                    hasStoredKey={Boolean(provider.api_key)}
+                    storedKeyLabel="stored — leave empty to keep"
+                    nameLabel="Friendly Name"
+                    baseUrlLabel="Base URL"
+                    apiKeyLabel="Secret API Key"
+                  />
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Friendly Name</label>
-                      <input
-                        type="text"
-                        value={editData.name ?? provider.name ?? ''}
-                        onChange={(e) => handleEditChange('name', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Base URL</label>
-                      <input
-                        type="text"
-                        value={editData.api_base ?? provider.api_base ?? ''}
-                        onChange={(e) => handleEditChange('api_base', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Secret API Key</label>
-                      <input
-                        type="password"
-                        value={editData.api_key ?? provider.api_key ?? ''}
-                        onChange={(e) => handleEditChange('api_key', e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/10 dark:text-dark-text"
-                        placeholder="••••••••••••"
-                      />
-                    </div>
                     <div className="space-y-1">
                       <label className="text-[9px] font-black uppercase text-gray-400 tracking-widest ml-1">Protocol Type</label>
                       <select

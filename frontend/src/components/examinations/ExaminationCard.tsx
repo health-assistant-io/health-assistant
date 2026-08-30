@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, Activity, ExternalLink, Pill, FileText, FlaskConical } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DynamicIcon } from '../ui/DynamicIcon';
-import { AIBadge } from '../ui/AIBadge';
+import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
 import { getExamCategory, getCategoryStyles, stripHtml } from '../../utils/examinationUtils';
 import { AssociatedEvents } from '../events/AssociatedEvents';
 import { TaskProgressIndicator } from '../ui/TaskProgressIndicator';
@@ -207,7 +207,7 @@ export const ExaminationCard: React.FC<Props> = ({
               </span>
 
             {(examination.diagnoses?.length! > 0 || examination.medications?.length! > 0) && (
-              <AIBadge />
+              <ActiveTaskBadge />
             )}
             {showOpenButton && (
               <button 

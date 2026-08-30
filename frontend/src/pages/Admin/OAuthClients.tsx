@@ -203,7 +203,7 @@ const OAuthClients: React.FC = () => {
       <PageHeader
         title="API Clients"
         subtitle="OAuth2 clients for external systems to access the FHIR R4 facade"
-        icon={<KeyRound className="w-8 h-8 text-blue-500" />}
+        icon={<KeyRound className="size-5" />}
         actions={
           <button
             onClick={openCreate}
@@ -268,14 +268,14 @@ const OAuthClients: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <IconAction title="Edit" onClick={() => openEdit(c)} icon={<ShieldAlert className="w-4 h-4" />} />
-                    <IconAction title="Rotate secret" onClick={() => handleRotate(c)} icon={<RefreshCw className="w-4 h-4" />} />
+                    <IconAction title="Edit" onClick={() => openEdit(c)} icon={<ShieldAlert className="size-4" />} />
+                    <IconAction title="Rotate secret" onClick={() => handleRotate(c)} icon={<RefreshCw className="size-4" />} />
                     <IconAction
                       title={c.is_active ? 'Disable' : 'Enable'}
                       onClick={() => handleToggle(c)}
                       icon={c.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                     />
-                    <IconAction title="Delete" onClick={() => handleDelete(c)} danger icon={<Trash2 className="w-4 h-4" />} />
+                    <IconAction title="Delete" onClick={() => handleDelete(c)} danger icon={<Trash2 className="size-4" />} />
                   </div>
                 </div>
               </li>
@@ -286,10 +286,10 @@ const OAuthClients: React.FC = () => {
 
       {/* Create / edit form */}
       <FormModal
-        isOpen={formOpen}
-        onClose={closeForm}
+        open={formOpen}
+        onOpenChange={(o) => !o && closeForm()}
         title={editing ? 'Edit API Client' : 'New API Client'}
-        icon={<KeyRound className="w-5 h-5 text-blue-500" />}
+        icon={KeyRound}
         onSubmit={submitForm}
         submitting={busy}
         submitLabel={editing ? 'Save' : 'Create'}
@@ -358,7 +358,7 @@ const OAuthClients: React.FC = () => {
       </FormModal>
 
       {/* One-time secret reveal */}
-      <Modal isOpen={revealed !== null} onClose={() => setRevealed(null)} title={revealed?.title ?? 'Client secret'}>
+      <Modal open={revealed !== null} onOpenChange={(o) => !o && setRevealed(null)} title={revealed?.title ?? 'Client secret'}>
         {revealed && (
           <div className="space-y-4">
             <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">

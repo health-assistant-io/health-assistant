@@ -203,7 +203,7 @@ function UserDetail() {
         subtitle={`Account ID: ${user.id.substring(0, 8)}...`}
         icon={<UserIcon className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('admin.user_management'), path: basePath }
+          { label: t('admin.user_management'), href: basePath }
         ]}
         showBackButton={true}
       />

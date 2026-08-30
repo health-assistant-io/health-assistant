@@ -3,6 +3,7 @@ import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AIModel, AIProvider, AIModelCapability, ALL_MODEL_CAPABILITIES } from '../../api/aiConfig';
 import { Settings, Cpu, X, Check, Trash2, Plus, Search, ChevronDown, Sparkles, Loader2, AlertCircle, Eye, AudioLines, FileText } from 'lucide-react';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { ProviderForm, ModelPicker } from '@neuronection/assistant-ui';
 
 interface ModelManagerProps {
   provider: AIProvider;
@@ -121,27 +122,8 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
   const [externalModels, setExternalModels] = useState<any[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [modelSearch, setModelSearch] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isOpenAI = provider.provider_type === 'openai';
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-        setModelSearch('');
-      }
-    };
-
-    if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showDropdown]);
 
   useEffect(() => {
     // Only fetch if we are creating or editing AND we haven't fetched yet
@@ -162,42 +144,6 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
       loadExternal();
     }
   }, [isCreating, editingId, isOpenAI, provider.id, fetchExternalModels, externalModels.length, isFetchingModels]);
-
-  const filteredExternalModels = useMemo(() => {
-    const fuzzyMatch = (text: string, query: string) => {
-      // 1. Normalize for basic comparisons
-      const cleanText = text.toLowerCase();
-      const cleanQuery = query.toLowerCase();
-      
-      if (!cleanQuery.trim()) return true;
-      
-      // 2. Direct includes check
-      if (cleanText.includes(cleanQuery)) return true;
-      
-      // 3. Normalized includes (ignore spaces/dashes/dots)
-      const superCleanText = cleanText.replace(/[^a-z0-9]/g, '');
-      const superCleanQuery = cleanQuery.replace(/[^a-z0-9]/g, '');
-      if (superCleanText.includes(superCleanQuery)) return true;
-      
-      // 4. Sequence matching (fuzzy)
-      // Checks if characters in query appear in text in the same order
-      let textIdx = 0;
-      let queryIdx = 0;
-      const queryChars = cleanQuery.replace(/\s+/g, ''); // ignore spaces in query
-      
-      while (textIdx < cleanText.length && queryIdx < queryChars.length) {
-        if (cleanText[textIdx] === queryChars[queryIdx]) {
-          queryIdx++;
-        }
-        textIdx++;
-      }
-      
-      return queryIdx === queryChars.length;
-    };
-
-    if (!modelSearch) return externalModels;
-    return externalModels.filter(m => fuzzyMatch(m.id, modelSearch));
-  }, [externalModels, modelSearch]);
 
   const handleCreate = async () => {
     if (!formData.name || !formData.model_name) {
@@ -292,8 +238,6 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
         name: (prev.name === '' || prev.name === prev.model_name) ? beautifiedName : prev.name
       }));
     }
-    setShowDropdown(false);
-    setModelSearch('');
   };
 
   const providerModels = models.filter(m => m.provider_id === provider.id);
@@ -369,75 +313,22 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                   className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm shadow-inner outline-none focus:ring-2 focus:ring-blue-500/30 dark:text-dark-text transition-all ${isOpenAI ? 'pr-12' : ''}`}
                   placeholder="e.g. gpt-4o"
                 />
-                {isOpenAI && (
-                  <button 
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
-                    title="Browse official model list"
-                  >
-                    {isFetchingModels ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} />}
-                  </button>
-                )}
               </div>
-              
-              {showDropdown && isOpenAI && (
-                <div 
-                  ref={dropdownRef}
-                  className="absolute z-[100] w-full mt-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 ring-4 ring-blue-500/10"
-                >
-                  <div className="p-3 border-b border-gray-100 dark:border-dark-border sticky top-0 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-md z-10">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Search model catalog..."
-                        className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
-                        value={modelSearch}
-                        onChange={(e) => setModelSearch(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto custom-scrollbar p-1 relative z-0">
-                    {filteredExternalModels.length > 0 ? (
-                      filteredExternalModels.map((m) => (
-                        <div
-                          key={m.id}
-                          className="px-4 py-3 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/40 cursor-pointer flex items-center justify-between group/item transition-all rounded-lg m-1 pointer-events-auto"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            selectExternalModel(m.id, false);
-                          }}
-                        >
-                          <div className="flex flex-col pointer-events-none">
-                            <span className="font-bold text-gray-700 dark:text-dark-text group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{m.id}</span>
-                            <span className="text-[10px] text-gray-400 uppercase tracking-tighter">Owned by: {m.owned_by}</span>
-                          </div>
-                          <div className="p-1.5 rounded-full bg-transparent group-hover:bg-white dark:group-hover:bg-dark-surface shadow-none group-hover:shadow-sm transition-all pointer-events-none">
-                            <Plus className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-4 py-8 text-sm text-gray-400 italic text-center flex flex-col items-center">
-                        {isFetchingModels ? (
-                          <>
-                            <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-2 opacity-50" />
-                            <span>Connecting to {provider.name}...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-8 h-8 text-gray-200 mb-2" />
-                            <span>No models matching "{modelSearch}"</span>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {isOpenAI && (
+                <ModelPicker
+                  providers={[
+                    {
+                      id: provider.id,
+                      name: provider.name,
+                      models: externalModels.map((m) => ({ id: m.id, name: m.id, capability: m.owned_by })),
+                    },
+                  ]}
+                  value={formData.model_name}
+                  onChange={(modelId: string) => selectExternalModel(modelId, false)}
+                  loading={isFetchingModels}
+                  label="Browse official model list"
+                  searchPlaceholder="Search model catalog..."
+                />
               )}
             </div>
 
@@ -660,62 +551,22 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                           className={`w-full px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm text-gray-900 dark:text-dark-text outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm \${isOpenAI ? 'pr-12' : ''}`}
                         />
                         {isOpenAI && (
-                          <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
-                          >
-                            {isFetchingModels ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} />}
-                          </button>
+                          <ModelPicker
+                            providers={[
+                              {
+                                id: provider.id,
+                                name: provider.name,
+                                models: externalModels.map((m) => ({ id: m.id, name: m.id, capability: m.owned_by })),
+                              },
+                            ]}
+                            value={editData.model_name ?? model.model_name ?? ''}
+                            onChange={(modelId: string) => selectExternalModel(modelId, true)}
+                            loading={isFetchingModels}
+                            label="Browse official model list"
+                            searchPlaceholder="Search models..."
+                          />
                         )}
                       </div>
-                      
-                      {showDropdown && isOpenAI && (
-                        <div 
-                          ref={dropdownRef}
-                          className="absolute z-[100] w-full mt-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 ring-4 ring-blue-500/10"
-                        >
-                          <div className="p-3 border-b border-gray-100 dark:border-dark-border sticky top-0 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-md z-10">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                              <input
-                                type="text"
-                                autoFocus
-                                placeholder="Search models..."
-                                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
-                                value={modelSearch}
-                                onChange={(e) => setModelSearch(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </div>
-                          </div>
-                          <div className="max-h-64 overflow-y-auto custom-scrollbar p-1 relative z-0">
-                            {filteredExternalModels.length > 0 ? (
-                              filteredExternalModels.map((m) => (
-                                <div
-                                  key={m.id}
-                                  className="px-4 py-3 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/40 cursor-pointer flex items-center justify-between group/item transition-all rounded-lg m-1 pointer-events-auto"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    selectExternalModel(m.id, true);
-                                  }}
-                                >
-                                  <div className="flex flex-col pointer-events-none">
-                                    <span className="font-bold text-gray-700 dark:text-dark-text">{m.id}</span>
-                                    <span className="text-[10px] text-gray-400">Official ID</span>
-                                  </div>
-                                  <Check className={`w-4 h-4 text-blue-500 transition-opacity pointer-events-none ${editData.model_name === m.id ? 'opacity-100' : 'opacity-0'}`} />
-                                </div>
-                              ))
-                            ) : (
-                              <div className="px-4 py-8 text-xs text-gray-400 text-center italic">
-                                {isFetchingModels ? 'Connecting to catalog...' : 'No results'}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     <div className="space-y-1">
@@ -793,7 +644,6 @@ export const ModelManager: React.FC<ModelManagerProps> = ({ provider }) => {
                         onClick={() => {
                           setEditingId(null);
                           setEditData({});
-                          setShowDropdown(false);
                         }}
                         className="px-6 py-2.5 text-sm font-black text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors uppercase tracking-widest"
                       >

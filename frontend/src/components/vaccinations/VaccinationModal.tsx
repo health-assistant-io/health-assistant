@@ -99,8 +99,8 @@ export const VaccinationModal: React.FC<Props> = ({
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title=""
       hideHeader
       footer={undefined}

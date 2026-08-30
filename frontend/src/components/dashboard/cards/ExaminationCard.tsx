@@ -9,7 +9,7 @@ import { useBiomarkers } from '../../../hooks/useBiomarkers';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
 import { isAbnormal, formatUnit, formatObservationDisplay } from '../../../utils/biomarkerUtils';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -46,7 +46,7 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
         </button>
       )}
       <div className="mb-4">
-        <CardTitle
+        <DashboardCardTitle
           to="/examinations"
           title={title}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"

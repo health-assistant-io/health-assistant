@@ -208,8 +208,8 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={t('anatomy.editor_title', { defaultValue: 'Position Editor' })}
       className="max-w-6xl"
     >

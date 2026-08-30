@@ -286,7 +286,7 @@ export const ClinicalEventList = () => {
       <PageHeader
         title={t('events.title')}
         subtitle={t('events.subtitle', 'Global Health Events')}
-        icon={<Activity className="w-8 h-8" />}
+        icon={<Activity className="size-5" />}
         breadcrumbs={[]}
       />
 

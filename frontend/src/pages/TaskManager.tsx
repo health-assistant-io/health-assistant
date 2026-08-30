@@ -119,7 +119,7 @@ function TaskManager() {
       <PageHeader
         title="Task Monitor"
         subtitle="Debug and monitor background processing tasks"
-        icon={<Cpu className="w-8 h-8" />}
+        icon={<Cpu className="size-5" />}
         breadcrumbs={[]}
         showBackButton={true}
       />

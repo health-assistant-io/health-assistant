@@ -1,14 +1,14 @@
 import React from 'react';
 import { PageHeader, type BreadcrumbItem } from '../ui/PageHeader';
 import { SetupProgressRing } from './SetupProgressRing';
-import { Stepper, type StepperStepView } from './Stepper';
+import { SetupStepList, type SetupStepListView } from './SetupStepList';
 
 interface SetupLayoutProps {
   /** Localised wizard title (e.g. "Patient setup"). */
   title: string;
   breadcrumbs?: BreadcrumbItem[];
   /** Steps for the left pane (titles already localised). */
-  steps: StepperStepView[];
+  steps: SetupStepListView[];
   activeStepId: string;
   onSelectStep: (stepId: string) => void;
   /** Optional group label over the stepper (e.g. "Patient profile"). */
@@ -63,7 +63,7 @@ export const SetupLayout: React.FC<SetupLayoutProps> = ({
               </div>
             </div>
             <div className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-3 shadow-sm">
-              <Stepper
+              <SetupStepList
                 steps={steps}
                 activeStepId={activeStepId}
                 onSelect={onSelectStep}

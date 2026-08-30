@@ -1011,10 +1011,12 @@ export const CatalogWorkspace: React.FC = () => {
         const editingId = editing.id ? String(editing.id) : null;
         return (
           <FormModal
-            isOpen
-            onClose={() => {
-              setEditing(null);
-              setIsNew(false);
+            open
+            onOpenChange={(o) => {
+              if (!o) {
+                setEditing(null);
+                setIsNew(false);
+              }
             }}
             title={`${isNew ? t('catalogs.create', 'Create') : t('catalogs.edit', 'Edit')} ${active.type}`}
             onSubmit={handleSave}

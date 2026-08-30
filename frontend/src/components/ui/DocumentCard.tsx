@@ -3,7 +3,7 @@ import {
   FileText, X, Hospital, Eye, GripVertical, Sparkles 
 } from 'lucide-react';
 
-interface FileCardProps {
+interface DocumentCardProps {
   file: File;
   onRemove: () => void;
   onPreview: () => void;
@@ -13,7 +13,7 @@ interface FileCardProps {
   onDragStart?: (e: React.DragEvent) => void;
 }
 
-export const FileCard: React.FC<FileCardProps> = ({ 
+export const DocumentCard: React.FC<DocumentCardProps> = ({ 
   file, onRemove, onPreview, onToggleInclusion, includeInExtraction, 
   draggable = false, onDragStart 
 }) => {

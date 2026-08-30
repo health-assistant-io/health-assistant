@@ -10,7 +10,7 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { SetupLayout } from '../../components/setup/SetupLayout';
 import { StepRenderer } from '../../components/setup/steps/StepRenderer';
 import { ManualCompleteToggle } from '../../components/setup/steps/ManualCompleteToggle';
-import type { StepperStepView } from '../../components/setup/Stepper';
+import type { SetupStepListView } from '../../components/setup/SetupStepList';
 
 /**
  * Role setup wizard — the per-account guided checklist.
@@ -90,7 +90,7 @@ function RoleSetupWizard() {
 
   const activeStep = roleSteps.find((s) => s.id === activeStepId) ?? roleSteps[0];
 
-  const stepperSteps = useMemo<StepperStepView[]>(
+  const stepperSteps = useMemo<SetupStepListView[]>(
     () => roleSteps.map((s) => ({ ...s, title: t(s.title_i18n_key, s.id) })),
     [roleSteps, t],
   );
@@ -122,7 +122,7 @@ function RoleSetupWizard() {
   return (
     <SetupLayout
       title={t('setup.role.title')}
-      breadcrumbs={[{ label: t('common.dashboard'), path: '/dashboard' }, { label: t('setup.role.title') }]}
+      breadcrumbs={[{ label: t('common.dashboard'), href: '/dashboard' }, { label: t('setup.role.title') }]}
       steps={stepperSteps}
       activeStepId={activeStepId}
       onSelectStep={setActiveStepId}

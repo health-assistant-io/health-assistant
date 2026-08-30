@@ -11,7 +11,7 @@ interface ConfirmationModalOptions {
 
 interface BreadcrumbItem {
   label: string;
-  path?: string;
+  href?: string;
   icon?: React.ReactNode;
 }
 

@@ -136,8 +136,8 @@ export const AnatomyGraphModal: React.FC<Props> = ({
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={t('anatomy.relationships_title', { name: rootStructure.name })}
       className="max-w-6xl"
     >

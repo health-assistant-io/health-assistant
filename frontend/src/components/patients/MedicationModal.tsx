@@ -56,7 +56,7 @@ export const MedicationModal: React.FC<Props> = ({ isOpen, onClose, patientId, m
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="" hideHeader footer={undefined} bodyClassName="p-0">
+    <Modal open={isOpen} onOpenChange={(o) => !o && onClose()} title="" hideHeader footer={undefined} bodyClassName="p-0">
       <MedicationForm
         patientId={patientId}
         medication={medication}

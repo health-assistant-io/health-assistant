@@ -185,7 +185,7 @@ const BiomarkerDetail: React.FC = () => {
   }, [biomarker?.id, biomarker?.meta_data?.migration_status, biomarker?.meta_data?.migration_progress, currentPatient?.id, dateRange, aggregation]);
 
   const breadcrumbs = React.useMemo(() => [
-    { label: t('biomarker_catalog.title'), path: '/catalogs?type=biomarker' }
+    { label: t('biomarker_catalog.title'), href: '/catalogs?type=biomarker' }
   ], [t]);
 
   const headerIcon = React.useMemo(() => <Activity className="w-8 h-8" />, []);

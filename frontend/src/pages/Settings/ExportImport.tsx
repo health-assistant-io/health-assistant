@@ -19,7 +19,7 @@ import { useAuthStore } from '../../store/slices/authSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { Modal } from '../../components/ui/Modal';
-import { AIBadge } from '../../components/ui/AIBadge';
+import { ActiveTaskBadge } from '../../components/ui/ActiveTaskBadge';
 import {
   createExportJob,
   listExportJobs,
@@ -759,7 +759,7 @@ const ExportImport: React.FC = () => {
                       Use AI Normalization
                     </label>
                     <div className="inline-flex">
-                      <AIBadge workflow="fhir_import_normalization" />
+                      <ActiveTaskBadge workflow="fhir_import_normalization" />
                     </div>
                   </div>
                   <span className="text-xs text-gray-500 dark:text-dark-muted block">Use AI to generate standard LOINC codes and names for unknown imported data.</span>
@@ -930,8 +930,8 @@ const ExportImport: React.FC = () => {
 
       {/* Export Job Details Modal */}
       <Modal
-        isOpen={!!selectedExportJob}
-        onClose={() => setSelectedExportJob(null)}
+        open={!!selectedExportJob}
+        onOpenChange={(o) => !o && setSelectedExportJob(null)}
         title="Export Job Details"
       >
         {selectedExportJob && (
@@ -983,8 +983,8 @@ const ExportImport: React.FC = () => {
 
       {/* Import Job Details Modal */}
       <Modal
-        isOpen={!!selectedImportJob}
-        onClose={() => setSelectedImportJob(null)}
+        open={!!selectedImportJob}
+        onOpenChange={(o) => !o && setSelectedImportJob(null)}
         title="Import Job Details"
       >
         {selectedImportJob && (

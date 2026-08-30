@@ -232,8 +232,8 @@ export const CatalogPickerBrowseModal: React.FC<CatalogPickerBrowseModalProps> =
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={t('catalogs.picker_browse_title', 'Browse catalog')}
       className="max-w-3xl"
     >

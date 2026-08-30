@@ -103,9 +103,9 @@ function PatientDetail() {
             {t('patients.patient_id')}: {patient.id}
           </div>
         }
-        icon={<User className="w-8 h-8" />}
+        icon={<User className="size-5" />}
         breadcrumbs={[
-          { label: t('patients.directory'), path: '/patients' }
+          { label: t('patients.directory'), href: '/patients' }
         ]}
         showBackButton={true}
       />

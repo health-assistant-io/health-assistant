@@ -611,7 +611,8 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                   <Calendar className="w-3 h-3 mr-2" />
                   {t('allergies.modal.onset_date')}
                 </label>
-                <DatePicker value={formData.onset_date} onChange={v => setFormData({ ...formData, onset_date: v })} />
+                <DatePicker
+                  placeholder={t('common.select_date', 'Select date')} value={formData.onset_date} onChange={v => setFormData({ ...formData, onset_date: v })} />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 flex items-center">
@@ -619,6 +620,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                   {t('allergies.modal.resolved_date')}
                 </label>
                 <DatePicker
+                  placeholder={t('common.select_date', 'Select date')}
                   disabled={formData.clinical_status !== 'RESOLVED'}
                   value={formData.resolved_date}
                   onChange={v => setFormData({ ...formData, resolved_date: v })}
@@ -630,6 +632,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                   {t('allergies.modal.last_occurrence')}
                 </label>
                 <DatePicker
+                  placeholder={t('common.select_date', 'Select date')}
                   value={formData.last_occurrence}
                   onChange={v => setFormData({ ...formData, last_occurrence: v })}
                 />

@@ -641,6 +641,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                 {t('medications.modal.start_date')}
               </label>
               <DatePicker
+                placeholder={t('common.select_date', 'Select date')}
                 value={formData.start_date}
                 onChange={date => setFormData({...formData, start_date: date})}
               />
@@ -652,6 +653,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                 {t('medications.modal.end_date_opt')}
               </label>
               <DatePicker
+                placeholder={t('common.select_date', 'Select date')}
                 value={formData.end_date}
                 onChange={date => setFormData({...formData, end_date: date})}
               />

@@ -204,7 +204,7 @@ export const AnatomyExplorer: React.FC = () => {
       <PageHeader
         title={t('anatomy.title')}
         subtitle={t('anatomy.subtitle')}
-        icon={<Network className="w-6 h-6 text-blue-500" />}
+        icon={<Network className="size-5" />}
       />
 
       <PageContainer className="!space-y-0 px-6 pt-2 pb-6">

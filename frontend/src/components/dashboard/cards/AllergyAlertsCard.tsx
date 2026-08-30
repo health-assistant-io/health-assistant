@@ -7,7 +7,7 @@ import {
   Check
 } from 'lucide-react';
 import { AllergyIntolerance } from '../../../services/allergyService';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -47,7 +47,7 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="flex items-center justify-between mb-6">
-        <CardTitle
+        <DashboardCardTitle
           to="/allergies"
           title={t('dashboard.cards.clinical_alerts')}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight"

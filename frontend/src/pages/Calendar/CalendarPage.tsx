@@ -192,7 +192,7 @@ const CalendarPage: React.FC = () => {
       <PageHeader
         title={t('common.calendar')}
         subtitle={t('calendar.full_schedule_for', { name: `${currentPatient.name?.given?.join(' ') ?? ''} ${currentPatient.name?.family ?? ''}`.trim() })}
-        icon={<Calendar className="w-8 h-8" />}
+        icon={<Calendar className="size-5" />}
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">

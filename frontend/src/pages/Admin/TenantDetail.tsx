@@ -178,7 +178,7 @@ function TenantDetail() {
         subtitle={detail.slug}
         icon={<Globe className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('admin.tenants.title'), path: '/admin/system/tenants' },
+          { label: t('admin.tenants.title'), href: '/admin/system/tenants' },
           { label: detail.name },
         ]}
         actions={

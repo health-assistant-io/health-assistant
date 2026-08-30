@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { X, Wrench, Search, Activity, Pill, Stethoscope, FileText, Bot, Box, CheckCircle2 } from 'lucide-react';
 import { AIToolInfo, getAvailableTools } from '../../services/aiAssistanceService';
-import { AIBadge } from '../ui/AIBadge';
+import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
 
 interface Props {
   isOpen: boolean;
@@ -113,7 +113,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('ai_labels.agent_capabilities', 'AI Agent Capabilities')}</h2>
-                <AIBadge taskType="chat" />
+                <ActiveTaskBadge taskType="chat" />
               </div>
               <p className="text-xs text-gray-500 dark:text-dark-muted font-medium mt-0.5">Explore the tools and actions available to the LLM</p>
             </div>

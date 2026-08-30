@@ -75,9 +75,10 @@ bridge changes commit here in `core/`.
 career-assistant — see the `ha-assistant-ui` skill. Core rules:
 
 - **Check the library first for NEW generic UI** — no new local copies of
-  things the family ships (its README has the component index; the bulk
-  migration of `frontend/src/components/ui` is roadmap Phase 3, don't do
-  it ad hoc).
+  things the family ships — the app is fully adopted: `components/ui`
+  are library re-export shims, the selectors are async Combobox wrappers,
+  and the drift audit is clean. Never reintroduce a local implementation
+  (`LegacyPopover` is deleted); extend the library instead.
 - First-party means mutable: if the API doesn't fit, change the library
   (two-app rule + `scripts/verify-in-app.mjs` — details in the skill),
   never fork or wrap it.

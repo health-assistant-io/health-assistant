@@ -380,6 +380,7 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
                 {t('biomarkers.log_reading.measured_at', 'Measurement Date')}
               </label>
               <DatePicker
+                placeholder={t('common.select_date', 'Select date')}
                 value={formData.measuredDate}
                 onChange={(date) => setFormData(prev => ({ ...prev, measuredDate: date }))}
                 required

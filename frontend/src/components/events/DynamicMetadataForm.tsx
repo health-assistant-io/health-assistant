@@ -99,6 +99,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
   color,
   renderIcon,
 }) => {
+  const { t } = useTranslation();
   switch (field.type) {
     case 'text':
       return (
@@ -181,6 +182,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               {renderIcon(field.name)}
             </div>
             <DatePicker
+              placeholder={t('common.select_date', 'Select date')}
               required={field.required}
               className="pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all"
               value={(value as string) || ''}

@@ -670,7 +670,8 @@ function ExaminationList() {
         <div className="flex flex-wrap items-center gap-4 mb-6 bg-gray-50 dark:bg-dark-bg p-4 rounded-xl border border-gray-100 dark:border-dark-border animate-in slide-in-from-top-2 duration-300">
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.from', 'From:')}</span>
-            <DatePicker 
+            <DatePicker
+              placeholder={t('common.select_date', 'Select date')} 
               className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
               value={customRange.start}
               onChange={(date) => setCustomRange({ ...customRange, start: date })}
@@ -679,7 +680,8 @@ function ExaminationList() {
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.to', 'To:')}</span>
-            <DatePicker 
+            <DatePicker
+              placeholder={t('common.select_date', 'Select date')} 
               className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
               value={customRange.end}
               onChange={(date) => setCustomRange({ ...customRange, end: date })}

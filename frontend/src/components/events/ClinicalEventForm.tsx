@@ -898,6 +898,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                             {startLabel}
                           </label>
                           <DatePicker
+                            placeholder={t('common.select_date', 'Select date')}
                             value={formData.onset_date}
                             onChange={date => setFormData({ ...formData, onset_date: date })}
                             allowClear
@@ -909,6 +910,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                               {endLabel}
                             </label>
                             <DatePicker
+                              placeholder={t('common.select_date', 'Select date')}
                               value={formData.resolved_date}
                               onChange={date => setFormData({ ...formData, resolved_date: date })}
                               // Phase 8c: the End Date for `range` kind is
@@ -1164,6 +1166,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-1">
                           <DatePicker
+                            placeholder={t('common.select_date', 'Select date')}
                             variant="unstyled"
                             className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-28 dark:text-dark-text"
                             value={occ.date}

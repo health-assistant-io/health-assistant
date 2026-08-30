@@ -6,12 +6,12 @@ import { StepStatusBadge } from './StepStatusBadge';
  * A setup step with its already-localised title, for the stepper view.
  * The parent translates `step.title_i18n_key` → `title`.
  */
-export interface StepperStepView extends SetupStep {
+export interface SetupStepListView extends SetupStep {
   title: string;
 }
 
-interface StepperProps {
-  steps: StepperStepView[];
+interface SetupStepListProps {
+  steps: SetupStepListView[];
   /** Currently active step id. */
   activeStepId: string;
   /** Select a step. */
@@ -31,7 +31,7 @@ interface StepperProps {
  * The step `title` is passed already-localised by the parent so this
  * component stays i18n-free and unit-testable with plain strings.
  */
-export const Stepper: React.FC<StepperProps> = ({
+export const SetupStepList: React.FC<SetupStepListProps> = ({
   steps,
   activeStepId,
   onSelect,
@@ -87,4 +87,4 @@ export const Stepper: React.FC<StepperProps> = ({
   );
 };
 
-export default Stepper;
+export default SetupStepList;

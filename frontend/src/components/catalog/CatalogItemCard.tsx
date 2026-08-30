@@ -352,8 +352,8 @@ export const CatalogItemCard: React.FC<CatalogItemCardProps> = ({
           modal (Escape closes only this overlay). */}
       {detailOpen && (
         <Modal
-          isOpen
-          onClose={() => setDetailOpen(false)}
+          open
+          onOpenChange={(o) => !o && setDetailOpen(false)}
           title={name}
           size="lg"
           headerIcon={

@@ -178,10 +178,10 @@ export const PatientFormWizard: React.FC<PatientFormWizardProps> = ({
 
   return (
     <FormModal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={patient ? t('patients.edit_profile') : t('patients.add_new')}
-      icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg"><User className="w-5 h-5 text-blue-600" /></div>}
+      icon={User}
       hideFooter
       size="lg"
       bodyClassName="p-0"
@@ -295,7 +295,8 @@ const BasicInfoStep: React.FC<{ draft: DraftState; patch: (p: Partial<DraftState
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <SetupField label={t('patients.dob', 'Date of birth')}>
-        <DatePicker value={draft.birthDate} onChange={(date) => patch({ birthDate: date })} allowClear />
+        <DatePicker
+          placeholder={t('common.select_date', 'Select date')} value={draft.birthDate} onChange={(date) => patch({ birthDate: date })} allowClear />
       </SetupField>
       <SetupField label={t('patients.mrn', 'MRN')}>
         <SetupInput value={draft.mrn} onChange={(e) => patch({ mrn: e.target.value })} placeholder="PAT-123456" />

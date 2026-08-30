@@ -1,0 +1,42 @@
+:root {
+  --as-accent: oklch(0.546 0.245 262.881);
+  --as-accent-strong: oklch(0.488 0.217 264.376);
+  --as-primary: var(--as-accent);
+  --as-focus-ring: var(--as-accent);
+  --as-radius: 0.5rem;
+}
+
+.dark {
+  --as-tone-0: oklch(0.279 0.041 260.031);
+  --as-tone-50: oklch(0.325 0.043 259.5);
+  --as-tone-100: oklch(0.372 0.044 257.287);
+  --as-tone-200: oklch(0.446 0.043 257.287);
+  --as-tone-300: oklch(0.554 0.046 257.417);
+  --as-tone-500: oklch(0.705 0.015 261.075);
+  --as-tone-700: oklch(0.872 0.01 258.338);
+  --as-tone-900: oklch(0.984 0.003 247.858);
+  --as-accent: oklch(0.623 0.214 259.815);
+  --as-accent-strong: oklch(0.546 0.245 262.881);
+  --as-primary: var(--as-accent);
+  --as-focus-ring: var(--as-accent);
+  --as-primary-fg: oklch(1 0 0);
+  --as-secondary-fg: oklch(0.984 0.003 247.858);
+  --as-surface: oklch(0.208 0.042 265.755);
+  --as-surface-raised: oklch(0.279 0.041 260.031);
+  --as-border: oklch(0.372 0.044 257.287);
+  --as-fg: oklch(0.984 0.003 247.858);
+  --as-muted: oklch(0.325 0.043 259.5);
+  --as-muted-fg: oklch(0.705 0.015 261.075);
+  --as-overlay: oklch(0 0 0 / 0.7);
+}
+
+/* Library overlays must stack above the app sidebar (z-[950]) and header,
+   matching the app's zIndex scale (modal: 1000, popover: 1050). */
+:root {
+  --as-z-modal: 1000;
+  --as-z-popover: 1050;
+}
+.dark {
+  --as-z-modal: 1000;
+  --as-z-popover: 1050;
+}

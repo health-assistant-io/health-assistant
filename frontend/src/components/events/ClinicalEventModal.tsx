@@ -32,8 +32,8 @@ export const ClinicalEventModal: React.FC<Props> = ({ isOpen, onClose, patientId
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title=""
       hideHeader
       bodyClassName="p-0"

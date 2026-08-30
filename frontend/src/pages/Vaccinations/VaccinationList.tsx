@@ -161,7 +161,7 @@ export function VaccinationList() {
       <PageHeader
         title={t('common.vaccinations')}
         subtitle={t('vaccinations.patient_vaccinations_for', { name: patientName })}
-        icon={<Syringe className="w-8 h-8" />}
+        icon={<Syringe className="size-5" />}
         breadcrumbs={[]}
       />
 

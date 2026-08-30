@@ -8,7 +8,7 @@ import { uploadDocument, getDocumentDownloadUrl, updateDocument } from '../../se
 import { offlineService } from '../../services/offlineService';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import ReactMarkdown from 'react-markdown';
-import { AIBadge } from '../../components/ui/AIBadge';
+import { ActiveTaskBadge } from '../../components/ui/ActiveTaskBadge';
 import { 
   Edit2, Check, X, Trash2, LayoutGrid, List, Table as TableIcon,
   FileText, Image as ImageIcon, Activity, FlaskConical, 
@@ -700,7 +700,7 @@ const ExaminationDetail = () => {
         }
         icon={examination?.category_concept?.icon ? <DynamicIcon icon={examination.category_concept.icon} /> : <Stethoscope />}
         breadcrumbs={[
-          { label: t('examinations.title'), path: '/examinations' }
+          { label: t('examinations.title'), href: '/examinations' }
         ]}
         showBackButton={true}
       />
@@ -770,7 +770,7 @@ const ExaminationDetail = () => {
                               <div className="flex-1">
                                 <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
                                   {t('examination_detail.header.full_reconstruction')}
-                                  <AIBadge workflow="full_reconstruction" className="ml-1" />
+                                  <ActiveTaskBadge workflow="full_reconstruction" className="ml-1" />
                                 </p>
                                 <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.full_reconstruction_desc')}</p>
                               </div>
@@ -783,7 +783,7 @@ const ExaminationDetail = () => {
                               <div className="flex-1">
                                 <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase flex items-center gap-2">
                                   {t('examination_detail.header.fast_extraction')}
-                                  <AIBadge workflow="fast_extraction" className="ml-1" />
+                                  <ActiveTaskBadge workflow="fast_extraction" className="ml-1" />
                                 </p>
                                 <p className="text-[10px] text-gray-400 font-medium">{t('examination_detail.header.fast_extraction_desc')}</p>
                               </div>
@@ -893,7 +893,8 @@ const ExaminationDetail = () => {
                      <div className="flex-1 min-w-0">
                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">{t('common.date')}</p>
                         {isGlobalEditing ? (
-                           <DatePicker 
+                           <DatePicker
+                             placeholder={t('common.select_date', 'Select date')} 
                              variant="unstyled"
                              className="w-full py-2 bg-transparent text-sm font-bold outline-none dark:text-dark-text"
                              value={tempDate}
@@ -1144,7 +1145,7 @@ const ExaminationDetail = () => {
                                <BriefcaseMedical className="w-4 h-4 text-blue-500" />
                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">{t('examination_detail.overview.clinical_impression')}</p>
                              </div>
-                             <AIBadge />
+                             <ActiveTaskBadge />
                            </div>
                            <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-dark-text leading-relaxed">
                              <ReactMarkdown>{examination.impressions}</ReactMarkdown>
@@ -1159,7 +1160,7 @@ const ExaminationDetail = () => {
                                <Bookmark className="w-4 h-4 text-blue-500" />
                                <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">{t('examination_detail.overview.extracted_diagnoses')}</p>
                              </div>
-                             <AIBadge />
+                             <ActiveTaskBadge />
                            </div>
                            <div className="flex flex-wrap gap-2">
                              {examination.diagnoses.map((d: string) => (
@@ -1178,7 +1179,7 @@ const ExaminationDetail = () => {
                                 <Pill className="w-4 h-4 text-indigo-500" />
                                 <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">{t('examination_detail.overview.identified_medications')}</p>
                               </div>
-                              <AIBadge />
+                              <ActiveTaskBadge />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                {examination.medications.map((m: any, idx: number) => (

@@ -266,7 +266,7 @@ function MedicationDetail() {
         }
         icon={<Pill className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('medications.catalog_title'), path: '/catalogs?type=medication' }
+          { label: t('medications.catalog_title'), href: '/catalogs?type=medication' }
         ]}
         showBackButton={true}
       />

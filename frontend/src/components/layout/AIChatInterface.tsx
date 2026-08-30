@@ -21,7 +21,7 @@ import { ChatLedgerOverlay } from '../ai/ChatLedgerOverlay';
 import { AIToolsModal } from '../ai/AIToolsModal';
 import { HitlTaskCard } from '../ai/hitl/HitlTaskCard';
 import { TERMINAL_HITL_STATUSES } from '../ai/hitl/registry';
-import { AIBadge } from '../ui/AIBadge';
+import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
 import { ChatAttachmentPicker, ChatAttachmentPreviewRail } from '../ai/ChatAttachmentPicker';
 import { ChatMessageImages } from '../ai/ChatMessageImages';
 import { ChatVoiceButton } from '../ai/ChatVoiceButton';
@@ -665,7 +665,7 @@ export const AIChatInterface: React.FC<Props> = ({
 
               {/* Action Buttons & Badge */}
               <div className="flex items-center space-x-0.5 md:space-x-1">
-                  <AIBadge taskType="chat" className="mr-2 md:mr-3" variant={isFullScreen ? 'default' : 'white'} />
+                  <ActiveTaskBadge taskType="chat" className="mr-2 md:mr-3" variant={isFullScreen ? 'default' : 'white'} />
                   
                   {isFullScreen && (
                    <button 

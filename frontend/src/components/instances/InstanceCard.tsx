@@ -298,8 +298,8 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
           the thin generic InstancePreview); unregistered types fall back. */}
       {detailOpen && (
         <Modal
-          isOpen
-          onClose={() => setDetailOpen(false)}
+          open
+          onOpenChange={(o) => !o && setDetailOpen(false)}
           title={safeText(row.label)}
           size="lg"
           bodyClassName="p-0"

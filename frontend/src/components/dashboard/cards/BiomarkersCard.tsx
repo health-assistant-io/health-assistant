@@ -16,7 +16,7 @@ import { filterBiomarkers } from '../../../utils/searchUtils';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 
 export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
@@ -235,7 +235,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
         </button>
       )}
       <div className="flex justify-between items-center mb-6">
-        <CardTitle
+        <DashboardCardTitle
           to="/biomarkers"
           title={t('common.biomarkers')}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"

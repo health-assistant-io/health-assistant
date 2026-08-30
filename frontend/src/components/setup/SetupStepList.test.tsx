@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Stepper, type StepperStepView } from './Stepper';
+import { SetupStepList, type SetupStepListView } from './SetupStepList';
 
-function makeStep(overrides: Partial<StepperStepView> = {}): StepperStepView {
+function makeStep(overrides: Partial<SetupStepListView> = {}): SetupStepListView {
   return {
     id: 's1',
     title_i18n_key: 'setup.steps.s1',
@@ -14,10 +14,10 @@ function makeStep(overrides: Partial<StepperStepView> = {}): StepperStepView {
   };
 }
 
-describe('Stepper', () => {
+describe('SetupStepList', () => {
   it('renders each step title', () => {
     render(
-      <Stepper
+      <SetupStepList
         steps={[makeStep(), makeStep({ id: 's2', title: 'Step Two' })]}
         activeStepId="s1"
         onSelect={() => {}}
@@ -29,7 +29,7 @@ describe('Stepper', () => {
 
   it('renders the group label when provided', () => {
     render(
-      <Stepper
+      <SetupStepList
         steps={[makeStep()]}
         activeStepId="s1"
         onSelect={() => {}}
@@ -41,7 +41,7 @@ describe('Stepper', () => {
 
   it('marks the active step with aria-current', () => {
     render(
-      <Stepper
+      <SetupStepList
         steps={[makeStep(), makeStep({ id: 's2', title: 'Step Two' })]}
         activeStepId="s2"
         onSelect={() => {}}
@@ -56,7 +56,7 @@ describe('Stepper', () => {
   it('calls onSelect with the step id when a row is clicked', () => {
     const onSelect = vi.fn();
     render(
-      <Stepper
+      <SetupStepList
         steps={[makeStep(), makeStep({ id: 's2', title: 'Step Two' })]}
         activeStepId="s1"
         onSelect={onSelect}
@@ -68,7 +68,7 @@ describe('Stepper', () => {
 
   it('shows the "optional" hint only for optional + incomplete steps', () => {
     render(
-      <Stepper
+      <SetupStepList
         steps={[
           makeStep({ id: 'opt', title: 'Optional One', optional: true, completed: false }),
           makeStep({ id: 'opt-done', title: 'Optional Done', optional: true, completed: true }),

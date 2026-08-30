@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { TaskInfo } from '../../../types/ai';
 import { HitlTaskHandler, HITL_STATUS_META } from './registry';
-import { AIBadge } from '../../ui/AIBadge';
+import { ActiveTaskBadge } from '../../ui/ActiveTaskBadge';
 
 interface Props {
   isOpen: boolean;
@@ -74,7 +74,7 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
               <HandlerIcon className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <AIBadge size="sm" label={t('ai_chat.hitl.proposal_label', 'Proposal')} workflow="chat" />
+              <ActiveTaskBadge size="sm" label={t('ai_chat.hitl.proposal_label', 'Proposal')} workflow="chat" />
               <h2 className="text-base font-bold text-gray-900 dark:text-dark-text tracking-tight truncate">
                 {task.title || t('ai_chat.hitl.default_title', 'Review proposed action')}
               </h2>

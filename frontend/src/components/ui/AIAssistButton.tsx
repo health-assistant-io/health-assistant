@@ -1,9 +1,6 @@
-import React, { useRef, useState } from 'react';
-import { Sparkles, Send, X, Loader2 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import React, { useState } from 'react';
 import { getAIAssistance } from '../../services/aiAssistanceService';
-import { AIBadge } from './AIBadge';
-import { Popover } from './Popover';
+import { AiButton } from '@neuronection/assistant-ui';
 
 interface Props {
   taskType: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'chat' | 'magic_fill_examination';
@@ -14,162 +11,67 @@ interface Props {
   showLabel?: boolean;
 }
 
-export const AIAssistButton: React.FC<Props> = ({ 
-  taskType, 
-  context, 
-  onSuggestedData, 
-  className = "",
+const DEFAULT_PLACEHOLDERS: Record<Props['taskType'], string> = {
+  define_biomarker: "Enter biomarker name or details (e.g. 'Creatinine definition')",
+  define_medication: "Enter medication name or details (e.g. 'Ibuprofen definition')",
+  fill_medication_form: 'Describe medication (e.g. ‘Metformin 500mg twice daily’)',
+  fill_biomarker_form: 'Describe data (e.g. ‘Blood sugar 110 mg/dL normal’)',
+  magic_fill_examination: 'Describe the examination (e.g. ‘Blood test for glucose’)',
+  chat: 'Ask the AI assistant…',
+};
+
+/**
+ * Form-fill affordance over the library `AiButton`: the prompt goes to the
+ * assistance service; suggested data is applied by the caller and the
+ * panel auto-closes (ADR-006 — the service call stays app-side).
+ */
+export const AIAssistButton: React.FC<Props> = ({
+  taskType,
+  context,
+  onSuggestedData,
+  className = '',
   placeholder,
-  showLabel = true
+  showLabel = true,
 }) => {
-  const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
 
-  const getDefaultPlaceholder = () => {
-    if (placeholder) return placeholder;
-    switch (taskType) {
-      case 'define_biomarker':
-        return "Enter biomarker name or details (e.g. 'Creatinine definition')";
-      case 'define_medication':
-        return "Enter medication name or details (e.g. 'Ibuprofen definition')";
-      case 'fill_medication_form':
-        return "Describe medication (e.g. 'Metformin 500mg twice daily')";
-      case 'fill_biomarker_form':
-        return "Describe data (e.g. 'Blood sugar 110 mg/dL normal')";
-      case 'magic_fill_examination':
-        return "Describe the examination (e.g. 'Blood test for glucose')";
-      default:
-        return "Ask the AI assistant...";
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim()) return;
-
+  const ask = async (userInput: string) => {
     setLoading(true);
     setError(null);
     try {
       const response = await getAIAssistance({
         task_type: taskType,
         user_input: userInput,
-        context
+        context,
       });
-
       if (response.success && response.suggested_data) {
         onSuggestedData(response.suggested_data);
-        setIsOpen(false);
-        setUserInput('');
+        setOpen(false);
       } else {
-        setError(response.error || "AI could not process your request.");
+        setError(response.error || 'AI could not process your request.');
       }
     } catch (err: any) {
-      console.error("AI Assistance Error:", err);
-      setError(err.response?.data?.detail || "Assistant is currently unavailable.");
+      console.error('AI Assistance Error:', err);
+      setError(err.response?.data?.detail || 'Assistant is currently unavailable.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className={`flex items-center space-x-2 p-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all group ${className}`}
-        title={t('ai_labels.get_assistance', 'Get AI Assistance')}
-      >
-        <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">{t('ai_labels.magic_fill_ai', 'Magic Fill AI')}</span>}
-      </button>
-    );
-  }
-
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setIsOpen(false)}
-        className={`flex items-center space-x-2 p-1.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-900/50 transition-all ${className}`}
-        title={t('ai_labels.get_assistance', 'Get AI Assistance')}
-      >
-        <Sparkles className="w-4 h-4" />
-        {showLabel && <span className="text-[10px] font-black uppercase tracking-widest px-1">{t('ai_labels.magic_fill_ai', 'Magic Fill AI')}</span>}
-      </button>
-
-      <Popover
-        isOpen={isOpen}
-        onClose={() => { setIsOpen(false); setError(null); }}
-        triggerRef={triggerRef}
-        side="bottom"
-        align="end"
-        sideOffset={4}
-        className="w-64"
-      >
-        <div className="bg-white dark:bg-dark-surface border border-indigo-100 dark:border-indigo-900/30 rounded-2xl shadow-2xl p-4 animate-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-black uppercase tracking-widest">
-                {taskType === 'define_biomarker' || taskType === 'define_medication' ? t('ai_labels.definition_builder', 'Definition Builder') : t('ai_labels.assistant', 'AI Assistant')}
-              </span>
-              <AIBadge taskType={taskType} showText={false} className="ml-1" />
-            </div>
-            <button
-              type="button"
-              onClick={() => { setIsOpen(false); setError(null); }}
-              aria-label="Close AI assistant"
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full text-gray-400"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <textarea
-              autoFocus
-              rows={2}
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-xs text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-1 focus:ring-indigo-500/50 resize-none"
-              placeholder={getDefaultPlaceholder()}
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-            />
-
-            {error && (
-              <p className="text-[9px] font-bold text-red-500 uppercase tracking-tighter bg-red-50 dark:bg-red-900/10 p-2 rounded-lg">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || !userInput.trim()}
-              className="w-full flex items-center justify-center space-x-2 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
-            >
-              {loading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Process</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-      </Popover>
-    </>
+    <AiButton
+      className={className}
+      label="AI Assist"
+      promptLabel="Describe the data"
+      placeholder={placeholder ?? DEFAULT_PLACEHOLDERS[taskType]}
+      showLabel={showLabel}
+      open={open}
+      onOpenChange={setOpen}
+      loading={loading}
+      error={error}
+      onSubmit={(prompt) => void ask(prompt)}
+    />
   );
 };

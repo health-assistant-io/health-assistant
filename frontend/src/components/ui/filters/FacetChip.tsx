@@ -1,8 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Grid, ChevronDown, CheckCircle2, X, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DynamicIcon } from '../DynamicIcon';
-import { Popover } from '../Popover';
+import { Popover, PopoverTrigger, PopoverContent } from '@neuronection/assistant-ui';
 import type { FacetDefinition, FacetOption, FilterValue } from './types';
 import { isDefaultValue, defaultFilterValue } from './useFilterState';
 
@@ -50,7 +50,6 @@ export const FacetChip = <T,>({
 }: FacetChipProps<T>) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const label = facet.i18nKey ? t(facet.i18nKey, { defaultValue: facet.label }) : facet.label;
   // Resolve undefined (facet not yet in state — happens briefly when the
@@ -88,10 +87,10 @@ export const FacetChip = <T,>({
   return (
     <div className="flex items-center gap-2 min-w-0">
       <div className="relative">
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
         <button
-          ref={triggerRef}
           type="button"
-          onClick={() => setIsOpen((o) => !o)}
           className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm font-bold transition-all whitespace-nowrap ${
             active
               ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/10'
@@ -108,16 +107,15 @@ export const FacetChip = <T,>({
           </span>
           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
+        </PopoverTrigger>
 
-        <Popover
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-          triggerRef={triggerRef}
-          side="bottom"
+        <PopoverContent
           align="start"
           sideOffset={8}
+          className="w-64 max-h-[300px] overflow-y-auto p-0"
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <div className="w-64 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-[300px] overflow-y-auto custom-scrollbar">
+          <div>
             {options.length === 0 ? (
               <div className="px-4 py-3 text-sm text-gray-400 dark:text-dark-muted">No options</div>
             ) : (
@@ -161,6 +159,7 @@ export const FacetChip = <T,>({
               })
             )}
           </div>
+        </PopoverContent>
         </Popover>
       </div>
 

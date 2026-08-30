@@ -269,8 +269,8 @@ export const InstanceBrowseModal: React.FC<InstanceBrowseModalProps> = ({
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
       title={t('instances.browse_title_type', {
         defaultValue: 'Browse {{type}}',
         type: activeTypeLabel,

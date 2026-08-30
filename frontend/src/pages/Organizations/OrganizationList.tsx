@@ -284,14 +284,10 @@ function OrganizationList() {
 
       {/* Modal */}
       <FormModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
+        open={isModalOpen}
+        onOpenChange={(o) => !o && handleCloseModal()}
         title={editingOrganization ? t('organizations.edit_organization') : t('organizations.add_new_organization')}
-        icon={
-          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-            <Building2 className="w-5 h-5 text-blue-600" />
-          </div>
-        }
+        icon={Building2}
         onSubmit={handleSubmit}
         submitDisabled={!formData.name.trim()}
         submitLabel={editingOrganization ? t('organizations.update_organization') : t('organizations.save_organization')}

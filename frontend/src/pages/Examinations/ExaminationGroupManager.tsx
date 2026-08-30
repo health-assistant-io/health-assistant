@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Plus, 
   Trash2, Calendar, Tag, 
@@ -7,13 +8,13 @@ import {
 } from 'lucide-react';
 import { getTempPreviewUrl } from '../../services/documentService';
 import { FilePreviewManager } from '../../components/ui/FilePreviewManager';
-import { FileCard } from '../../components/ui/FileCard';
+import { DocumentCard } from '../../components/ui/DocumentCard';
 import { Doctor } from '../../services/doctorService';
 import { DoctorSelector } from '../../components/ui/DoctorSelector';
 import { DynamicIcon } from '../../components/ui/DynamicIcon';
 import { isMobileDevice } from '../../utils/deviceUtils';
 import { DatePicker } from '../../components/ui/DatePicker';
-import { AIBadge } from '../../components/ui/AIBadge';
+import { ActiveTaskBadge } from '../../components/ui/ActiveTaskBadge';
 
 export interface ExamGroup {
   id: string;
@@ -173,7 +174,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Unassigned Documents</h3>
-                <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+                <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} />
               </div>
               <p className="text-[10px] text-gray-500">Click anywhere or drag documents to add to staging area</p>
             </div>
@@ -225,7 +226,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
           ) : (
             <div className="flex flex-wrap gap-4">
               {unassignedFiles.map(f => (
-                <FileCard 
+                <DocumentCard 
                   key={f.id} 
                   file={f.file} 
                   onDragStart={(e) => handleDragStart(e, f.id)}
@@ -335,6 +336,7 @@ const ExaminationBubble: React.FC<{
   isHovered, onHoverChange, isSmartMode, isSingleMode = false,
   categories = []
 }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -366,7 +368,8 @@ const ExaminationBubble: React.FC<{
                 <>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-900/20">
                     <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                    <DatePicker 
+                    <DatePicker
+                      placeholder={t('common.select_date', 'Select date')} 
                       variant="unstyled"
                       value={group.date}
                       onChange={(date) => onUpdate({ date })}
@@ -417,7 +420,7 @@ const ExaminationBubble: React.FC<{
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Assigned Documents ({files.length})</span>
-                  <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+                  <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} />
                 </div>
               </div>
             )}
@@ -456,7 +459,7 @@ const ExaminationBubble: React.FC<{
               ) : (
                 <div className="flex flex-wrap gap-3">
                   {files.map(f => (
-                    <FileCard 
+                    <DocumentCard 
                       key={f.id} 
                       file={f.file} 
                       onDragStart={(e) => onDragStart(e, f.id)}
@@ -538,7 +541,7 @@ const ExaminationBubble: React.FC<{
                 <Sparkles className="w-4 h-4" />
                 <span>Health Assistant AI will automatically extract examination date, category, doctors, and clinical notes from these documents.</span>
               </div>
-              <AIBadge workflow="full_reconstruction" size="sm" showText={false} className="shrink-0" />
+              <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} className="shrink-0" />
             </div>
           )}
 

@@ -97,7 +97,7 @@ function DoctorDetail() {
         subtitle={doctor.specialty || t('doctors.general_practitioner')}
         icon={<User className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('doctors.title'), path: '/doctors' }
+          { label: t('doctors.title'), href: '/doctors' }
         ]}
         showBackButton={true}
       />

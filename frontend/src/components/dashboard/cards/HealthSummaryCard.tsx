@@ -5,7 +5,7 @@ import { X, HeartPulse, TrendingUp, TrendingDown, Minus, CalendarClock, ChevronD
 import { getFinalStatus, formatBiomarkerValue, formatUnit, getStatusColorClass } from '../../../utils/biomarkerUtils';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { BiomarkerObservation } from '../../../types/biomarker';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 interface AbnormalItem {
   name: string;
@@ -136,7 +136,7 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       <div className="mb-3">
-        <CardTitle
+        <DashboardCardTitle
           to="/biomarkers"
           title={t('dashboard.cards.health_summary', { defaultValue: 'Health Summary' })}
           titleClassName="text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest"

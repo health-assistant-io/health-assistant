@@ -296,14 +296,10 @@ function DoctorList() {
 
       {/* Modal */}
       <FormModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
+        open={isModalOpen}
+        onOpenChange={(o) => !o && handleCloseModal()}
         title={editingDoctor ? t('doctors.edit_doctor') : t('doctors.add_new_doctor')}
-        icon={
-          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-            <User className="w-5 h-5 text-blue-600" />
-          </div>
-        }
+        icon={User}
         onSubmit={handleSubmit}
         submitDisabled={!formData.name.trim()}
         submitLabel={editingDoctor ? t('doctors.update_doctor') : t('doctors.save_doctor')}

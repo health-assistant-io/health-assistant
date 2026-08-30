@@ -12,7 +12,7 @@ import { AssociatedEvents } from '../events/AssociatedEvents';
 import { ExaminationAIActions } from '../ui/ExaminationAIActions';
 import { MedicationAIActions } from '../ui/MedicationAIActions';
 import { AuthenticatedThumbnail } from '../ui/AuthenticatedThumbnail';
-import { AIBadge } from '../ui/AIBadge';
+import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
 import { isAbnormal, formatBiomarkerValue } from '../../utils/biomarkerUtils';
 import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision';
 import { stripHtml } from '../../utils/examinationUtils';
@@ -189,7 +189,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                       <BriefcaseMedical className="w-4 h-4 text-blue-500" />
                       <span className="text-[10px] font-black uppercase tracking-wider text-gray-900 dark:text-dark-text">{t('examinations.clinical_impression')}</span>
                     </div>
-                    <AIBadge />
+                    <ActiveTaskBadge />
                   </div>
                   <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-dark-text leading-relaxed">
                       <ReactMarkdown>{selectedExam.impressions}</ReactMarkdown>
@@ -204,7 +204,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                       <Bookmark className="w-4 h-4 text-blue-500" />
                       <span className="text-[10px] font-black uppercase tracking-wider text-gray-900 dark:text-dark-text">{t('examinations.extracted_diagnoses')}</span>
                     </div>
-                    <AIBadge />
+                    <ActiveTaskBadge />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {selectedExam.diagnoses.map((d: string) => (
@@ -221,7 +221,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                       <Pill className="w-4 h-4 text-indigo-500" />
                       <span className="text-[10px] font-black uppercase tracking-wider text-gray-900 dark:text-dark-text">{t('examinations.identified_medications')}</span>
                     </div>
-                    <AIBadge />
+                    <ActiveTaskBadge />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {selectedExam.medications.map((m: any, idx: number) => (

@@ -143,7 +143,7 @@ const ClinicalEventDetail: React.FC = () => {
         subtitle={event.type_details?.name}
         icon={getEventIcon(event.type_details?.slug || '', "w-6 h-6")}
         breadcrumbs={[
-          { label: t('events.title'), path: '/events' }
+          { label: t('events.title'), href: '/events' }
         ]}
         showBackButton={true}
       />

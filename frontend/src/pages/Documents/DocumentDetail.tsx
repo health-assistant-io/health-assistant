@@ -266,7 +266,7 @@ export default function DocumentDetail() {
         }
         icon={<FileText className="w-8 h-8" />}
         breadcrumbs={[
-          { label: t('documents_explorer.repository'), path: '/documents' }
+          { label: t('documents_explorer.repository'), href: '/documents' }
         ]}
         showBackButton={true}
       />

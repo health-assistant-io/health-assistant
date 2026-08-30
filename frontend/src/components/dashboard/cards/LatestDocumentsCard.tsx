@@ -9,7 +9,7 @@ import {
   List
 } from 'lucide-react';
 import { AuthenticatedThumbnail } from '../../ui/AuthenticatedThumbnail';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -42,7 +42,7 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
       )}
       
       <div className="flex items-center justify-between mb-4">
-        <CardTitle
+        <DashboardCardTitle
           to="/documents"
           title={t('dashboard.cards.latest_documents')}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"

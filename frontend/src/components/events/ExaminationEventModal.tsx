@@ -101,14 +101,10 @@ export const ExaminationEventModal: React.FC<Props> = ({ isOpen, onClose, patien
   return (
     <>
       <FormModal
-        isOpen={isOpen}
-        onClose={onClose}
+        open={isOpen}
+        onOpenChange={(o) => !o && onClose()}
         title={t('events.manage_associations')}
-        icon={
-          <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-            <Activity className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-          </div>
-        }
+        icon={Activity}
         onSubmit={handleSave}
         submitting={saving}
         submitLabel={t('common.save')}

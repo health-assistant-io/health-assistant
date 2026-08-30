@@ -186,7 +186,7 @@ function AllergyDetail() {
           </div>
         }
         icon={<ShieldAlert className="w-8 h-8" />}
-        breadcrumbs={[{ label: t('common.allergies'), path: '/allergies' }]}
+        breadcrumbs={[{ label: t('common.allergies'), href: '/allergies' }]}
         showBackButton
       />
 

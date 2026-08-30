@@ -34,13 +34,12 @@ describe('RangeBar', () => {
   });
 
   it('renders a value marker dot when value is provided', () => {
-    const { container } = render(<RangeBar low={4} high={6} value={5} />);
-    const marker = container.querySelector('.bg-blue-600');
-    expect(marker).toBeInTheDocument();
+    const { container } = render(<RangeBar low={4} high={6} value={5} valueLabel="You" />);
+    expect(container.querySelector('[title^="You:"]')).toBeInTheDocument();
   });
 
   it('omits the marker when value is null', () => {
     const { container } = render(<RangeBar low={4} high={6} value={null} />);
-    expect(container.querySelector('.bg-blue-600')).not.toBeInTheDocument();
+    expect(container.querySelector('[title^="You:"]')).not.toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import { StickyToolbar } from './StickyToolbar';
 
 export interface BreadcrumbItem {
   label: string;
-  path?: string;
+  href?: string;
   icon?: React.ReactNode;
 }
 

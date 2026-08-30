@@ -6,7 +6,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity } from 'lucide-react';
-import { AIBadge } from '../../ui/AIBadge';
+import { ActiveTaskBadge } from '../../ui/ActiveTaskBadge';
 import type { Biomarker } from '../../../types/biomarker';
 
 interface BiomarkerInsightsTabProps {
@@ -24,7 +24,7 @@ export const BiomarkerInsightsTab: React.FC<BiomarkerInsightsTabProps> = ({ biom
             <Activity className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-xl font-black uppercase tracking-tight">{t('biomarkers.smart_analysis')}</h3>
-          <AIBadge variant="white" taskType="anomaly_detection" />
+          <ActiveTaskBadge variant="white" taskType="anomaly_detection" />
         </div>
         <p className="text-blue-50 leading-relaxed mb-8 font-medium">
           Based on the longitudinal data for {biomarker.name}, the trend appears to be stable.

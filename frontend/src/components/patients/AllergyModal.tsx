@@ -85,7 +85,7 @@ export const AllergyModal: React.FC<Props> = ({ isOpen, onClose, patientId, alle
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="" hideHeader footer={undefined} bodyClassName="p-0">
+    <Modal open={isOpen} onOpenChange={(o) => !o && onClose()} title="" hideHeader footer={undefined} bodyClassName="p-0">
       <AllergyForm
         patientId={patientId}
         allergy={allergy}

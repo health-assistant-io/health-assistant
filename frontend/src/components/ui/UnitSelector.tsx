@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { Search, ChevronDown, Check, Plus, Activity } from 'lucide-react';
-import { Unit } from '../../types/biomarker';
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import biomarkerService from '../../services/biomarkerService';
+import type { Unit } from '../../types/biomarker';
 import { formatUnit } from '../../utils/biomarkerUtils';
-import { Popover } from './Popover';
+import { Combobox, type ComboboxOption } from '@neuronection/assistant-ui';
 
 interface Props {
   units: Unit[];
@@ -15,119 +15,81 @@ interface Props {
   className?: string;
 }
 
+/** Unit picker over the library `Combobox`; inline unit creation stays app-side. */
 export const UnitSelector: React.FC<Props> = ({
   units,
   selectedId,
   selectedSymbol,
   onSelect,
   onUnitsUpdated,
-  placeholder = "Select Unit...",
-  className = ""
+  placeholder = 'Select unit…',
+  className = '',
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const [term, setTerm] = useState('');
+  const [creating, setCreating] = useState(false);
 
-  const filteredUnits = units.filter(u =>
-    u.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const selectedUnit = selectedId
+    ? units.find((u) => u.id === selectedId)
+    : units.find((u) => u.symbol === selectedSymbol);
+
+  const options: ComboboxOption[] = units.map((u) => ({
+    value: u.id,
+    label: formatUnit(u.symbol),
+    description: u.name !== u.symbol ? u.name : undefined,
+  }));
+
+  const exactMatch = units.some(
+    (u) => u.symbol.toLowerCase() === term.trim().toLowerCase(),
   );
-
-  const selectedUnit = selectedId 
-    ? units.find(u => u.id === selectedId)
-    : units.find(u => u.symbol === selectedSymbol);
+  const canCreate = term.trim().length > 0 && !exactMatch && !creating;
 
   const handleCreate = async () => {
-    if (!searchTerm.trim()) return;
-    setIsCreating(true);
+    if (!canCreate) return;
+    setCreating(true);
     try {
       const newUnit = await biomarkerService.createUnit({
-        symbol: searchTerm,
-        name: searchTerm,
-        quantity_type: 'other'
+        symbol: term,
+        name: term,
+        quantity_type: 'other',
       });
-      const updatedUnits = [...units, newUnit];
-      onUnitsUpdated(updatedUnits);
+      onUnitsUpdated([...units, newUnit]);
       onSelect(newUnit);
-      setIsOpen(false);
-      setSearchTerm('');
+      setTerm('');
     } catch (err) {
-      console.error("Failed to create unit", err);
-      alert("Failed to create unit. It might already exist.");
+      console.error('Failed to create unit', err);
+      alert('Failed to create unit. It might already exist.');
     } finally {
-      setIsCreating(false);
+      setCreating(false);
     }
   };
 
   return (
-    <div className={`relative ${className}`}>
-      <div
-        ref={triggerRef}
-        className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 cursor-pointer flex items-center justify-between"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span className={selectedUnit ? "text-gray-900 dark:text-dark-text font-bold" : "text-gray-400"}>
-          {selectedUnit ? formatUnit(selectedUnit.symbol) : placeholder}
-        </span>
-        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </div>
-
-      <Popover
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        triggerRef={triggerRef}
-        side="bottom"
-        align="start"
-        sideOffset={4}
-      >
-        <div className="w-full bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200" style={{ minWidth: 220 }}>
-          <div className="p-2 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input
-                type="text"
-                autoFocus
-                placeholder="Search or create unit..."
-                className="w-full pl-9 pr-4 py-1.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="max-h-48 overflow-y-auto custom-scrollbar">
-            {filteredUnits.length > 0 ? (
-              filteredUnits.map((u) => (
-                <div
-                  key={u.id}
-                  className={`px-4 py-2 text-sm flex items-center justify-between cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${selectedUnit?.id === u.id ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-700 dark:text-dark-text'}`}
-                  onClick={() => {
-                    onSelect(u);
-                    setIsOpen(false);
-                    setSearchTerm('');
-                  }}
-                >
-                  <span>{formatUnit(u.symbol)} {u.name !== u.symbol ? <span className="text-[10px] opacity-50 ml-1">({u.name})</span> : ''}</span>
-                  {selectedUnit?.id === u.id && <Check className="w-3.5 h-3.5" />}
-                </div>
-              ))
-            ) : searchTerm.trim() ? (
-              <div
-                className="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-bold cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-2"
-                onClick={handleCreate}
-              >
-                {isCreating ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                <span>Create "{searchTerm}"</span>
-              </div>
-            ) : (
-              <div className="px-4 py-3 text-sm text-gray-400 italic text-center">
-                Type to search...
-              </div>
-            )}
-          </div>
-        </div>
-      </Popover>
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      <Combobox
+        options={options}
+        value={selectedUnit?.id ?? ''}
+        onChange={(id) => {
+          const unit = units.find((u) => u.id === id);
+          if (unit) onSelect(unit);
+        }}
+        onSearchChange={setTerm}
+        clearable={Boolean(selectedUnit)}
+        placeholder={placeholder}
+        searchPlaceholder={placeholder}
+        emptyLabel="No units match"
+      />
+      {canCreate && (
+        <button
+          type="button"
+          onClick={() => void handleCreate()}
+          className="self-start text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+        >
+          <Plus className="mr-1 inline size-3" aria-hidden />
+          Create “{term.trim()}”
+        </button>
+      )}
     </div>
   );
 };
+
+export default UnitSelector;

@@ -10,7 +10,7 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { SetupLayout } from '../../components/setup/SetupLayout';
 import { StepRenderer } from '../../components/setup/steps/StepRenderer';
 import { ManualCompleteToggle } from '../../components/setup/steps/ManualCompleteToggle';
-import type { StepperStepView } from '../../components/setup/Stepper';
+import type { SetupStepListView } from '../../components/setup/SetupStepList';
 import { resolveSection } from '../../components/setup/sections/registry';
 import { useUIStore } from '../../store/slices/uiSlice';
 
@@ -93,7 +93,7 @@ function PatientSetupWizard() {
   const activeStep = patientSteps.find((s) => s.id === activeStepId) ?? patientSteps[0];
 
   // Stepper view: steps with localised titles.
-  const stepperSteps = useMemo<StepperStepView[]>(
+  const stepperSteps = useMemo<SetupStepListView[]>(
     () =>
       patientSteps.map((s) => ({
         ...s,
@@ -136,8 +136,8 @@ function PatientSetupWizard() {
     <SetupLayout
       title={t('setup.patient.title')}
       breadcrumbs={[
-        { label: t('common.patients'), path: '/patients' },
-        { label: patient.name?.family ?? patient.name?.text ?? patientId, path: `/patients/${patientId}` },
+        { label: t('common.patients'), href: '/patients' },
+        { label: patient.name?.family ?? patient.name?.text ?? patientId, href: `/patients/${patientId}` },
         { label: t('setup.patient.title') },
       ]}
       steps={stepperSteps}

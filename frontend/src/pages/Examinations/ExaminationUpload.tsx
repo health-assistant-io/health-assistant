@@ -10,7 +10,7 @@ import { offlineService } from '../../services/offlineService';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { Check, X, FileText, RotateCcw, Sparkles, Plus, Info, Camera } from 'lucide-react';
 import { NoPatientState } from '../../components/ui/NoPatientState';
-import { AIBadge } from '../../components/ui/AIBadge';
+import { ActiveTaskBadge } from '../../components/ui/ActiveTaskBadge';
 import { AIMagicFillModal } from '../../components/ui/AIMagicFillModal';
 import { AIAssistButton } from '../../components/ui/AIAssistButton';
 import { DoctorSelector } from '../../components/ui/DoctorSelector';
@@ -22,7 +22,7 @@ import { ExaminationGroupManager, type ExamGroup, type FileWithGroup } from './E
 import { isMobileDevice } from '../../utils/deviceUtils';
 import { getTempPreviewUrl } from '../../services/documentService';
 import { FilePreviewManager } from '../../components/ui/FilePreviewManager';
-import { FileCard } from '../../components/ui/FileCard';
+import { DocumentCard } from '../../components/ui/DocumentCard';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { DatePicker } from '../../components/ui/DatePicker';
@@ -445,7 +445,7 @@ function ExaminationUpload() {
               <span className="text-sm font-bold text-gray-900 dark:text-dark-text flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-500" />
                 {t('ai_labels.smart_extraction_ai', 'Smart Extraction AI')}
-                <AIBadge taskType="ocr" className="ml-2" />
+                <ActiveTaskBadge taskType="ocr" className="ml-2" />
               </span>
               <span className="text-[10px] text-gray-500 dark:text-dark-muted">{t('ai_labels.smart_extraction_hint', 'AI will auto-fill date, doctors, and notes from documents')}</span>
             </div>
@@ -510,6 +510,7 @@ function ExaminationUpload() {
                     Examination Date
                   </label>
                   <DatePicker
+                    placeholder={t('common.select_date', 'Select date')}
                     required
                     value={examinationDate}
                     onChange={setExaminationDate}
@@ -523,13 +524,13 @@ function ExaminationUpload() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">
                   Documents
                 </label>
-                <AIBadge workflow="full_reconstruction" size="sm" showText={false} />
+                <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} />
               </div>
               
               {files.length > 0 && (
                 <div className="mb-6 flex flex-wrap gap-4">
                   {files.map((f, i) => (
-                    <FileCard 
+                    <DocumentCard 
                       key={i}
                       file={f.file}
                       onRemove={() => removeFile(i)}

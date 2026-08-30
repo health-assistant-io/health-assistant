@@ -27,8 +27,8 @@ export const TabInfoButton: React.FC<TabInfoButtonProps> = ({
       trigger="click"
       title={title}
       content={description}
-      ariaLabel={`About ${title}`}
-      icon={<Info className="w-4 h-4" />}
+      label={`About ${title}`}
+      icon={Info}
       className={className}
     />
   );

@@ -20,7 +20,7 @@ import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 export const TrendsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -115,7 +115,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
       )}
       
       <div className="flex justify-between items-start mb-4">
-        <CardTitle
+        <DashboardCardTitle
           to={!isEditMode && biomarkerId ? `/biomarkers/details/${biomarkerId}` : undefined}
           title={selectedBiomarker ? t('dashboard.cards.trend_graph_with_name', { name: displayBiomarkerName }) : t('dashboard.cards.trend_graph')}
           titleClassName="text-lg font-bold text-gray-900 dark:text-dark-text"

@@ -8,7 +8,7 @@ import { formatUnit, formatBiomarkerValue } from '../../../utils/biomarkerUtils'
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
-import { CardTitle } from '../shared/CardTitle';
+import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
@@ -96,7 +96,7 @@ export const MultiBiomarkerComparisonCard = React.forwardRef((props: any, ref: a
       )}
 
       <div className="flex items-center justify-between mb-3">
-        <CardTitle
+        <DashboardCardTitle
           to="/analytics/correlative"
           title={t('dashboard.cards.multi_biomarker_comparison', { defaultValue: 'Biomarker Comparison' })}
           titleClassName="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight"

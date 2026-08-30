@@ -84,7 +84,7 @@ const SummaryCardHeader: React.FC<SummaryCardHeaderProps> = ({
             trigger="click"
             title={info.title}
             content={info.content}
-            ariaLabel={info.ariaLabel}
+            label={info.ariaLabel}
             className="align-middle ml-1"
           />
         </span>
@@ -101,7 +101,7 @@ const SummaryCardHeader: React.FC<SummaryCardHeaderProps> = ({
             trigger="click"
             title={info.title}
             content={info.content}
-            ariaLabel={info.ariaLabel}
+            label={info.ariaLabel}
             className="align-middle ml-1"
           />
         </span>

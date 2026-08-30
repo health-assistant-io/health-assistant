@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 
-export interface CardTitleProps {
+export interface DashboardCardTitleProps {
   /** Optional leading icon node (each card controls its own icon styling) */
   icon?: React.ReactNode;
   /** Title content to display */
@@ -30,7 +30,7 @@ export interface CardTitleProps {
  * Pass `to` only when navigation is appropriate (e.g. hide it in edit mode or
  * when the target entity is unknown); when omitted the title is static.
  */
-export const CardTitle: React.FC<CardTitleProps> = ({
+export const DashboardCardTitle: React.FC<DashboardCardTitleProps> = ({
   icon,
   title,
   to,
