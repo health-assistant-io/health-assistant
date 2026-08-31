@@ -1,0 +1,32 @@
+# Health Assistant (core) — version manager config (family-unified script)
+# Family-unified script — do not fork; keep in sync with the internal standards distribution
+
+[project]
+name = "Health Assistant"
+
+[version]
+file = "backend/app/core/config.py"
+pattern = 'VERSION:\s*str\s*=\s*"(?P<version>[^"]+)"'
+
+[[propagate]]
+name = "Frontend package.json"
+file = "frontend/package.json"
+type = "json"
+field = "version"
+
+[[propagate]]
+name = "Frontend package-lock.json"
+file = "frontend/package-lock.json"
+type = "npm-lock"
+
+[[propagate]]
+name = "README version badge"
+file = "README.md"
+type = "regex"
+pattern = '(img\.shields\.io/badge/version-v)([^-\)]+)(--?[^-\)]*)?(-blue\.svg)'
+template = '\g<1>{version}\g<4>'
+dash_escape = true
+
+[release]
+docs = ["CHANGELOG.md", "docs/RELEASE_PROCESS.md"]
+tag_prefix = "v"

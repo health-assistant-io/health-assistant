@@ -71,7 +71,7 @@ bridge changes commit here in `core/`.
 ## Shared UI library (assistant-ui)
 
 `@neuronection/assistant-ui` is **our first-party family library**
-(sibling checkout `Projects/assistant-ui`), shared with study- and
+(sibling checkout `../../assistant-ui`), shared with study- and
 career-assistant — see the `ha-assistant-ui` skill. Core rules:
 
 - **Check the library first for NEW generic UI** — no new local copies of
