@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { aiConfigApi, AIProvider, AIModel, AITaskAssignment, AIConfigSummary } from '../../api/aiConfig';
+import {
+  aiConfigApi,
+  AIProvider,
+  AIModel,
+  AITaskAssignment,
+  AIConfigSummary,
+  AIProviderCreate,
+} from '../../api/aiConfig';
 
 interface AIConfigState {
   providers: AIProvider[];
@@ -9,11 +16,11 @@ interface AIConfigState {
   configSummary: AIConfigSummary | null;
   isLoading: boolean;
   error: string | null;
-  
+
   // Actions for providers
   loadProviders: (tenant_id?: string, user_id?: string, scope?: string) => Promise<void>;
-  createProvider: (data: { name: string; scope: 'SYSTEM' | 'TENANT' | 'USER'; provider_type: string; api_base: string; api_key?: string; tenant_id?: string; user_id?: string }) => Promise<AIProvider>;
-  updateProvider: (id: string, data: Partial<AIProvider>) => Promise<AIProvider>;
+  createProvider: (data: AIProviderCreate) => Promise<AIProvider>;
+  updateProvider: (id: string, data: Partial<AIProviderCreate>) => Promise<AIProvider>;
   deleteProvider: (id: string) => Promise<void>;
   
   // Actions for models

@@ -6,13 +6,16 @@ export interface AIProvider {
   scope: 'SYSTEM' | 'TENANT' | 'USER';
   provider_type: string;
   api_base: string;
+  /** Masked form (***<last4>) in every API response; never the real key. */
   api_key?: string;
+  /** True when a key is configured (the stored key itself is write-only). */
+  has_api_key?: boolean;
   is_active: boolean;
   settings?: Record<string, any>;
   is_local?: boolean;
-  company_name?: string;
-  company_website?: string;
-  company_country?: string;
+  company_name?: string | null;
+  company_website?: string | null;
+  company_country?: string | null;
   tenant_id?: string;
   user_id?: string;
   created_at?: string;
@@ -67,6 +70,10 @@ export interface AIProviderCreate {
   api_base: string;
   api_key?: string;
   is_active?: boolean;
+  is_local?: boolean;
+  company_name?: string | null;
+  company_website?: string | null;
+  company_country?: string | null;
   settings?: Record<string, any>;
   tenant_id?: string;
   user_id?: string;

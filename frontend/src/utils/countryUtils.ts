@@ -119,7 +119,7 @@ export const COUNTRIES: CountryOption[] = [
   { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
 ];
 
-export const getCountryFlag = (code?: string): string => {
+export const getCountryFlag = (code?: string | null): string => {
   if (!code) return '';
   const country = COUNTRIES.find(c => c.code === code);
   return country ? country.flag : code;
