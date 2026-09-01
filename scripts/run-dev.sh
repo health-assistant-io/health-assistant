@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Health Assistant Development Startup Script
 #
 # Bootstrap (venv, deps, migrations, admin user) then runs every dev process
@@ -10,9 +9,11 @@
 #
 # Usage:
 #   ./scripts/run-dev.sh                  # bootstrap + start the honcho group
+#   ./scripts/run-dev.sh --force          # free the dev ports, then start
+#   ./scripts/run-dev.sh --force-stop     # kill every HA dev process and exit
+#   ./scripts/run-dev.sh --no-bootstrap   # skip venv/deps bootstrap, just start
 #   ./scripts/run-dev.sh --no-admin       # skip create_system_admin so the
 #                                         # browser first-run setup wizard fires
-#   ./scripts/run-dev.sh --force-stop     # kill every HA dev process and exit
 #   ./scripts/run-dev.sh --force-celery   # deprecated (honcho owns celery),
 #                                         # accepted for backward compatibility
 #   ./scripts/run-dev.sh -h | --help      # print this help and exit
@@ -20,229 +21,137 @@
 # Run from the Health Assistant project root. Reads the root .env for ports +
 # secrets. Exits non-zero on any failure during bootstrap.
 
-# Colors for output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+cd "$SCRIPT_DIR/.."
+# shellcheck source=lib/dev-common.sh
+source scripts/lib/dev-common.sh
 
-print_help() {
-  sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
-}
+BACKEND_PORT="${BACKEND_PORT:-8000}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+FLOWER_PORT="${FLOWER_PORT:-5555}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+VENV_DIR="venv"
 
-# Default values
-FORCE_STOP=false
 NO_ADMIN=false
-
-# Parse arguments
+NO_BOOTSTRAP=false
 while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --force-stop)    FORCE_STOP=true ;;
-        --no-admin)
-            # Skip the create_system_admin step so the first-run setup wizard
-            # can be exercised (the wizard only appears when zero users exist).
-            NO_ADMIN=true
-            ;;
-        --force-celery)
-            # Accepted for backward compat; honcho owns the worker lifecycle now.
-            echo -e "${YELLOW}--force-celery is deprecated (honcho owns celery now); ignoring.${NC}"
-            ;;
-        -h|--help)      print_help ;;
-        *)
-            echo -e "${RED}Unknown parameter: $1 (try --help)${NC}" >&2
-            exit 1
-            ;;
-    esac
-    shift
+  case "$1" in
+    --force-stop)
+      echo -e "${DC_YELLOW}Force stopping all Health Assistant services...${DC_NC}"
+      # SIGTERM pass first: kill the honcho parent so it doesn't respawn
+      # children, then the individual processes (covers manually-run ones).
+      dc_pkill "honcho start"
+      dc_pkill "uvicorn app.main:app"
+      dc_pkill "celery -A app.workers.celery_app"
+      dc_pkill "vite.*--port $FRONTEND_PORT"
+      sleep 2
+      # SIGKILL escalation — celery worker/beat hold no TCP port, so without
+      # this a stuck worker would survive in warm shutdown.
+      dc_pkill9 "honcho start"
+      dc_pkill9 "uvicorn app.main:app"
+      dc_pkill9 "celery -A app.workers.celery_app"
+      dc_pkill9 "vite.*--port $FRONTEND_PORT"
+      dc_kill_port "$BACKEND_PORT"
+      dc_kill_port "$FLOWER_PORT"
+      dc_kill_port "$FRONTEND_PORT"
+      rm -f backend/celerybeat.pid
+      dc_check_port_free "$BACKEND_PORT" "backend"
+      dc_check_port_free "$FRONTEND_PORT" "frontend"
+      dc_ok "All services stopped successfully."
+      exit 0
+      ;;
+    --force)
+      dc_kill_port "$BACKEND_PORT"
+      dc_kill_port "$FRONTEND_PORT"
+      dc_kill_port "$FLOWER_PORT"
+      ;;
+    --no-admin) NO_ADMIN=true ;;
+    --no-bootstrap) NO_BOOTSTRAP=true ;;
+    --force-celery)
+      dc_warn "--force-celery is deprecated (honcho owns celery now); ignoring."
+      ;;
+    -h|--help) dc_help "$SCRIPT_PATH" ;;
+    *) dc_die "Unknown parameter: $1 (try --help)" ;;
+  esac
+  shift
 done
 
+if [[ ! -d "backend" || ! -d "frontend" ]]; then
+  dc_die "Please run this script from the Health Assistant root directory (backend/ and frontend/ not found)."
+fi
+if [[ ! -f "Procfile.dev" ]]; then
+  dc_die "Procfile.dev not found in project root."
+fi
+
 echo "Starting Health Assistant Development Environment..."
-
-if [ "$FORCE_STOP" = true ]; then
-    echo -e "${YELLOW}Force stopping all Health Assistant services...${NC}"
-
-    # Kill the honcho parent first so it doesn't respawn children.
-    pkill -f "honcho start" || true
-
-    # Then kill the individual processes (covers the case where someone ran them manually).
-    pkill -f "uvicorn app.main:app" || true
-    pkill -f "celery -A app.workers.celery_app" || true
-    pkill -f "vite.*--port 3000" || true
-
-    sleep 2
-
-    # Force kill stragglers
-    pkill -9 -f "honcho start" || true
-    pkill -9 -f "uvicorn app.main:app" || true
-    pkill -9 -f "celery -A app.workers.celery_app" || true
-    pkill -9 -f "vite.*--port 3000" || true
-
-    for port in 8000 3000 5555; do
-        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo -e "${YELLOW}Force killing process on port $port...${NC}"
-            lsof -ti :$port | xargs kill -9 2>/dev/null || true
-        fi
-    done
-
-    rm -f backend/celerybeat.pid
-
-    sleep 1
-    for port in 8000 3000; do
-        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo -e "${RED}Error: Failed to free port $port. Check 'lsof -i :$port'.${NC}"
-            exit 1
-        fi
-    done
-
-    echo -e "${GREEN}All services stopped successfully.${NC}"
-    exit 0
-fi
-
-# Check if we're in the right directory
-if [ ! -d "backend" ] || [ ! -d "frontend" ]; then
-    echo -e "${RED}Error: Please run this script from the Health Assistant root directory${NC}"
-    exit 1
-fi
-
-if [ ! -f "Procfile.dev" ]; then
-    echo -e "${RED}Error: Procfile.dev not found in project root.${NC}"
-    exit 1
-fi
 
 # Load the root .env so every process (backend, worker, frontend, scripts)
 # gets the same config regardless of how it's launched. honcho also loads
 # .env, but exporting here makes direct-uvicorn / IDE / script launches work
-# too. `set -a` auto-exports every variable defined while it's on.
-if [ -f ".env" ]; then
-    set -a
-    . ./.env
-    set +a
-fi
+# too. dc_load_env auto-exports every variable it defines.
+dc_load_env .env
 
 # Tell the backend exactly where its .env lives (absolute path) so Pydantic
 # Settings doesn't have to guess via CWD. The backend's _resolve_env_file()
 # checks HA_ENV_FILE first, then walks up from config.py as a fallback.
 export HA_ENV_FILE="$PWD/.env"
 
-# Function to check if a port is in use
-check_port() {
-    if lsof -Pi :$1 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-        return 0
-    else
-        return 1
-    fi
-}
+# .env may override the ports; re-read them after loading.
+BACKEND_PORT="${BACKEND_PORT:-8000}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+FLOWER_PORT="${FLOWER_PORT:-5555}"
+REDIS_PORT="${REDIS_PORT:-6379}"
 
-echo -e "${YELLOW}Checking required ports...${NC}"
-if check_port 8000; then
-    echo -e "${RED}Port 8000 is already in use. Stop the existing process (./scripts/run-dev.sh --force-stop).${NC}"
-    exit 1
-fi
-if check_port 5555; then
-    echo -e "${YELLOW}Port 5555 (Flower) is in use; Flower may fail to start.${NC}"
-fi
-if check_port 3000; then
-    echo -e "${YELLOW}Port 3000 is in use. Frontend will use an alternative port.${NC}"
-fi
+dc_step "checking required ports"
+dc_check_port_free "$BACKEND_PORT" "backend"
+dc_check_port_warn "$FLOWER_PORT" "Flower"
+dc_check_port_warn "$FRONTEND_PORT" "frontend (vite will pick an alternative port)"
 
-# Start backend setup
-echo -e "${GREEN}Preparing backend environment...${NC}"
-cd backend
-
-VENV_DIR="venv"
-if [ -d ".venv" ]; then
+if [[ "$NO_BOOTSTRAP" = false ]]; then
+  dc_step "preparing backend environment"
+  cd backend
+  if [[ -d ".venv" ]]; then
     VENV_DIR=".venv"
-fi
+  fi
+  dc_ensure_venv "$VENV_DIR" requirements.txt
+  export PATH="$PWD/$VENV_DIR/bin:$PATH"
 
-if [ -d "$VENV_DIR" ]; then
-    if ! "$VENV_DIR/bin/python" -c "import sys" &> /dev/null || ! "$VENV_DIR/bin/pip" --version &> /dev/null; then
-        echo -e "${YELLOW}Existing virtual environment appears broken. Recreating...${NC}"
-        rm -rf "$VENV_DIR"
-    fi
-fi
+  # PYTHONPATH must include backend (for `app.*`) and project root (for
+  # `integrations.*`). Exported here so every Procfile.dev process inherits it
+  # without re-setting it.
+  dc_backend_root="$PWD"
+  dc_backend_parent="$(dirname "$PWD")"
+  export PYTHONPATH="$dc_backend_root:$dc_backend_parent"
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${YELLOW}Virtual environment not found. Creating one in '$VENV_DIR'...${NC}"
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}Error: python3 is not installed or not in PATH.${NC}"
-        exit 1
-    fi
-    if ! python3 -m venv "$VENV_DIR"; then
-        echo -e "${RED}Error: Failed to create virtual environment. Ensure 'python3-venv' is installed.${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}Virtual environment created successfully.${NC}"
-fi
+  dc_step "running database migrations"
+  alembic upgrade head || dc_error "Migration failed. Proceeding anyway..."
 
-if [ -f "$VENV_DIR/bin/activate" ]; then
-    source "$VENV_DIR/bin/activate"
-else
-    echo -e "${RED}Error: Activation script not found at $VENV_DIR/bin/activate.${NC}"
-    exit 1
-fi
-
-VENV_PYTHON="$PWD/$VENV_DIR/bin/python"
-VENV_PIP="$PWD/$VENV_DIR/bin/pip"
-
-if [ ! -x "$VENV_PYTHON" ]; then
-    echo -e "${RED}Error: Virtual environment python not found or not executable.${NC}"
-    exit 1
-fi
-
-echo -e "${YELLOW}Installing/Verifying backend dependencies...${NC}"
-"$VENV_PYTHON" -m pip install -q --upgrade pip
-if ! "$VENV_PIP" install -q -r requirements.txt; then
-    echo -e "${RED}Error: Failed to install requirements.${NC}"
-    exit 1
-fi
-
-# Honcho is the process supervisor for dev — verify it landed.
-if ! command -v honcho &> /dev/null; then
-    echo -e "${RED}Error: honcho is not installed even after requirements install. Add 'honcho' to requirements.txt.${NC}"
-    exit 1
-fi
-
-# PYTHONPATH must include backend (for `app.*`) and project root (for `integrations.*`).
-# Exported here so every Procfile.dev process inherits it without re-setting it.
-export PYTHONPATH="$PWD:$(dirname "$PWD")"
-
-# Run database migrations
-echo -e "${YELLOW}Running database migrations...${NC}"
-alembic upgrade head || echo -e "${RED}Migration failed. Proceeding anyway...${NC}"
-
-# Create admin user if database is available (skip with --no-admin to test
-# the first-run setup wizard, which only appears when zero users exist).
-if [ "$NO_ADMIN" = true ]; then
-    echo -e "${YELLOW}Skipping admin creation (--no-admin).${NC}"
-    echo -e "${YELLOW}  If the DB has no users, visit http://localhost:3000 to run the${NC}"
-    echo -e "${YELLOW}  first-run setup wizard. To test it from a clean slate, reset the${NC}"
-    echo -e "${YELLOW}  existing admin first, e.g.:${NC}"
-    echo -e "${YELLOW}    psql \"\$DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'${NC}"
-else
-    echo -e "${YELLOW}Setting up admin user...${NC}"
+  if [[ "$NO_ADMIN" = true ]]; then
+    dc_warn "Skipping admin creation (--no-admin)."
+    dc_warn "  If the DB has no users, visit http://localhost:$FRONTEND_PORT to run the"
+    dc_warn "  first-run setup wizard. To test it from a clean slate, reset the"
+    dc_warn "  existing admin first, e.g.:"
+    dc_warn "    psql \"\$DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'"
+  else
+    dc_step "setting up admin user"
     python3 scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
+  fi
+  cd ..
+
+  dc_ensure_node_deps frontend npm
 fi
 
-# Frontend deps (done here so the honcho-managed `npm run dev` doesn't pay the install cost on every start)
-cd ../frontend
-if ! command -v npm &> /dev/null; then
-    echo -e "${RED}Error: npm is not installed or not in PATH.${NC}"
-    exit 1
+# Make the venv's honcho/alembic/python resolvable even with --no-bootstrap.
+if [[ -d "backend/$VENV_DIR/bin" ]]; then
+  export PATH="$PWD/backend/$VENV_DIR/bin:$PATH"
 fi
-if [ ! -d "node_modules" ]; then
-    echo -e "${YELLOW}Installing frontend dependencies...${NC}"
-    if ! npm install; then
-        echo -e "${RED}Error: Failed to install frontend dependencies.${NC}"
-        exit 1
-    fi
-fi
-cd ..
 
 # Pre-flight: warn if Redis is not running (celery worker + beat + flower all need it).
-if ! lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo -e "${YELLOW}Warning: Redis (port 6379) is not running. Worker/beat/flower will fail to connect.${NC}"
-    echo -e "${YELLOW}Start it via: docker compose -f docker/docker-compose.dev-db.yml up -d redis${NC}"
+if ! dc_port_in_use "$REDIS_PORT"; then
+  dc_warn "Redis (port $REDIS_PORT) is not running. Worker/beat/flower will fail to connect."
+  dc_warn "Start it via: docker compose -f docker/docker-compose.dev-db.yml up -d redis"
 fi
 
 # Clean up any stale celery beat lock from a previous run.
@@ -255,21 +164,21 @@ rm -f logging/celery.log logging/celery.*.log
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -z "$LAN_IP" ] && LAN_IP="localhost"
 
-echo -e "${GREEN}================================${NC}"
-echo -e "${GREEN}Starting dev processes under honcho...${NC}"
-echo -e "${GREEN}================================${NC}"
-echo -e "Backend:   ${GREEN}http://localhost:8000${NC}"
-echo -e "API Docs:  ${GREEN}http://localhost:8000/docs${NC}"
-echo -e "Frontend:  ${GREEN}http://localhost:3000${NC}"
-echo -e "Mobile:    ${GREEN}http://${LAN_IP}:3000${NC}"
-echo -e "Flower:    ${GREEN}http://localhost:5555${NC}  (Celery monitoring)"
+echo -e "${DC_GREEN}================================${DC_NC}"
+echo -e "${DC_GREEN}Starting dev processes under honcho...${DC_NC}"
+echo -e "${DC_GREEN}================================${DC_NC}"
+echo -e "Backend:   ${DC_GREEN}http://localhost:$BACKEND_PORT${DC_NC}"
+echo -e "API Docs:  ${DC_GREEN}http://localhost:$BACKEND_PORT/docs${DC_NC}"
+echo -e "Frontend:  ${DC_GREEN}http://localhost:$FRONTEND_PORT${DC_NC}"
+echo -e "Mobile:    ${DC_GREEN}http://${LAN_IP}:$FRONTEND_PORT${DC_NC}"
+echo -e "Flower:    ${DC_GREEN}http://localhost:$FLOWER_PORT${DC_NC}  (Celery monitoring)"
 echo -e ""
-echo -e "${YELLOW}Processes: backend, worker, beat, flower, frontend (see Procfile.dev).${NC}"
-echo -e "${YELLOW}If any process crashes, honcho stops the whole group so you see the error.${NC}"
-echo -e "${YELLOW}Press Ctrl+C to stop all services.${NC}"
+echo -e "${DC_YELLOW}Processes: backend, worker, beat, flower, frontend (see Procfile.dev).${DC_NC}"
+echo -e "${DC_YELLOW}If any process crashes, honcho stops the whole group so you see the error.${DC_NC}"
+echo -e "${DC_YELLOW}Press Ctrl+C to stop all services.${DC_NC}"
 echo -e ""
 
-# `exec` replaces this script with honcho so signals (Ctrl+C) go straight to
-# honcho and propagate to all children. honcho reads Procfile.dev from cwd.
-cd "$(dirname "$0")/.."
-exec honcho start -f Procfile.dev
+# dc_exec_honcho replaces this script with honcho so signals (Ctrl+C) go
+# straight to honcho and propagate to all children. honcho reads Procfile.dev
+# from cwd.
+dc_exec_honcho Procfile.dev
