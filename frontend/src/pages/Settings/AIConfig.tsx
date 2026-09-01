@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ProviderManager } from '../../components/settings/ProviderManager';
-import { ModelsPage } from '../../components/settings/ModelsPage';
+import { ModelsTab } from '../../components/settings/ModelsTab';
 import { TaskAssignment } from '../../components/settings/TaskAssignment';
 import { AgentSettings } from '../../components/settings/AgentSettings';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
@@ -138,7 +138,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
         )}
 
         {activeTab === 'models' && (
-          <ModelsPage />
+          <ModelsTab />
         )}
 
         {activeTab === 'tasks' && (

@@ -31,12 +31,13 @@ export interface AIModel {
   provider_name?: string;
   name: string;
   model_name: string;
-  description?: string;
+  description?: string | null;
   /** Capability set this model advertises (text / vision / audio_input). */
   capabilities?: AIModelCapability[];
   is_active: boolean;
-  max_tokens: number;
-  temperature: number;
+  /** Null = cleared in settings; the runtime then uses the LLM's default. */
+  max_tokens: number | null;
+  temperature: number | null;
   is_local?: boolean;
   settings?: Record<string, any>;
   created_at?: string;
@@ -75,11 +76,11 @@ export interface AIModelCreate {
   provider_id: string;
   name: string;
   model_name: string;
-  description?: string;
+  description?: string | null;
   capabilities?: AIModelCapability[];
   is_active?: boolean;
-  max_tokens?: number;
-  temperature?: number;
+  max_tokens?: number | null;
+  temperature?: number | null;
   is_local?: boolean;
   settings?: Record<string, any>;
 }
