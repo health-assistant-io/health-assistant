@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-09-02
+
 - **Compact sidebar on short viewports** — at ≤720px window height the nav drops to the library's new `SidebarNav` `compact` density and the footer drops to a compact variant (Neuronection mark + wordmark link, smaller Fund/About pills, version; the family panel hides; CreateMenu stays) so the patient-record tree stays fully visible (library change pending the next `@neuronection/assistant-ui` release).
 - **Sidebar footer is now a project block** — "Part of Neuronection" (mark + wordmark link), the three family assistants (Health / Career / Study — library marks, aligned names, external links, the current app emphasized), Fund + About pills and the app version (from `frontend/package.json`); the block collapses to icons in the collapsed rail and ships dark-mode variants. The Fund popup reuses the library `SponsorCard` (Buy Me a Coffee + GitHub star channels in `config/funding.tsx`, also wired into the About page). The About entry moved out of the main nav into the footer's About pill (`/about` itself is unchanged); the standalone `AppVersion` line left the sidebar (it still renders on the auth screens). Product copy lives in the app locales (en + el) — the library stays presentational per ADR-006.
 - **Dependencies:** `@neuronection/assistant-ui` ^0.16.0 (compact SponsorCard redesign, clickable current-app FamilyBadge, `SidebarNav.secondaryItems`).
