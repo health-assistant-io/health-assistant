@@ -489,6 +489,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reusable `CatalogItemPicker` — search-and-select for any catalog item(s).** A new modular, controlled component (`components/catalog/CatalogItemPicker.tsx`) for picking catalog items, usable anywhere a form needs one or many clinical references. Two discovery paths feed one selection: (1) **inline type-ahead** — a debounced cross-catalog search (`searchCatalogs`) with a Portaled results popover showing each hit as `<TYPE-chip> <label>`; (2) a **Browse button** inside the input that opens `CatalogPickerBrowseModal` — the full catalog browser in a popup with a searchable catalog-type dropdown defaulting to **All** (cross-catalog search) or a specific type (`listCatalogItems` with its own search + scope filter), and an Add/Added toggle per row. Supports `mode: 'single' | 'multi'` (single replaces, multi appends + dedupes by `type:id`), and an optional `relationPicker` that surfaces a per-chip relation-type dropdown so selections can carry a relation bind (e.g. `<AFFECTS, biomarker>`). Selected items render as removable chips below the input. The popup reuses the existing `CatalogBrowser` (gains backward-compatible `pickedIds`/`onTogglePick` props for the Add/Added affordance + multi-highlight) and `CatalogTypeSelect` (gains an optional `allowAll` for the cross-catalog entry). Relation options now live in one shared `catalogRelationTypes.ts` (mirror of the backend `ConceptRelationType` enum), replacing the hardcoded copy that was inlined in the editor.
 
 ### Changed
+
+- **Sidebar + header user menu on shared library primitives** — the
+  hand-rolled sidebar (490 lines: icon rail, hover flyouts, manual
+  tooltips) is replaced by `SidebarNav` from `@neuronection/assistant-ui`
+  driven by the new typed `config/mainNav.ts` registry (role filtering,
+  active-route resolution and section dividers extracted as tested pure
+  functions). The header user dropdown now renders in a Radix popover
+  (keyboard + Escape + click-outside for free). Adds `nav.*` locale keys
+  (en/el). Part of the family nav primitives program (ADR-0007).
 - **`CatalogRelationsEditor` refactored onto `CatalogItemPicker`.** The inline cross-catalog search, the Portaled results popover, the relation-type `<select>`, the chip list, and the duplicated `RELATION_OPTIONS` are all removed — the editor is now a thin consumer that maps persisted `concept_edges` ↔ picker selections and reconciles via `createEdge`/`deleteEdge` on change (immediate persistence, same UX as before). ~110 lines of duplicated search/popover plumbing collapse into a `<CatalogItemPicker mode="multi" relationPicker>` call. New `catalogs.picker_*` + `common.remove`/`common.searching` i18n keys (en + el). `npm run build` (tsc strict) + `npm run lint` clean.
 
 ### Fixed

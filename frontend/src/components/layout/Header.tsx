@@ -15,6 +15,7 @@ import { TenantSwitcher } from './TenantSwitcher';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useTenantSwitchStore } from '../../store/slices/tenantSwitchSlice';
+import { Popover, PopoverContent, PopoverTrigger } from '@neuronection/assistant-ui';
 
 function Header() {
   const { t } = useTranslation();
@@ -34,9 +35,6 @@ function Header() {
   const pageSearchTerm = useUIStore(state => state.pageSearchTerm);
   const setPageSearchTerm = useUIStore(state => state.setPageSearchTerm);
   const isSearchLauncherOpen = useUIStore(state => state.isSearchLauncherOpen);
-  
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // Helper to get page title from current path (fallback if no PageHeader is used)
   const getPageTitle = () => {
@@ -45,16 +43,6 @@ function Header() {
     if (path === '/' || path === '/dashboard') return t('common.dashboard');
     return 'Health Assistant';
   };
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsUserMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Load the current tenant's display name whenever the user changes
   // (login, tenant switch, exit-switch). The tenant name is not in the
@@ -270,133 +258,127 @@ function Header() {
 
           <NotificationBell />
 
-          <div className="relative" ref={menuRef}>
-            <div 
-              className="flex items-center space-x-2 cursor-pointer group p-1 rounded-full hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors"
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            >
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs group-hover:bg-blue-200 transition-colors">
-                {user?.email?.[0]?.toUpperCase() || 'A'}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={t('common.account')}
+                className="flex items-center space-x-2 cursor-pointer group p-1 rounded-full hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs group-hover:bg-blue-200 transition-colors">
+                  {user?.email?.[0]?.toUpperCase() || 'A'}
+                </div>
+                <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={8} className="w-64 rounded-2xl shadow-xl p-0 py-2" aria-label={t('common.account')}>
+              {/* Tenant Switcher — always in the user menu */}
+              <div className="px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
+                <TenantSwitcher className="w-full" />
               </div>
-              <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
-            </div>
 
-            {isUserMenuOpen && (
-              <div className="absolute right-0 mt-3 w-64 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-xl z-[510] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Tenant Switcher — always in the user menu */}
-                <div className="px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
-                  <TenantSwitcher className="w-full" />
-                </div>
+              {/* Mobile/Compact Patient Selector in Menu */}
+              <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
+                <PatientSelect className="border-none bg-transparent shadow-none" align="right" />
+              </div>
 
-                {/* Mobile/Compact Patient Selector in Menu */}
-                <div className="sm:hidden px-2 pb-2 mb-1 border-b border-gray-50 dark:border-dark-border">
-                  <PatientSelect className="border-none bg-transparent shadow-none" align="right" />
-                </div>
-
-                <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border mb-1 bg-gray-50/50 dark:bg-dark-bg/30">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('common.account')}</p>
-                  <p className="text-sm font-bold text-gray-700 dark:text-dark-text truncate mt-1">{user?.email}</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-[10px] text-blue-500 font-bold uppercase">
-                      {user?.role === 'SYSTEM_ADMIN' ? t('admin.role_system_admin') : 
-                       user?.role === 'ADMIN' ? t('admin.role_admin') : 
-                       user?.role === 'MANAGER' ? t('admin.role_manager') : 
-                       t('admin.role_user')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-3 py-2 border-b border-gray-50 dark:border-dark-border mb-1">
-                  <SyncIndicator className="w-full" />
-                </div>
-                
-                <div className="p-1 space-y-0.5">
-                  <button 
-                    onClick={handleLanguageToggle}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <Languages className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">{language === 'en' ? t('common.greek') : t('common.english')}</span>
-                  </button>
-
-                  <button 
-                    onClick={handleThemeToggle}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    {theme === 'light' ? (
-                      <>
-                        <Moon className="w-4 h-4 mr-3 text-gray-400" />
-                        <span className="font-medium">{t('common.dark_mode')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sun className="w-4 h-4 mr-3 text-gray-400" />
-                        <span className="font-medium">{t('common.light_mode')}</span>
-                      </>
-                    )}
-                  </button>
-
-                  <Link
-                    to="/profile"
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <UserCircle className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">{t('common.profile')}</span>
-                  </Link>
-
-                  <Link
-                    to="/setup/wizard"
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <ListChecks className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">{t('setup.role.title')}</span>
-                  </Link>
-
-                  <Link
-                    to="/settings" 
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <Settings className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">{t('common.settings')}</span>
-                  </Link>
-
-                  <Link 
-                    to="/settings/integrations" 
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <LinkIcon className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">Integrations</span>
-                  </Link>
-                  
-                  <Link 
-                    to="/about" 
-                    onClick={() => setIsUserMenuOpen(false)}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors"
-                  >
-                    <Info className="w-4 h-4 mr-3 text-gray-400" />
-                    <span className="font-medium">{t('common.about')}</span>
-                  </Link>
-                  
-                  <div className="h-px bg-gray-50 dark:bg-dark-border my-1 mx-2" />
-
-                  <button 
-                    onClick={async () => {
-                      await logout();
-                      setIsUserMenuOpen(false);
-                    }}
-                    className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
-                  >
-                    <LogOut className="w-4 h-4 mr-3" />
-                    <span className="font-bold">{t('common.logout')}</span>
-                  </button>
+              <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border mb-1 bg-gray-50/50 dark:bg-dark-bg/30">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('common.account')}</p>
+                <p className="text-sm font-bold text-gray-700 dark:text-dark-text truncate mt-1">{user?.email}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-[10px] text-blue-500 font-bold uppercase">
+                    {user?.role === 'SYSTEM_ADMIN' ? t('admin.role_system_admin') :
+                     user?.role === 'ADMIN' ? t('admin.role_admin') :
+                     user?.role === 'MANAGER' ? t('admin.role_manager') :
+                     t('admin.role_user')}
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
+
+              <div className="px-3 py-2 border-b border-gray-50 dark:border-dark-border mb-1">
+                <SyncIndicator className="w-full" />
+              </div>
+
+              <div className="p-1 space-y-0.5">
+                <button
+                  onClick={handleLanguageToggle}
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <Languages className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">{language === 'en' ? t('common.greek') : t('common.english')}</span>
+                </button>
+
+                <button
+                  onClick={handleThemeToggle}
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  {theme === 'light' ? (
+                    <>
+                      <Moon className="w-4 h-4 mr-3 text-gray-400" />
+                      <span className="font-medium">{t('common.dark_mode')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sun className="w-4 h-4 mr-3 text-gray-400" />
+                      <span className="font-medium">{t('common.light_mode')}</span>
+                    </>
+                  )}
+                </button>
+
+                <Link
+                  to="/profile"
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <UserCircle className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">{t('common.profile')}</span>
+                </Link>
+
+                <Link
+                  to="/setup/wizard"
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <ListChecks className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">{t('setup.role.title')}</span>
+                </Link>
+
+                <Link
+                  to="/settings"
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <Settings className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">{t('common.settings')}</span>
+                </Link>
+
+                <Link
+                  to="/settings/integrations"
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <LinkIcon className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">Integrations</span>
+                </Link>
+
+                <Link
+                  to="/about"
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-600 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <Info className="w-4 h-4 mr-3 text-gray-400" />
+                  <span className="font-medium">{t('common.about')}</span>
+                </Link>
+
+                <div className="h-px bg-gray-50 dark:bg-dark-border my-1 mx-2" />
+
+                <button
+                  onClick={async () => {
+                    await logout();
+                  }}
+                  className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500"
+                >
+                  <LogOut className="w-4 h-4 mr-3" />
+                  <span className="font-bold">{t('common.logout')}</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

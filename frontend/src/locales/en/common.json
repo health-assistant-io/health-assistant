@@ -167,6 +167,12 @@
     "clear": "Clear",
     "no_patient_setup_action": "Run setup wizard"
   },
+  "nav": {
+    "close_sidebar": "Close sidebar",
+    "collapse_sidebar": "Collapse Sidebar",
+    "expand_sidebar": "Expand Sidebar",
+    "primary": "Main navigation"
+  },
   "dashboard": {
     "title": "Patient Health Overview",
     "all_patients": "All Patients",
