@@ -75,3 +75,10 @@ export function useBreakpoint(): Breakpoint {
 
   return bp;
 }
+
+/** True when viewport height <= 720px — the sidebar drops to the compact
+ * density and hides the footer project block so the nav list stays fully
+ * visible. */
+export function useIsShortViewport(): boolean {
+  return useMediaQuery('(max-height: 720px)');
+}

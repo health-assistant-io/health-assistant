@@ -7,7 +7,7 @@ import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
-import { useIsTablet } from '../../hooks/useMediaQuery';
+import { useIsTablet, useIsShortViewport } from '../../hooks/useMediaQuery';
 import CreateMenu from '../ui/CreateMenu';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
 import { SidebarFooter } from './SidebarFooter';
@@ -24,6 +24,7 @@ function Sidebar() {
   // collapsed icon-only mode is a desktop space-saving feature only.
   const isMobileView = useIsTablet();
   const effectiveCollapsed = sidebarCollapsed && !isMobileView;
+  const isShort = useIsShortViewport();
   const toggleSidebarCollapse = useUIStore(state => state.toggleSidebarCollapse);
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
@@ -65,6 +66,7 @@ function Sidebar() {
         expand: t('nav.expand_sidebar', 'Expand Sidebar'),
         collapse: t('nav.collapse_sidebar', 'Collapse Sidebar'),
       }}
+      compact={isShort}
       className={`${effectiveCollapsed ? 'w-20' : 'w-64 sm:w-72 lg:w-64'} bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border shadow-lg lg:shadow-none safe-top safe-bottom isolate`}
       header={
         <>
@@ -101,14 +103,14 @@ function Sidebar() {
       footer={
         <div className="space-y-2">
           <CreateMenu collapsed={effectiveCollapsed} />
-          {!effectiveCollapsed && (
+          {!effectiveCollapsed && !isShort && (
             <div
               aria-hidden
               className="mt-2 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-dark-border"
             />
           )}
-          <div className={effectiveCollapsed ? undefined : 'pt-3'}>
-            <SidebarFooter collapsed={effectiveCollapsed} />
+          <div className={effectiveCollapsed || isShort ? undefined : 'pt-3'}>
+            <SidebarFooter collapsed={effectiveCollapsed} compact={isShort} />
           </div>
         </div>
       }
