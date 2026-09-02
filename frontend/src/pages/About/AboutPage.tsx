@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Globe, Linkedin, Mail } from 'lucide-react';
 import { AboutPanel, HealthMark } from '@neuronection/assistant-ui';
 import packageJson from '../../../package.json';
+import { SPONSOR_CHANNELS } from '../../config/funding';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 
@@ -59,6 +60,10 @@ const AboutPage = () => {
           }}
           copyright="© 2026 Neuronection"
           theme={logoTheme}
+          sponsor={{
+            channels: SPONSOR_CHANNELS,
+            title: t('sponsor.title', 'Help Health Assistant grow'),
+          }}
         />
       </div>
     </div>

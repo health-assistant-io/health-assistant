@@ -13,7 +13,7 @@
     "capture:ui:headed": "node tests-e2e/ui-capture/capture.mjs --headed"
   },
   "dependencies": {
-    "@neuronection/assistant-ui": "^0.15.0",
+    "@neuronection/assistant-ui": "^0.16.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/d3-force": "^3.0.10",
     "@types/dagre": "^0.7.54",

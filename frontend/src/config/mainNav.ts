@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Bell,
   BookOpen,
-  Info,
   LayoutDashboard,
   ShieldCheck,
   Sparkles,
@@ -65,10 +64,7 @@ export const MAIN_NAV: MainNavItem[] = [
   // 5. AI Assistant
   { path: '/ai-assistant', labelKey: 'common.ai_assistant', icon: Sparkles },
 
-  // 6. About
-  { path: '/about', labelKey: 'common.about', icon: Info },
-
-  // 7. Administration (merged System + Tenant, role-gated)
+  // 6. Administration (merged System + Tenant, role-gated)
   {
     path: '/administration',
     labelKey: 'common.administration',

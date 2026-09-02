@@ -169,6 +169,17 @@
     "expand_sidebar": "Ανάπτυξη πλευρικής στήλης",
     "primary": "Κύρια πλοήγηση"
   },
+  "footer": {
+    "part_of": "Μέρος του",
+    "part_of_family": "Μέρος του Neuronection",
+    "more_from_family": "Περισσότερα από την οικογένεια",
+    "assistant": "Βοηθός",
+    "fund": "Υποστήριξη",
+    "support_project": "Υποστηρίξτε το έργο"
+  },
+  "sponsor": {
+    "title": "Βοηθήστε το Health Assistant να αναπτυχθεί"
+  },
   "dashboard": {
     "title": "Επισκόπηση Υγείας Ασθενούς",
     "all_patients": "Όλοι οι Ασθενείς",

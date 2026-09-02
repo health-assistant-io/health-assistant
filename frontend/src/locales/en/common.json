@@ -173,6 +173,17 @@
     "expand_sidebar": "Expand Sidebar",
     "primary": "Main navigation"
   },
+  "footer": {
+    "part_of": "Part of",
+    "part_of_family": "Part of Neuronection",
+    "more_from_family": "More from the family",
+    "assistant": "Assistant",
+    "fund": "Fund",
+    "support_project": "Support this project"
+  },
+  "sponsor": {
+    "title": "Help Health Assistant grow"
+  },
   "dashboard": {
     "title": "Patient Health Overview",
     "all_patients": "All Patients",
