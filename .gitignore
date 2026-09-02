@@ -117,3 +117,6 @@ htmlcov/
 *.p12
 credentials.json
 secrets.json
+
+# assistant-ui dev-link state (never commit)
+.assistant-ui-dev-link.json
