@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Dependencies:** `@neuronection/assistant-ui` ^0.17.0 (publishes the compact `SidebarNav` density the v0.6.0 short-viewport sidebar shipped against — the release build failed `tsc` against the published 0.16.0 types).
+
 ## [v0.6.0] - 2026-09-02
 
 - **Compact sidebar on short viewports** — at ≤720px window height the nav drops to the library's new `SidebarNav` `compact` density and the footer drops to a compact variant (Neuronection mark + wordmark link, smaller Fund/About pills, version; the family panel hides; CreateMenu stays) so the patient-record tree stays fully visible (library change pending the next `@neuronection/assistant-ui` release).
