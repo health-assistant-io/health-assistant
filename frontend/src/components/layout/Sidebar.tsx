@@ -8,9 +8,9 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { useIsTablet } from '../../hooks/useMediaQuery';
-import AppVersion from '../ui/AppVersion';
 import CreateMenu from '../ui/CreateMenu';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
+import { SidebarFooter } from './SidebarFooter';
 import { MAIN_NAV, filterNavByRole, resolveActiveNavId, resolveSubPath } from '../../config/mainNav';
 
 function Sidebar() {
@@ -101,7 +101,15 @@ function Sidebar() {
       footer={
         <div className="space-y-2">
           <CreateMenu collapsed={effectiveCollapsed} />
-          <AppVersion collapsed={effectiveCollapsed} className="pt-1" />
+          {!effectiveCollapsed && (
+            <div
+              aria-hidden
+              className="mt-2 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-dark-border"
+            />
+          )}
+          <div className={effectiveCollapsed ? undefined : 'pt-3'}>
+            <SidebarFooter collapsed={effectiveCollapsed} />
+          </div>
         </div>
       }
     />
