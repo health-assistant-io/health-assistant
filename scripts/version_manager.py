@@ -149,14 +149,14 @@ def apply_propagation(cfg: dict, new_version: str) -> list[str]:
         if ptype == "json":
             data = json.loads(text)
             data[prop["field"]] = new_version
-            new_text = json.dumps(data, indent=2) + "\n"
+            new_text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         elif ptype == "npm-lock":
             data = json.loads(text)
             if "version" in data:
                 data["version"] = new_version
             if data.get("packages", {}).get("", {}).get("version") is not None:
                 data["packages"][""]["version"] = new_version
-            new_text = json.dumps(data, indent=2) + "\n"
+            new_text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         elif ptype == "regex":
             version_text = new_version.replace("-", "--") if prop.get("dash_escape") else new_version
             template = prop.get("template")
