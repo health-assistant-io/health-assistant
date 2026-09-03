@@ -17,7 +17,7 @@ from typing import Callable, Dict, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.ai.providers import factories
+from app.ai import chat_models
 from app.ai.providers.enums import ProviderType
 
 logger = logging.getLogger(__name__)
@@ -27,11 +27,11 @@ LLMBuilder = Callable[..., BaseChatModel]
 
 # Registered LLM builders keyed by provider type. Add new providers here.
 PROVIDER_FACTORIES: Dict[ProviderType, LLMBuilder] = {
-    ProviderType.OPENAI: factories.build_openai,
-    ProviderType.ANTHROPIC: factories.build_anthropic,
-    ProviderType.OLLAMA: factories.build_ollama,
-    ProviderType.AZURE_OPENAI: factories.build_azure_openai,
-    ProviderType.BEDROCK: factories.build_bedrock,
+    ProviderType.OPENAI: chat_models.build_openai,
+    ProviderType.ANTHROPIC: chat_models.build_anthropic,
+    ProviderType.OLLAMA: chat_models.build_ollama,
+    ProviderType.AZURE_OPENAI: chat_models.build_azure_openai,
+    ProviderType.BEDROCK: chat_models.build_bedrock,
 }
 
 # Fallback builder when a DB row carries an unknown / unrecognised provider_type
@@ -39,7 +39,7 @@ PROVIDER_FACTORIES: Dict[ProviderType, LLMBuilder] = {
 # typed as something exotic). Falls back to the OpenAI-compatible builder and
 # logs a WARNING — never raises, so a single misconfigured row cannot break
 # every LLM call.
-DEFAULT_BUILDER: LLMBuilder = factories.build_openai
+DEFAULT_BUILDER: LLMBuilder = chat_models.build_openai
 
 
 def get_llm_builder(provider_type: Optional[str]) -> LLMBuilder:

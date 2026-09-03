@@ -1,4 +1,8 @@
-"""LLM builders for each LLM-capable ``ProviderType``.
+"""LLM builders for each LLM-capable ``ProviderType`` (the model factory).
+
+This is the ONLY application module that may import LangChain chat classes
+or provider SDK packages (ADR-0008): every ``BaseChatModel`` used anywhere in
+the app is built here and injected by ``AIProviderService.get_llm``.
 
 A builder is a plain function that accepts keyword-only LLM configuration
 (``api_key``, ``base_url``, ``model_name``, ``temperature``, ``max_tokens``)
@@ -55,7 +59,7 @@ def build_anthropic(
 ) -> BaseChatModel:
     raise NotImplementedError(
         "Anthropic provider is reserved but not wired. Add langchain-anthropic to "
-        "requirements.txt and implement this builder in app.ai.providers.factories."
+        "requirements.txt and implement this builder in app.ai.chat_models."
     )
 
 

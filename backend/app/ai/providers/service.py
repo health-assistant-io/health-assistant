@@ -5,7 +5,7 @@ from sqlalchemy import select, update, delete, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from app.ai.providers import factories
+from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import get_llm_builder
 from app.ai.providers.resolution import resolve_active_assignment
@@ -563,7 +563,7 @@ class AIProviderService:
             f"AI Resolution [{task_type}]: No DB assignment found. Falling back to ENV settings. "
             f"Model: {settings.OPENAI_MODEL or 'gpt-4o-mini'}"
         )
-        return factories.build_openai(
+        return chat_models.build_openai(
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
             model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
@@ -601,7 +601,7 @@ class AIProviderService:
                 # OCR is LLM-backed only when the provider is OpenAI-compatible
                 # today (vision models). Tesseract/etc. skip the LLM entirely.
                 if provider.provider_type == ProviderType.OPENAI.value:
-                    llm = factories.build_openai(
+                    llm = chat_models.build_openai(
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o",
@@ -660,7 +660,7 @@ class AIProviderService:
                 # NLP structured extraction is LLM-backed only for OpenAI-
                 # compatible providers today; spaCy is the rule-based fallback.
                 if provider.provider_type == ProviderType.OPENAI.value:
-                    llm = factories.build_openai(
+                    llm = chat_models.build_openai(
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o-mini",

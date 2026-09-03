@@ -8,7 +8,7 @@ import pytest
 
 from langchain_openai import ChatOpenAI
 
-from app.ai.providers import factories
+from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import (
     DEFAULT_BUILDER,
@@ -96,7 +96,7 @@ class TestProviderType:
 
 class TestRegistry:
     def test_openai_resolves_to_openai_builder(self):
-        assert get_llm_builder("openai") is factories.build_openai
+        assert get_llm_builder("openai") is chat_models.build_openai
 
     def test_all_llm_providers_registered(self):
         # Every LLM-capable provider type must have a registered builder.
@@ -115,9 +115,9 @@ class TestRegistry:
         assert ProviderType.SPACY not in PROVIDER_FACTORIES
 
     def test_unknown_falls_back_to_default(self):
-        assert DEFAULT_BUILDER is factories.build_openai
-        assert get_llm_builder("never-heard-of-it") is factories.build_openai
-        assert get_llm_builder(None) is factories.build_openai
+        assert DEFAULT_BUILDER is chat_models.build_openai
+        assert get_llm_builder("never-heard-of-it") is chat_models.build_openai
+        assert get_llm_builder(None) is chat_models.build_openai
 
     def test_unknown_falls_back_silently(self):
         # Must not raise — a single bad DB row must not break every LLM call.
@@ -140,12 +140,12 @@ class TestRegistry:
 
 
 # ---------------------------------------------------------------------------
-# factories.build_openai
+# chat_models.build_openai
 # ---------------------------------------------------------------------------
 
 class TestBuildOpenAI:
     def test_returns_chat_openai(self):
-        llm = factories.build_openai(
+        llm = chat_models.build_openai(
             api_key="sk-test",
             base_url="https://api.openai.com/v1",
             model_name="gpt-4o-mini",
