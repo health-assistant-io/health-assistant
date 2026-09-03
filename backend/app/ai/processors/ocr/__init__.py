@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .base import OCRProcessor
 from .langchain_vision import LangChainOCRProcessor
 from .tesseract import TesseractOCRProcessor
+from app.ai import chat_models
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
@@ -18,16 +19,24 @@ def get_ocr_processor(
     llm: Optional[BaseChatModel] = None,
     **kwargs,
 ) -> OCRProcessor:
-    """Factory function to get OCR processor based on configuration"""
+    """Factory function to get OCR processor based on configuration.
+
+    The LLM-backed processor is injected with its chat model: an explicitly
+    provided ``llm`` wins; otherwise one is built through the canonical
+    model factory (``app.ai.chat_models``) from the remaining config —
+    LangChain chat classes are never constructed outside the factory
+    (ADR-0008).
+    """
     if provider == "openai":
-        return LangChainOCRProcessor(
-            api_key=api_key,
-            api_base=api_base or "https://api.openai.com/v1",
-            model=model or "gpt-4-vision-preview",
-            max_tokens=max_tokens,
-            temperature=temperature,
-            llm=llm,
-        )
+        if llm is None:
+            llm = chat_models.build_openai(
+                api_key=api_key,
+                base_url=api_base or "https://api.openai.com/v1",
+                model_name=model or "gpt-4-vision-preview",
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        return LangChainOCRProcessor(llm=llm)
     elif provider == "tesseract":
         return TesseractOCRProcessor(language=kwargs.get("language", "eng"))
     else:

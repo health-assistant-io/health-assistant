@@ -1,5 +1,6 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from app.ai.processors.nlp.langchain_structured import LangChainStructuredExtractor
 from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,
@@ -10,16 +11,14 @@ from app.ai.schemas.nlp import (
 
 @pytest.fixture
 def mock_llm():
-    # Patch the ChatOpenAI in the NEW file location
-    with patch("app.ai.processors.nlp.langchain_structured.ChatOpenAI") as mock_chat:
-        mock_llm_instance = MagicMock()
-        mock_chat.return_value = mock_llm_instance
-        yield mock_llm_instance
+    # The extractor receives its chat model injected (ADR-0008) — tests hand
+    # it a mock instead of patching a chat-class constructor.
+    return MagicMock()
 
 
 @pytest.mark.asyncio
 async def test_parse_document_pass_1(mock_llm):
-    extractor = LangChainStructuredExtractor(api_key="test-key")
+    extractor = LangChainStructuredExtractor(llm=mock_llm)
 
     # Mock the response from LLM
     mock_parsed_response = MagicMock(spec=DocumentEntitiesExtract)
@@ -47,7 +46,7 @@ async def test_parse_document_pass_1(mock_llm):
 
 @pytest.mark.asyncio
 async def test_parse_document_pass_2_biomarkers(mock_llm):
-    extractor = LangChainStructuredExtractor(api_key="test-key")
+    extractor = LangChainStructuredExtractor(llm=mock_llm)
 
     # Mock the response from LLM
     mock_parsed_response = MagicMock(spec=NewBiomarkerDefinitions)
@@ -71,7 +70,7 @@ async def test_parse_document_pass_2_biomarkers(mock_llm):
 
 @pytest.mark.asyncio
 async def test_parse_document_pass_2_medications(mock_llm):
-    extractor = LangChainStructuredExtractor(api_key="test-key")
+    extractor = LangChainStructuredExtractor(llm=mock_llm)
 
     # Mock the response from LLM
     mock_parsed_response = MagicMock(spec=NewMedicationDefinitions)
@@ -92,8 +91,12 @@ async def test_parse_document_pass_2_medications(mock_llm):
 
 @pytest.mark.asyncio
 async def test_map_external_metrics(mock_llm):
-    from app.ai.schemas.nlp import MapResponsePayload, MetricMappingRequest, MappedMetric
-    extractor = LangChainStructuredExtractor(api_key="test-key")
+    from app.ai.schemas.nlp import (
+        MappedMetric,
+        MapResponsePayload,
+        MetricMappingRequest,
+    )
+    extractor = LangChainStructuredExtractor(llm=mock_llm)
 
     mock_parsed_response = MagicMock(spec=MapResponsePayload)
     mock_parsed_response.mappings = [

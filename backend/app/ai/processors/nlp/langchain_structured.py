@@ -2,7 +2,6 @@ import json
 from typing import Dict, Any, List, Optional
 import logging
 
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -25,25 +24,16 @@ class LangChainStructuredExtractor(NLPExtractor):
     """
     A structured NLP extractor that uses LangChain's `with_structured_output`.
     Works with any BaseChatModel that supports structured extraction (OpenAI, Anthropic, etc.).
+
+    The chat model is injected, never built here: callers get it from
+    ``AIProviderService.get_nlp_extractor``, which resolves the scoped
+    assignment and builds it via the canonical factory
+    (``app.ai.chat_models`` — the only module allowed to construct
+    LangChain chat classes, ADR-0008).
     """
 
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        api_base: str = "https://api.openai.com/v1",
-        model: str = "gpt-4o-mini",
-        temperature: float = 0.7,
-        llm: Optional[BaseChatModel] = None,
-    ):
-        if llm:
-            self.llm = llm
-        else:
-            self.llm = ChatOpenAI(
-                api_key=api_key,
-                base_url=api_base,
-                model=model,
-                temperature=temperature,
-            )
+    def __init__(self, llm: BaseChatModel):
+        self.llm = llm
 
     async def extract_entities(self, text: str) -> Dict[str, Any]:
         """Base implementation - should not be used in the new pipeline directly without catalog"""

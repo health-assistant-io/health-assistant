@@ -1,23 +1,24 @@
-import pytest
 import json
-from unittest.mock import patch, AsyncMock
+
+import pytest
 from app.ai.processors.ocr.langchain_vision import LangChainOCRProcessor
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 
-@pytest.fixture
-def mock_langchain_processor():
-    return LangChainOCRProcessor(
-        api_key="test-key",
-        api_base="https://api.openai.com/v1",
-        model="gpt-4-vision-preview",
-    )
+def _make_processor(content: str) -> LangChainOCRProcessor:
+    """Build the processor with an injected fake chat model (ADR-0008).
+
+    ``GenericFakeChatModel`` is a real ``BaseChatModel``, so the processor's
+    ``llm | parser`` chain runs the genuine JsonOutputParser over the canned
+    response — same shape as the previous patched-``ainvoke`` tests.
+    """
+    llm = GenericFakeChatModel(messages=iter([AIMessage(content=content)]))
+    return LangChainOCRProcessor(llm=llm)
 
 
 @pytest.mark.asyncio
-async def test_langchain_extract_structured_data_clean_json(
-    mock_langchain_processor, tmp_path
-):
+async def test_langchain_extract_structured_data_clean_json(tmp_path):
     # Create a dummy file
     test_file = tmp_path / "test.txt"
     test_file.write_text("dummy content")
@@ -29,37 +30,24 @@ async def test_langchain_extract_structured_data_clean_json(
         "medications": ["Lisinopril 10mg"],
     }
 
-    # Mock LangChain's ainvoke by patching the class method
-    with patch(
-        "langchain_openai.ChatOpenAI.ainvoke", new_callable=AsyncMock
-    ) as mock_ainvoke:
-        mock_ainvoke.return_value = AIMessage(content=json.dumps(parsed_json))
+    processor = _make_processor(json.dumps(parsed_json))
 
-        result = await mock_langchain_processor.extract_structured_data(
-            test_file, schema
-        )
+    result = await processor.extract_structured_data(test_file, schema)
 
-        assert result["document_category"] == "Ophthalmology"
-        assert len(result["medications"]) == 1
-        assert result["medications"][0] == "Lisinopril 10mg"
+    assert result["document_category"] == "Ophthalmology"
+    assert len(result["medications"]) == 1
+    assert result["medications"][0] == "Lisinopril 10mg"
 
 
 @pytest.mark.asyncio
-async def test_langchain_extract_structured_data_pure_json(
-    mock_langchain_processor, tmp_path
-):
+async def test_langchain_extract_structured_data_pure_json(tmp_path):
     test_file = tmp_path / "test.txt"
     test_file.write_text("dummy content")
     schema = {"document_category": "string"}
 
     parsed_json = {"document_category": "Cardiology"}
 
-    with patch(
-        "langchain_openai.ChatOpenAI.ainvoke", new_callable=AsyncMock
-    ) as mock_ainvoke:
-        mock_ainvoke.return_value = AIMessage(content=json.dumps(parsed_json))
+    processor = _make_processor(json.dumps(parsed_json))
 
-        result = await mock_langchain_processor.extract_structured_data(
-            test_file, schema
-        )
-        assert result["document_category"] == "Cardiology"
+    result = await processor.extract_structured_data(test_file, schema)
+    assert result["document_category"] == "Cardiology"

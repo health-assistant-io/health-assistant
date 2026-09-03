@@ -2,10 +2,9 @@ import base64
 import logging
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from .base import OCRProcessor
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -13,29 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 class LangChainOCRProcessor(OCRProcessor):
-    """OCR processor using LangChain and Vision-capable LLMs"""
+    """OCR processor using LangChain and Vision-capable LLMs.
 
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        api_base: str = "https://api.openai.com/v1",
-        model: str = "gpt-4o",
-        max_tokens: int = 16384,
-        temperature: float = 0.0,
-        timeout: int = 600,
-        llm: Optional[BaseChatModel] = None,
-    ):
-        if llm:
-            self.llm = llm
-        else:
-            self.llm = ChatOpenAI(
-                api_key=api_key,
-                base_url=api_base,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                timeout=timeout,
-            )
+    The chat model is injected, never built here: callers get it from
+    ``AIProviderService.get_ocr_processor``, which resolves the scoped
+    assignment and builds it via the canonical factory
+    (``app.ai.chat_models`` — the only module allowed to construct
+    LangChain chat classes, ADR-0008).
+    """
+
+    def __init__(self, llm: BaseChatModel):
+        self.llm = llm
 
     async def extract_text(self, file_path: Path) -> str:
         """Extract text using LangChain and Vision-capable LLM"""
