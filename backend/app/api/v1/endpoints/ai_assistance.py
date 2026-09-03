@@ -64,6 +64,17 @@ _STREAM_ERROR_TYPES = (
     "guard",
 )
 
+# Provider-SDK exception classes (openai v1) mapped to stable error codes.
+# Matched by class NAME via the MRO instead of isinstance so this endpoint —
+# like every non-factory module (ADR-0008) — never imports a provider SDK.
+# Order matters: APITimeoutError subclasses APIConnectionError.
+_PROVIDER_ERROR_NAMES: tuple[tuple[str, str], ...] = (
+    ("APITimeoutError", "timeout"),
+    ("APIConnectionError", "connection"),
+    ("AuthenticationError", "auth"),
+    ("RateLimitError", "rate_limit"),
+)
+
 
 def _classify_stream_error(exc: Exception) -> tuple[str, str]:
     """Return ``(error_type, user_message)`` for a streaming exception.
@@ -77,25 +88,12 @@ def _classify_stream_error(exc: Exception) -> tuple[str, str]:
         # Intentional guard violation — message is already user-facing.
         return ("guard", str(exc))
 
-    # Map known LLM/provider errors to non-leaky codes.
-    try:
-        from openai import (
-            APIConnectionError,
-            APITimeoutError,
-            AuthenticationError,
-            RateLimitError,
-        )
-    except ImportError:
-        return ("generic", "")
-
-    if isinstance(exc, APITimeoutError):
-        return ("timeout", "")
-    if isinstance(exc, APIConnectionError):
-        return ("connection", "")
-    if isinstance(exc, AuthenticationError):
-        return ("auth", "")
-    if isinstance(exc, RateLimitError):
-        return ("rate_limit", "")
+    # Map known LLM/provider errors to non-leaky codes by walking the MRO —
+    # LangChain passes the provider SDK's exception classes through verbatim.
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    for name, code in _PROVIDER_ERROR_NAMES:
+        if name in names:
+            return (code, "")
     return ("generic", "")
 
 
