@@ -2,8 +2,7 @@ name: AI architecture alignment
 
 # ADR-0008 family gate — vendored copy of dev's check-ai-alignment.sh
 # (must stay byte-identical; drift is caught by dev's verify-wiring.sh).
-# MODE: transition while the repo's migration phase is in flight;
-# flip to strict when it lands (see the migration tracker).
+# MODE: strict (Phase 2 landed — findings block PRs).
 
 on:
   push:
@@ -27,4 +26,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run AI alignment gate
-        run: bash scripts/check-ai-alignment.sh --self --mode transition
+        run: bash scripts/check-ai-alignment.sh --self --mode strict

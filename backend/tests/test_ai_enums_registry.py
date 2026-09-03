@@ -4,10 +4,8 @@ These pin the Phase 1 foundation: the canonical task-type list, the provider
 enum membership, tolerant lookups, and the registry fallback semantics. They
 guard against drift in later refactor phases.
 """
+
 import pytest
-
-from langchain_openai import ChatOpenAI
-
 from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import (
@@ -15,11 +13,12 @@ from app.ai.providers.registry import (
     PROVIDER_FACTORIES,
     get_llm_builder,
 )
-
+from langchain_openai import ChatOpenAI
 
 # ---------------------------------------------------------------------------
 # TaskType
 # ---------------------------------------------------------------------------
+
 
 class TestTaskType:
     def test_values_are_plain_strings(self):
@@ -66,6 +65,7 @@ class TestTaskType:
 # ProviderType
 # ---------------------------------------------------------------------------
 
+
 class TestProviderType:
     def test_known_values(self):
         assert ProviderType.OPENAI.value == "openai"
@@ -93,6 +93,7 @@ class TestProviderType:
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+
 
 class TestRegistry:
     def test_openai_resolves_to_openai_builder(self):
@@ -129,19 +130,26 @@ class TestRegistry:
         # a clear error rather than silently producing an OpenAI client.
         with pytest.raises(NotImplementedError):
             get_llm_builder("anthropic")(
-                api_key="k", base_url="b", model_name="m",
-                temperature=0.5, max_tokens=10,
+                api_key="k",
+                base_url="b",
+                model_name="m",
+                temperature=0.5,
+                max_tokens=10,
             )
         with pytest.raises(NotImplementedError):
             get_llm_builder("ollama")(
-                api_key="k", base_url="b", model_name="m",
-                temperature=0.5, max_tokens=10,
+                api_key="k",
+                base_url="b",
+                model_name="m",
+                temperature=0.5,
+                max_tokens=10,
             )
 
 
 # ---------------------------------------------------------------------------
 # chat_models.build_openai
 # ---------------------------------------------------------------------------
+
 
 class TestBuildOpenAI:
     def test_returns_chat_openai(self):

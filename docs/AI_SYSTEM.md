@@ -10,9 +10,11 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 
 | Component | Responsibility |
 |-----------|----------------|
-| `AIProviderService` (`app/ai/providers/service.py`) | Central "Brain" for model resolution. Handles multitenancy, priorities, and model instantiation. |
-| `LangChainOCRProcessor` (`app/ai/processors/ocr/`) | Generic vision processor that converts images/PDFs/DICOMs into Markdown text. |
-| `LangChainStructuredExtractor` (`app/ai/processors/nlp/`) | Generic NLP extractor that maps Markdown text to structured FHIR medical entities. |
+| `AIProviderService` (`app/ai/providers/service.py`) | Central "Brain" for model resolution. Handles multitenancy, priorities, and hands resolved config to the model factory. |
+| Model factory (`app/ai/chat_models.py`) | The **only** module allowed to construct LangChain chat models (ADR-0008). Provider-type → builder dispatch via `app/ai/providers/registry.py`. |
+| `LangChainOCRProcessor` (`app/ai/processors/ocr/`) | Generic vision processor that converts images/PDFs/DICOMs into Markdown text. Receives its chat model injected. |
+| `LangChainStructuredExtractor` (`app/ai/processors/nlp/`) | Generic NLP extractor that maps Markdown text to structured FHIR medical entities. Receives its chat model injected. |
+| STT client (`app/ai/assistance/stt.py`) | Gateway-owned narrow exception: raw `httpx` multipart against `{api_base}/audio/transcriptions` (LangChain has no transcription chat model). Resolved via `get_stt_target`, capability-gated (`audio_input`). |
 | `AIAssistanceService` (`app/ai/assistance/service.py`) | Orchestrator for the Agentic Chatbot and "Magic Fill" features. Manages session context and routing. |
 | `app/ai/agents/` | The agentic loop + HITL plumbing: `chat_agent.py` (reasoning loop, tool dispatch, streaming), `hitl.py` (resume-continuation contract + `[HITL RESOLUTION FEEDBACK]` formatting), `prompts.py` (system prompt assembly). |
 | `app/ai/tools/` | LangChain tools (DB queries, document retrieval) that the AI assistant can invoke via `get_tools(db, tenant_id, patient_id, examination_id=None)`. |
@@ -64,7 +66,7 @@ cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
 
 ## 3. Generic Processors (Dependency Injection)
 
-Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are designed to be provider-agnostic. They receive a pre-configured `BaseChatModel` from the factory.
+Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are provider-agnostic and receive their chat model **injected** — they never construct one themselves. `AIProviderService.get_ocr_processor` / `get_nlp_extractor` resolve the scoped task assignment and build the `BaseChatModel` through the factory (`app/ai/chat_models.py`), as does every other model consumer via `get_llm`.
 
 ### Supported Providers (via LangChain)
 - **OpenAI-Compatible APIs:** Native support (Vision + Structured Output + Tool Calling). This includes direct OpenAI usage, or Local LLMs (vLLM, Ollama, etc.) by configuring the `api_base` in the UI.

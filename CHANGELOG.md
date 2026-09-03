@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **AI architecture (ADR-0008, Phase 2): the model factory is now the single construction site and the only LangChain/provider-SDK import location** — zero user-visible behavior change. `backend/app/ai/providers/factories.py` moved to the canonical `backend/app/ai/chat_models.py` (registry + `get_llm` semantics unchanged); the OCR/NLP processors no longer hardcode `ChatOpenAI` fallbacks and are injected with their chat model (`get_ocr_processor`/`get_nlp_extractor` resolve assignments and build via the factory); the speech-to-text endpoint no longer imports the `openai` SDK — the gateway-owned `app/ai/assistance/stt.py` (plain `httpx` multipart) owns the transport, and the streaming-error classifier maps provider exception classes by MRO instead of importing them (SSE error codes unchanged). The vendored `check-ai-alignment.sh` CI gate is now **strict** (0 findings) and ships in-tree with its workflow.
+
 - **Dependencies:** `@neuronection/assistant-ui` ^0.17.0 (publishes the compact `SidebarNav` density the v0.6.0 short-viewport sidebar shipped against — the release build failed `tsc` against the published 0.16.0 types).
 
 ## [v0.6.0] - 2026-09-02

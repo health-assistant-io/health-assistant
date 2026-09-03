@@ -96,6 +96,7 @@ async def test_map_external_metrics(mock_llm):
         MapResponsePayload,
         MetricMappingRequest,
     )
+
     extractor = LangChainStructuredExtractor(llm=mock_llm)
 
     mock_parsed_response = MagicMock(spec=MapResponsePayload)
@@ -104,10 +105,10 @@ async def test_map_external_metrics(mock_llm):
             original_name="Νάτριο",
             action="map_to_existing",
             existing_biomarker_id="123e4567-e89b-12d3-a456-426614174000",
-            new_biomarker_coding_system="loinc"
+            new_biomarker_coding_system="loinc",
         )
     ]
-    
+
     # Mock the chain execution
     mock_ainvoke = AsyncMock(return_value=mock_parsed_response)
     mock_llm.with_structured_output.return_value = mock_ainvoke
