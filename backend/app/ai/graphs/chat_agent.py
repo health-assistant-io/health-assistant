@@ -60,6 +60,7 @@ from uuid import UUID
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.config import get_stream_writer
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, RetryPolicy, interrupt
 
@@ -498,6 +499,7 @@ def build_chat_graph(checkpointer: Optional[Any] = None):
         route_start,
         finalize,
     ) = _chat_graph_nodes()
+
     def _flow_events(name: str, fn):
         """Emit family-vocabulary node events (additive, Phase 6.2) around a
         node body; the legacy sentinel events are untouched."""
@@ -512,6 +514,19 @@ def build_chat_graph(checkpointer: Optional[Any] = None):
             )
             try:
                 result = await fn(state, config)
+            except GraphInterrupt:
+                # A pause is not a failure: the node re-runs on resume.
+                writer(
+                    {
+                        "kind": "flow_event",
+                        "data": {
+                            "event": "node_finished",
+                            "node": name,
+                            "outcome": "interrupted",
+                        },
+                    }
+                )
+                raise
             except Exception:
                 writer(
                     {
@@ -640,11 +655,7 @@ async def run_chat_graph(
                 config=config,
                 stream_mode=["custom"],
             ):
-                if (
-                    mode == "custom"
-                    and isinstance(payload, dict)
-                    and "kind" in payload
-                ):
+                if mode == "custom" and isinstance(payload, dict) and "kind" in payload:
                     if payload["kind"] == "done":
                         done_seen = True
                     yield (payload["kind"], payload["data"])
@@ -653,8 +664,19 @@ async def run_chat_graph(
                 yield ("flow_event", {"event": "interrupt"})
             else:
                 yield ("flow_event", {"event": "flow_finished"})
-        except Exception:
-            yield ("flow_event", {"event": "flow_failed"})
+        except Exception as exc:
+            names = {cls.__name__ for cls in type(exc).__mro__}
+            retryable = bool(
+                names
+                & {
+                    "APITimeoutError",
+                    "APIConnectionError",
+                    "RateLimitError",
+                    "ConnectionError",
+                    "TimeoutError",
+                }
+            )
+            yield ("flow_event", {"event": "flow_failed", "retryable": retryable})
             raise
 
     async for event in gen():
