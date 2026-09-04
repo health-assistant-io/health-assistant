@@ -252,6 +252,8 @@ class AIAssistanceService:
             chat_session_service=self.chat_session_service,
             session_id=session_id,
             log_label="AI Assistance",
+            user_id=user_id,
+            tenant_id=tenant_id,
         )
         async for chunk in stream_loop_as_sse(loop):
             yield chunk
@@ -346,6 +348,8 @@ class AIAssistanceService:
             chat_session_service=self.chat_session_service,
             session_id=session_id,
             log_label="AI Assistance",
+            user_id=user_id,
+            tenant_id=tenant_id,
         ):
             if kind == "content":
                 full_message += data

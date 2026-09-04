@@ -239,19 +239,23 @@ async def lifespan(app: FastAPI):
     # Drained + closed on shutdown so trailing checkpoint writes survive.
     checkpoint_store = None
     if DATABASE_AVAILABLE:
-        from app.ai.graphs.checkpointer import CheckpointStore
+        from app.ai.graphs.checkpointer import CheckpointStore, bind_runtime_store
 
         checkpoint_store = CheckpointStore()
         try:
             await checkpoint_store.open()
         except Exception as e:
             _abort_or_warn(e, "Checkpoint store initialization")
+        bind_runtime_store(checkpoint_store)
         app.state.checkpoint_store = checkpoint_store
 
     yield
     # Shutdown
     if checkpoint_store is not None:
         try:
+            from app.ai.graphs.checkpointer import bind_runtime_store
+
+            bind_runtime_store(None)
             await checkpoint_store.close()
         except Exception as e:
             logger.warning(f"Failed to close checkpoint store cleanly: {e}")

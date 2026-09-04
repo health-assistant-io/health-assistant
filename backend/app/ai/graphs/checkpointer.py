@@ -117,3 +117,24 @@ class CheckpointStore:
             yield self.saver
         finally:
             self._in_flight_runs -= 1
+
+
+# ---------------------------------------------------------------------------
+# Runtime binding — the lifespan-held store registers itself so per-request
+# graph engines can attach its checkpointer without reaching into app.state.
+# ---------------------------------------------------------------------------
+
+_runtime_store: Optional["CheckpointStore"] = None
+
+
+def bind_runtime_store(store: Optional["CheckpointStore"]) -> None:
+    """Register (or clear) the process-wide store. Called by the lifespan."""
+    global _runtime_store
+    _runtime_store = store
+
+
+def get_runtime_saver() -> Optional[AsyncPostgresSaver]:
+    """The open checkpointer, or ``None`` (tests / no-DB dev mode)."""
+    if _runtime_store is None or _runtime_store._saver is None:
+        return None
+    return _runtime_store.saver

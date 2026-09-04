@@ -22,6 +22,7 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.enums import HitlTaskStatus
 
 logger = logging.getLogger(__name__)
@@ -426,7 +427,10 @@ async def resume_after_hitl(
         reconstruct_history,
         stream_loop_as_sse,
     )
-    from app.ai.graphs.chat_agent import chat_engine_iter
+    from app.ai.graphs.chat_agent import (
+        chat_engine_iter,
+        resume_interrupted_chat_graph,
+    )
     from app.ai.agents.prompts import build_resume_system_prompt
     from app.models.chat_model import ChatSession as _ChatSession
 
@@ -504,6 +508,32 @@ async def resume_after_hitl(
         chat_session_service, session_id, user_id, tenant_id, system_prompt, summary
     )
 
+    # Graph engine (Phase 3.3): when the session's checkpointed run is paused
+    # at an ask_user interrupt, the summary is delivered as Command(resume=...)
+    # — the model continues the SAME conversation (the answers land as the
+    # ask_user ToolMessage). Falls back to the fresh-continuation turn when
+    # there is no pending interrupt (e.g. loop-engine sessions or an
+    # already-abandoned checkpoint).
+    if settings.AI_AGENT_ENGINE == "graph":
+        resumed = await resume_interrupted_chat_graph(
+            session_id,
+            summary,
+            llm_with_tools=llm_with_tools,
+            tools=tools,
+            chat_session_service=chat_session_service,
+            log_label="AI Assistance (resume)",
+            user_id=user_id,
+            tenant_id=tenant_id,
+        )
+        if resumed is not None:
+            logger.info(
+                f"HITL resume: resuming checkpointed graph run for session "
+                f"{session_id} (ask_user interrupt)."
+            )
+            async for chunk in stream_loop_as_sse(resumed):
+                yield chunk
+            return
+
     loop = chat_engine_iter(
         llm_with_tools,
         tools,
@@ -513,6 +543,8 @@ async def resume_after_hitl(
         chat_session_service=chat_session_service,
         session_id=session_id,
         log_label="AI Assistance (resume)",
+        user_id=user_id,
+        tenant_id=tenant_id,
     )
     async for chunk in stream_loop_as_sse(loop):
         yield chunk

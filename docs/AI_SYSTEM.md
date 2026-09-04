@@ -104,7 +104,10 @@ The reasoning loop exists as two engines emitting the **identical event vocabula
 - **`loop`** — the original `run_reasoning_loop` async generator (`app/ai/agents/chat_agent.py`).
 - **`graph`** — the LangGraph StateGraph mirror (`app/ai/graphs/chat_agent.py`): `agent_step` (LLM + streamed deltas) → `tool_exec` (tool execution, HITL interception, proactive persistence) → conditional routers (`max_iterations` cap) → `finalize` (final save). Custom StateGraph rather than `create_agent`: the loop's HITL trimmed-feedback interception and conditional save semantics are not hostable as middleware without behavior risk.
 
-Both engines are wired through `chat_engine_iter`, so callers (chat stream, resume, non-streaming chat) are engine-agnostic and the SSE contract is unchanged. Node-level fault tolerance (`set_node_defaults`) intentionally waits for the checkpointed phase (3.3): retrying `tool_exec` without a checkpoint would double-execute clinical tools.
+Both engines are wired through `chat_engine_iter`, so callers (chat stream, resume, non-streaming chat) are engine-agnostic and the SSE contract is unchanged.
+
+### HITL interrupts (Phase 3.3, graph engine)
+`ask_user` **pauses the turn** at the question card (terminal-card SSE): the card + assistant message are persisted proactively (survives restarts — the run is checkpointed, `thread_id` = chat session id, via the lifespan-held store), then the side-effect-free `await_user` node raises `interrupt()`. `/resume` delivers the resolution summary as `Command(resume=...)` — the answers land as the `ask_user` `ToolMessage` and the model continues the same conversation; `HitlTask` rows in `chat_messages.tasks` + idempotent 409s stay the only dedup. `propose_*` keeps continue-after-propose. Fault tolerance (ratified): `agent_step` retries transient `ConnectionError`/`TimeoutError`; `tool_exec` is pinned to a single attempt (clinical tools are not idempotent); errors bubble to the SSE error classifier exactly like the loop engine. Checkpointed state is serializable-only — the LLM runnable, tools, and service ride in `config.configurable` and are re-supplied by the resume caller.
 
 ### 4.1 Human-in-the-Loop (HITL) Proposals
 
