@@ -99,6 +99,13 @@ The `app/ai/tools/` package dynamically binds functions to the LangChain model b
 ### Streaming & Context Awareness
 The `AIAssistanceService` utilizes a dynamic reasoning loop (defaulting to 20 iterations) to allow the LLM to recursively call tools before returning a final answer. Responses are streamed via WebSockets or Server-Sent Events (SSE) to the frontend, complete with inline citations linking back to the precise clinical entities.
 
+### Reasoning engines (ADR-0008, Phase 3.2)
+The reasoning loop exists as two engines emitting the **identical event vocabulary** (content deltas, `[TOOL_CALL_*]`, `[CITATION]`, `[HITL_TASK]` sentinels), selected by the `AI_AGENT_ENGINE` setting (`loop` | `graph`, default `loop`; unknown values fall back to `loop`):
+- **`loop`** — the original `run_reasoning_loop` async generator (`app/ai/agents/chat_agent.py`).
+- **`graph`** — the LangGraph StateGraph mirror (`app/ai/graphs/chat_agent.py`): `agent_step` (LLM + streamed deltas) → `tool_exec` (tool execution, HITL interception, proactive persistence) → conditional routers (`max_iterations` cap) → `finalize` (final save). Custom StateGraph rather than `create_agent`: the loop's HITL trimmed-feedback interception and conditional save semantics are not hostable as middleware without behavior risk.
+
+Both engines are wired through `chat_engine_iter`, so callers (chat stream, resume, non-streaming chat) are engine-agnostic and the SSE contract is unchanged. Node-level fault tolerance (`set_node_defaults`) intentionally waits for the checkpointed phase (3.3): retrying `tool_exec` without a checkpoint would double-execute clinical tools.
+
 ### 4.1 Human-in-the-Loop (HITL) Proposals
 
 Beyond the single direct write tool (`update_examination_notes`), the chatbot can **propose** write actions via the `propose_*` tool family. **The AI never writes clinical data.** A `propose_*` tool only builds a draft and returns a `{"__hitl__": true, "task": {...}}` marker; the streaming layer detects it, **proactively saves** the task immediately (surviving stream interruptions), and emits a `[HITL_TASK]` SSE event; the frontend renders a **review card** (compact summary) which opens a **modal** with the full prefilled form; the human edits and explicitly **Approves**, which commits through the **canonical, tenant-scoped, RBAC-enforced REST endpoint** (identical to a manual create). A dedicated `/resolve` endpoint then records the outcome (`confirmed` / `dismissed`) into the chat audit log — it performs no writes.
