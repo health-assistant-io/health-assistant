@@ -45,7 +45,7 @@ def _resolve_env_file() -> Optional[str]:
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
-    VERSION: str = "0.6.0"
+    VERSION: str = "0.7.0"
     APP_ENV: str = "development"
     DEBUG: bool = False
 
