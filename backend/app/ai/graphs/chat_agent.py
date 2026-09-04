@@ -59,7 +59,7 @@ from typing import (
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.config import get_config, get_stream_writer
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, RetryPolicy, interrupt
 
@@ -73,6 +73,16 @@ from app.ai.graphs.checkpointer import get_runtime_saver
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _stream_writer():
+    """Stream-writer accessor that also works under direct node invocation
+    (``graph.nodes[...]`` tests run outside the Pregel loop, where
+    ``get_stream_writer`` raises — events are simply dropped there)."""
+    try:
+        return get_stream_writer()
+    except RuntimeError:
+        return lambda _event: None
 
 
 class ChatGraphState(TypedDict):
@@ -96,17 +106,12 @@ class ChatGraphState(TypedDict):
     pending_interrupt: Optional[Dict[str, Any]]
 
 
-def _runtime() -> Dict[str, Any]:
-    """Per-run, non-checkpointed handles (LLM, tools, chat service, ...)."""
-    return get_config()["configurable"]["runtime"]
-
-
 def _chat_graph_nodes():
-    async def agent_step(state: ChatGraphState) -> Dict[str, Any]:
+    async def agent_step(state: ChatGraphState, config) -> Dict[str, Any]:
         """One LLM call (streamed or not) — provider-quirk content dedup is
         copied verbatim from the loop engine for event parity."""
-        writer = get_stream_writer()
-        runtime = _runtime()
+        writer = _stream_writer()
+        runtime = config["configurable"]["runtime"]
 
         def emit(kind: str, data: Any) -> None:
             writer({"kind": kind, "data": data})
@@ -152,9 +157,7 @@ def _chat_graph_nodes():
                     else:
                         delta = content_received
 
-                    if content_yielded_iter and delta.startswith(
-                        content_yielded_iter
-                    ):
+                    if content_yielded_iter and delta.startswith(content_yielded_iter):
                         actual_yield = delta[len(content_yielded_iter) :]
                     else:
                         actual_yield = delta
@@ -198,9 +201,9 @@ def _chat_graph_nodes():
             updates["history"] = history
         return updates
 
-    async def tool_exec(state: ChatGraphState) -> Dict[str, Any]:
-        writer = get_stream_writer()
-        runtime = _runtime()
+    async def tool_exec(state: ChatGraphState, config) -> Dict[str, Any]:
+        writer = _stream_writer()
+        runtime = config["configurable"]["runtime"]
 
         def emit(kind: str, data: Any) -> None:
             writer({"kind": kind, "data": data})
@@ -251,9 +254,7 @@ def _chat_graph_nodes():
 
         for tool_call in state["pending_tool_calls"] or []:
             tool_name = tool_call["name"]
-            selected_tool = next(
-                (t for t in tools if t.name == tool_name), None
-            )
+            selected_tool = next((t for t in tools if t.name == tool_name), None)
             if selected_tool:
                 emit("tool_call_exec", tool_name)
                 observation = await selected_tool.ainvoke(tool_call["args"])
@@ -319,9 +320,7 @@ def _chat_graph_nodes():
                     )
                     # Proposals are NOT data sources — no citation.
                     history.append(
-                        ToolMessage(
-                            content=feedback, tool_call_id=tool_call["id"]
-                        )
+                        ToolMessage(content=feedback, tool_call_id=tool_call["id"])
                     )
                     await save_proactive()
                 else:
@@ -369,7 +368,7 @@ def _chat_graph_nodes():
             "pending_interrupt": pending_interrupt,
         }
 
-    async def await_user(state: ChatGraphState) -> Dict[str, Any]:
+    async def await_user(state: ChatGraphState, config) -> Dict[str, Any]:
         """Pause the run for ask_user answers (Phase 3.3).
 
         The interrupt() call is the FIRST statement — this node must stay
@@ -412,14 +411,17 @@ def _chat_graph_nodes():
             return "finalize"
         return "agent_step"
 
-    async def finalize(state: ChatGraphState) -> Dict[str, Any]:
-        writer = get_stream_writer()
-        runtime = _runtime()
+    async def finalize(state: ChatGraphState, config) -> Dict[str, Any]:
+        writer = _stream_writer()
+        runtime = config["configurable"]["runtime"]
 
         def emit(kind: str, data: Any) -> None:
             writer({"kind": kind, "data": data})
 
-        clean_break = state["pending_tool_calls"] is None
+        # Clean break = agent_step produced no tool calls (iteration > 0).
+        # A zero/exhausted cap (route_start) never ran the LLM — iteration 0
+        # — which the loop engine reports as reached_max=True.
+        clean_break = state["pending_tool_calls"] is None and state["iteration"] > 0
         session_id = state["session_id"]
         streaming = state["streaming"]
         chat_session_service = runtime["chat_session_service"]
@@ -435,21 +437,21 @@ def _chat_graph_nodes():
             and runtime.get("tenant_id")
         ):
             try:
-                proactive_message = (
-                    await chat_session_service.find_message_by_proposal(
-                        session_id=session_id,
-                        proposal_id=state["all_tasks"][0].get("proposal_id"),
-                        user_id=runtime["user_id"],
-                        tenant_id=runtime["tenant_id"],
-                    )
+                proactive_message = await chat_session_service.find_message_by_proposal(
+                    session_id=session_id,
+                    proposal_id=state["all_tasks"][0].get("proposal_id"),
+                    user_id=runtime["user_id"],
+                    tenant_id=runtime["tenant_id"],
                 )
             except Exception as e:
                 logger.warning(f"Proactive-message re-lookup failed: {e}")
 
         # Final save: streaming always (matches prior behaviour);
         # non-streaming only on a clean no-tool-calls break.
-        if session_id and chat_session_service is not None and (
-            streaming or clean_break
+        if (
+            session_id
+            and chat_session_service is not None
+            and (streaming or clean_break)
         ):
             if proactive_message is not None:
                 await chat_session_service.update_message_fields(
@@ -503,9 +505,7 @@ def build_chat_graph(checkpointer: Optional[Any] = None):
         )
     )
     builder.add_node("agent_step", agent_step)
-    builder.add_node(
-        "tool_exec", tool_exec, retry_policy=RetryPolicy(max_attempts=1)
-    )
+    builder.add_node("tool_exec", tool_exec, retry_policy=RetryPolicy(max_attempts=1))
     builder.add_node("await_user", await_user)
     builder.add_node("finalize", finalize)
     builder.add_conditional_edges(START, route_start)
@@ -579,8 +579,9 @@ async def run_chat_graph(
     }
     config = _make_config(session_id, checkpointer, runtime)
     async for mode, payload in graph.astream(
-        _initial_state(history, max_iterations, streaming=streaming,
-                       session_id=session_id),
+        _initial_state(
+            history, max_iterations, streaming=streaming, session_id=session_id
+        ),
         config=config,
         stream_mode=["custom"],
     ):
@@ -601,16 +602,22 @@ def chat_engine_iter(
     user_id: Optional[UUID] = None,
     tenant_id: Optional[UUID] = None,
     checkpointer: Optional[Any] = None,
+    engine: Optional[str] = None,
 ):
-    """Select the chat engine per ``AI_AGENT_ENGINE`` (``loop`` | ``graph``).
+    """Select the chat engine (``loop`` | ``graph``).
+
+    ``engine`` (resolved per tenant by the caller — tenant settings override
+    the ``AI_AGENT_ENGINE`` env default) wins; unknown values fall back to
+    the env default, which itself falls back to ``loop``.
 
     Returns an async iterator of the shared ``(kind, data)`` event vocabulary;
-    callers are engine-agnostic. Unknown values fall back to ``loop``.
-    The graph engine attaches the lifespan-held checkpointer (thread_id =
-    session id) for sessioned runs — ask_user interrupts need the durable
-    thread; ``user_id``/``tenant_id`` enable the crash-resume dedup.
+    callers are engine-agnostic. The graph engine attaches the lifespan-held
+    checkpointer (thread_id = session id) for sessioned runs — ask_user
+    interrupts need the durable thread; ``user_id``/``tenant_id`` enable the
+    crash-resume dedup.
     """
-    if settings.AI_AGENT_ENGINE == "graph":
+    resolved = engine or settings.AI_AGENT_ENGINE
+    if resolved == "graph":
         if checkpointer is None and session_id is not None:
             checkpointer = get_runtime_saver()
         return run_chat_graph(
@@ -646,9 +653,7 @@ async def has_pending_interrupt(session_id: UUID) -> bool:
     if saver is None:
         return False
     graph = build_chat_graph(checkpointer=saver)
-    snapshot = await graph.aget_state(
-        {"configurable": {"thread_id": str(session_id)}}
-    )
+    snapshot = await graph.aget_state({"configurable": {"thread_id": str(session_id)}})
     if snapshot is None or not snapshot.tasks:
         return False
     return any(task.interrupts for task in snapshot.tasks)
@@ -693,11 +698,7 @@ async def resume_interrupted_chat_graph(
         async for mode, payload in graph.astream(
             Command(resume=resume_value), config=config, stream_mode=["custom"]
         ):
-            if (
-                mode == "custom"
-                and isinstance(payload, dict)
-                and "kind" in payload
-            ):
+            if mode == "custom" and isinstance(payload, dict) and "kind" in payload:
                 yield (payload["kind"], payload["data"])
 
     return gen()

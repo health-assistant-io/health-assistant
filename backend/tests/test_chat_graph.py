@@ -15,6 +15,14 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from app.ai.agents.chat_agent import run_reasoning_loop, stream_loop_as_sse
 from app.ai.graphs.chat_agent import build_chat_graph, chat_engine_iter
+from app.core.config import settings
+
+
+@pytest.fixture(autouse=True)
+def graph_engine(monkeypatch):
+    # These tests compare loop vs graph events explicitly — pin both sides so
+    # the engine DEFAULT (3.6: graph) can never silently change what runs.
+    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
 
 
 # ---------------------------------------------------------------------------

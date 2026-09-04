@@ -144,7 +144,9 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
                     keys = ("id", "biomarker_id", "catalog_id", "event_id", "slug")
                     trimmed = {k: result[k] for k in keys if k in result}
                     if trimmed:
-                        parts.append(f"result={json.dumps(trimmed, ensure_ascii=False)}")
+                        parts.append(
+                            f"result={json.dumps(trimmed, ensure_ascii=False)}"
+                        )
             err = resolved.get("error")
             if err:
                 parts.append(f"error={err}")
@@ -238,7 +240,9 @@ def _format_ask_user_answers(resolved: Dict[str, Any]) -> Optional[str]:
 
     lines: List[str] = []
     for q_id, raw in answers.items():
-        lines.append(f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}")
+        lines.append(
+            f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}"
+        )
     return "answers:\n" + "\n".join(lines)
 
 
@@ -293,7 +297,7 @@ _CANDIDATE_FIELD_ORDER: tuple = (
     "description",
 )
 _CANDIDATE_FIELD_CAPS: dict = {
-    "id": 48,        # uuids are 36 chars; leave headroom
+    "id": 48,  # uuids are 36 chars; leave headroom
     "name": 120,
     "type": 40,
     "slug": 80,
@@ -407,6 +411,7 @@ async def resume_after_hitl(
     tenant_id: UUID,
     user_id: UUID,
     message_id: Optional[UUID] = None,
+    engine: Optional[str] = None,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
     task cards. Reads the resolved tasks from the target message's ``tasks``
@@ -514,7 +519,7 @@ async def resume_after_hitl(
     # ask_user ToolMessage). Falls back to the fresh-continuation turn when
     # there is no pending interrupt (e.g. loop-engine sessions or an
     # already-abandoned checkpoint).
-    if settings.AI_AGENT_ENGINE == "graph":
+    if (engine or settings.AI_AGENT_ENGINE) == "graph":
         resumed = await resume_interrupted_chat_graph(
             session_id,
             summary,
@@ -545,6 +550,7 @@ async def resume_after_hitl(
         log_label="AI Assistance (resume)",
         user_id=user_id,
         tenant_id=tenant_id,
+        engine=engine,
     )
     async for chunk in stream_loop_as_sse(loop):
         yield chunk
