@@ -37,5 +37,9 @@ celery_app.conf.update(
             "task": "app.workers.tasks.sync_active_integrations",
             "schedule": 60.0,  # 1 minute
         },
+        "prune-checkpoints-daily": {
+            "task": "app.workers.ai_tasks.prune_checkpoint_threads",
+            "schedule": 86400.0,  # daily — checkpoint rows grow unboundedly
+        },
     },
 )

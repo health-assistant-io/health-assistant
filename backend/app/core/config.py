@@ -354,6 +354,12 @@ class Settings(BaseSettings):
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
 
+    # AI Graphs (LangGraph) — checkpoint retention for the prune beat job.
+    # Checkpoint rows have no timestamp columns (langgraph-checkpoint-postgres
+    # 3.x), so age is derived from the owning chat session's last activity:
+    # threads whose session is idle (or deleted) longer than this are pruned.
+    AI_CHECKPOINT_RETENTION_DAYS: int = 30
+
     # AI Chat — multimodal image attachments (vision models). Limits protect
     # against oversized payloads (base64 in JSON) and token blowups.
     AI_CHAT_MAX_IMAGES: int = 4

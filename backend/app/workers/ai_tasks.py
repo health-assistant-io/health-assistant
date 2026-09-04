@@ -383,3 +383,94 @@ def process_document(
     user_id: Optional[str] = None,
 ):
     return ocr_document.delay(document_id, file_path, tenant_id, user_id)
+
+
+@celery_app.task
+@async_task
+async def prune_checkpoint_threads():
+    """Prune LangGraph checkpoint rows for dead/idle chat sessions.
+
+    The checkpoint tables (langgraph-checkpoint-postgres 3.x) carry no
+    timestamp columns, so thread age is derived from the owning chat session
+    (``thread_id`` == chat session id, Phase 3.3 contract): threads whose
+    session was last updated before ``AI_CHECKPOINT_RETENTION_DAYS`` ago, plus
+    orphan threads whose session row no longer exists, are deleted
+    (``checkpoint_blobs`` / ``checkpoint_writes`` first, then ``checkpoints``).
+
+    On a fresh install the tables do not exist until the backend's first boot
+    runs ``setup()`` — that case is a logged no-op, so the beat can run before
+    the app ever started. The job is idempotent; HITL task cards live in
+    ``chat_messages.tasks`` JSONB and are NOT affected by checkpoint pruning.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import bindparam, text
+
+    from app.core.config import settings
+
+    db, engine = get_async_session()
+    try:
+        async with db:
+            # Fresh-install guard: the tables exist only after the backend's
+            # first boot ran the checkpointer's setup(). to_regclass keeps
+            # this DBAPI-agnostic.
+            checkpoints_rel = (
+                await db.execute(text("SELECT to_regclass('public.checkpoints')"))
+            ).scalar()
+            if checkpoints_rel is None:
+                logger.info("Checkpoint tables not present yet — nothing to prune.")
+                return {"threads": 0, "rows_deleted": 0}
+            cutoff = datetime.now(timezone.utc) - timedelta(
+                days=settings.AI_CHECKPOINT_RETENTION_DAYS
+            )
+            stale = (
+                (
+                    await db.execute(
+                        text("SELECT id FROM chat_sessions WHERE updated_at < :cutoff"),
+                        {"cutoff": cutoff},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            stale_ids = [str(s) for s in stale]
+
+            orphans = (
+                (
+                    await db.execute(
+                        text(
+                            "SELECT DISTINCT c.thread_id FROM checkpoints c "
+                            "WHERE NOT EXISTS ("
+                            "SELECT 1 FROM chat_sessions s "
+                            "WHERE s.id::text = c.thread_id)"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            thread_ids = sorted(set(stale_ids) | set(orphans))
+            deleted = 0
+            for i in range(0, len(thread_ids), 500):
+                chunk = thread_ids[i : i + 500]
+                for table in ("checkpoint_blobs", "checkpoint_writes", "checkpoints"):
+                    res = await db.execute(
+                        text(f"DELETE FROM {table} WHERE thread_id IN :ids").bindparams(
+                            bindparam("ids", expanding=True)
+                        ),
+                        {"ids": chunk},
+                    )
+                    deleted += res.rowcount
+
+            await db.commit()
+            if deleted or thread_ids:
+                logger.info(
+                    "Pruned %d checkpoint rows across %d thread(s) (retention=%dd)",
+                    deleted,
+                    len(thread_ids),
+                    settings.AI_CHECKPOINT_RETENTION_DAYS,
+                )
+            return {"threads": len(thread_ids), "rows_deleted": deleted}
+    finally:
+        await db.close()
