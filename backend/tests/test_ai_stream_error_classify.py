@@ -8,6 +8,7 @@ from openai import (
     APIConnectionError,
     APITimeoutError,
     AuthenticationError,
+    BadRequestError,
     RateLimitError,
 )
 
@@ -59,6 +60,21 @@ class TestClassifyStreamError:
         exc = RateLimitError(message="slow down", response=response, body=None)
         etype, _ = _classify_stream_error(exc)
         assert etype == "rate_limit"
+
+    def test_bad_request_is_model_config(self):
+        # Provider HTTP 400 = request/model shape rejected (e.g. a reasoning
+        # model that cannot run chat tools) — a configuration problem the
+        # user can act on, so it maps to its own localized guidance code.
+        import httpx
+
+        response = httpx.Response(
+            status_code=400,
+            request=httpx.Request("POST", "https://api.openai.com/v1"),
+        )
+        exc = BadRequestError(message="x", response=response, body=None)
+        etype, msg = _classify_stream_error(exc)
+        assert etype == "model_config"
+        assert msg == ""
 
     def test_generic_fallback_for_unknown_exception(self):
         # Anything else (including other APIStatusError subclasses not

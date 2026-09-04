@@ -1217,6 +1217,7 @@
       "connection": "I couldn't reach the AI service. Please check your connection and try again.",
       "auth": "The AI service rejected the configured credentials. Please check the AI configuration.",
       "rate_limit": "The AI service is busy right now. Please try again in a moment.",
+      "model_config": "The assigned AI model can't run this chat — it doesn't support chat tools (reasoning models like GPT-5 or o-series don't, on this API). Go to Settings → AI Configuration and assign a tool-capable model (e.g. GPT-4o) to the Chat or Default task, then retry.",
       "generic": "I'm sorry, I encountered an error while responding. Please try again."
     },
     "insights": {

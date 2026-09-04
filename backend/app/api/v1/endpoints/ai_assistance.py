@@ -68,11 +68,16 @@ _STREAM_ERROR_TYPES = (
 # Matched by class NAME via the MRO instead of isinstance so this endpoint —
 # like every non-factory module (ADR-0008) — never imports a provider SDK.
 # Order matters: APITimeoutError subclasses APIConnectionError.
+# ``model_config`` (provider HTTP 400) means the request/model shape was
+# rejected — almost always a model/task mismatch (e.g. a reasoning model
+# that cannot run chat tools). The frontend maps it to actionable guidance
+# (check the AI Configuration task assignment).
 _PROVIDER_ERROR_NAMES: tuple[tuple[str, str], ...] = (
     ("APITimeoutError", "timeout"),
     ("APIConnectionError", "connection"),
     ("AuthenticationError", "auth"),
     ("RateLimitError", "rate_limit"),
+    ("BadRequestError", "model_config"),
 )
 
 
