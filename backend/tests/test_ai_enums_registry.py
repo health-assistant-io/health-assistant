@@ -6,6 +6,8 @@ guard against drift in later refactor phases.
 """
 
 import pytest
+from unittest.mock import MagicMock
+
 from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import (
@@ -164,3 +166,45 @@ class TestBuildOpenAI:
         assert llm.model_name == "gpt-4o-mini"
         # max_tokens is exposed as max_tokens on the ChatOpenAI instance
         assert llm.max_tokens == 1234
+
+
+    def test_reasoning_effort_setting_forwarded(self):
+        llm = chat_models.build_openai(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model_name="gpt-5.6-luna",
+            temperature=0.7,
+            max_tokens=65536,
+            reasoning_effort="none",
+        )
+        assert isinstance(llm, ChatOpenAI)
+        assert llm.reasoning_effort == "none"
+
+    def test_reasoning_effort_none_keeps_provider_default(self):
+        llm = chat_models.build_openai(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model_name="gpt-4o",
+            temperature=0.7,
+            max_tokens=1024,
+        )
+        assert llm.reasoning_effort is None
+
+
+class TestModelReasoningEffortSetting:
+    def test_reads_from_model_settings_jsonb(self):
+        from app.ai.providers.service import _model_reasoning_effort
+
+        model = MagicMock()
+        model.settings = {"reasoning_effort": "none"}
+        assert _model_reasoning_effort(model) == "none"
+
+    def test_absent_settings_returns_none(self):
+        from app.ai.providers.service import _model_reasoning_effort
+
+        assert _model_reasoning_effort(None) is None
+        model = MagicMock()
+        model.settings = None
+        assert _model_reasoning_effort(model) is None
+        model.settings = {}
+        assert _model_reasoning_effort(model) is None

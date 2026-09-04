@@ -12,6 +12,10 @@ import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AIModelCapability } from '../../api/aiConfig';
 import { useUIStore } from '../../store/slices/uiSlice';
 
+// Reasoning-effort values accepted for reasoning-family models (OpenAI
+// chat completions); 'none' makes them function-tool compatible.
+const REASONING_EFFORT_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high'];
+
 const CAP_ICONS: Record<AIModelCapability, typeof FileText> = {
   text: FileText,
   vision: Eye,
@@ -101,6 +105,10 @@ export const ModelsTab: React.FC = () => {
     label: model.name || undefined,
     caps: model.capabilities?.length ? model.capabilities : ['text'],
     enabled: model.is_active,
+    reasoningEffort:
+      typeof model.settings?.reasoning_effort === 'string'
+        ? model.settings.reasoning_effort
+        : undefined,
     temperature: model.temperature ?? null,
     maxTokens: model.max_tokens ?? null,
     extra: model.description ? { description: model.description } : undefined,
@@ -123,15 +131,32 @@ export const ModelsTab: React.FC = () => {
       is_active: true,
       max_tokens: draft.maxTokens ?? undefined,
       temperature: draft.temperature ?? undefined,
+      settings: draft.reasoningEffort
+        ? { reasoning_effort: draft.reasoningEffort }
+        : undefined,
     });
   };
 
   const handleUpdate = async (model: ModelRegistryModel, patch: ModelRegistryPatch) => {
+    // settings is replaced wholesale by the API — merge the reasoning_effort
+    // key into the model's existing settings so other keys survive.
+    let settingsPatch: Record<string, any> | undefined;
+    if ('reasoningEffort' in patch) {
+      const raw = models.find((m) => m.id === model.id);
+      const settings = { ...(raw?.settings ?? {}) };
+      if (patch.reasoningEffort) {
+        settings.reasoning_effort = patch.reasoningEffort;
+      } else {
+        delete settings.reasoning_effort;
+      }
+      settingsPatch = settings;
+    }
     await updateModel(model.id, {
       ...(patch.label !== undefined ? { name: patch.label } : {}),
       ...(patch.caps !== undefined ? { capabilities: patch.caps as AIModelCapability[] } : {}),
       ...(patch.temperature !== undefined ? { temperature: patch.temperature } : {}),
       ...(patch.maxTokens !== undefined ? { max_tokens: patch.maxTokens } : {}),
+      ...(settingsPatch !== undefined ? { settings: settingsPatch } : {}),
       ...(patch.extra && 'description' in patch.extra
         ? { description: patch.extra.description.trim() || null }
         : {}),
@@ -183,6 +208,8 @@ export const ModelsTab: React.FC = () => {
         capsHint={t('settings.ai.caps_hint')}
         temperatureLabel={t('settings.ai.temperature')}
         maxTokensLabel={t('settings.ai.max_tokens')}
+        reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
+        reasoningEffortLabel={t('settings.ai.reasoning_effort')}
         labelLabel={t('settings.ai.display_label')}
         saveLabel={t('settings.ai.save')}
         cancelLabel={t('settings.ai.cancel')}

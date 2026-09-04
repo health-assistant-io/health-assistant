@@ -32,7 +32,7 @@ Health Assistant uses a strict, database-driven configuration for all AI process
 
 ### Data Models
 - **Providers:** Define the API endpoint and credentials (e.g., OpenAI, custom vLLM server).
-- **Models:** Define the specific model string (e.g., `gpt-4o`, `gemini-1.5-pro`), context window (`max_tokens`), and `temperature`. Multiple models can belong to a single provider.
+- **Models:** Define the specific model string (e.g., `gpt-4o`, `gemini-1.5-pro`), context window (`max_tokens`), `temperature`, and an optional **reasoning effort** (`settings.reasoning_effort`: `none`/`minimal`/`low`/`medium`/`high`). Reasoning-family models (GPT-5 / o-series) reject function-tool requests on chat completions unless reasoning effort is `none` — set it on the model row to serve the chat task; leave unset for provider defaults. Multiple models can belong to a single provider.
 - **Task Assignments:** Map specific application tasks (e.g., `ocr`, `nlp`, `medication_interaction`) to a specific Provider + Model combination.
 
 ### Resolution Logic

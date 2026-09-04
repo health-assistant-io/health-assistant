@@ -1814,6 +1814,7 @@
       "search_models": "Αναζήτηση μοντέλων…",
       "temperature": "Θερμοκρασία",
       "max_tokens": "Μέγιστα tokens",
+      "reasoning_effort": "Επίπεδο συλλογισμού",
       "display_label": "Εμφανιζόμενο όνομα",
       "description": "Περιγραφή",
       "description_placeholder": "Σε τι χρησιμοποιείται αυτό το μοντέλο;",

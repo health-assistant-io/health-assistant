@@ -1875,6 +1875,7 @@
       "search_models": "Search models…",
       "temperature": "Temperature",
       "max_tokens": "Max tokens",
+      "reasoning_effort": "Reasoning effort",
       "display_label": "Display label",
       "description": "Description",
       "description_placeholder": "What is this model used for?",

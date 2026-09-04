@@ -36,6 +36,18 @@ from app.ai.schemas.config import (
 logger = logging.getLogger(__name__)
 
 
+def _model_reasoning_effort(model: Optional[AIModel]) -> Optional[str]:
+    """Reasoning-effort model setting (``settings.reasoning_effort``), if any.
+
+    Stored on the model row's ``settings`` JSONB (e.g. ``"none"`` for a
+    reasoning model that must serve tool-calling chat). ``None`` = provider
+    default.
+    """
+    settings_dict = getattr(model, "settings", None) or {}
+    value = settings_dict.get("reasoning_effort") if isinstance(settings_dict, dict) else None
+    return str(value) if value else None
+
+
 class AIProviderService:
     """Service for managing AI providers, models and task assignments"""
 
@@ -556,6 +568,7 @@ class AIProviderService:
                     model_name=model.model_name if model else "gpt-4o-mini",
                     temperature=model.temperature if model else 0.7,
                     max_tokens=model.max_tokens if model else 65536,
+                    reasoning_effort=_model_reasoning_effort(model),
                 )
 
         # Fallback to environment variables
@@ -607,6 +620,7 @@ class AIProviderService:
                         model_name=model.model_name if model else "gpt-4o",
                         temperature=model.temperature if model else 0.0,
                         max_tokens=model.max_tokens if model else 65536,
+                        reasoning_effort=_model_reasoning_effort(model),
                     )
 
                 return get_ocr_processor(
@@ -666,6 +680,7 @@ class AIProviderService:
                         model_name=model.model_name if model else "gpt-4o-mini",
                         temperature=model.temperature if model else 0.7,
                         max_tokens=model.max_tokens if model else 65536,
+                        reasoning_effort=_model_reasoning_effort(model),
                     )
 
                 return get_nlp_extractor(

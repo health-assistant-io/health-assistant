@@ -38,14 +38,21 @@ def build_openai(
     model_name: str,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: Optional[str] = None,
 ) -> BaseChatModel:
-    """Build a ``ChatOpenAI`` (OpenAI-compatible: OpenAI, LocalAI, vLLM, ...)."""
+    """Build a ``ChatOpenAI`` (OpenAI-compatible: OpenAI, LocalAI, vLLM, ...).
+
+    ``reasoning_effort`` (model-row setting, e.g. ``"none"``) is forwarded
+    verbatim — reasoning-family models require it for function-tool calls
+    on chat completions. ``None`` keeps the provider default.
+    """
     return ChatOpenAI(
         api_key=api_key,
         base_url=base_url,
         model=model_name,
         temperature=temperature,
         max_tokens=max_tokens,
+        reasoning_effort=reasoning_effort,
     )
 
 
@@ -56,6 +63,7 @@ def build_anthropic(
     model_name: str,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: Optional[str] = None,
 ) -> BaseChatModel:
     raise NotImplementedError(
         "Anthropic provider is reserved but not wired. Add langchain-anthropic to "
@@ -70,6 +78,7 @@ def build_ollama(
     model_name: str,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: Optional[str] = None,
 ) -> BaseChatModel:
     raise NotImplementedError(
         "Ollama provider is reserved but not wired. Add langchain-ollama (or "
@@ -84,6 +93,7 @@ def build_azure_openai(
     model_name: str,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: Optional[str] = None,
 ) -> BaseChatModel:
     raise NotImplementedError("Azure OpenAI provider is reserved but not wired.")
 
@@ -95,5 +105,6 @@ def build_bedrock(
     model_name: str,
     temperature: float,
     max_tokens: int,
+    reasoning_effort: Optional[str] = None,
 ) -> BaseChatModel:
     raise NotImplementedError("Bedrock provider is reserved but not wired.")
