@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.agents.chat_agent import (
     build_chat_tools,
     reconstruct_history,
-    run_reasoning_loop,
     stream_loop_as_sse,
 )
 from app.ai.agents.hitl import (
@@ -37,6 +36,7 @@ from app.ai.agents.prompts import (
     build_general_chat_system_prompt,
     session_title_prompt,
 )
+from app.ai.graphs.chat_agent import chat_engine_iter
 from app.ai.assistance.attachments import (
     build_multimodal_content,
     validate_chat_images,
@@ -243,7 +243,7 @@ class AIAssistanceService:
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)
-        loop = run_reasoning_loop(
+        loop = chat_engine_iter(
             llm_with_tools,
             tools,
             history,
@@ -337,7 +337,7 @@ class AIAssistanceService:
         max_iterations = await self._get_max_iterations(tenant_id)
         full_message = ""
         reached_max = False
-        async for kind, data in run_reasoning_loop(
+        async for kind, data in chat_engine_iter(
             llm_with_tools,
             tools,
             history,

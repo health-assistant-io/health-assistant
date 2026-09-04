@@ -424,9 +424,9 @@ async def resume_after_hitl(
     from app.ai.agents.chat_agent import (
         build_chat_tools,
         reconstruct_history,
-        run_reasoning_loop,
         stream_loop_as_sse,
     )
+    from app.ai.graphs.chat_agent import chat_engine_iter
     from app.ai.agents.prompts import build_resume_system_prompt
     from app.models.chat_model import ChatSession as _ChatSession
 
@@ -504,7 +504,7 @@ async def resume_after_hitl(
         chat_session_service, session_id, user_id, tenant_id, system_prompt, summary
     )
 
-    loop = run_reasoning_loop(
+    loop = chat_engine_iter(
         llm_with_tools,
         tools,
         history,
