@@ -234,8 +234,28 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Could not check first-run setup status: %s", e)
 
+    # LangGraph checkpoint store (Phase 3.1): one pool per process, held for
+    # the app lifetime; boot-time setup() is idempotent (spike ruling b).
+    # Drained + closed on shutdown so trailing checkpoint writes survive.
+    checkpoint_store = None
+    if DATABASE_AVAILABLE:
+        from app.ai.graphs.checkpointer import CheckpointStore
+
+        checkpoint_store = CheckpointStore()
+        try:
+            await checkpoint_store.open()
+        except Exception as e:
+            _abort_or_warn(e, "Checkpoint store initialization")
+        app.state.checkpoint_store = checkpoint_store
+
     yield
     # Shutdown
+    if checkpoint_store is not None:
+        try:
+            await checkpoint_store.close()
+        except Exception as e:
+            logger.warning(f"Failed to close checkpoint store cleanly: {e}")
+
     try:
         from app.core.integration_registry import integration_registry
 
