@@ -354,8 +354,8 @@ class Settings(BaseSettings):
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
     # Chat reasoning engine (Phase 3.2, ADR-0008): "loop" = the original
-    # run_reasoning_loop generator; "graph" = the LangGraph StateGraph mirror
-    # (app/ai/graphs/chat_agent.py). Both emit the identical event vocabulary;
+    # run_reasoning_loop generator; "graph" = the LangGraph mirror in
+    # app/ai/graphs/chat_agent.py. Both emit the identical event vocabulary;
     # unknown values fall back to "loop". Shadow-run via env before any
     # tenant-level scoping (Phase 3.5).
     AI_AGENT_ENGINE: str = "loop"
