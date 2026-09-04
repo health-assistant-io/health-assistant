@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+    UploadFile,
+    File,
+)
 from fastapi.responses import StreamingResponse
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +15,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from app.core.database import get_db
+from app.ai.agents.chat_agent import FLOW_EVENT_PREFIX
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
 from app.services.chat_session_service import ChatSessionService, is_internal_message
@@ -164,6 +173,10 @@ async def assist_user_stream(
     request: AIAssistanceRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    flow_events: bool = Query(
+        False,
+        description="Emit additive family flow events alongside the legacy sentinels.",
+    ),
 ):
     """Stream AI-driven assistance for chat tasks"""
     if request.task_type != "chat":
@@ -186,7 +199,14 @@ async def assist_user_stream(
                 user_id=current_user.user_id,
                 stream=True,
                 images=request.images,
+                flow_events=flow_events,
             ):
+                if chunk.startswith(FLOW_EVENT_PREFIX):
+                    frame = json.dumps(
+                        {"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])}
+                    )
+                    yield f"data: {frame}\n\n"
+                    continue
                 payload = json.dumps({"content": chunk})
                 yield f"data: {payload}\n\n"
         except ValueError as e:
@@ -422,6 +442,7 @@ async def resume_hitl_session(
     body: HitlResumeRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    flow_events: bool = Query(False),
 ):
     """Trigger an agent continuation turn after the user has resolved one or
     more HITL task cards in the session.
@@ -449,7 +470,14 @@ async def resume_hitl_session(
                 tenant_id=current_user.tenant_id,
                 user_id=current_user.user_id,
                 message_id=body.message_id,
+                flow_events=flow_events,
             ):
+                if chunk.startswith(FLOW_EVENT_PREFIX):
+                    frame = json.dumps(
+                        {"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])}
+                    )
+                    yield f"data: {frame}\n\n"
+                    continue
                 payload = json.dumps({"content": chunk})
                 yield f"data: {payload}\n\n"
         except ValueError as e:

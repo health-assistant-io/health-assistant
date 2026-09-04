@@ -99,7 +99,7 @@ export const resumeHitlSession = async (
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume`, {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume?flow_events=true`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -130,6 +130,12 @@ export const resumeHitlSession = async (
           const content = line.trim().replace('data: ', '');
           try {
               const data = JSON.parse(content);
+            if (data.flow_event) {
+              // Phase 6.2 dual-emit: family flow events (additive, gated by
+              // ?flow_events=true) — consumed by the FlowStatusCard renderer.
+              onMessage({ flowEvent: data.flow_event });
+              continue;
+            }
             if (data.error || data.error_type) {
               // Server-side error. The backend classifies LLM/provider errors
               // into a stable ``error_type`` code (connection/auth/rate_limit/
@@ -201,8 +207,17 @@ export const resumeHitlSession = async (
   }
 };
 
+/** Family flow vocabulary (Phase 6.2 dual-emit, additive + gated). */
+export interface AIFlowEvent {
+  event: 'flow_started' | 'node_started' | 'node_finished' | 'interrupt' | 'flow_finished' | 'flow_failed';
+  flow?: string;
+  node?: string;
+  outcome?: string;
+}
+
 export interface AIStreamMessage {
   content?: string;
+  flowEvent?: AIFlowEvent;
   sessionId?: string;
   toolCall?: {
     name: string;
@@ -226,7 +241,7 @@ export const streamAIAssistance = async (
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/ai-assistance/stream`, {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/stream?flow_events=true`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -260,6 +275,12 @@ export const streamAIAssistance = async (
           const content = line.trim().replace('data: ', '');
           try {
               const data = JSON.parse(content);
+            if (data.flow_event) {
+              // Phase 6.2 dual-emit: family flow events (additive, gated by
+              // ?flow_events=true) — consumed by the FlowStatusCard renderer.
+              onMessage({ flowEvent: data.flow_event });
+              continue;
+            }
             if (data.error || data.error_type) {
               // Server-side error. The backend classifies LLM/provider errors
               // into a stable ``error_type`` code (connection/auth/rate_limit/

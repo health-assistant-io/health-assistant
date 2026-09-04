@@ -383,14 +383,25 @@ async def run_reasoning_loop(
     yield ("done", not clean_break)
 
 
+FLOW_EVENT_PREFIX = "[FLOW_EVENT] "
+
+
 async def stream_loop_as_sse(
     loop: AsyncIterator[Tuple[str, Any]],
+    *,
+    flow_events: bool = False,
 ) -> AsyncIterator[str]:
     """Map :func:`run_reasoning_loop` events to the SSE sentinel vocabulary the
     frontend parser consumes (``[TOOL_CALL_*]`` / ``[CITATION]`` /
     ``[HITL_TASK]``). ``("content", delta)`` is yielded verbatim; ``("done",)``
     emits nothing. Used by the streaming chat + resume paths."""
     async for kind, data in loop:
+        if kind == "flow_event":
+            # Phase 6.2 dual-emit: family events ride as gated additive
+            # frames; dropped unless the caller opted in.
+            if flow_events:
+                yield f"{FLOW_EVENT_PREFIX}{json.dumps(data)}"
+            continue
         if kind == "content":
             yield data
         elif kind == "tool_call_start":

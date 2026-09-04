@@ -412,6 +412,7 @@ async def resume_after_hitl(
     user_id: UUID,
     message_id: Optional[UUID] = None,
     engine: Optional[str] = None,
+    flow_events: bool = False,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
     task cards. Reads the resolved tasks from the target message's ``tasks``
@@ -535,7 +536,9 @@ async def resume_after_hitl(
                 f"HITL resume: resuming checkpointed graph run for session "
                 f"{session_id} (ask_user interrupt)."
             )
-            async for chunk in stream_loop_as_sse(resumed):
+            async for chunk in stream_loop_as_sse(
+                resumed, flow_events=flow_events
+            ):
                 yield chunk
             return
 
@@ -552,5 +555,5 @@ async def resume_after_hitl(
         tenant_id=tenant_id,
         engine=engine,
     )
-    async for chunk in stream_loop_as_sse(loop):
+    async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
         yield chunk

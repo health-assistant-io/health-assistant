@@ -136,7 +136,11 @@ async def test_ask_user_interrupt_resume_roundtrip(graph_engine, monkeypatch):
         )
 
         # Terminal-card stream: ends after the card, no done event.
-        kinds1 = [k for k, _ in events1]
+        kinds1 = [
+            k
+            for k, _ in events1
+            if k != "flow_event"
+        ]
         assert kinds1[-2:] == ["hitl_task", "tool_call_finished"]
         assert "done" not in kinds1
         # Paused at an interrupt on the session's thread.
@@ -158,9 +162,9 @@ async def test_ask_user_interrupt_resume_roundtrip(graph_engine, monkeypatch):
         )
         events2 = await _collect(resumed)
 
-        kinds2 = [k for k, _ in events2]
+        kinds2 = [k for k, _ in events2 if k != "flow_event"]
         assert kinds2 == ["content", "done"]
-        assert events2[-1] == ("done", False)
+        assert [e for e in events2 if e[0] != "flow_event"][-1] == ("done", False)
         assert "Thanks! Dose noted." in [d for k, d in events2 if k == "content"]
 
         # Side-effect safety: the ask_user tool executed exactly ONCE across
@@ -251,7 +255,8 @@ async def test_agent_step_retries_transient_errors(graph_engine):
             session_id=None,
         )
     )
-    assert events == [("content", "ok"), ("done", False)]
+    legacy = [e for e in events if e[0] != "flow_event"]
+    assert legacy == [("content", "ok"), ("done", False)]
     assert calls["n"] == 2
 
 
@@ -324,7 +329,7 @@ async def test_ask_user_nonstreaming_degrades_to_continue_mode(graph_engine):
             session_id=None,
         )
     )
-    kinds = [k for k, _ in events]
+    kinds = [k for k, _ in events if k != "flow_event"]
     assert kinds == [
         "tool_call_exec",
         "tool_call_result",

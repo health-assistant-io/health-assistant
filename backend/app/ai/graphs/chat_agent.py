@@ -498,16 +498,61 @@ def build_chat_graph(checkpointer: Optional[Any] = None):
         route_start,
         finalize,
     ) = _chat_graph_nodes()
+    def _flow_events(name: str, fn):
+        """Emit family-vocabulary node events (additive, Phase 6.2) around a
+        node body; the legacy sentinel events are untouched."""
+
+        async def wrapped(state: ChatGraphState, config) -> Dict[str, Any]:
+            writer = _stream_writer()
+            writer(
+                {
+                    "kind": "flow_event",
+                    "data": {"event": "node_started", "node": name},
+                }
+            )
+            try:
+                result = await fn(state, config)
+            except Exception:
+                writer(
+                    {
+                        "kind": "flow_event",
+                        "data": {
+                            "event": "node_finished",
+                            "node": name,
+                            "outcome": "failed",
+                        },
+                    }
+                )
+                raise
+            writer(
+                {
+                    "kind": "flow_event",
+                    "data": {
+                        "event": "node_finished",
+                        "node": name,
+                        "outcome": "ok",
+                    },
+                }
+            )
+            return result
+
+        wrapped.__name__ = name
+        return wrapped
+
     builder = StateGraph(ChatGraphState)
     builder.set_node_defaults(
         retry_policy=RetryPolicy(
             max_attempts=2, retry_on=(ConnectionError, TimeoutError)
         )
     )
-    builder.add_node("agent_step", agent_step)
-    builder.add_node("tool_exec", tool_exec, retry_policy=RetryPolicy(max_attempts=1))
-    builder.add_node("await_user", await_user)
-    builder.add_node("finalize", finalize)
+    builder.add_node("agent_step", _flow_events("agent_step", agent_step))
+    builder.add_node(
+        "tool_exec",
+        _flow_events("tool_exec", tool_exec),
+        retry_policy=RetryPolicy(max_attempts=1),
+    )
+    builder.add_node("await_user", _flow_events("await_user", await_user))
+    builder.add_node("finalize", _flow_events("finalize", finalize))
     builder.add_conditional_edges(START, route_start)
     builder.add_conditional_edges("agent_step", route_step)
     builder.add_conditional_edges("tool_exec", route_exec)
@@ -578,15 +623,42 @@ async def run_chat_graph(
         "tenant_id": tenant_id,
     }
     config = _make_config(session_id, checkpointer, runtime)
-    async for mode, payload in graph.astream(
-        _initial_state(
-            history, max_iterations, streaming=streaming, session_id=session_id
-        ),
-        config=config,
-        stream_mode=["custom"],
-    ):
-        if mode == "custom" and isinstance(payload, dict) and "kind" in payload:
-            yield (payload["kind"], payload["data"])
+
+    async def gen() -> AsyncIterator[Tuple[str, Any]]:
+        # Phase 6.2 dual-emit: family vocabulary alongside the legacy
+        # sentinel events (additive; stream_loop_as_sse gates the frames).
+        yield ("flow_event", {"event": "flow_started", "flow": "chat"})
+        done_seen = False
+        try:
+            async for mode, payload in graph.astream(
+                _initial_state(
+                    history,
+                    max_iterations,
+                    streaming=streaming,
+                    session_id=session_id,
+                ),
+                config=config,
+                stream_mode=["custom"],
+            ):
+                if (
+                    mode == "custom"
+                    and isinstance(payload, dict)
+                    and "kind" in payload
+                ):
+                    if payload["kind"] == "done":
+                        done_seen = True
+                    yield (payload["kind"], payload["data"])
+            if not done_seen:
+                # The run paused at an ask_user interrupt (no finalize).
+                yield ("flow_event", {"event": "interrupt"})
+            else:
+                yield ("flow_event", {"event": "flow_finished"})
+        except Exception:
+            yield ("flow_event", {"event": "flow_failed"})
+            raise
+
+    async for event in gen():
+        yield event
 
 
 def chat_engine_iter(

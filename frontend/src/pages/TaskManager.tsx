@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Activity, AlertCircle, Clock, RefreshCw, FileText, Search, Filter, Terminal, Cpu } from 'lucide-react';
 import api from '../api/axios';
 import { TaskLogViewer } from '../components/ui/TaskLogViewer';
+import { FlowStatusCard, type FlowStep } from '@neuronection/assistant-ui';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StickyToolbar } from '../components/ui/StickyToolbar';
 
@@ -35,6 +36,28 @@ interface TaskStats {
     by_status: Record<string, number>;
     stalled: number;
   };
+}
+
+// The OCR/extraction pipeline stages (mirrors the backend extraction_status
+// vocabulary) — rendered as FlowStatusCard steps per active examination.
+const EXAM_STAGES: Array<{ id: string; label: string }> = [
+  { id: 'aggregating', label: 'Aggregating' },
+  { id: 'analyzing_text', label: 'Analyzing text' },
+  { id: 'defining_ontology', label: 'Defining ontology' },
+  { id: 'persisting_results', label: 'Persisting results' },
+];
+
+function examFlowSteps(exam: ProcessingExamination): FlowStep[] {
+  const currentIdx = Math.min(Math.floor(exam.progress / 25), EXAM_STAGES.length - 1);
+  return EXAM_STAGES.map((stage, i) => ({
+    id: stage.id,
+    label: stage.label,
+    status: exam.status === 'failed'
+      ? (i === currentIdx ? 'failed' : i < currentIdx ? 'done' : 'pending')
+      : exam.status === 'completed' || i < currentIdx
+        ? 'done'
+        : i === currentIdx ? 'running' : 'pending',
+  }));
 }
 
 function TaskManager() {
@@ -339,6 +362,27 @@ function TaskManager() {
       <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-100 dark:border-dark-border overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
           <h2 className="text-lg font-bold">Processing Examinations ({filteredExams.length})</h2>
+        </div>
+        {filteredExams.length > 0 && (
+          <div className="p-4 border-b border-gray-100 dark:border-dark-border">
+            <h2 className="text-lg font-bold mb-4">Active pipelines</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {filteredExams.slice(0, 6).map(exam => {
+                const failed = exam.status === 'failed';
+                return (
+                  <FlowStatusCard
+                    key={exam.id}
+                    title={exam.category || 'General'}
+                    steps={examFlowSteps(exam)}
+                    status={failed ? 'failed' : 'running'}
+                    error={failed ? { code: 'extraction_failed', message: exam.error_message || '', retryable: false } : undefined}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div>
           {stats && stats.examinations.stalled > 0 && (
             <div className="flex items-center space-x-2 text-red-600">
               <AlertCircle className="w-4 h-4" />

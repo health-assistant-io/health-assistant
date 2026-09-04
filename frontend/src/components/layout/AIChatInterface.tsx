@@ -19,6 +19,7 @@ import { ChatInspector } from '../ai/ChatInspector';
 import { ChatHistoryOverlay } from '../ai/ChatHistoryOverlay';
 import { ChatLedgerOverlay } from '../ai/ChatLedgerOverlay';
 import { AIToolsModal } from '../ai/AIToolsModal';
+import { FlowStatusCard, type FlowStep } from '@neuronection/assistant-ui';
 import { HitlTaskCard } from '../ai/hitl/HitlTaskCard';
 import { TERMINAL_HITL_STATUSES } from '../ai/hitl/registry';
 import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
@@ -175,6 +176,46 @@ export const AIChatInterface: React.FC<Props> = ({
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
+
+  // Phase 6.3 — live graph-flow state (dual-emitted family vocabulary):
+  // drives the FlowStatusCard while a graph chat turn is in flight.
+  const FLOW_NODE_ORDER = ['agent_step', 'tool_exec', 'await_user', 'finalize'];
+  type LiveFlow = {
+    status: 'running' | 'interrupted' | 'failed' | 'done';
+    nodes: Record<string, 'pending' | 'running' | 'done' | 'failed' | 'interrupted'>;
+  };
+  const [liveFlow, setLiveFlow] = useState<LiveFlow | null>(null);
+  const applyFlowEvent = (
+    prev: LiveFlow | null,
+    ev: NonNullable<import('../../services/aiAssistanceService').AIStreamMessage['flowEvent']>
+  ): LiveFlow => {
+    const base: LiveFlow = prev ?? { status: 'running', nodes: {} };
+    const nodes = { ...base.nodes };
+    switch (ev.event) {
+      case 'flow_started':
+        return { status: 'running', nodes };
+      case 'node_started':
+        nodes[ev.node!] = 'running';
+        return { status: base.status === 'running' ? 'running' : base.status, nodes };
+      case 'node_finished':
+        nodes[ev.node!] = ev.outcome === 'failed' ? 'failed' : 'done';
+        return { ...base, nodes };
+      case 'interrupt':
+        return { ...base, status: 'interrupted', nodes };
+      case 'flow_failed':
+        return { ...base, status: 'failed', nodes };
+      case 'flow_finished':
+      default:
+        return { ...base, status: 'done', nodes };
+    }
+  };
+  const flowSteps: FlowStep[] = liveFlow
+    ? FLOW_NODE_ORDER.filter((n) => liveFlow.nodes[n]).map((n) => ({
+        id: n,
+        label: t(`ai_chat.flow.${n === 'await_user' ? 'await' : n === 'tool_exec' ? 'tools' : n === 'finalize' ? 'finalize' : 'think'}`),
+        status: liveFlow.nodes[n],
+      }))
+    : [];
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // Expose handlers via ref
@@ -368,6 +409,7 @@ export const AIChatInterface: React.FC<Props> = ({
     let accumulatedToolCalls: ToolCallInfo[] = [];
     let accumulatedCitations: string[] = [];
     let accumulatedTasks: TaskInfo[] = [];
+    setLiveFlow(null);
     
     const placeholderMessage: Message = { role: 'assistant', content: '', toolCalls: [], citations: [], isExecuting: false };
     setMessages(prev => [...prev, placeholderMessage]);
@@ -402,6 +444,9 @@ export const AIChatInterface: React.FC<Props> = ({
           
           if (msg.content) {
             accumulatedContent += msg.content;
+          }
+          if (msg.flowEvent) {
+            setLiveFlow(prev => applyFlowEvent(prev, msg.flowEvent!));
           }
 
           if (msg.toolCall) {
@@ -459,6 +504,7 @@ export const AIChatInterface: React.FC<Props> = ({
         () => {
           setLoading(false);
           loadingRef.current = false;
+          setLiveFlow(null);
         },
         (err) => {
           console.error("Streaming error:", err);
@@ -523,6 +569,7 @@ export const AIChatInterface: React.FC<Props> = ({
     let accumulatedToolCalls: ToolCallInfo[] = [];
     let accumulatedCitations: string[] = [];
     let accumulatedTasks: TaskInfo[] = [];
+    setLiveFlow(null);
 
     try {
       await resumeHitlSession(
@@ -531,6 +578,9 @@ export const AIChatInterface: React.FC<Props> = ({
         (msg: AIStreamMessage) => {
           if (msg.content) {
             accumulatedContent += msg.content;
+          }
+          if (msg.flowEvent) {
+            setLiveFlow(prev => applyFlowEvent(prev, msg.flowEvent!));
           }
           if (msg.toolCall) {
             const { name, status, args, result } = msg.toolCall;
@@ -583,6 +633,7 @@ export const AIChatInterface: React.FC<Props> = ({
         () => {
           setLoading(false);
           loadingRef.current = false;
+          setLiveFlow(null);
         },
         (err) => {
           console.error('HITL resume streaming error:', err);
@@ -991,7 +1042,42 @@ export const AIChatInterface: React.FC<Props> = ({
                               </div>
                             )}
 
-                            {msg.role === 'assistant' && msg.tasks && msg.tasks.length > 0 && (
+                            {loading && liveFlow && i === messages.length - 1 && msg.role === 'assistant' && (
+                              <div className="not-prose min-w-0 w-full mb-2">
+                                <FlowStatusCard
+                                  title={t('ai_chat.flow.title')}
+                                  steps={flowSteps}
+                                  status={liveFlow.status === 'done' ? 'done' : liveFlow.status}
+                                  detail={
+                                    msg.tasks && msg.tasks.length > 0 ? (
+                                      <div className="space-y-2">
+                                        {msg.tasks.map(task => (
+                                          <HitlTaskCard
+                                            key={task.proposal_id}
+                                            task={task}
+                                            sessionId={currentSessionId}
+                                            onResolved={(updated) => {
+                                              setMessages(prev => prev.map((m, idx) => {
+                                                if (idx !== i || !m.tasks) return m;
+                                                return {
+                                                  ...m,
+                                                  tasks: m.tasks.map(t => t.proposal_id === task.proposal_id ? updated : t),
+                                                };
+                                              }));
+                                            }}
+                                          />
+                                        ))}
+                                      </div>
+                                    ) : undefined
+                                  }
+                                />
+                              </div>
+                            )}
+                            {msg.role === 'assistant' && msg.tasks && msg.tasks.length > 0 && !(
+                              // Phase 6.3: while a graph turn is live the task
+                              // cards render inside the FlowStatusCard detail slot.
+                              loading && liveFlow && liveFlow.status !== 'done' && i === messages.length - 1
+                            ) && (
                               <div className="not-prose min-w-0">
                                 {msg.tasks.map(task => (
                                   <HitlTaskCard

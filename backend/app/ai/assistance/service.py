@@ -122,6 +122,7 @@ class AIAssistanceService:
         user_id: Optional[UUID] = None,
         stream: bool = False,
         images: Optional[List[str]] = None,
+        flow_events: bool = False,
     ):
         """Main entry point for AI assistance.
 
@@ -163,7 +164,13 @@ class AIAssistanceService:
         elif task_type == "chat":
             if stream:
                 return self._chat_stream(
-                    llm, user_input, context, tenant_id, user_id, validated_images
+                    llm,
+                    user_input,
+                    context,
+                    tenant_id,
+                    user_id,
+                    validated_images,
+                    flow_events=flow_events,
                 )
             return await self._general_chat(
                 llm, user_input, context, tenant_id, user_id, validated_images
@@ -215,6 +222,7 @@ class AIAssistanceService:
         tenant_id: UUID,
         user_id: UUID,
         images: Optional[List[str]] = None,
+        flow_events: bool = False,
     ):
         """Stream a chat response (SSE). Body lives in run_reasoning_loop."""
         patient_id = context.get("patient_id")
@@ -280,7 +288,7 @@ class AIAssistanceService:
             tenant_id=tenant_id,
             engine=engine,
         )
-        async for chunk in stream_loop_as_sse(loop):
+        async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
             yield chunk
 
     async def resume_after_hitl(
@@ -289,6 +297,7 @@ class AIAssistanceService:
         tenant_id: UUID,
         user_id: UUID,
         message_id: Optional[UUID] = None,
+        flow_events: bool = False,
     ):
         """Stream a HITL continuation turn. Delegates to
         :func:`app.ai.agents.hitl.resume_after_hitl`."""
@@ -304,6 +313,7 @@ class AIAssistanceService:
             user_id,
             message_id,
             engine=engine,
+            flow_events=flow_events,
         ):
             yield chunk
 

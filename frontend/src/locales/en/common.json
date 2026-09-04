@@ -1220,6 +1220,13 @@
       "model_config": "The assigned AI model can't run this chat — it doesn't support chat tools (reasoning models like GPT-5 or o-series don't, on this API). Go to Settings → AI Configuration and assign a tool-capable model (e.g. GPT-4o) to the Chat or Default task, then retry.",
       "generic": "I'm sorry, I encountered an error while responding. Please try again."
     },
+    "flow": {
+      "title": "Working on it…",
+      "think": "Thinking",
+      "tools": "Using tools",
+      "await": "Waiting for your answer",
+      "finalize": "Wrapping up"
+    },
     "insights": {
       "title": "Health Analysis",
       "select_patient": "Please select a patient to enable clinical insights.",

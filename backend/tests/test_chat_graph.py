@@ -80,6 +80,12 @@ TOOL_CALL = {
 }
 
 
+def _legacy(events):
+    """The parity contract is the legacy sentinel vocabulary — the graph
+    engine additively emits ('flow_event', ...) tuples (Phase 6.2)."""
+    return [(k, d) for k, d in events if k != "flow_event"]
+
+
 async def _collect(gen):
     return [event async for event in gen]
 
@@ -110,7 +116,7 @@ async def test_parity_nonstreaming_no_tools():
         ("content", "Hello!"),
         ("done", False),
     ]
-    assert graph_events == loop_events
+    assert _legacy(graph_events) == _legacy(loop_events)
 
 
 @pytest.mark.asyncio
@@ -135,7 +141,7 @@ async def test_parity_nonstreaming_tool_call_then_answer():
     )
     loop_events = await _collect(run_reasoning_loop(make_llm(), **kwargs))
     graph_events = await _collect(chat_engine_iter(make_llm(), **kwargs))
-    assert graph_events == loop_events
+    assert _legacy(graph_events) == _legacy(loop_events)
     kinds = [k for k, _ in loop_events]
     assert kinds == [
         "tool_call_exec",
@@ -190,7 +196,7 @@ async def test_parity_streaming_tool_call_and_quirky_deltas():
     graph_events = await _collect(
         chat_engine_iter(ScriptedStreamingLLM(scripted), **kwargs)
     )
-    assert graph_events == loop_events
+    assert _legacy(graph_events) == _legacy(loop_events)
     deltas = [d for k, d in loop_events if k == "content"]
     assert deltas == ["Analy", "zing now", "All good."]
 
@@ -236,7 +242,7 @@ async def test_graph_hitl_proposal_trimmed_feedback_proactive_save():
     kwargs_graph = dict(kwargs_loop, chat_session_service=svc_graph)
     loop_events = await _collect(run_reasoning_loop(make_llm(), **kwargs_loop))
     graph_events = await _collect(chat_engine_iter(make_llm(), **kwargs_graph))
-    assert graph_events == loop_events
+    assert _legacy(graph_events) == _legacy(loop_events)
 
     hitl_events = [d for k, d in graph_events if k == "hitl_task"]
     assert len(hitl_events) == 1
@@ -286,7 +292,7 @@ async def test_graph_max_iterations_cap_streams_save_and_done_true():
         session_id="22222222-2222-2222-2222-222222222222",
     )
     graph_events = await _collect(chat_engine_iter(AlwaysToolsLLM(), **kwargs))
-    assert graph_events[-1] == ("done", True)
+    assert _legacy(graph_events)[-1] == ("done", True)
     # Final save happened (streaming always), no proactive save (no HITL).
     assert svc.save_message.await_count == 1
     assert svc.update_message_fields.await_count == 0
@@ -306,7 +312,7 @@ async def test_graph_zero_iterations_never_calls_llm():
             session_id=None,
         )
     )
-    assert events == [("done", True)]
+    assert _legacy(events) == [("done", True)]
     assert llm.calls == 0
 
 
@@ -367,7 +373,7 @@ async def test_graph_compiles_with_inmemory_checkpointer():
             checkpointer=InMemorySaver(),
         )
     )
-    assert events[-1] == ("done", False)
+    assert _legacy(events)[-1] == ("done", False)
 
 
 def test_graph_exposes_expected_nodes():
