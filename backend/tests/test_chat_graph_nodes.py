@@ -25,7 +25,6 @@ from app.ai.graphs.chat_agent import (
     has_pending_interrupt,
 )
 from app.ai.graphs.checkpointer import CheckpointStore, bind_runtime_store
-from app.core.config import settings
 
 SESSION_ID = uuid4()
 
@@ -84,10 +83,9 @@ async def test_tool_exec_node_direct():
 
 
 @pytest.mark.asyncio
-async def test_update_state_mid_flow_on_paused_run(monkeypatch):
+async def test_update_state_mid_flow_on_paused_run():
     """Mid-flow: simulate the post-resume state on a paused run with
     ``update_state(as_node='await_user')`` — no full-flow replay."""
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
 
     class OneShotAskLLM:
         def bind_tools(self, tools):
@@ -152,10 +150,9 @@ async def test_update_state_mid_flow_on_paused_run(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ask_user_resume_survives_store_reopen(monkeypatch):
+async def test_ask_user_resume_survives_store_reopen():
     """Resume-after-restart: the paused interrupt survives closing the
     checkpointer pool entirely and reopening a fresh one (new 'process')."""
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
     svc = MagicMock()
     svc.save_message = AsyncMock(side_effect=lambda **kw: MagicMock(id="m1"))
     svc.update_message_fields = AsyncMock(return_value=None)
@@ -286,8 +283,7 @@ class ToolThenAnswerLLM:
 
 
 @pytest.mark.asyncio
-async def test_flow_event_order_clean_tool_turn(monkeypatch):
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
+async def test_flow_event_order_clean_tool_turn():
     tool = MagicMock()
     tool.name = "get_patient_summary"
     tool.ainvoke = AsyncMock(return_value="ok")
@@ -322,8 +318,7 @@ async def test_flow_event_order_clean_tool_turn(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_flow_interrupt_on_ask_user_pause(monkeypatch):
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
+async def test_flow_interrupt_on_ask_user_pause():
     ask_tool = MagicMock()
     ask_tool.name = "ask_user"
     ask_tool.ainvoke = AsyncMock(
@@ -362,8 +357,7 @@ async def test_flow_interrupt_on_ask_user_pause(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_flow_failed_bubbles_with_event(monkeypatch):
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
+async def test_flow_failed_bubbles_with_event():
     boom = MagicMock()
     boom.name = "create_medication"
     boom.ainvoke = AsyncMock(side_effect=RuntimeError("write failed"))

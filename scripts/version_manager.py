@@ -63,6 +63,8 @@ except ModuleNotFoundError:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "version_manager.toml"
 
+TEMPLATE_VERSION = "1.0.0"
+
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.]+))?$")
 
 
@@ -250,11 +252,12 @@ def git_release(cfg: dict, version: str, push: bool) -> None:
 
 
 def main() -> None:
-    cfg = load_config()
     parser = argparse.ArgumentParser(
-        description=f"{cfg['project']['name']} version manager (family-unified)",
+        description="Neuronection family version manager (family-unified)",
         epilog="Config: version_manager.toml (family-unified script — edit the config, not the script)",
     )
+    parser.add_argument("--version", action="version",
+                        version=f"version_manager {TEMPLATE_VERSION} (family template)")
     git_parser = argparse.ArgumentParser(add_help=False)
     git_parser.add_argument("--git", "-g", action="store_true", help="commit the bump and create the tag")
     git_parser.add_argument("--push", "-p", action="store_true", help="push commit + tag to every remote (implies --git)")
@@ -269,6 +272,7 @@ def main() -> None:
     subparsers.add_parser("release", parents=[git_parser], help="commit/tag/push the version already recorded on disk")
     args = parser.parse_args()
 
+    cfg = load_config()
     current = read_version(cfg)
     if args.command == "show":
         print(current)

@@ -79,19 +79,12 @@ def _ask_observation() -> str:
     )
 
 
-@pytest.fixture
-def graph_engine(monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
-
-
 async def _collect(gen):
     return [event async for event in gen]
 
 
 @pytest.mark.asyncio
-async def test_ask_user_interrupt_resume_roundtrip(graph_engine, monkeypatch):
+async def test_ask_user_interrupt_resume_roundtrip():
     """The turn pauses at the card; /resume continues the SAME conversation."""
     ask_tool = _ask_user_tool(_ask_observation())
     svc = _service()
@@ -182,7 +175,7 @@ async def test_ask_user_interrupt_resume_roundtrip(graph_engine, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_ask_user_sse_terminal_card(graph_engine):
+async def test_ask_user_sse_terminal_card():
     """stream_loop_as_sse ends right after the card — no content after it."""
     from app.ai.agents.chat_agent import stream_loop_as_sse
 
@@ -232,7 +225,7 @@ async def test_ask_user_sse_terminal_card(graph_engine):
 
 
 @pytest.mark.asyncio
-async def test_agent_step_retries_transient_errors(graph_engine):
+async def test_agent_step_retries_transient_errors():
     """Graph-default retry: a transient ConnectionError inside agent_step is
     retried (LLM calls are read-only; state commits only on node success)."""
     calls = {"n": 0}
@@ -261,7 +254,7 @@ async def test_agent_step_retries_transient_errors(graph_engine):
 
 
 @pytest.mark.asyncio
-async def test_tool_exec_never_retries_and_bubbles(graph_engine):
+async def test_tool_exec_never_retries_and_bubbles():
     """tool_exec is pinned to one attempt (clinical tools are not idempotent)
     and its errors bubble exactly like the loop engine (SSE classifier)."""
     boom = MagicMock()
@@ -301,7 +294,7 @@ async def test_tool_exec_never_retries_and_bubbles(graph_engine):
 
 
 @pytest.mark.asyncio
-async def test_ask_user_nonstreaming_degrades_to_continue_mode(graph_engine):
+async def test_ask_user_nonstreaming_degrades_to_continue_mode():
     """Without a stream there is no terminal card to pause on — ask_user
     degrades to the propose-style continue path (no interrupt)."""
     ask_tool = _ask_user_tool(_ask_observation())

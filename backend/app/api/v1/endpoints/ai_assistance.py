@@ -174,7 +174,7 @@ async def assist_user_stream(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     flow_events: bool = Query(
-        False,
+        True,
         description="Emit additive family flow events alongside the legacy sentinels.",
     ),
 ):
@@ -442,7 +442,7 @@ async def resume_hitl_session(
     body: HitlResumeRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
-    flow_events: bool = Query(False),
+    flow_events: bool = Query(True),
 ):
     """Trigger an agent continuation turn after the user has resolved one or
     more HITL task cards in the session.

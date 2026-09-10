@@ -1,29 +1,19 @@
-"""Phase 3.2: the LangGraph chat engine must mirror run_reasoning_loop
-event-for-event (parity gate for the AI_AGENT_ENGINE=graph flag).
+"""Phase 3.2 + 8: the LangGraph chat engine's sentinel/delta behavior.
 
-Scenarios: no-tool clean break, tool-call turn, HITL proposal (trimmed
-feedback + proactive persistence + no citation), max-iterations cap, SSE
-sentinel parity, and a checkpointer-attached compile (Phase 3.3 path).
+Since the Phase 8 decommission this is the ONLY engine; these tests pin the
+frozen legacy contract (content deltas, ``[TOOL_CALL_*]`` / ``[CITATION]`` /
+``[HITL_TASK]`` sentinels, proactive persistence, iteration cap) that the
+frontend and the SSE endpoint consume.
 """
 
 import json
-from typing import Any, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
-from app.ai.agents.chat_agent import run_reasoning_loop, stream_loop_as_sse
+from app.ai.agents.chat_agent import stream_loop_as_sse
 from app.ai.graphs.chat_agent import build_chat_graph, chat_engine_iter
-from app.core.config import settings
-
-
-@pytest.fixture(autouse=True)
-def graph_engine(monkeypatch):
-    # These tests compare loop vs graph events explicitly — pin both sides so
-    # the engine DEFAULT (3.6: graph) can never silently change what runs.
-    monkeypatch.setattr(settings, "AI_AGENT_ENGINE", "graph")
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -33,7 +23,7 @@ def graph_engine(monkeypatch):
 class ScriptedLLM:
     """Non-streaming fake: pops one AIMessage per ainvoke."""
 
-    def __init__(self, responses: List[AIMessage]):
+    def __init__(self, responses):
         self.responses = list(responses)
         self.calls = 0
 
@@ -46,15 +36,18 @@ class ScriptedStreamingLLM:
     """Streaming fake: each response is a list of AIMessageChunk pieces fed to
     astream. Supports the accumulated-content quirk (providers re-emitting)."""
 
-    def __init__(self, responses: List[List[AIMessageChunk]]):
+    def __init__(self, responses):
         self.responses = list(responses)
+
+    def bind_tools(self, tools):
+        return self
 
     async def astream(self, history):
         for piece in self.responses.pop(0):
             yield piece
 
 
-def _tool(name: str, observation: Any):
+def _tool(name, observation):
     tool = MagicMock()
     tool.name = name
     tool.ainvoke = AsyncMock(return_value=observation)
@@ -63,7 +56,7 @@ def _tool(name: str, observation: Any):
 
 def _service():
     svc = MagicMock()
-    svc.save_message = AsyncMock(side_effect=lambda **kw: MagicMock(id="msg-proactive"))
+    svc.save_message = AsyncMock(side_effect=lambda **kw: MagicMock(id="msg-1"))
     svc.update_message_fields = AsyncMock(return_value=None)
     return svc
 
@@ -80,47 +73,35 @@ TOOL_CALL = {
 }
 
 
-def _legacy(events):
-    """The parity contract is the legacy sentinel vocabulary — the graph
-    engine additively emits ('flow_event', ...) tuples (Phase 6.2)."""
-    return [(k, d) for k, d in events if k != "flow_event"]
-
-
 async def _collect(gen):
     return [event async for event in gen]
 
 
 # ---------------------------------------------------------------------------
-# Parity: non-streaming
+# Sentinel/delta behavior
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_parity_nonstreaming_no_tools():
-    history = [HumanMessage("hi")]
-
-    def make_llm():
-        return ScriptedLLM([AIMessage(content="Hello!")])
-
-    kwargs = dict(
-        tools=[],
-        history=history,
-        max_iterations=3,
-        streaming=False,
-        chat_session_service=None,
-        session_id=None,
+async def test_nonstreaming_no_tools_clean_break():
+    llm = ScriptedLLM([AIMessage(content="Hello!")])
+    events = await _collect(
+        chat_engine_iter(
+            llm,
+            tools=[],
+            history=[HumanMessage("hi")],
+            max_iterations=3,
+            streaming=False,
+            chat_session_service=None,
+            session_id=None,
+        )
     )
-    loop_events = await _collect(run_reasoning_loop(make_llm(), **kwargs))
-    graph_events = await _collect(chat_engine_iter(make_llm(), **kwargs))
-    assert loop_events == [
-        ("content", "Hello!"),
-        ("done", False),
-    ]
-    assert _legacy(graph_events) == _legacy(loop_events)
+    legacy = [(k, d) for k, d in events if k != "flow_event"]
+    assert legacy == [("content", "Hello!"), ("done", False)]
 
 
 @pytest.mark.asyncio
-async def test_parity_nonstreaming_tool_call_then_answer():
+async def test_tool_call_then_answer():
     def make_llm():
         return ScriptedLLM(
             [
@@ -130,19 +111,18 @@ async def test_parity_nonstreaming_tool_call_then_answer():
         )
 
     tools = [_tool("get_patient_summary", '{"status": "ok"}')]
-    history = [HumanMessage("check")]
-    kwargs = dict(
-        tools=tools,
-        history=history,
-        max_iterations=5,
-        streaming=False,
-        chat_session_service=None,
-        session_id=None,
+    events = await _collect(
+        chat_engine_iter(
+            make_llm(),
+            tools=tools,
+            history=[HumanMessage("check")],
+            max_iterations=5,
+            streaming=False,
+            chat_session_service=None,
+            session_id=None,
+        )
     )
-    loop_events = await _collect(run_reasoning_loop(make_llm(), **kwargs))
-    graph_events = await _collect(chat_engine_iter(make_llm(), **kwargs))
-    assert _legacy(graph_events) == _legacy(loop_events)
-    kinds = [k for k, _ in loop_events]
+    kinds = [k for k, _ in events if k != "flow_event"]
     assert kinds == [
         "tool_call_exec",
         "tool_call_result",
@@ -151,53 +131,51 @@ async def test_parity_nonstreaming_tool_call_then_answer():
         "content",
         "done",
     ]
-    assert ("done", False) == loop_events[-1]
-
-
-# ---------------------------------------------------------------------------
-# Parity: streaming (incl. the provider accumulated-content quirk)
-# ---------------------------------------------------------------------------
+    assert [(k, d) for k, d in events if k != "flow_event"][-1] == ("done", False)
+    results = [d for k, d in events if k == "tool_call_result"]
+    assert results[0]["result"] == '{"status": "ok"}'
 
 
 @pytest.mark.asyncio
-async def test_parity_streaming_tool_call_and_quirky_deltas():
-    # Second chunk RE-EMITS the accumulated content (provider quirk the loop
-    # reconciles) — both engines must produce identical deltas.
-    scripted = [
-        [
-            AIMessageChunk(content="Analy"),
-            AIMessageChunk(content="Analyzing now"),
-            AIMessageChunk(
-                content="",
-                tool_call_chunks=[
-                    {
-                        "name": "get_patient_summary",
-                        "args": "",
-                        "id": "call_1",
-                        "index": None,
-                    }
+async def test_streaming_tool_call_and_quirky_deltas():
+    """Second chunk RE-EMITS the accumulated content (provider quirk) — the
+    dedup must yield true deltas only."""
+
+    def make_llm():
+        return ScriptedStreamingLLM(
+            [
+                [
+                    AIMessageChunk(content="Analy"),
+                    AIMessageChunk(content="Analyzing now"),
+                    AIMessageChunk(
+                        content="",
+                        tool_call_chunks=[
+                            {
+                                "name": "get_patient_summary",
+                                "args": "",
+                                "id": "call_1",
+                                "index": None,
+                            }
+                        ],
+                    ),
                 ],
-            ),
-        ],
-        [AIMessageChunk(content="All good.")],
-    ]
+                [AIMessageChunk(content="All good.")],
+            ]
+        )
+
     tools = [_tool("get_patient_summary", "ok")]
-    kwargs = dict(
-        tools=tools,
-        history=[HumanMessage("check")],
-        max_iterations=5,
-        streaming=True,
-        chat_session_service=None,
-        session_id=None,
+    events = await _collect(
+        chat_engine_iter(
+            make_llm(),
+            tools=tools,
+            history=[HumanMessage("check")],
+            max_iterations=5,
+            streaming=True,
+            chat_session_service=None,
+            session_id=None,
+        )
     )
-    loop_events = await _collect(
-        run_reasoning_loop(ScriptedStreamingLLM(scripted), **kwargs)
-    )
-    graph_events = await _collect(
-        chat_engine_iter(ScriptedStreamingLLM(scripted), **kwargs)
-    )
-    assert _legacy(graph_events) == _legacy(loop_events)
-    deltas = [d for k, d in loop_events if k == "content"]
+    deltas = [d for k, d in events if k == "content"]
     assert deltas == ["Analy", "zing now", "All good."]
 
 
@@ -207,7 +185,7 @@ async def test_parity_streaming_tool_call_and_quirky_deltas():
 
 
 @pytest.mark.asyncio
-async def test_graph_hitl_proposal_trimmed_feedback_proactive_save():
+async def test_hitl_proposal_trimmed_feedback_proactive_save():
     def make_llm():
         return ScriptedStreamingLLM(
             [
@@ -229,34 +207,31 @@ async def test_graph_hitl_proposal_trimmed_feedback_proactive_save():
         )
 
     tools = [_tool("propose_medication", HITL_OBSERVATION)]
-    svc_loop = _service()
-    svc_graph = _service()
-    kwargs_loop = dict(
-        tools=tools,
-        history=[HumanMessage("add ibuprofen")],
-        max_iterations=5,
-        streaming=True,
-        chat_session_service=svc_loop,
-        session_id="11111111-1111-1111-1111-111111111111",
+    svc = _service()
+    events = await _collect(
+        chat_engine_iter(
+            make_llm(),
+            tools=tools,
+            history=[HumanMessage("add ibuprofen")],
+            max_iterations=5,
+            streaming=True,
+            chat_session_service=svc,
+            session_id="11111111-1111-1111-1111-111111111111",
+        )
     )
-    kwargs_graph = dict(kwargs_loop, chat_session_service=svc_graph)
-    loop_events = await _collect(run_reasoning_loop(make_llm(), **kwargs_loop))
-    graph_events = await _collect(chat_engine_iter(make_llm(), **kwargs_graph))
-    assert _legacy(graph_events) == _legacy(loop_events)
 
-    hitl_events = [d for k, d in graph_events if k == "hitl_task"]
+    hitl_events = [d for k, d in events if k == "hitl_task"]
     assert len(hitl_events) == 1
     assert hitl_events[0]["task_type"] == "create_medication"
-    # Proactive save ran exactly once per engine, with the task attached; the
-    # final save went through update_message_fields (proactive message exists).
-    for svc in (svc_loop, svc_graph):
-        assert svc.save_message.await_count == 1
-        save_kwargs = svc.save_message.await_args.kwargs
-        assert save_kwargs["tasks"] == [hitl_events[0]]
-        assert svc.update_message_fields.await_count == 1
+    # Proactive save ran exactly once, with the task attached; the final save
+    # went through update_message_fields (proactive message exists).
+    assert svc.save_message.await_count == 1
+    save_kwargs = svc.save_message.await_args.kwargs
+    assert save_kwargs["tasks"] == [hitl_events[0]]
+    assert svc.update_message_fields.await_count == 1
     # No citation for proposals; result payload is the trimmed feedback.
-    assert "citation" not in [k for k, _ in graph_events]
-    results = [d for k, d in graph_events if k == "tool_call_result"]
+    assert "citation" not in [k for k, _ in events]
+    results = [d for k, d in events if k == "tool_call_result"]
     assert results[0]["result"] != HITL_OBSERVATION
 
 
@@ -265,41 +240,43 @@ async def test_graph_hitl_proposal_trimmed_feedback_proactive_save():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_graph_max_iterations_cap_streams_save_and_done_true():
-    class AlwaysToolsLLM:
-        async def astream(self, history):
-            yield AIMessageChunk(
-                content="",
-                tool_call_chunks=[
-                    {
-                        "name": "get_patient_summary",
-                        "args": "",
-                        "id": f"c{len(history)}",
-                        "index": None,
-                    }
-                ],
-            )
+class AlwaysToolsLLM:
+    def bind_tools(self, tools):
+        return self
 
+    async def astream(self, history):
+        yield AIMessageChunk(
+            content="",
+            tool_call_chunks=[
+                {"name": "get_patient_summary", "args": "", "id": "c1", "index": None}
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_max_iterations_cap_streams_save_and_done_true():
     tools = [_tool("get_patient_summary", "ok")]
     svc = _service()
-    kwargs = dict(
-        tools=tools,
-        history=[HumanMessage("check")],
-        max_iterations=2,
-        streaming=True,
-        chat_session_service=svc,
-        session_id="22222222-2222-2222-2222-222222222222",
+    events = await _collect(
+        chat_engine_iter(
+            AlwaysToolsLLM(),
+            tools=tools,
+            history=[HumanMessage("check")],
+            max_iterations=2,
+            streaming=True,
+            chat_session_service=svc,
+            session_id="22222222-2222-2222-2222-222222222222",
+        )
     )
-    graph_events = await _collect(chat_engine_iter(AlwaysToolsLLM(), **kwargs))
-    assert _legacy(graph_events)[-1] == ("done", True)
+    legacy = [(k, d) for k, d in events if k != "flow_event"]
+    assert legacy[-1] == ("done", True)
     # Final save happened (streaming always), no proactive save (no HITL).
     assert svc.save_message.await_count == 1
     assert svc.update_message_fields.await_count == 0
 
 
 @pytest.mark.asyncio
-async def test_graph_zero_iterations_never_calls_llm():
+async def test_zero_iterations_never_calls_llm():
     llm = ScriptedLLM([AIMessage(content="should not run")])
     events = await _collect(
         chat_engine_iter(
@@ -312,49 +289,41 @@ async def test_graph_zero_iterations_never_calls_llm():
             session_id=None,
         )
     )
-    assert _legacy(events) == [("done", True)]
+    assert [(k, d) for k, d in events if k != "flow_event"] == [("done", True)]
     assert llm.calls == 0
 
 
 # ---------------------------------------------------------------------------
-# SSE sentinel parity + checkpointer compatibility
+# SSE sentinel output + checkpointer compatibility
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_sse_sentinels_identical_between_engines():
-    llm_loop = ScriptedLLM(
-        [
-            AIMessage(content="", tool_calls=[TOOL_CALL]),
-            AIMessage(content="Answer."),
-        ]
-    )
-    llm_graph = ScriptedLLM(
+async def test_sse_sentinel_stream():
+    llm = ScriptedLLM(
         [
             AIMessage(content="", tool_calls=[TOOL_CALL]),
             AIMessage(content="Answer."),
         ]
     )
     tools = [_tool("get_patient_summary", "ok")]
-    kwargs = dict(
-        tools=tools,
-        history=[HumanMessage("check")],
-        max_iterations=5,
-        streaming=False,
-        chat_session_service=None,
-        session_id=None,
-    )
-    loop_sse = [
+    sse = [
         chunk
-        async for chunk in stream_loop_as_sse(run_reasoning_loop(llm_loop, **kwargs))
+        async for chunk in stream_loop_as_sse(
+            chat_engine_iter(
+                llm,
+                tools=tools,
+                history=[HumanMessage("check")],
+                max_iterations=5,
+                streaming=False,
+                chat_session_service=None,
+                session_id=None,
+            )
+        )
     ]
-    graph_sse = [
-        chunk
-        async for chunk in stream_loop_as_sse(chat_engine_iter(llm_graph, **kwargs))
-    ]
-    assert graph_sse == loop_sse
-    assert "[CITATION] get_patient_summary" in loop_sse
-    assert "[TOOL_CALL_FINISHED]" in loop_sse
+    assert "[CITATION] get_patient_summary" in sse
+    assert "[TOOL_CALL_FINISHED]" in sse
+    assert sse[-1] == "Answer."
 
 
 @pytest.mark.asyncio
@@ -373,7 +342,8 @@ async def test_graph_compiles_with_inmemory_checkpointer():
             checkpointer=InMemorySaver(),
         )
     )
-    assert _legacy(events)[-1] == ("done", False)
+    legacy = [(k, d) for k, d in events if k != "flow_event"]
+    assert legacy[-1] == ("done", False)
 
 
 def test_graph_exposes_expected_nodes():

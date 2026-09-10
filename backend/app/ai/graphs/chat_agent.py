@@ -1,7 +1,8 @@
 """LangGraph mirror of the agentic-chat reasoning loop (Phases 3.2 + 3.3).
 
-``run_chat_graph`` reproduces :func:`app.ai.agents.chat_agent.run_reasoning_loop`
-event-for-event as a StateGraph, selected by ``AI_AGENT_ENGINE=loop|graph``.
+``run_chat_graph`` is the single chat reasoning engine — a StateGraph whose
+custom stream re-emits the loop's legacy ``(kind, data)`` sentinel tuples
+additively alongside the family flow events.
 Both engines yield the same ``(kind, data)`` tuples, so
 :func:`app.ai.agents.chat_agent.stream_loop_as_sse` and the non-streaming
 consumer work unchanged — the SSE sentinel contract is frozen.
@@ -64,14 +65,12 @@ from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, RetryPolicy, interrupt
 
-from app.ai.agents.chat_agent import run_reasoning_loop
 from app.ai.agents.hitl import (
     _hitl_llm_feedback,
     _hitl_proposal_note,
     _parse_hitl_proposal,
 )
 from app.ai.graphs.checkpointer import get_runtime_saver
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -625,8 +624,9 @@ async def run_chat_graph(
     user_id: Optional[UUID] = None,
     tenant_id: Optional[UUID] = None,
 ) -> AsyncIterator[Tuple[str, Any]]:
-    """Engine-selectable mirror of :func:`run_reasoning_loop`: consumes the
-    graph's custom stream and re-emits the loop's ``(kind, data)`` events."""
+    """Consumes the graph's custom stream and re-emits the legacy
+    ``(kind, data)`` sentinel tuples (parity contract with the pre-3.2 loop).
+    """
     graph = build_chat_graph(checkpointer=checkpointer)
     runtime: Dict[str, Any] = {
         "llm_with_tools": llm_with_tools,
@@ -696,38 +696,17 @@ def chat_engine_iter(
     user_id: Optional[UUID] = None,
     tenant_id: Optional[UUID] = None,
     checkpointer: Optional[Any] = None,
-    engine: Optional[str] = None,
 ):
-    """Select the chat engine (``loop`` | ``graph``).
-
-    ``engine`` (resolved per tenant by the caller — tenant settings override
-    the ``AI_AGENT_ENGINE`` env default) wins; unknown values fall back to
-    the env default, which itself falls back to ``loop``.
-
-    Returns an async iterator of the shared ``(kind, data)`` event vocabulary;
-    callers are engine-agnostic. The graph engine attaches the lifespan-held
-    checkpointer (thread_id = session id) for sessioned runs — ask_user
-    interrupts need the durable thread; ``user_id``/``tenant_id`` enable the
-    crash-resume dedup.
+    """Run a chat turn on the LangGraph engine (the only engine since the
+    Phase 8 decommission). Returns an async iterator of the legacy
+    ``(kind, data)`` sentinel tuples; callers stay engine-agnostic. The
+    lifespan-held checkpointer (thread_id = session id) is attached for
+    sessioned runs — ask_user interrupts need the durable thread;
+    ``user_id``/``tenant_id`` enable the crash-resume dedup.
     """
-    resolved = engine or settings.AI_AGENT_ENGINE
-    if resolved == "graph":
-        if checkpointer is None and session_id is not None:
-            checkpointer = get_runtime_saver()
-        return run_chat_graph(
-            llm_with_tools,
-            tools,
-            history,
-            max_iterations,
-            streaming=streaming,
-            chat_session_service=chat_session_service,
-            session_id=session_id,
-            log_label=log_label,
-            checkpointer=checkpointer,
-            user_id=user_id,
-            tenant_id=tenant_id,
-        )
-    return run_reasoning_loop(
+    if checkpointer is None and session_id is not None:
+        checkpointer = get_runtime_saver()
+    return run_chat_graph(
         llm_with_tools,
         tools,
         history,
@@ -736,13 +715,16 @@ def chat_engine_iter(
         chat_session_service=chat_session_service,
         session_id=session_id,
         log_label=log_label,
+        checkpointer=checkpointer,
+        user_id=user_id,
+        tenant_id=tenant_id,
     )
 
 
 async def has_pending_interrupt(session_id: UUID) -> bool:
     """True when the session's checkpointed graph run is paused at an
     ask_user interrupt (the /resume continuation should Command(resume=...)
-    instead of starting a fresh loop turn)."""
+    instead of starting a fresh turn)."""
     saver = get_runtime_saver()
     if saver is None:
         return False

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
+### Changed
+- `scripts/version_manager.py` synced from the dev family template
+  (`TEMPLATE_VERSION` stamp, `--version`; config-order fix so `--version`
+  works without a config file).
+
+
+- **AI architecture (ADR-0008, Phase 8): legacy chat loop decommissioned** — `run_reasoning_loop` and the `AI_AGENT_ENGINE` flag/tenant dial are deleted; the LangGraph engine (`app/ai/graphs/chat_agent.py`) is the only chat reasoning path (event/SSE contract unchanged). `?flow_events` now defaults to `true` on `/ai-assistance/stream` and `/resume` (the parameter remains as an override); legacy sentinel frames keep flowing until the frontend is family-events-only in a later release.
 
 ## [v0.7.0] - 2026-09-04
 

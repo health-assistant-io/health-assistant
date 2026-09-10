@@ -178,29 +178,6 @@ class AIAssistanceService:
         else:
             raise ValueError(f"Unknown task type: {task_type}")
 
-    async def _get_agent_engine(self, tenant_id: Optional[UUID]) -> str:
-        """Resolve the chat reasoning engine for a tenant.
-
-        Precedence: tenant setting (``settings.ai_agent_engine``) → system
-        DB setting → ``AI_AGENT_ENGINE`` env default. Invalid values fall
-        back to the env default. This is the Phase 3.5 shadow dial: flip a
-        single dev tenant to ``graph`` while the platform stays on ``loop``.
-        """
-        valid = ("loop", "graph")
-        fallback = settings.AI_AGENT_ENGINE
-        if tenant_id:
-            result = await self.db.execute(
-                select(TenantModel.settings).where(TenantModel.id == tenant_id)
-            )
-            tenant_settings = result.scalar_one_or_none()
-            value = (tenant_settings or {}).get("ai_agent_engine")
-            if value in valid:
-                return value
-        system_value = await SystemSetting.get_value(self.db, "ai_agent_engine")
-        if system_value in valid:
-            return system_value
-        return fallback if fallback in valid else "loop"
-
     # ------------------------------------------------------------------
     # Chat — delegates to the shared reasoning loop (Phase 2)
     # ------------------------------------------------------------------
@@ -224,7 +201,7 @@ class AIAssistanceService:
         images: Optional[List[str]] = None,
         flow_events: bool = False,
     ):
-        """Stream a chat response (SSE). Body lives in run_reasoning_loop."""
+        """Stream a chat response (SSE). Body lives in the LangGraph engine."""
         patient_id = context.get("patient_id")
         examination_id = context.get("examination_id")
         session_id_str = context.get("session_id")
@@ -274,7 +251,6 @@ class AIAssistanceService:
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)
-        engine = await self._get_agent_engine(tenant_id)
         loop = chat_engine_iter(
             llm_with_tools,
             tools,
@@ -286,7 +262,6 @@ class AIAssistanceService:
             log_label="AI Assistance",
             user_id=user_id,
             tenant_id=tenant_id,
-            engine=engine,
         )
         async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
             yield chunk
@@ -302,7 +277,6 @@ class AIAssistanceService:
         """Stream a HITL continuation turn. Delegates to
         :func:`app.ai.agents.hitl.resume_after_hitl`."""
         max_iterations = await self._get_max_iterations(tenant_id)
-        engine = await self._get_agent_engine(tenant_id)
         async for chunk in _resume_after_hitl(
             self.db,
             self.chat_session_service,
@@ -312,7 +286,6 @@ class AIAssistanceService:
             tenant_id,
             user_id,
             message_id,
-            engine=engine,
             flow_events=flow_events,
         ):
             yield chunk
@@ -327,7 +300,7 @@ class AIAssistanceService:
         images: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Non-streaming chat with tool support. Collects content events from
-        :func:`run_reasoning_loop` (streaming=False) into the response dict."""
+        the chat engine (streaming=False) into the response dict."""
         patient_id = context.get("patient_id")
         examination_id = context.get("examination_id")
         session_id_str = context.get("session_id")
@@ -374,7 +347,6 @@ class AIAssistanceService:
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)
-        engine = await self._get_agent_engine(tenant_id)
         full_message = ""
         reached_max = False
         async for kind, data in chat_engine_iter(
@@ -388,7 +360,6 @@ class AIAssistanceService:
             log_label="AI Assistance",
             user_id=user_id,
             tenant_id=tenant_id,
-            engine=engine,
         ):
             if kind == "content":
                 full_message += data

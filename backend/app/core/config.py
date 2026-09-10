@@ -353,13 +353,6 @@ class Settings(BaseSettings):
 
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
-    # Chat reasoning engine (ADR-0008 Phase 3.6): the LangGraph mirror in
-    # app/ai/graphs/chat_agent.py is the default ("graph"); the original
-    # run_reasoning_loop generator stays available as rollback ("loop").
-    # Both emit the identical event vocabulary; unknown values fall back to
-    # "loop". Tenant settings (ai_agent_engine) override the env default.
-    AI_AGENT_ENGINE: str = "graph"
-
     # AI Graphs (LangGraph) — checkpoint retention for the prune beat job.
     # Checkpoint rows have no timestamp columns (langgraph-checkpoint-postgres
     # 3.x), so age is derived from the owning chat session's last activity:

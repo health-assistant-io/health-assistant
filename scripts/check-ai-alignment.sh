@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # AI-architecture alignment gate (ADR-0008 / guidelines/ai-features.md).
 #
-# Enforces, per product repo:
+# Enforces, per product repo (python and js/electron kinds):
 #   R1  no provider-SDK imports (openai / anthropic / google-genai) outside
-#       the model factory (backend/app/ai/chat_models.py) and tests
-#   R2  LangChain chat classes imported only inside the factory (+ tests)
-#   R3  LangGraph graphs (StateGraph) live under backend/app/ai/graphs/
-#   R4  langgraph + a langgraph-checkpoint-* dep exist when graphs exist
+#       the AI layer (python: backend/app/ai/chat_models.py; js: src/main/ai/)
+#       and tests
+#   R2  LangChain chat classes, the agent/graph stack (langchain,
+#       @langchain/langgraph*), and MCP libraries (fastmcp / mcp /
+#       @langchain/mcp-adapters) imported only inside the AI layer
+#       (python: backend/app/ai/; js: src/main/ai/) (+ tests)
+#   R3  LangGraph graphs (StateGraph; js: also createAgent) live under the
+#       ai/graphs/ dir (python: backend/app/ai/graphs; js: src/main/ai/graphs)
+#   R4  langgraph (+ langgraph-checkpoint-* when persistent checkpointing
+#       is used) exists as a dependency when graphs exist
 #
 # Modes: strict (findings fail) or transition (findings reported, exit 0).
 #
@@ -26,15 +32,13 @@ set -uo pipefail
 DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE="$(dirname "$DEV_ROOT")"
 
-# repo (relative to workspace) : mode : tests dir (repo-relative)
+# repo (relative to workspace) : mode : tests dir (repo-relative) : kind
 REPOS=(
-  "study-assistant:strict:backend/tests"
-  "career-assistant:transition:backend/tests"
-  "health-assistant/core:transition:backend/tests"
+  "study-assistant:strict:backend/tests:python"
+  "career-assistant:transition:backend/tests:python"
+  "health-assistant/core:transition:backend/tests:python"
+  "desktop-assistant:strict:tests:js"
 )
-
-FACTORY="backend/app/ai/chat_models.py"   # canonical factory path (allowlist target)
-GRAPHS_DIR="backend/app/ai/graphs"
 
 STRICT_ALL=0; SELF=0; MODE_OVERRIDE=""
 for arg in "$@"; do
@@ -47,28 +51,65 @@ for arg in "$@"; do
   esac
 done
 
-check_repo() {  # dir mode tests_dir -> sets REPO_FAIL=1 on strict findings
-  local dir="$1" mode="$2" tests_dir="$3"
-  local backend="$dir/backend"
+check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
+  local dir="$1" mode="$2" tests_dir="$3" kind="${4:-python}"
   REPO_FAIL=0
 
-  if [ ! -d "$backend/app" ]; then
-    echo "SKIP (no backend/app — not a product backend)"
-    return
+  local backend scan_root FACTORY GRAPHS_DIR GRAPH_RE
+  local -a SCAN_ARGS SDK_RE CLASS_RE DEPS_FILES
+
+  if [ "$kind" = "js" ]; then
+    backend="$dir/src/main"
+    scan_root="$backend"
+    FACTORY="src/main/ai"
+    GRAPHS_DIR="src/main/ai/graphs"
+    GRAPH_RE='StateGraph|createAgent\b'
+    if [ ! -d "$backend" ]; then
+      echo "SKIP (no src/main — not an electron product)"
+      return
+    fi
+    SCAN_ARGS=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
+      --exclude-dir='node_modules' --exclude-dir='dist'
+      --exclude-dir='build' --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
+    SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@google/genai['\"])"
+    CLASS_RE="(from ['\"]@langchain/(openai|anthropic|google-genai)['\"]|require\(['\"]@langchain/(openai|anthropic|google-genai)['\"]\)|from ['\"]@langchain/langgraph|from ['\"]@langchain/mcp-adapters['\"]|from ['\"]langchain(/agents)?['\"])";
+    DEPS_FILES=("$dir/package.json")
+  else
+    backend="$dir/backend"
+    scan_root="$backend"
+    FACTORY="backend/app/ai/chat_models.py"
+    GRAPHS_DIR="backend/app/ai/graphs"
+    if [ ! -d "$backend/app" ]; then
+      echo "SKIP (no backend/app — not a product backend)"
+      return
+    fi
+    SCAN_ARGS=(--include='*.py' -rIlnE
+      --exclude-dir='.venv' --exclude-dir='venv' --exclude-dir='dist'
+      --exclude-dir='build' --exclude-dir='__pycache__' --exclude-dir='.git')
+    SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai)'
+    CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import)'
+    GRAPH_RE='StateGraph'
+    DEPS_FILES=("$backend/pyproject.toml" "$backend/requirements.txt" "$backend/requirements"*.txt)
   fi
 
-  local SCAN_ARGS=(--include='*.py' -rIlnE
-    --exclude-dir='.venv' --exclude-dir='venv' --exclude-dir='dist'
-    --exclude-dir='build' --exclude-dir='__pycache__' --exclude-dir='.git')
-  local SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai)'
-  local CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\()'
-
-  is_allowed() {  # path repo-relative -> factory, tests, or graphs dir
+  is_allowed() {  # path repo-relative -> ai layer, tests, or graphs dir
     case "$1" in
-      "$FACTORY"|"$tests_dir"/*|"$GRAPHS_DIR"/*) return 0 ;;
+      "$FACTORY"|"$FACTORY"/*|"$tests_dir"/*|"$GRAPHS_DIR"/*) return 0 ;;
       *) return 1 ;;
     esac
   }
+
+  is_allowed_r2() {  # R2's AI layer is the whole app/ai dir (python), not just the factory
+    case "$1" in
+      "$AI_LAYER"|"$AI_LAYER"/*|"$tests_dir"/*|"$GRAPHS_DIR"/*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  if [ "$kind" = "python" ]; then
+    AI_LAYER="backend/app/ai"
+  else
+    AI_LAYER="$FACTORY"
+  fi
 
   local findings=0 first=1
   report() {  # rule, file, detail
@@ -85,21 +126,22 @@ check_repo() {  # dir mode tests_dir -> sets REPO_FAIL=1 on strict findings
 
   while IFS= read -r f; do
     rel="${f#"$dir"/}"
-    is_allowed "$rel" || report R2 "$rel" 'LangChain chat class import outside factory'
+    is_allowed_r2 "$rel" || report R2 "$rel" 'LangChain chat class / MCP import outside the AI layer'
   done < <(grep "${SCAN_ARGS[@]}" "$CLASS_RE" "$backend" 2>/dev/null | sort -u)
 
   local graphs=0
   while IFS= read -r f; do
     graphs=1
     rel="${f#"$dir"/}"
-    case "$rel" in "$GRAPHS_DIR"/*|"$tests_dir"/*) ;; *) report R3 "$rel" 'StateGraph outside app/ai/graphs/' ;; esac
-  done < <(grep "${SCAN_ARGS[@]}" 'StateGraph' "$backend/app" 2>/dev/null | sort -u)
+    case "$rel" in "$GRAPHS_DIR"/*|"$tests_dir"/*) ;; *) report R3 "$rel" 'graph (StateGraph/createAgent) outside the ai/graphs/ dir' ;; esac
+  done < <(grep "${SCAN_ARGS[@]}" "$GRAPH_RE" "$scan_root" 2>/dev/null | sort -u)
 
   if [ "$graphs" -eq 1 ]; then
-    local deps="$backend/pyproject.toml $backend/requirements.txt $backend/requirements*.txt"
-    grep -qh 'langgraph' $deps 2>/dev/null || report R4 'deps' 'graphs exist but no langgraph dependency'
-    grep -qhE 'langgraph-checkpoint-(postgres|sqlite)' $deps 2>/dev/null || \
-      report R4 'deps' 'graphs exist but no langgraph-checkpoint-* dependency'
+    grep -qh 'langgraph' "${DEPS_FILES[@]}" 2>/dev/null || report R4 'deps' 'graphs exist but no langgraph dependency'
+    if [ "$kind" = "python" ] || grep -qhE 'langgraph-checkpoint|SqliteSaver|PostgresSaver' "$backend" 2>/dev/null; then
+      grep -qhE 'langgraph-checkpoint' "${DEPS_FILES[@]}" 2>/dev/null || \
+        report R4 'deps' 'graphs exist but no langgraph-checkpoint-* dependency'
+    fi
   fi
 
   if [ "$findings" -eq 0 ]; then
@@ -114,16 +156,22 @@ check_repo() {  # dir mode tests_dir -> sets REPO_FAIL=1 on strict findings
 fail=0
 if [ "$SELF" -eq 1 ]; then
   mode="${MODE_OVERRIDE:-strict}"
-  printf 'self (%s)  ' "$mode"
-  check_repo "$(pwd)" "$mode" "backend/tests"
+  if [ -d "$(pwd)/src/main" ]; then
+    kind=js; tests_dir=tests
+  else
+    kind=python; tests_dir=backend/tests
+  fi
+  printf 'self (%s, %s)  ' "$mode" "$kind"
+  check_repo "$(pwd)" "$mode" "$tests_dir" "$kind"
   [ "$REPO_FAIL" -eq 1 ] && fail=1
 else
   for entry in "${REPOS[@]}"; do
     repo="${entry%%:*}"; rest="${entry#*:}"
-    mode="${rest%%:*}"; tests_dir="${rest##*:}"
+    mode="${rest%%:*}"; tests_dir_kind="${rest#*:}"
+    tests_dir="${tests_dir_kind%%:*}"; kind="${tests_dir_kind##*:}"
     [ -n "$MODE_OVERRIDE" ] && mode="$MODE_OVERRIDE"
     printf '%-28s ' "$repo"
-    check_repo "$WORKSPACE/$repo" "$mode" "$tests_dir"
+    check_repo "$WORKSPACE/$repo" "$mode" "$tests_dir" "$kind"
     [ "$REPO_FAIL" -eq 1 ] && fail=1
   done
 fi

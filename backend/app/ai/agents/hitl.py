@@ -7,11 +7,11 @@ are pure functions (no service/DB state) and are re-exported from
 ``resume_after_hitl`` is the continuation turn driven after a user resolves
 one or more HITL task cards. It performs the resume-specific setup (session
 verification, resolution-summary build, summary persistence) then delegates
-the reasoning loop to :func:`app.ai.agents.chat_agent.run_reasoning_loop`.
+the LangGraph chat engine.
 
 The ``chat_agent`` import is lazy (inside ``resume_after_hitl``) to avoid a
 top-level cycle: ``chat_agent`` imports the two simple helpers below at module
-load, while this module needs ``run_reasoning_loop`` only at call time.
+load, while this module needs ``chat_engine_iter`` only at call time.
 """
 
 import json
@@ -22,7 +22,6 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.enums import HitlTaskStatus
 
 logger = logging.getLogger(__name__)
@@ -411,7 +410,6 @@ async def resume_after_hitl(
     tenant_id: UUID,
     user_id: UUID,
     message_id: Optional[UUID] = None,
-    engine: Optional[str] = None,
     flow_events: bool = False,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
@@ -520,27 +518,24 @@ async def resume_after_hitl(
     # ask_user ToolMessage). Falls back to the fresh-continuation turn when
     # there is no pending interrupt (e.g. loop-engine sessions or an
     # already-abandoned checkpoint).
-    if (engine or settings.AI_AGENT_ENGINE) == "graph":
-        resumed = await resume_interrupted_chat_graph(
-            session_id,
-            summary,
-            llm_with_tools=llm_with_tools,
-            tools=tools,
-            chat_session_service=chat_session_service,
-            log_label="AI Assistance (resume)",
-            user_id=user_id,
-            tenant_id=tenant_id,
+    resumed = await resume_interrupted_chat_graph(
+        session_id,
+        summary,
+        llm_with_tools=llm_with_tools,
+        tools=tools,
+        chat_session_service=chat_session_service,
+        log_label="AI Assistance (resume)",
+        user_id=user_id,
+        tenant_id=tenant_id,
+    )
+    if resumed is not None:
+        logger.info(
+            f"HITL resume: resuming checkpointed graph run for session "
+            f"{session_id} (ask_user interrupt)."
         )
-        if resumed is not None:
-            logger.info(
-                f"HITL resume: resuming checkpointed graph run for session "
-                f"{session_id} (ask_user interrupt)."
-            )
-            async for chunk in stream_loop_as_sse(
-                resumed, flow_events=flow_events
-            ):
-                yield chunk
-            return
+        async for chunk in stream_loop_as_sse(resumed, flow_events=flow_events):
+            yield chunk
+        return
 
     loop = chat_engine_iter(
         llm_with_tools,
@@ -553,7 +548,6 @@ async def resume_after_hitl(
         log_label="AI Assistance (resume)",
         user_id=user_id,
         tenant_id=tenant_id,
-        engine=engine,
     )
     async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
         yield chunk
