@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
+### Security (P0 hardening, audit 2026-09-11)
+- **Chat session ownership enforced (S-1)** — a client-supplied `session_id` is now verified to belong to the caller (`ChatSessionService.get_owned_session`) before any chat write or checkpointer attach; foreign sessions return 404 on the chat endpoints, and `save_message(owner_user_id=…)` refuses to write into another member's session (previously a user could inject messages into, and attach a LangGraph checkpoint thread to, another user's chat session).
+- **Provider `api_base` SSRF guard (S-2)** — `fetch-external-models` and provider create/update now run `api_base` through the SDK net-guard (`assert_safe_url`), blocking DNS names that resolve internally (the gap the previous literal-IP endpoint check couldn't close). Self-hosted local LLM stacks keep working via `INTEGRATION_ALLOWED_HOSTS` / `INTEGRATION_BLOCK_PRIVATE_RANGES=false` or `DEBUG`.
+- **Rate limits on LLM endpoints (S-4)** — new per-user fixed-window limiter (`rate_limit_user`); `/ai-assistance/assist|stream|transcribe` and the HITL `resolve`/`resume` streams are capped (30/5 min, 15/5 min for transcription) with 429 + `Retry-After`. Degrades open when Redis is unreachable, like the auth limiter.
+- **Prompt-injection guard blocks by default (S-5)** — `high`-risk inputs (2+ injection patterns) are now rejected at the chat boundary instead of log-and-proceed; opt out via `PROMPT_GUARD_BLOCK_HIGH=false`.
+- **Demo-token claim check (S-7)** — tokens minted by `/auth/demo-login` are rejected the moment `DEMO_MODE` is turned off (previously a stale demo token kept full user-level access on a production instance).
+- **Frontend dependency fixes** — `npm audit fix` resolves all 7 advisories (3 high, build-chain: `browserslist`, `fast-uri`, `js-yaml`, `postcss-selector-parser`); `npm audit` is now clean.
+
 ### Changed
 - `scripts/version_manager.py` synced from the dev family template
   (`TEMPLATE_VERSION` stamp, `--version`; config-order fix so `--version`
