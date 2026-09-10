@@ -150,25 +150,32 @@ def scan_prompt_injection(text: str) -> dict:
 def should_block_high_risk() -> bool:
     """True when high-risk inputs must be rejected at the boundary (audit A8).
 
-    Off by default to preserve current non-blocking behaviour. Enable in
-    production via the ``PROMPT_GUARD_BLOCK_HIGH=true`` env var so a clinical
-    platform where the AI proposes form fills / biomarker definitions refuses
-    obvious prompt-injection attempts before they reach the LLM. The HITL
-    review wall remains the structural defence regardless.
+    ON by default (audit 2026-09-11 S-5): on a clinical platform where the AI
+    proposes form fills / biomarker definitions, refusing obvious
+    prompt-injection attempts before they reach the LLM is the correct
+    default; the HITL review wall remains the structural defence regardless.
+    Set ``PROMPT_GUARD_BLOCK_HIGH=false`` to restore log-and-proceed
+    (e.g. for demos or trusted-internal deployments).
     """
     import os
 
-    return os.getenv("PROMPT_GUARD_BLOCK_HIGH", "").lower() in ("1", "true", "yes", "on")
+    return os.getenv("PROMPT_GUARD_BLOCK_HIGH", "true").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
 
 
 def check_user_input_safety(text: str, *, context: str = "") -> dict:
     """Public API for the AI endpoints.
 
     Scans user input, logs suspicious patterns at WARNING, and returns the
-    structured result. By default the caller decides whether to block;
-    when ``PROMPT_GUARD_BLOCK_HIGH=true`` is set, ``safe`` is forced to
-    ``False`` for high-risk input so callers that check the ``safe`` flag
-    will reject it (audit A8 — configurable block threshold).
+    structured result. ``high``-risk input is blocked by default (see
+    :func:`should_block_high_risk`): when blocking is on, ``safe`` is forced
+    to ``False`` for high-risk input so callers that check the ``safe`` flag
+    will reject it (audit A8 — configurable block threshold; audit
+    2026-09-11 S-5 — blocking is the default).
 
     ``context`` is an optional label for log correlation (e.g. "chat",
     "magic_fill", "define_biomarker").

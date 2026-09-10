@@ -136,7 +136,7 @@ def test_b6_assist_calls_guard_before_llm():
     src = inspect.getsource(__import__("app.ai.assistance.service", fromlist=["x"]))
     # Find the assist method body.
     idx = src.index("async def assist(")
-    body = src[idx : idx + 1500]
+    body = src[idx : idx + 2500]
     assert "check_user_input_safety" in body, (
         "assist() must call check_user_input_safety before the LLM."
     )

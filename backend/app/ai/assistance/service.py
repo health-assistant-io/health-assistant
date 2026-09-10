@@ -127,17 +127,24 @@ class AIAssistanceService:
         """Main entry point for AI assistance.
 
         Every task_type passes user_input through the prompt-injection guard
-        before it reaches the LLM. The guard is non-blocking by default
-        (logs WARNING, proceeds) — the HITL wall remains the structural
-        protection for clinical writes. ``high``-risk input is still processed
-        but the signal is available in the logs for audit correlation.
+        before it reaches the LLM. ``high``-risk input (2+ injection patterns)
+        is rejected by default (audit 2026-09-11 S-5); the threshold is
+        configurable via ``PROMPT_GUARD_BLOCK_HIGH=false``. The HITL wall
+        remains the structural protection for clinical writes regardless.
 
         ``images`` (chat only) are validated for MIME type / size / count at
         the trust boundary; image bytes bypass the text guard (the HITL wall
         remains the structural defence for any clinical write they motivate).
         """
         if user_input:
-            check_user_input_safety(user_input, context=f"assist:{task_type}")
+            guard_result = check_user_input_safety(
+                user_input, context=f"assist:{task_type}"
+            )
+            if guard_result.get("blocked"):
+                raise ValueError(
+                    "This request was blocked by the prompt-injection guard. "
+                    "Rephrase your request and try again."
+                )
 
         validated_images = validate_chat_images(images) if task_type == "chat" else []
 
@@ -207,6 +214,15 @@ class AIAssistanceService:
         session_id_str = context.get("session_id")
         session_id = UUID(session_id_str) if session_id_str else None
 
+        # Audit 2026-09-11 S-1: a client-supplied session_id must belong to
+        # the caller before any write or checkpointer attach against it.
+        if session_id:
+            owned = await self.chat_session_service.get_owned_session(
+                session_id, user_id, tenant_id
+            )
+            if owned is None:
+                raise ValueError("Chat session not found.")
+
         # Auto-create session if not provided.
         if not session_id and user_id and tenant_id:
             title = await self._generate_session_title(llm, user_input)
@@ -228,6 +244,7 @@ class AIAssistanceService:
                     "text": user_input,
                     **({"images": images} if images else {}),
                 },
+                owner_user_id=user_id,
             )
 
         tools = await build_chat_tools(
@@ -306,6 +323,14 @@ class AIAssistanceService:
         session_id_str = context.get("session_id")
         session_id = UUID(session_id_str) if session_id_str else None
 
+        # Audit 2026-09-11 S-1: mirror of the streaming-path ownership check.
+        if session_id:
+            owned = await self.chat_session_service.get_owned_session(
+                session_id, user_id, tenant_id
+            )
+            if owned is None:
+                raise ValueError("Chat session not found.")
+
         # Auto-create session if not provided.
         if not session_id and user_id and tenant_id:
             title = await self._generate_session_title(llm, user_input)
@@ -324,6 +349,7 @@ class AIAssistanceService:
                     "text": user_input,
                     **({"images": images} if images else {}),
                 },
+                owner_user_id=user_id,
             )
 
         tools = await build_chat_tools(

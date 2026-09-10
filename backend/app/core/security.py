@@ -244,6 +244,17 @@ async def get_current_user(token: str = Depends(get_token)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Audit 2026-09-11 S-7: a demo token minted while DEMO_MODE was on must
+    # stop working the moment demo mode is turned off — the claim alone is
+    # not checked anywhere else, so a stale demo token would keep full
+    # user-level access on a now-production instance.
+    if payload.get("demo") and not settings.DEMO_MODE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user_id = payload.get("user_id")
     if not user_id:
         raise HTTPException(
