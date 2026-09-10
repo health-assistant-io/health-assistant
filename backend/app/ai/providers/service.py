@@ -36,6 +36,31 @@ from app.ai.schemas.config import (
 logger = logging.getLogger(__name__)
 
 
+def guard_api_base(api_base: str) -> None:
+    """Audit 2026-09-11 S-2: validate a provider ``api_base`` for SSRF safety.
+
+    Blocks non-http(s) schemes, unresolvable URLs, and hosts resolving to
+    loopback/private/link-local/metadata ranges — including hostnames whose
+    DNS resolves internally (the gap the endpoint-level literal-IP check
+    couldn't close). Self-hosted local LLM stacks keep working via
+    ``INTEGRATION_ALLOWED_HOSTS`` / ``INTEGRATION_BLOCK_PRIVATE_RANGES=false``,
+    or automatically while ``DEBUG`` is enabled.
+
+    Raises ``ValueError`` with a client-facing message on violation.
+    """
+    from integrations.sdk.net_guard import SSRFBlockedError, assert_safe_url
+
+    if not api_base:
+        return
+    try:
+        assert_safe_url(api_base, allow_private=settings.DEBUG)
+    except SSRFBlockedError as exc:
+        raise ValueError(
+            "api_base must be an http(s) URL that does not resolve to an "
+            "internal, private, or loopback address."
+        ) from exc
+
+
 def _model_reasoning_effort(model: Optional[AIModel]) -> Optional[str]:
     """Reasoning-effort model setting (``settings.reasoning_effort``), if any.
 
@@ -44,7 +69,11 @@ def _model_reasoning_effort(model: Optional[AIModel]) -> Optional[str]:
     default.
     """
     settings_dict = getattr(model, "settings", None) or {}
-    value = settings_dict.get("reasoning_effort") if isinstance(settings_dict, dict) else None
+    value = (
+        settings_dict.get("reasoning_effort")
+        if isinstance(settings_dict, dict)
+        else None
+    )
     return str(value) if value else None
 
 
@@ -108,6 +137,7 @@ class AIProviderService:
 
     async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
         """Create a new provider. The api_key is encrypted at rest before persistence."""
+        guard_api_base(provider_data.api_base or "")
         from app.core.encryption import encrypt_secret
 
         payload = provider_data.model_dump()
@@ -137,6 +167,9 @@ class AIProviderService:
         from app.core.encryption import encrypt_secret, looks_masked
 
         update_dict = provider_data.model_dump(exclude_unset=True)
+
+        if "api_base" in update_dict:
+            guard_api_base(update_dict["api_base"] or "")
 
         if "api_key" in update_dict:
             incoming = update_dict["api_key"]
@@ -177,8 +210,9 @@ class AIProviderService:
         if provider.provider_type == "openai":
             import httpx
 
-            headers = {"Authorization": f"Bearer {provider.get_api_key_plaintext()}"}
             url = f"{provider.api_base.rstrip('/')}/models"
+            guard_api_base(url)
+            headers = {"Authorization": f"Bearer {provider.get_api_key_plaintext()}"}
 
             async with httpx.AsyncClient() as client:
                 try:

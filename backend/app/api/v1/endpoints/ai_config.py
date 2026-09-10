@@ -269,12 +269,10 @@ async def fetch_external_models(
 ):
     """Fetch available models from the provider's external API.
 
-    Scope-checked against the provider row, and ``api_base`` must be an
-    http(s) URL pointing at a non-loopback host (SSRF guard).
+    Scope-checked against the provider row; ``api_base`` is SSRF-guarded
+    (scheme + DNS-aware private/loopback blocking) inside the service via
+    ``guard_api_base`` — audit 2026-09-11 S-2.
     """
-    import ipaddress
-    from urllib.parse import urlparse
-
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
     if not provider:
@@ -282,33 +280,12 @@ async def fetch_external_models(
 
     verify_provider_access(provider, current_user)
 
-    parsed = urlparse(provider.api_base)
-    if parsed.scheme not in ("http", "https"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported api_base scheme: {parsed.scheme!r}",
-        )
-    hostname = parsed.hostname or ""
-    # Block obvious SSRF targets: loopback, link-local, private networks.
-    # (We allow it in DEBUG so local LLM stacks like Ollama keep working.)
-    if not settings.DEBUG:
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                raise HTTPException(
-                    status_code=400,
-                    detail="api_base must not point at a private/loopback address",
-                )
-        except ValueError:
-            # hostname is a DNS name — accept (could resolve to anything,
-            # but we don't want to do a DNS lookup synchronously here).
-            pass
-
     try:
         models = await service.fetch_external_models(provider_id)
         return models
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        # guard_api_base's client-facing SSRF/config violation message.
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger = __import__("logging").getLogger(__name__)
         logger.exception("fetch_external_models failed for provider %s", provider_id)
