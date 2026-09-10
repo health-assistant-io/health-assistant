@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prompt-injection guard blocks by default (S-5)** — `high`-risk inputs (2+ injection patterns) are now rejected at the chat boundary instead of log-and-proceed; opt out via `PROMPT_GUARD_BLOCK_HIGH=false`.
 - **Demo-token claim check (S-7)** — tokens minted by `/auth/demo-login` are rejected the moment `DEMO_MODE` is turned off (previously a stale demo token kept full user-level access on a production instance).
 - **Frontend dependency fixes** — `npm audit fix` resolves all 7 advisories (3 high, build-chain: `browserslist`, `fast-uri`, `js-yaml`, `postcss-selector-parser`); `npm audit` is now clean.
+- **PHI residue removed from localStorage (FE-1)** — the dead `documentSlice` (imported nowhere; had been persisting filenames, server file paths, and patient IDs to `localStorage['documents']` on every mutation) is deleted along with its store exports; the logout wipe keeps defensively clearing the historical `'documents'` key.
 
 ### Changed
 - `scripts/version_manager.py` synced from the dev family template
