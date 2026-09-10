@@ -44,8 +44,9 @@ export async function clearAuthData(): Promise<void> {
     'examinationData',
     'activeDocumentId',
     'documentData',
-    // documentSlice persists filename + server file_path + patient_id here
-    // (audit 2026-08 FE-M5) — PHI that must not survive logout.
+    // The dead documentSlice (localStorage['documents'], audit 2026-08
+    // FE-M5) was deleted as part of the 2026-09-11 audit FE-1 — PHI must
+    // never persist here; the wipe list stays defensive for history.
     'documents',
     'recentDocuments',
     'activeBiomarkerId',
