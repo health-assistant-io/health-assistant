@@ -71,6 +71,20 @@ class ChatSessionService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def get_owned_session(
+        self, session_id: UUID, user_id: UUID, tenant_id: UUID
+    ) -> Optional[ChatSession]:
+        result = await self.db.execute(
+            select(ChatSession).where(
+                and_(
+                    ChatSession.id == session_id,
+                    ChatSession.user_id == user_id,
+                    ChatSession.tenant_id == tenant_id,
+                )
+            )
+        )
+        return result.scalars().first()
+
     async def get_session_messages(
         self, session_id: UUID, user_id: UUID, tenant_id: UUID
     ) -> List[ChatMessage]:
@@ -120,7 +134,25 @@ class ChatSessionService:
         tool_calls: Optional[list] = None,
         citations: Optional[list] = None,
         tasks: Optional[list] = None,
+        owner_user_id: Optional[UUID] = None,
     ) -> ChatMessage:
+        """Persist one message.
+
+        ``owner_user_id`` (audit 2026-09-11 S-1): when given, the target
+        session must belong to that user — a foreign ``session_id`` raises
+        ``LookupError`` instead of writing into another member's session.
+        Callers that already verified ownership (e.g. the graph loop saving
+        assistant turns after the dispatch-level check) may omit it.
+        """
+        session_result = await self.db.execute(
+            select(ChatSession).where(ChatSession.id == session_id)
+        )
+        session = session_result.scalars().first()
+        if session is None or (
+            owner_user_id is not None and session.user_id != owner_user_id
+        ):
+            raise LookupError("Chat session not found.")
+
         message = ChatMessage(
             session_id=session_id,
             role=role,
@@ -130,12 +162,7 @@ class ChatSessionService:
             tasks=tasks,
         )
         self.db.add(message)
-        # Update session timestamp
-        await self.db.execute(
-            update(ChatSession)
-            .where(ChatSession.id == session_id)
-            .values(updated_at=func.now())
-        )
+        session.updated_at = func.now()
         await self.db.commit()
         await self.db.refresh(message)
         return message

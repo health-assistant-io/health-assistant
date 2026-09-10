@@ -23,10 +23,11 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.core.config import get_settings
 from app.core.redis import redis_client
+from app.core.security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -115,3 +116,36 @@ def rate_limit_integration(prefix: str, max_requests: int, window: int = 60):
     distributed- and targeted-flood protection.
     """
     return _integration_limiter_dep(prefix, max_requests, window)
+
+
+def rate_limit_user(prefix: str, max_requests: int, window: int = 60):
+    """Per-user rate limit for authenticated routes (audit 2026-09-11 S-4).
+
+    Keyed on the ``user_id`` of the ``get_current_user``-resolved caller —
+    AI endpoints cost real money per call, so a per-identity cap is the
+    natural unit (a distributed flood behind one NAT still can't burn more
+    than the per-user budget). Degrades open exactly like the IP limiter.
+    """
+
+    async def _check(
+        request: Request,
+        current_user=Depends(get_current_user),
+    ):
+        user_id = getattr(current_user, "user_id", None) or _client_ip(request)
+        bucket = int(time.time()) // window
+        key = f"rl:{prefix}:u:{user_id}:{bucket}"
+        try:
+            count = await redis_client.incr(key)
+            if count == 1:
+                await redis_client.expire(key, window)
+        except Exception as e:  # Redis unreachable — degrade open.
+            logger.warning("Rate-limit backend unavailable, allowing request: %s", e)
+            return
+        if count > max_requests:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many requests. Please try again later.",
+                headers={"Retry-After": str(window)},
+            )
+
+    return _check

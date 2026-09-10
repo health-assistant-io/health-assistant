@@ -31,6 +31,7 @@ from app.ai.schemas.assistance import (
 )
 from app.core.config import settings
 from app.core.security import get_current_user
+from app.core.rate_limit import rate_limit_user
 from app.schemas.user import TokenData
 from app.utils.prompt_guard import check_user_input_safety
 
@@ -111,6 +112,27 @@ def _classify_stream_error(exc: Exception) -> tuple[str, str]:
     return ("generic", "")
 
 
+async def _validate_owned_session(
+    context: dict, current_user: TokenData, db: AsyncSession
+) -> None:
+    """Audit 2026-09-11 S-1: a client-supplied session_id must belong to the
+    caller before chat dispatch (defense-in-depth alongside the service-level
+    check; a foreign id is a client bug — 404, not silent auto-create)."""
+    sid = context.get("session_id")
+    if not sid:
+        return
+    from app.services.chat_session_service import ChatSessionService
+
+    session = await ChatSessionService(db).get_owned_session(
+        UUID(sid), current_user.user_id, current_user.tenant_id
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found",
+        )
+
+
 async def _validate_patient_context(
     context_or_id, current_user: TokenData, db: AsyncSession
 ) -> None:
@@ -133,9 +155,11 @@ async def assist_user(
     request: AIAssistanceRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_assist", max_requests=30, window=300)),
 ):
     """Get AI-driven assistance for various tasks (form filling, chat, etc.)"""
     await _validate_patient_context(request.context, current_user, db)
+    await _validate_owned_session(request.context, current_user, db)
     service = AIAssistanceService(db)
 
     try:
@@ -173,6 +197,7 @@ async def assist_user_stream(
     request: AIAssistanceRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
     flow_events: bool = Query(
         True,
         description="Emit additive family flow events alongside the legacy sentinels.",
@@ -186,6 +211,7 @@ async def assist_user_stream(
         )
 
     await _validate_patient_context(request.context, current_user, db)
+    await _validate_owned_session(request.context, current_user, db)
     service = AIAssistanceService(db)
 
     async def event_generator():
@@ -341,6 +367,7 @@ async def resolve_hitl_task(
     resolution: HitlResolutionRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_resolve", max_requests=30, window=300)),
 ):
     """Record the human resolution of a human-in-the-loop task card.
 
@@ -442,6 +469,7 @@ async def resume_hitl_session(
     body: HitlResumeRequest,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_resume", max_requests=30, window=300)),
     flow_events: bool = Query(True),
 ):
     """Trigger an agent continuation turn after the user has resolved one or
@@ -508,6 +536,7 @@ async def transcribe(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_transcribe", max_requests=15, window=300)),
 ):
     """Transcribe a short voice recording to text (speech-to-text).
 
