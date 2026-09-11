@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Demo-token claim check (S-7)** — tokens minted by `/auth/demo-login` are rejected the moment `DEMO_MODE` is turned off (previously a stale demo token kept full user-level access on a production instance).
 - **Frontend dependency fixes** — `npm audit fix` resolves all 7 advisories (3 high, build-chain: `browserslist`, `fast-uri`, `js-yaml`, `postcss-selector-parser`); `npm audit` is now clean.
 - **PHI residue removed from localStorage (FE-1)** — the dead `documentSlice` (imported nowhere; had been persisting filenames, server file paths, and patient IDs to `localStorage['documents']` on every mutation) is deleted along with its store exports; the logout wipe keeps defensively clearing the historical `'documents'` key.
+- **Route-level code splitting (FE-2)** — all 80 route components now load via `React.lazy` + a lightweight `Suspense` fallback (Login, Setup, Layout and the instance-registration barrels stay eager). The entry bundle drops from 5.06 MB to 3.78 MB (−25%) and each page ships as an on-demand chunk; follow-up entry-vendor splitting (react-quill / markdown stack via the statically-reachable shared layout chain) is tracked in the audit.
 
 ### Changed
 - `scripts/version_manager.py` synced from the dev family template
