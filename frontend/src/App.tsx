@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 // Register the unified instance adapters once at app entry (side-effect import).
 // Centralizing this here avoids circular imports that arise when a component
@@ -13,46 +14,53 @@ import './features/instances/views';
 // preview, e.g. ExaminationPreview) for the InstanceCard "open" overlay.
 import './features/instances/details';
 import Layout from './components/layout/Layout';
+const RouteFallback = () => (
+  <div className="flex h-[50vh] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+    Loading...
+  </div>
+);
+
 import Login from './pages/Auth/Login';
 import Setup from './pages/Auth/Setup';
-import RoleSetupWizard from './pages/Setup/RoleSetupWizard';
-import Dashboard from './pages/Dashboard/Dashboard';
-import AllergyList from './pages/Allergies/AllergyList';
-import AllergyDetail from './pages/Allergies/AllergyDetail';
-import { BiomarkerTrends, CorrelativeAnalytics } from './pages/Analytics';
-import Documents from './pages/Documents/DocumentList';
-import DocumentDetail from './pages/Documents/DocumentDetail';
-import { AnatomyExplorer } from './pages/Anatomy/AnatomyExplorer';
-import Examinations from './pages/Examinations/ExaminationList';
-import ExaminationUpload from './pages/Examinations/ExaminationUpload';
-import ExaminationDetail from './pages/Examinations/ExaminationDetail';
-import ClinicalEventList from './pages/Events/ClinicalEventList';
-import ClinicalEventDetail from './pages/Events/ClinicalEventDetail';
-import TaskManager from './pages/TaskManager';
-import Patients from './pages/Patients/PatientList';
-import PatientDetail from './pages/Patients/PatientDetail';
-import PatientSetupWizard from './pages/Patients/PatientSetupWizard';
-import Doctors from './pages/Doctors/DoctorList';
-import MedicationList from './pages/Medications/MedicationList';
-import MedicationDetail from './pages/Medications/MedicationDetail';
-import CalendarPage from './pages/Calendar/CalendarPage';
-import NotificationManagement from './pages/Notifications/NotificationManagement';
-import BiomarkerDetail from './pages/Biomarkers/BiomarkerDetail';
-import AIChatPage from './pages/AI/AIChat';
-import DoctorDetail from './pages/Doctors/DoctorDetail';
-import Organizations from './pages/Organizations/OrganizationList';
-import OrganizationDetail from './pages/Organizations/OrganizationDetail';
-import AboutPage from './pages/About/AboutPage';
-import MyAccount from './pages/Account/MyAccount';
-import AppearanceSettings from './pages/Settings/AppearanceSettings';
-import Preferences from './pages/Settings/Preferences';
-import Security from './pages/Settings/Security';
-import TenantSettingsPage from './pages/Admin/TenantSettings';
-import SystemSettingsPage from './pages/Admin/SystemSettings';
-import Integrations from './pages/Settings/Integrations';
-import IntegrationDetail from './pages/Settings/IntegrationDetail';
-import OAuthConnected from './pages/Settings/OAuthConnected';
-import ExportImport from './pages/Settings/ExportImport';
+const RoleSetupWizard = lazy(() => import('./pages/Setup/RoleSetupWizard'));
+const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
+const AllergyList = lazy(() => import('./pages/Allergies/AllergyList'));
+const AllergyDetail = lazy(() => import('./pages/Allergies/AllergyDetail'));
+const BiomarkerTrends = lazy(() => import('./pages/Analytics').then(m => ({ default: m.BiomarkerTrends })));
+const CorrelativeAnalytics = lazy(() => import('./pages/Analytics').then(m => ({ default: m.CorrelativeAnalytics })));
+const Documents = lazy(() => import('./pages/Documents/DocumentList'));
+const DocumentDetail = lazy(() => import('./pages/Documents/DocumentDetail'));
+const AnatomyExplorer = lazy(() => import('./pages/Anatomy/AnatomyExplorer').then(m => ({ default: m.AnatomyExplorer })));
+const Examinations = lazy(() => import('./pages/Examinations/ExaminationList'));
+const ExaminationUpload = lazy(() => import('./pages/Examinations/ExaminationUpload'));
+const ExaminationDetail = lazy(() => import('./pages/Examinations/ExaminationDetail'));
+const ClinicalEventList = lazy(() => import('./pages/Events/ClinicalEventList'));
+const ClinicalEventDetail = lazy(() => import('./pages/Events/ClinicalEventDetail'));
+const TaskManager = lazy(() => import('./pages/TaskManager'));
+const Patients = lazy(() => import('./pages/Patients/PatientList'));
+const PatientDetail = lazy(() => import('./pages/Patients/PatientDetail'));
+const PatientSetupWizard = lazy(() => import('./pages/Patients/PatientSetupWizard'));
+const Doctors = lazy(() => import('./pages/Doctors/DoctorList'));
+const MedicationList = lazy(() => import('./pages/Medications/MedicationList'));
+const MedicationDetail = lazy(() => import('./pages/Medications/MedicationDetail'));
+const CalendarPage = lazy(() => import('./pages/Calendar/CalendarPage'));
+const NotificationManagement = lazy(() => import('./pages/Notifications/NotificationManagement'));
+const BiomarkerDetail = lazy(() => import('./pages/Biomarkers/BiomarkerDetail'));
+const AIChatPage = lazy(() => import('./pages/AI/AIChat'));
+const DoctorDetail = lazy(() => import('./pages/Doctors/DoctorDetail'));
+const Organizations = lazy(() => import('./pages/Organizations/OrganizationList'));
+const OrganizationDetail = lazy(() => import('./pages/Organizations/OrganizationDetail'));
+const AboutPage = lazy(() => import('./pages/About/AboutPage'));
+const MyAccount = lazy(() => import('./pages/Account/MyAccount'));
+const AppearanceSettings = lazy(() => import('./pages/Settings/AppearanceSettings'));
+const Preferences = lazy(() => import('./pages/Settings/Preferences'));
+const Security = lazy(() => import('./pages/Settings/Security'));
+const TenantSettingsPage = lazy(() => import('./pages/Admin/TenantSettings'));
+const SystemSettingsPage = lazy(() => import('./pages/Admin/SystemSettings'));
+const Integrations = lazy(() => import('./pages/Settings/Integrations'));
+const IntegrationDetail = lazy(() => import('./pages/Settings/IntegrationDetail'));
+const OAuthConnected = lazy(() => import('./pages/Settings/OAuthConnected'));
+const ExportImport = lazy(() => import('./pages/Settings/ExportImport'));
 import SettingsShell from './components/settings/SettingsShell';
 import {
   userSettingsNav,
@@ -64,19 +72,18 @@ import {
 } from './config/settingsNav';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import UserManagement from './pages/Admin/UserManagement';
-import UserDetail from './pages/Admin/UserDetail';
-import TenantManagement from './pages/Admin/TenantManagement';
-import TenantDetail from './pages/Admin/TenantDetail';
-import CatalogManagement from './pages/Admin/CatalogManagement';
-import { CatalogWorkspace } from './pages/Catalogs/CatalogWorkspace';
-import { VaccinationList } from './pages/Vaccinations/VaccinationList';
-import SystemIntegrations from './pages/Admin/SystemIntegrations';
-import AtlasManager from './pages/Admin/AtlasManager';
-import OAuthClients from './pages/Admin/OAuthClients';
+const UserManagement = lazy(() => import('./pages/Admin/UserManagement'));
+const UserDetail = lazy(() => import('./pages/Admin/UserDetail'));
+const TenantManagement = lazy(() => import('./pages/Admin/TenantManagement'));
+const TenantDetail = lazy(() => import('./pages/Admin/TenantDetail'));
+const CatalogManagement = lazy(() => import('./pages/Admin/CatalogManagement'));
+const CatalogWorkspace = lazy(() => import('./pages/Catalogs/CatalogWorkspace').then(m => ({ default: m.CatalogWorkspace })));
+const VaccinationList = lazy(() => import('./pages/Vaccinations/VaccinationList').then(m => ({ default: m.VaccinationList })));
+const SystemIntegrations = lazy(() => import('./pages/Admin/SystemIntegrations'));
+const AtlasManager = lazy(() => import('./pages/Admin/AtlasManager'));
+const OAuthClients = lazy(() => import('./pages/Admin/OAuthClients'));
 
-import { AIConfig } from './pages/Settings/AIConfig';
-import { useProtectedRoute } from './hooks/useProtectedRoute';
+const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));import { useProtectedRoute } from './hooks/useProtectedRoute';
 import { useAuthStore } from './store/slices/authSlice';
 import { useSettingsStore } from './store/slices/settingsSlice';
 import { getCurrentUser } from './services/userService';
@@ -243,17 +250,20 @@ function App() {
 
   if (!isAuthenticated) {
     return (
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/setup" element={<Setup />} />
         <Route path="*" element={<Login />} />
       </Routes>
+      </Suspense>
     );
   }
 
   return (
     <>
       <ToastContainer position="bottom-right" />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
@@ -362,6 +372,7 @@ function App() {
           <Route path="*" element={<Dashboard />} />
         </Route>
       </Routes>
+      </Suspense>
 
       {/* PWA Update / Offline Toast */}
       {(offlineReady || needRefresh) && !window.__HA_SCREENSHOT_CAPTURE__ && (
