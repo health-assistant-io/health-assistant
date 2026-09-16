@@ -74,7 +74,7 @@ pdf2image==1.17.0
 pillow==12.3.0
 pluggy==1.6.0
 prometheus_client==0.26.0
-prompt_toolkit==3.0.52
+prompt_toolkit==3.0.53
 propcache==0.5.2
 psycopg[binary,pool]==3.3.5
 psycopg-binary==3.3.5
