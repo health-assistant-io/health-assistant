@@ -125,7 +125,7 @@ typing_extensions==4.15.0
 tzdata==2026.2
 tzlocal==5.4.4
 urllib3==2.7.0
-uuid_utils==0.16.0
+uuid_utils==1.0.0
 uvicorn==0.50.0
 uvloop==0.22.1
 vine==5.1.0
