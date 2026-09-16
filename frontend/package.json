@@ -48,7 +48,7 @@
     "react-router-dom": "^7.18.2",
     "react-toastify": "^11.1.0",
     "reactflow": "^11.11.4",
-    "recharts": "^2.10.0",
+    "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.0.0",
     "tailwindcss-animate": "^1.0.7",
