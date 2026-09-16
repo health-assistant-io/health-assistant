@@ -68,7 +68,7 @@ numpy==2.4.6
 openai==2.44.0
 orjson==3.11.9
 ormsgpack==1.12.2
-packaging==26.2
+packaging==26.3
 pandas==3.0.3
 pdf2image==1.17.0
 pillow==12.3.0
