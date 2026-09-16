@@ -32,7 +32,7 @@ fhir.resources[all]==8.3.0
 # fastapi-mail removed 2026-08: never imported (email delivery not wired); its
 # cryptography<50 cap broke fresh installs alongside the CVE fix.
 fastmcp==3.4.2
-flower==2.0.1
+flower==2.1.0
 frozenlist==1.8.0
 greenlet==3.5.1
 h11==0.16.0
