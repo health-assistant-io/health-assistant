@@ -2,7 +2,7 @@
 # Uncomment if you want to use local models instead of OpenAI API
 
 spacy>=3.8.16
-scispacy>=0.5.2
+scispacy>=0.5.5
 nltk>=3.8.0
 transformers>=4.35.0
 torch>=2.1.0
