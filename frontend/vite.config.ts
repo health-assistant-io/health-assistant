@@ -1,12 +1,37 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// The family UI library is served raw (optimizeDeps.exclude, per family
+// dev-link flow) — but its dependencies must be pre-bundled, or any CJS
+// package in its tree (markdown-it via tiptap-markdown, katex, the
+// use-sync-external-store shim via @tiptap/react, …) reaches the browser
+// as raw CommonJS and crashes with "doesn't provide an export named".
+const excludedLib = '@neuronection/assistant-ui'
+const libPkgPath = new URL(`./node_modules/${excludedLib}/package.json`, import.meta.url)
+// Subpath-only packages (e.g. "@tiptap/pm" exposes only "./state" & co)
+// cannot be include entries — vite fails to resolve their root. They are
+// still covered: their subpaths bundle inside the depending chunks.
+const hasRootEntry = (name: string) => {
+  try {
+    const p = JSON.parse(
+      readFileSync(new URL(`./node_modules/${name}/package.json`, import.meta.url), 'utf8'),
+    )
+    return !p.exports || '.' in p.exports || Boolean(p.main || p.module)
+  } catch {
+    return false
+  }
+}
+const libDeps = existsSync(libPkgPath)
+  ? Object.keys(JSON.parse(readFileSync(libPkgPath, 'utf8')).dependencies ?? {}).filter(hasRootEntry)
+  : []
+
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['@neuronection/assistant-ui'],
+    exclude: [excludedLib],
     include: [
-      '@tiptap/react',
+      ...libDeps,
       'use-sync-external-store',
       'use-sync-external-store/shim/with-selector',
       'zustand/vanilla',
