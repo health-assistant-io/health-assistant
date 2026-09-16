@@ -27,7 +27,7 @@
     "d3-force": "^3.0.0",
     "dagre": "^0.8.5",
     "date-fns": "^4.4.0",
-    "dexie": "^4.3.0",
+    "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",
     "dompurify": "^3.4.15",
     "html-to-image": "^1.11.13",
