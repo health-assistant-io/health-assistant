@@ -91,7 +91,6 @@ Health Assistant/
 │   │   ├── i18n.ts                # i18next config
 │   │   └── index.css              # Tailwind directives
 │   ├── tests/                     # Co-located vitest specs
-│   ├── tests-e2e/                 # Playwright + ui-capture pipeline
 │   ├── package.json               # Dependencies + scripts (dev/build/lint/capture:ui)
 │   ├── tailwind.config.js
 │   └── vite.config.ts
@@ -128,6 +127,8 @@ Health Assistant/
 │   ├── reset-dev-db.sh            #   Nuke + recreate dev DB + re-seed
 │   ├── setup_env.py               #   Interactive env wizard (generates secrets, VAPID keys)
 │   ├── version_manager.py         #   show/set/bump/release + CHANGELOG staging
+│   ├── capture_ui.sh              #   Thin shim → scripts/ui-capture/capture_ui.sh (screenshots + gallery + GIF)
+│   └── ui-capture/                #   Visual-tour pipeline: vendored runner + repo-owned config/scenes/seeder
 │   └── ...
 │
 ├── uploads/                       # Local file storage (documents, anatomy figures)
@@ -181,7 +182,8 @@ Health Assistant/
 | `api/` & `services/` | Axios interceptors + backend API layer + Dexie offline cache | Complete |
 | `hooks/` | Reusable state logic (useBiomarkers, useNotificationStream, useBiomarkerDetailData, …) | Complete |
 | `locales/` | Multilingual support JSON dictionaries (en, el) | Complete |
-| `tests-e2e/` | Playwright UI-capture pipeline (gallery.mjs generates SCREENSHOTS.md) | Complete |
+
+The former `frontend/tests-e2e/` UI-capture pipeline now lives in `scripts/ui-capture/` (family-standard runner; repo-owned config + scenes).
 
 ## File Count & Scale
 

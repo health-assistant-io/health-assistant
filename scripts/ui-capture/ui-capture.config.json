@@ -1,0 +1,76 @@
+{
+  "project": {
+    "name": "Health Assistant",
+    "intro": "Welcome to the visual tour of Health Assistant. These reproducible screenshots showcase the main pages and use cases of the application, generated against a deterministic seeded clinical dataset.",
+    "frontendDir": "frontend"
+  },
+  "app": {
+    "base": "http://localhost:3000",
+    "api": "http://localhost:8000/api/v1",
+    "apiPath": "/api/v1",
+    "healthUrls": ["{base}", "{apiRoot}/health"],
+    "env": {
+      "base": "HA_FRONTEND_URL",
+      "basePort": "FRONTEND_PORT",
+      "api": "HA_API_URL",
+      "apiPort": "BACKEND_PORT",
+      "email": "HA_DEMO_EMAIL",
+      "password": "HA_DEMO_PASSWORD"
+    }
+  },
+  "auth": {
+    "type": "oauth2-password",
+    "endpoint": "/auth/login",
+    "demoEmail": "demo@healthassistant.local",
+    "demoPassword": "Demo1234!"
+  },
+  "session": {
+    "tokenKeys": {
+      "accessToken": "access_token",
+      "refreshToken": "refresh_token"
+    },
+    "windowFlag": "__HA_SCREENSHOT_CAPTURE__",
+    "apiEntries": [
+      {
+        "key": "patient-storage",
+        "path": "/patients?limit=1",
+        "pick": "items[0]",
+        "wrap": {
+          "state": { "patients": ["{item}"], "currentPatient": "{item}" },
+          "version": 0
+        }
+      }
+    ]
+  },
+  "pathTokens": {
+    "patientId": { "path": "/patients?limit=1", "pick": "items[0].id" },
+    "examinationId": { "path": "/examinations?patient_id={patientId}&limit=1", "pick": "items[0].id" },
+    "biomarkerId": { "path": "/biomarkers/slug/cholesterol-total", "pick": "id" }
+  },
+  "capture": {
+    "outDir": "docs/images",
+    "gallery": "docs/SCREENSHOTS.md",
+    "fixedNow": "2026-06-15T10:00:00Z",
+    "settleMs": 800,
+    "headless": false,
+    "viewports": {
+      "desktop": { "width": 1440, "height": 1200, "deviceScaleFactor": 1 },
+      "mobile": { "width": 390, "height": 844, "deviceScaleFactor": 2 }
+    }
+  },
+  "gallery": {
+    "title": "Health Assistant — Visual Tour",
+    "mobileTitle": "Health Assistant — Visual Tour (Mobile)",
+    "regenCommand": "npm run capture:ui"
+  },
+  "gif": {
+    "output": "docs/images/visual-tour.gif",
+    "order": ["login", "dashboard", "patients", "patient-detail", "examinations", "examination-detail", "documents", "biomarkers", "biomarker-detail", "ai-chat"],
+    "width": 800,
+    "frameSeconds": 2,
+    "holdLast": 3
+  },
+  "seed": {
+    "command": "./scripts/ui-capture/seed_demo.sh"
+  }
+}

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
+### Fixed
+- **`biomarker-detail` UI capture shot the wrong page** — the scene still navigated to the retired `/biomarkers/catalog` (now a redirect to `/catalogs?type=biomarker`), where the scripted `text=Total Cholesterol` click only selected a catalog row, so `docs/images/biomarker-detail-desktop.png` showed the Catalogs workspace instead of the detail view. It now deep-links to `/biomarkers/details/{biomarkerId}`, resolved deterministically via a new `biomarkerId` path token (`GET /biomarkers/slug/cholesterol-total`).
 ### Added
 - **Mock chat AI for demos & screenshots (no API key)** — new `mock` provider type: `MockMedicalChatModel` (`app/ai/chat_models.py`) is a deterministic scripted LangChain model that drives the real LangGraph chat engine with real DB tools in a 3-turn plan (recent examinations → examination details → markdown answer with `citation://` OBSERVATION/EXAMINATION chips). `seed_demo.py` provisions it idempotently (provider + `mock-medical` model + TENANT-scope `chat` assignment; skip with `HA_AI_MOCK=0` — a UI-configured provider outranks it), so the AI chat demo and the `ai-chat` screenshot work out of the box after every DB reset. New `backend/scripts/mock_chat.py` chats with it from the terminal.
 - **Fixed inline chat citations (react-markdown v10 regression)** — `defaultUrlTransform` strips the non-standard `citation://` protocol, so inline `[Ref: …]` citations degraded to plain links; the chat markdown renderer now passes a `urlTransform` that preserves them, restoring EXAMINATION/OBSERVATION chips for real LLM answers too.

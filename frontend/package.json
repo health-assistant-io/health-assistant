@@ -8,9 +8,9 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest",
-    "capture:ui": "node tests-e2e/ui-capture/capture.mjs",
-    "capture:ui:gallery": "node tests-e2e/ui-capture/capture.mjs --gallery-only",
-    "capture:ui:headed": "node tests-e2e/ui-capture/capture.mjs --headed"
+    "capture:ui": "node ../scripts/ui-capture/capture.mjs",
+    "capture:ui:gallery": "node ../scripts/ui-capture/capture.mjs --gallery-only",
+    "capture:ui:headed": "node ../scripts/ui-capture/capture.mjs --headed"
   },
   "dependencies": {
     "@neuronection/assistant-ui": "^0.36.1",

@@ -104,12 +104,9 @@ export const scenes = [
     name: "biomarker-detail",
     group: "Clinical data",
     caption: "Biomarker detail view — longitudinal trends and clinical significance.",
-    path: "/biomarkers/catalog",
+    path: "/biomarkers/details/{biomarkerId}",
     interactions: [
-      { action: "waitFor", selector: "a[href^='/biomarkers/details/']" },
-      { action: "click", selector: "text=Total Cholesterol" },
-      { action: "waitFor", selector: "h1" },
-      { action: "wait", ms: 1000 }
+      { action: "wait", ms: 2500 }
     ],
     viewports: ["desktop"],
     waitForSelector: "main",
