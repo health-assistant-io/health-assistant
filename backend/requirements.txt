@@ -22,7 +22,7 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 coverage==7.14.1
-cryptography==50.0.0  # CVE fix (PYSEC-2026-3552)
+cryptography==50.0.1  # CVE fix (PYSEC-2026-3552)
 distro==1.9.0
 dnspython==2.8.0
 email-validator==2.3.0
