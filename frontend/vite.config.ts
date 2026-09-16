@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  optimizeDeps: { exclude: ['@neuronection/assistant-ui'] },
+  optimizeDeps: {
+    exclude: ['@neuronection/assistant-ui'],
+    include: ['use-sync-external-store', 'use-sync-external-store/shim/with-selector'],
+  },
   plugins: [
     react(),
     VitePWA({

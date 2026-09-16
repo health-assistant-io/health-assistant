@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Route-level code splitting (FE-2)** — all 80 route components now load via `React.lazy` + a lightweight `Suspense` fallback (Login, Setup, Layout and the instance-registration barrels stay eager). The entry bundle drops from 5.06 MB to 3.78 MB (−25%) and each page ships as an on-demand chunk; follow-up entry-vendor splitting (react-quill / markdown stack via the statically-reachable shared layout chain) is tracked in the audit.
 
 ### Changed
+- **`@neuronection/assistant-ui` ^0.18.0 → ^0.36.1** — 18 minor versions of the family UI library (nav/SidebarNav baseline, SegmentedTabs, chat components, token/overlay polish). Fixes the biomarker-detail crash `Tooltip must be used within TooltipProvider`: library `InfoTooltip` (hover mode) now renders its own `TooltipProvider` so it works standalone (library changeset staged, ships ≥ 0.36.2; app suite verified against the fixed build).
+- **Dev-server fix: pre-bundle `use-sync-external-store` entries** — `vite.config.ts` now lists `use-sync-external-store` + its `shim/with-selector` entry in `optimizeDeps.include`; without it, a cold dep-optimizer cache (cache wipe / dep bump) could serve zustand's CJS wrapper raw, crashing the page with `doesn't provide an export named 'useSyncExternalStoreWithSelector'`.
 - `scripts/version_manager.py` synced from the dev family template
   (`TEMPLATE_VERSION` stamp, `--version`; config-order fix so `--version`
   works without a config file).
