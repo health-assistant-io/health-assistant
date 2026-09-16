@@ -5,7 +5,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   optimizeDeps: {
     exclude: ['@neuronection/assistant-ui'],
-    include: ['use-sync-external-store', 'use-sync-external-store/shim/with-selector'],
+    include: [
+      'use-sync-external-store',
+      'use-sync-external-store/shim/with-selector',
+      'zustand/vanilla',
+      'zustand/traditional',
+      'zustand/shallow',
+    ],
   },
   plugins: [
     react(),

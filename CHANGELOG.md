@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`@neuronection/assistant-ui` ^0.18.0 → ^0.36.1** — 18 minor versions of the family UI library (nav/SidebarNav baseline, SegmentedTabs, chat components, token/overlay polish). Fixes the biomarker-detail crash `Tooltip must be used within TooltipProvider`: library `InfoTooltip` (hover mode) now renders its own `TooltipProvider` so it works standalone (library changeset staged, ships ≥ 0.36.2; app suite verified against the fixed build).
-- **Dev-server fix: pre-bundle `use-sync-external-store` entries** — `vite.config.ts` now lists `use-sync-external-store` + its `shim/with-selector` entry in `optimizeDeps.include`; without it, a cold dep-optimizer cache (cache wipe / dep bump) could serve zustand's CJS wrapper raw, crashing the page with `doesn't provide an export named 'useSyncExternalStoreWithSelector'`.
+- **Dev-server fix: pre-bundle zustand subpaths + `use-sync-external-store` entries** — `vite.config.ts` now lists `zustand/vanilla|traditional|shallow` and `use-sync-external-store` (+ its `shim/with-selector` entry) in `optimizeDeps.include`; without them, reactflow's `@reactflow/*` chain served zustand's subpath entries raw, and their CJS `use-sync-external-store` import crashed the page with `doesn't provide an export named 'useSyncExternalStoreWithSelector'` after any cold dep-optimizer cache.
 - `scripts/version_manager.py` synced from the dev family template
   (`TEMPLATE_VERSION` stamp, `--version`; config-order fix so `--version`
   works without a config file).
