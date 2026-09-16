@@ -29,6 +29,9 @@ updates:
       # Keep @types/node on the Node 24 LTS line (matches runtime; see Dockerfile/CI)
       - dependency-name: "@types/node"
         versions: [">=25"]
+      # Hold TypeScript on 5.x: @typescript-eslint crashes on TS 7 ("reading 'Intrinsic'")
+      - dependency-name: "typescript"
+        versions: [">=6"]
     commit-message:
       prefix: "chore(deps)"
       include: "scope"

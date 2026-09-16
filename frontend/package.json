@@ -77,7 +77,7 @@
     "playwright": "^1.63.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.0",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "vite": "^6.0.3",
     "vitest": "^4.1.9"
   },
