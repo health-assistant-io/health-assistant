@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, MessageSquare, Sparkles, BarChart2, Send, Loader2, Bot, User, Database, ChevronRight, History, Plus, Maximize2, Minimize2, Wrench } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { streamAIAssistance, resumeHitlSession, AIStreamMessage, listChatSessions, getChatSessionMessages, deleteChatSession, ChatSession } from '../../services/aiAssistanceService';
 import { usePatientStore } from '../../store/slices/patientSlice';
@@ -924,6 +924,13 @@ export const AIChatInterface: React.FC<Props> = ({
                               <div className="overflow-x-auto custom-scrollbar pb-1">
                                 <ReactMarkdown 
                                   remarkPlugins={[remarkGfm]}
+                                  // react-markdown ≥9 sanitizes hrefs and strips
+                                  // unknown protocols — keep citation:// links
+                                  // intact so the a: renderer below can turn
+                                  // them into CitationButton chips.
+                                  urlTransform={(url) =>
+                                    url.toLowerCase().startsWith('citation://') ? url : defaultUrlTransform(url)
+                                  }
                                   components={{
                                     table: ({node, ...props}) => (
                                       <div className="overflow-x-auto my-4 rounded-xl border border-gray-100 dark:border-white/5">

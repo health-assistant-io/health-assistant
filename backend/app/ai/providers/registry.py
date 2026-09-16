@@ -32,6 +32,7 @@ PROVIDER_FACTORIES: Dict[ProviderType, LLMBuilder] = {
     ProviderType.OLLAMA: chat_models.build_ollama,
     ProviderType.AZURE_OPENAI: chat_models.build_azure_openai,
     ProviderType.BEDROCK: chat_models.build_bedrock,
+    ProviderType.MOCK: chat_models.build_mock,
 }
 
 # Fallback builder when a DB row carries an unknown / unrecognised provider_type

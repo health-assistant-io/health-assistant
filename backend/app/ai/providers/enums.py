@@ -34,6 +34,10 @@ class ProviderType(str, enum.Enum):
     OLLAMA = "ollama"
     AZURE_OPENAI = "azure_openai"
     BEDROCK = "bedrock"
+    #: Deterministic scripted model (no network, no API key) for demos,
+    #: UI screenshot capture and offline dev. Seeded by ``seed_demo.py``;
+    #: never a default outside explicitly configured demo tenants.
+    MOCK = "mock"
 
     # --- Processor-only backends (NOT LLM providers; routed through OCR/NLP factories) ---
     TESSERACT = "tesseract"
@@ -69,6 +73,7 @@ class ProviderType(str, enum.Enum):
             cls.OLLAMA,
             cls.AZURE_OPENAI,
             cls.BEDROCK,
+            cls.MOCK,
         }
 
 

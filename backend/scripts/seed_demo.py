@@ -14,6 +14,9 @@ Creates (idempotently):
     - Allergies: Peanuts
     - Clinical Events: Annual Checkup
     - Examinations: Routine assessment
+  - Mock chat AI (provider_type "mock": deterministic scripted model that
+    drives the real graph + DB tools — no API key needed; skip with
+    HA_AI_MOCK=0)
 
 The captured screenshots in docs/images/ are meant to be reproducible, so this
 seed is the single source of truth for what the demo pages should contain.
@@ -45,6 +48,8 @@ from app.models.biomarker_model import (  # noqa: E402
 from app.models.fhir.patient import Patient, Observation  # noqa: E402
 from app.models.document_model import DocumentModel  # noqa: E402
 from app.models.examination_model import ExaminationModel  # noqa: E402
+from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment  # noqa: E402
+from app.models.enums import AIScope  # noqa: E402
 from app.models.tenant_model import TenantModel  # noqa: E402
 from app.models.user_model import UserModel  # noqa: E402
 from app.services.import_service import ImportService  # noqa: E402
@@ -72,6 +77,13 @@ DEMO_PATIENT_IDS = [
     UUID("33333333-3333-4333-8333-333333333302"),
     UUID("33333333-3333-4333-8333-333333333303"),
 ]
+
+# Mock AI provider (deterministic scripted chat model — no API key, no
+# network). Seeded by default so the AI chat demo + `ai-chat` screenshot work
+# after every reset; set HA_AI_MOCK=0 to skip (e.g. when demoing a real key).
+# A tenant/user-scope provider configured later via the UI outranks it.
+SEED_MOCK_AI = os.getenv("HA_AI_MOCK", "1") not in ("0", "false", "False")
+MOCK_AI_PROVIDER_NAME = "Mock Medical LLM (demo)"
 
 RICH_OCR_TEXT = """PATIENT & LABORATORY INFORMATION
 Patient Name: Maria Papadopoulou
@@ -456,6 +468,91 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
 V3_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
 
+async def seed_mock_ai(session, tenant_id: UUID) -> None:
+    """Seed the mock chat AI: a ``mock``-type provider + model + a TENANT-scope
+    ``chat`` task assignment, idempotently.
+
+    The mock (``app.ai.chat_models.MockMedicalChatModel``) is a scripted
+    LangChain model that drives the real agentic graph with real DB tools and
+    answers from their results — so the AI chat demo and the ``ai-chat``
+    screenshot work deterministically without any API key. Skip with
+    ``HA_AI_MOCK=0``. A provider configured later via the UI at TENANT/USER
+    scope (or a SYSTEM assignment with higher priority) outranks this one.
+    """
+    provider = (
+        await session.execute(
+            select(AIProviderModel).where(
+                AIProviderModel.name == MOCK_AI_PROVIDER_NAME,
+                AIProviderModel.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not provider:
+        provider = AIProviderModel(
+            name=MOCK_AI_PROVIDER_NAME,
+            scope=AIScope.TENANT,
+            provider_type="mock",
+            api_base="mock://local",  # NOT NULL column; never dialed
+            api_key=None,
+            is_local=True,
+            is_active=True,
+            tenant_id=tenant_id,
+            settings={},
+        )
+        session.add(provider)
+        await session.flush()
+        print("✅ Seeded mock AI provider (deterministic, no API key)")
+    else:
+        print("⚠️  Mock AI provider already exists")
+
+    model = (
+        await session.execute(
+            select(AIModel).where(
+                AIModel.provider_id == provider.id,
+                AIModel.model_name == "mock-medical",
+            )
+        )
+    ).scalar_one_or_none()
+    if not model:
+        model = AIModel(
+            provider_id=provider.id,
+            name="Mock Medical (scripted)",
+            model_name="mock-medical",
+            description="Deterministic scripted chat model for demos/screenshots.",
+            is_active=True,
+            temperature=0.0,
+        )
+        session.add(model)
+        await session.flush()
+        print("✅ Seeded mock AI model: mock-medical")
+
+    assignment = (
+        await session.execute(
+            select(AITaskAssignment).where(
+                AITaskAssignment.task_type == "chat",
+                AITaskAssignment.scope == AIScope.TENANT,
+                AITaskAssignment.tenant_id == tenant_id,
+                AITaskAssignment.provider_id == provider.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not assignment:
+        session.add(
+            AITaskAssignment(
+                task_type="chat",
+                scope=AIScope.TENANT,
+                provider_id=provider.id,
+                model_id=model.id,
+                is_active=True,
+                priority=0,
+                tenant_id=tenant_id,
+            )
+        )
+        print("✅ Assigned mock AI to the 'chat' task (TENANT scope)")
+    else:
+        print("⚠️  Mock AI chat assignment already exists")
+
+
 async def seed_state_biomarkers(session, tenant_id: UUID, patient_id: UUID, user_id: UUID) -> None:
     """Seed a STATE biomarker (SARS-CoV-2 PCR) + an alternating POS/NEG
     observation timeline.
@@ -721,6 +818,12 @@ async def seed() -> None:
             # the state timeline even if the quantity clinical data was
             # already present.
             await seed_state_biomarkers(session, tenant.id, primary_patient_id, user.id)
+
+        # 5. Mock chat AI (deterministic, no API key) unless HA_AI_MOCK=0.
+        if SEED_MOCK_AI:
+            await seed_mock_ai(session, tenant.id)
+        else:
+            print("⏭️  Skipping mock AI seed (HA_AI_MOCK=0)")
 
         try:
             await session.commit()

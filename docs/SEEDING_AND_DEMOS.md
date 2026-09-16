@@ -49,8 +49,10 @@ Seeds must be **idempotent**. Running `python3 scripts/seed_demo.py` multiple ti
 ## 3. Date Freezing for Visual Regression
 
 When generating data for screenshots (e.g., `capture_ui.sh`), dates must be relative to a "frozen" present.
-In this project, the UI capture scripts (`frontend/tests-e2e/ui-capture/capture.mjs`) freeze the browser clock (e.g., to `2026-06-15`).
+In this project, the UI capture runner (`scripts/ui-capture/capture.mjs`) freezes the browser clock (e.g., to `2026-06-15`).
 Your seed script should generate FHIR resources with absolute dates relative to that same frozen point to ensure charts and relative times ("2 days ago") render identically across runs.
+
+The seed also provisions a **mock chat AI** (provider_type `mock` — a scripted model answering from real tool results, no API key) so the AI chat demo and the `ai-chat` screenshot work after every reset. Opt out with `HA_AI_MOCK=0`; a provider configured via the UI outranks it.
 
 ## 4. The Seed Data Structure
 
