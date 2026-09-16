@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
+### Changed
+- **Standardize on Node.js 24 LTS** — the frontend Docker image (`node:20-alpine` → `node:24-alpine` in both build and runtime stages), the security-scan workflow (Node 20 → 24, matching test.yml), the README dev requirement (Node 24+), and a new `frontend/.nvmrc`. `@types/node` moves to the 24.x line in the frontend (and gains `engines: node >=24` in frontend + ts-sdk), with a Dependabot ignore rule keeping `@types/node` on the 24 line. Closes the types→26 Dependabot PRs (#51, #62): types follow the runtime, and Node 26 isn't LTS until Oct 2026.
+
 ### Fixed
+- **About page LinkedIn icon after lucide-react 1.x** — lucide removed brand icons in 1.0 (merged via dependabot #42), which broke the build (`Linkedin` no longer exported). Added an app-local `LinkedinIcon` SVG (same geometry as the former lucide icon) used by both About-page links.
 - **`biomarker-detail` UI capture shot the wrong page** — the scene still navigated to the retired `/biomarkers/catalog` (now a redirect to `/catalogs?type=biomarker`), where the scripted `text=Total Cholesterol` click only selected a catalog row, so `docs/images/biomarker-detail-desktop.png` showed the Catalogs workspace instead of the detail view. It now deep-links to `/biomarkers/details/{biomarkerId}`, resolved deterministically via a new `biomarkerId` path token (`GET /biomarkers/slug/cholesterol-total`).
 ### Added
 - **Mock chat AI for demos & screenshots (no API key)** — new `mock` provider type: `MockMedicalChatModel` (`app/ai/chat_models.py`) is a deterministic scripted LangChain model that drives the real LangGraph chat engine with real DB tools in a 3-turn plan (recent examinations → examination details → markdown answer with `citation://` OBSERVATION/EXAMINATION chips). `seed_demo.py` provisions it idempotently (provider + `mock-medical` model + TENANT-scope `chat` assignment; skip with `HA_AI_MOCK=0` — a UI-configured provider outranks it), so the AI chat demo and the `ai-chat` screenshot work out of the box after every DB reset. New `backend/scripts/mock_chat.py` chats with it from the terminal.

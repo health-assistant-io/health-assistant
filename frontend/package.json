@@ -12,6 +12,9 @@
     "capture:ui:gallery": "node ../scripts/ui-capture/capture.mjs --gallery-only",
     "capture:ui:headed": "node ../scripts/ui-capture/capture.mjs --headed"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "@neuronection/assistant-ui": "^0.36.1",
     "@tailwindcss/typography": "^0.5.19",
@@ -59,7 +62,7 @@
     "@testing-library/user-event": "^14.6.6",
     "@types/dompurify": "^3.0.5",
     "@types/marked": "^5.0.2",
-    "@types/node": "^20.10.0",
+    "@types/node": "^24.0.0",
     "@types/qrcode.react": "^1.0.5",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",

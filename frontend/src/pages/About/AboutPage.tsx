@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Globe, Linkedin, Mail } from 'lucide-react';
+import { Globe, Mail } from 'lucide-react';
+import LinkedinIcon from '../../components/icons/LinkedinIcon';
 import { AboutPanel, HealthMark } from '@neuronection/assistant-ui';
 import packageJson from '../../../package.json';
 import { SPONSOR_CHANNELS } from '../../config/funding';
@@ -32,9 +33,9 @@ const AboutPage = () => {
           linksTitle="Contact & Connect"
           links={[
             { group: 'Project', href: 'https://health-assistant.io', label: 'Website', subtitle: 'health-assistant.io', icon: Globe },
-            { group: 'Project', href: 'https://www.linkedin.com/company/134583947', label: 'LinkedIn', subtitle: 'Health Assistant', icon: Linkedin },
+            { group: 'Project', href: 'https://www.linkedin.com/company/134583947', label: 'LinkedIn', subtitle: 'Health Assistant', icon: LinkedinIcon },
             { group: 'Project', copyValue: 'hello@health-assistant.io', label: 'hello@health-assistant.io', subtitle: 'Click to copy', icon: Mail },
-            { group: 'Creator', href: 'https://www.linkedin.com/in/ilias-chatzopoulos-aabb22163/', label: 'LinkedIn', subtitle: 'Ilias Chatzopoulos', icon: Linkedin },
+            { group: 'Creator', href: 'https://www.linkedin.com/in/ilias-chatzopoulos-aabb22163/', label: 'LinkedIn', subtitle: 'Ilias Chatzopoulos', icon: LinkedinIcon },
             { group: 'Creator', copyValue: 'constliakos@gmail.com', label: 'constliakos@gmail.com', subtitle: 'Click to copy', icon: Mail },
           ]}
           creator={{

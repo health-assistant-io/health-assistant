@@ -25,6 +25,10 @@ updates:
     open-pull-requests-limit: 10
     allow:
       - dependency-type: "direct"
+    ignore:
+      # Keep @types/node on the Node 24 LTS line (matches runtime; see Dockerfile/CI)
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -41,6 +45,10 @@ updates:
     open-pull-requests-limit: 5
     allow:
       - dependency-type: "direct"
+    ignore:
+      # Keep @types/node on the Node 24 LTS line (matches runtime; see Dockerfile/CI)
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
