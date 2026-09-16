@@ -27,7 +27,7 @@ interface LineChartProps {
   dataKey?: string;
   xAxisKey?: string;
   color?: string;
-  height?: number | string;
+  height?: number | `${number}%`;
   showLegend?: boolean;
   referenceRange?: {
     min?: number | null;

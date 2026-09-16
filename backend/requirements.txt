@@ -85,7 +85,7 @@ pyasn1==0.6.4
 pycparser==3.0
 pydantic==2.13.5
 pydantic-settings==2.14.2
-pydantic_core==2.49.0
+pydantic_core==2.46.5
 pydicom==3.0.2
 Pygments==2.20.0
 pylibjpeg==2.1.0

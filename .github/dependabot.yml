@@ -9,6 +9,10 @@ updates:
     open-pull-requests-limit: 10
     allow:
       - dependency-type: "direct"
+    ignore:
+      # uuid-utils 1.0 violates langchain-core/langsmith pins (<1.0); revisit when they relax
+      - dependency-name: "uuid-utils"
+        versions: [">=1"]
     commit-message:
       prefix: "chore(deps)"
       include: "scope"

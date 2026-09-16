@@ -31,7 +31,7 @@ interface Dataset {
 
 interface CorrelationChartProps {
   datasets: Dataset[];
-  height?: number | string;
+  height?: number | `${number}%`;
   showReferenceArea?: boolean;
 }
 
