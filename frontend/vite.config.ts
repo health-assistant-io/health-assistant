@@ -6,6 +6,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@neuronection/assistant-ui'],
     include: [
+      '@tiptap/react',
       'use-sync-external-store',
       'use-sync-external-store/shim/with-selector',
       'zustand/vanilla',
