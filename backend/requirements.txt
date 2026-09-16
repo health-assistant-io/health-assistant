@@ -98,7 +98,7 @@ pytest-dotenv==0.5.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-gdcm==3.2.6
-PyJWT==2.13.0
+PyJWT==2.14.0
 python-magic==0.4.27
 python-multipart==0.0.32
 python-slugify==8.0.4
