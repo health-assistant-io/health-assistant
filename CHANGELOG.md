@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- **Backend dependency batch** — langchain-openai 1.6.2 (with openai 2.54, staying under the langchain `<3` cap), fastmcp 4, bcrypt 5, + the grouped python/npm minor-and-patch updates (dependabot group PRs #127/#123). FE build/lint/651 tests + BE 3124 green.
+- **Dependabot ignores extended** — `openai >=3` (langchain-openai cap), `transformers >=5`, `torch >=2.2` (deliberate AI-pipeline versioning), `tailwind-merge >=3` (pairs with held Tailwind 3), `eslint >=9` (flat-config migration).
+- **Dropped the direct `pydantic_core` pin** — it's a transitive of pydantic (exact-pinned there); a direct pin only invites orphan bumps (this bit us twice: core 2.49.0 vs pydantic 2.13.x → 2.46.5).
 - **Build chain majors: vite 6 → 8, @vitejs/plugin-react 4 → 6, typescript-eslint 7 → 8** (dependabot #122/#114/#117+#121). vite 8 needed a clean lockfile resolution (rolldown/babel peer chain); ts-eslint 8's stricter `no-unused-expressions` rule required three small statement fixes (ExaminationGroupManager, NotificationManagement). FE build + lint + 651/651 tests green.
 - **CI now runs on PRs** — `docker-publish.yml` gains a `pull_request` trigger (test suite only; image publishing stays gated to push/tag events), so Dependabot PRs finally carry real checks instead of empty rolls.
 - **Dependabot: grouped minor+patch updates** (one resolved PR per ecosystem for `python-*` / `npm-*` families) — prevents the split-PR `ResolutionImpossible` breaks (langchain-core, pydantic-core) seen today; majors stay individual PRs. New ignores: `tailwindcss >=4` (deliberate CSS-first migration), `uuid-utils >=1` (violates langchain's <1.0 cap).

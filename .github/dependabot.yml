@@ -20,6 +20,15 @@ updates:
       # uuid-utils 1.0 violates langchain-core/langsmith pins (<1.0); revisit when they relax
       - dependency-name: "uuid-utils"
         versions: [">=1"]
+      # langchain-openai caps openai<3.0.0 (ADR-0008: LangChain-only model access)
+      - dependency-name: "openai"
+        versions: [">=3"]
+      # transformers 5 is a major; the embeddings path needs a dedicated validation pass first
+      - dependency-name: "transformers"
+        versions: [">=5"]
+      # torch is versioned deliberately (CUDA/CPU pipeline handling)
+      - dependency-name: "torch"
+        versions: [">=2.2"]
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -56,6 +65,12 @@ updates:
       # Tailwind 4 is a CSS-first config migration — deliberate project, not a bump
       - dependency-name: "tailwindcss"
         versions: [">=4"]
+      # tailwind-merge v3 targets Tailwind v4; app holds Tailwind 3
+      - dependency-name: "tailwind-merge"
+        versions: [">=3"]
+      # eslint 9+ requires flat-config migration (.eslintrc.json in use)
+      - dependency-name: "eslint"
+        versions: [">=9"]
     groups:
       npm-minor-and-patch:
         update-types:
