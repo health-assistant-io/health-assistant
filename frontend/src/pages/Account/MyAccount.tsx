@@ -82,7 +82,7 @@ function MyAccount() {
     t('admin.role_user');
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-10">
+    <div className="space-y-8 pb-10">
       <PageHeader
         title={t('account.title', 'My Account')}
         subtitle={t('account.subtitle', 'Your identity, linked records, and access')}

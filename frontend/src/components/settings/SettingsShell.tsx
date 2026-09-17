@@ -54,6 +54,7 @@ function SettingsShell({ nav, header }: SettingsShellProps) {
         nav={items}
         active={active}
         onNavigate={(id) => navigate(id)}
+        navClassName="lg:top-0 lg:max-h-[calc(100vh-3.5rem)] lg:overflow-y-auto"
         header={
           header
             ? { icon: header.icon, title: t(header.titleKey, header.titleFallback) }
