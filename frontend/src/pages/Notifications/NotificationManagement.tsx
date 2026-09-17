@@ -314,7 +314,8 @@ export default function NotificationManagement() {
             <button
               onClick={() => {
                 setLoading(true);
-                activeTab === 'triggers' ? loadTriggers() : loadInbox();
+                if (activeTab === 'triggers') loadTriggers();
+                else loadInbox();
               }}
               className="p-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-gray-500 hover:text-blue-600 transition-colors shadow-sm"
             >

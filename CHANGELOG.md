@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- **Build chain majors: vite 6 → 8, @vitejs/plugin-react 4 → 6, typescript-eslint 7 → 8** (dependabot #122/#114/#117+#121). vite 8 needed a clean lockfile resolution (rolldown/babel peer chain); ts-eslint 8's stricter `no-unused-expressions` rule required three small statement fixes (ExaminationGroupManager, NotificationManagement). FE build + lint + 651/651 tests green.
+- **CI now runs on PRs** — `docker-publish.yml` gains a `pull_request` trigger (test suite only; image publishing stays gated to push/tag events), so Dependabot PRs finally carry real checks instead of empty rolls.
+- **Dependabot: grouped minor+patch updates** (one resolved PR per ecosystem for `python-*` / `npm-*` families) — prevents the split-PR `ResolutionImpossible` breaks (langchain-core, pydantic-core) seen today; majors stay individual PRs. New ignores: `tailwindcss >=4` (deliberate CSS-first migration), `uuid-utils >=1` (violates langchain's <1.0 cap).
 - **recharts 2 → 3** — adopted the major bump (dependabot #100); the only break was `ResponsiveContainer`'s `height` prop, now `number | \`${number}%\`` — narrowed the `height` prop on `CorrelationChart` and `LineChart` accordingly (all call sites pass numbers).
 - **Standardize on Node.js 24 LTS** — the frontend Docker image (`node:20-alpine` → `node:24-alpine` in both build and runtime stages), the security-scan workflow (Node 20 → 24, matching test.yml), the README dev requirement (Node 24+), and a new `frontend/.nvmrc`. `@types/node` moves to the 24.x line in the frontend (and gains `engines: node >=24` in frontend + ts-sdk), with a Dependabot ignore rule keeping `@types/node` on the 24 line. Closes the types→26 Dependabot PRs (#51, #62): types follow the runtime, and Node 26 isn't LTS until Oct 2026.
 

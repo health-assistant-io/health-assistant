@@ -348,9 +348,9 @@ const ExaminationBubble: React.FC<{
           ? 'border-blue-500 shadow-2xl shadow-blue-500/10 scale-[1.02]' 
           : 'border-gray-100 dark:border-dark-border shadow-lg'
       } ${isSingleMode ? 'border-none shadow-none !bg-transparent' : ''}`}
-      onDragOver={(e) => { e.preventDefault(); !isSingleMode && onHoverChange(true); }}
+      onDragOver={(e) => { e.preventDefault(); if (!isSingleMode) onHoverChange(true); }}
       onDragLeave={() => !isSingleMode && onHoverChange(false)}
-      onDrop={(e) => { !isSingleMode && onHoverChange(false); onDrop(e); }}
+      onDrop={(e) => { if (!isSingleMode) onHoverChange(false); onDrop(e); }}
     >
       {/* Header */}
       {!isSingleMode && (

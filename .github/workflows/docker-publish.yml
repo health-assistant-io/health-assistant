@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
+  # Run the test suite on PRs (e.g. Dependabot) — publish jobs are gated to
+  # push/tag events below, so PR runs build nothing and push nothing.
+  pull_request:
+    branches: [ "main" ]
   # Allow manual trigger from the GitHub Actions UI
   workflow_dispatch:
 
@@ -27,6 +31,7 @@ jobs:
   build-and-push-backend:
     name: Build & Push Backend Docker Image
     needs: [test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,6 +72,7 @@ jobs:
   build-and-push-frontend:
     name: Build & Push Frontend Docker Image
     needs: [test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read

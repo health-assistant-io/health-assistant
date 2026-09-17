@@ -9,6 +9,13 @@ updates:
     open-pull-requests-limit: 10
     allow:
       - dependency-type: "direct"
+    groups:
+      # Families (langchain*, pydantic*, langgraph*) must bump together in one
+      # resolved PR — separate PRs produced two ResolutionImpossible CI breaks
+      python-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
       # uuid-utils 1.0 violates langchain-core/langsmith pins (<1.0); revisit when they relax
       - dependency-name: "uuid-utils"
@@ -46,6 +53,14 @@ updates:
         versions: [">=19"]
       - dependency-name: "@types/react-dom"
         versions: [">=19"]
+      # Tailwind 4 is a CSS-first config migration — deliberate project, not a bump
+      - dependency-name: "tailwindcss"
+        versions: [">=4"]
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
