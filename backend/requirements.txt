@@ -125,7 +125,7 @@ tzdata==2026.4
 tzlocal==5.4.4
 urllib3==2.7.0
 uuid_utils==0.17.1
-uvicorn==0.52.4
+uvicorn==0.53.0
 uvloop==0.22.1
 vine==5.1.0
 watchfiles==1.2.0
