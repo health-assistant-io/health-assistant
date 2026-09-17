@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- **Tailwind CSS 3 → 4** — CSS-first configuration: `@theme` carries the brand/dark palettes, `xs` breakpoint, z-index scale, and animations (tailwind.config.js deleted); `@tailwindcss/postcss` replaces the tailwindcss+autoprefixer PostCSS chain; class-based dark mode via `@custom-variant dark`; `tailwindcss-animate` → `tw-animate-css` (same `animate-*` classes; its `@import` must precede `@plugin` directives); `tailwind-merge` v3 for v4-aware merging. ~217 files codemodded by `@tailwindcss/upgrade` (shadow/ring scale renames), plus removal of dead `bg-opacity-*` utilities (6 inline-style no-ops; CorrelationChart tooltip → `bg-white/95`). Verified: build, lint 0 errors, vitest 651/651.
 - **websockets 15 → 16.1** — max version compatible with langgraph-sdk's `<17` cap (17.x ignored until it relaxes); plus python-slugify 9, xxhash 4 (dependabot #128/#133/#135).
 - **Backend dependency batch** — langchain-openai 1.6.2 (with openai 2.54, staying under the langchain `<3` cap), fastmcp 4, bcrypt 5, + the grouped python/npm minor-and-patch updates (dependabot group PRs #127/#123). FE build/lint/651 tests + BE 3124 green.
 - **Dependabot ignores extended** — `openai >=3` (langchain-openai cap), `transformers >=5`, `torch >=2.2` (deliberate AI-pipeline versioning), `tailwind-merge >=3` (pairs with held Tailwind 3), `eslint >=9` (flat-config migration).
