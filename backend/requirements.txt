@@ -100,7 +100,7 @@ python-gdcm==3.2.6
 PyJWT==2.14.0
 python-magic==0.4.27
 python-multipart==0.0.32
-python-slugify==8.0.4
+python-slugify==9.0.0
 pytz==2026.3.post1
 pywebpush==2.5.0
 PyYAML==6.0.3
