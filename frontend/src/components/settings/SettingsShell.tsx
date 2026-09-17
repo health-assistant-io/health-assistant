@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/slices/authSlice';
@@ -39,19 +40,29 @@ function SettingsShell({ nav, header }: SettingsShellProps) {
     .filter((item) => location.pathname.startsWith(item.id))
     .sort((a, b) => b.id.length - a.id.length)[0]?.id;
 
+  // Reset the scroll container on tab change so the sticky nav rail always
+  // sits at the same offset — without this it drifts with stale scroll
+  // positions from the previous (longer) tab.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    rootRef.current?.closest('main')?.scrollTo({ top: 0 });
+  }, [location.pathname]);
+
   return (
-    <LibrarySettingsShell
-      nav={items}
-      active={active}
-      onNavigate={(id) => navigate(id)}
-      header={
-        header
-          ? { icon: header.icon, title: t(header.titleKey, header.titleFallback) }
-          : undefined
-      }
-    >
-      <Outlet />
-    </LibrarySettingsShell>
+    <div ref={rootRef} className="contents">
+      <LibrarySettingsShell
+        nav={items}
+        active={active}
+        onNavigate={(id) => navigate(id)}
+        header={
+          header
+            ? { icon: header.icon, title: t(header.titleKey, header.titleFallback) }
+            : undefined
+        }
+      >
+        <Outlet />
+      </LibrarySettingsShell>
+    </div>
   );
 }
 

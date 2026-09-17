@@ -77,7 +77,6 @@ export const AIConfig: React.FC<AIConfigProps> = ({
           title={getPageTitle()}
           subtitle="Manage AI models, providers and task assignments"
           icon={<Cpu className="w-8 h-8" />}
-          showBackButton={true}
         />
       )}
 

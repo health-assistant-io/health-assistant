@@ -354,16 +354,19 @@ function App() {
 
           <Route path="/ai-assistant" element={<AIChatPage />} />
           <Route path="/ai-assistant/:sessionId" element={<AIChatPage />} />
-          <Route path="/profile" element={<MyAccount />} />
-          <Route path="/settings" element={<SettingsShell nav={userSettingsNav} header={userSettingsHeader} />}>
-            <Route index element={<Navigate to="/settings/appearance" replace />} />
-            <Route path="preferences" element={<Preferences />} />
-            <Route path="security" element={<Security />} />
-            <Route path="appearance" element={<AppearanceSettings />} />
-            <Route path="ai-config" element={<AIConfig scope="user" />} />
-            <Route path="integrations" element={<Integrations />} />
+          {/* Pathless shell keeps the settings subnav mounted across ALL its
+              tabs — including /profile, which previously sat outside and
+              unmounted the whole shell on every Profile visit. */}
+          <Route element={<SettingsShell nav={userSettingsNav} header={userSettingsHeader} />}>
+            <Route path="/profile" element={<MyAccount />} />
+            <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
+            <Route path="/settings/preferences" element={<Preferences />} />
+            <Route path="/settings/security" element={<Security />} />
+            <Route path="/settings/appearance" element={<AppearanceSettings />} />
+            <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
+            <Route path="/settings/integrations" element={<Integrations />} />
             {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
-              <Route path="export-import" element={<ExportImport />} />
+              <Route path="/settings/export-import" element={<ExportImport />} />
             )}
           </Route>
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />

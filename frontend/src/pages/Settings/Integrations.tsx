@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { integrationService, IntegrationManifest, ActiveIntegration } from '../../services/integrationService';
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Settings, Server, Cloud, Globe, Search, LayoutGrid } from 'lucide-react';
+import { CheckCircle, XCircle, Settings, Server, Cloud, Globe, Search, LayoutGrid, Plug } from 'lucide-react';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
 import BrowseIntegrationsModal from '../../components/integrations/BrowseIntegrationsModal';
 import { NoPatientState } from '../../components/ui/NoPatientState';
+import { PageHeader } from '../../components/ui/PageHeader';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
 import { Link } from 'react-router-dom';
 
 const Integrations: React.FC = () => {
+  const { t } = useTranslation();
   const { currentPatient } = usePatientStore();
   const [available, setAvailable] = useState<IntegrationManifest[]>([]);
   const [active, setActive] = useState<ActiveIntegration[]>([]);
@@ -72,8 +75,12 @@ const Integrations: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Connected Integrations</h1>
-      
+      <PageHeader
+        title={t('common.integrations', 'Integrations')}
+        subtitle={t('integrations.subtitle', 'Manage your connected health data sources.')}
+        icon={<Plug className="w-8 h-8" />}
+      />
+
       {/* Active Integrations */}
       <div className="bg-white dark:bg-dark-surface shadow-sm rounded-lg mb-8 overflow-hidden border border-gray-200 dark:border-dark-border">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-dark-border">

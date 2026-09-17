@@ -87,7 +87,6 @@ function MyAccount() {
         title={t('account.title', 'My Account')}
         subtitle={t('account.subtitle', 'Your identity, linked records, and access')}
         icon={<UserCircle className="w-8 h-8" />}
-        showBackButton={true}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
