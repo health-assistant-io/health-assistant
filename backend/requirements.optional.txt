@@ -5,5 +5,5 @@ spacy>=3.8.16
 scispacy>=0.5.5
 nltk>=3.10.3
 transformers>=4.57.6
-torch>=2.1.0
+torch>=2.1.2
 pdf2image>=1.16.3
