@@ -1892,7 +1892,25 @@
       "fallback_info": "Η γενική προεπιλογή χρησιμοποιείται για κάθε εργασία χωρίς δική της αντιστοίχιση.",
       "clear_assignment": "Καθαρισμός ανάθεσης",
       "not_assigned_hint": "Χωρίς ανάθεση — χρησιμοποιείται η προεπιλογή του {{scope}}."
-    }
+    },
+    "notifications_source_system": "Ειδοποιήσεις συστήματος",
+    "notifications_source_system_desc": "Ειδοποιήσεις που παράγει η ίδια η πλατφόρμα (αποτελέσματα συγχρονισμού, αντίγραφα ασφαλείας, συμβάντα λογαριασμού).",
+    "notifications_source_scheduled": "Προγραμματισμένες υπενθυμίσεις",
+    "notifications_source_scheduled_desc": "Υπενθυμίσεις από προγραμματισμούς, όπως λήξεις φαρμάκων και εμβολίων.",
+    "notifications_source_rule": "Ειδοποιήσεις βάσει κανόνων",
+    "notifications_source_rule_desc": "Ειδοποιήσεις από κλινικούς κανόνες που αξιολογούν τα αρχεία σας (π.χ. εκτός ορίων τιμές).",
+    "notifications_source_agent": "Ειδοποιήσεις AI βοηθού",
+    "notifications_source_agent_desc": "Ειδοποιήσεις που παράγει ο AI βοηθός ενώ εργάζεται για εσάς.",
+    "notifications_source_integration": "Ειδοποιήσεις ενσωματώσεων",
+    "notifications_source_integration_desc": "Ειδοποιήσεις από συνδεδεμένες ενσωματώσεις και συγχρονισμούς wearable.",
+    "notifications_source_clinical": "Ειδοποιήσεις κλινικών συμβάντων",
+    "notifications_source_clinical_desc": "Ειδοποιήσεις για κλινικά συμβάντα που προστίθενται στο χρονολόγιό σας.",
+    "notifications_channel_in_app": "Εντός εφαρμογής",
+    "notifications_channel_in_app_desc": "Εμφάνιση ειδοποιήσεων μέσα στη διεπαφή της εφαρμογής.",
+    "notifications_channel_push": "Push",
+    "notifications_channel_push_desc": "Αποστολή ειδοποιήσεων ως push μηνύματα σε αυτή τη συσκευή.",
+    "notifications_channel_email": "Email",
+    "notifications_channel_email_desc": "Αποστολή ειδοποιήσεων στη διεύθυνση email του λογαριασμού σας."
   },
   "account": {
     "title": "Ο Λογαριασμός μου",
