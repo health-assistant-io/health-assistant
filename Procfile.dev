@@ -16,9 +16,14 @@
 # Start everything:        ./scripts/run-dev.sh
 # Start one process:       honcho start worker -f Procfile.dev
 # Run with extra process:  add a line here or use Procfile.dev.local (gitignored)
+#
+# Ports use honcho env expansion (${VAR:-default}) and default to the family
+# dev-port bands (dev/guidelines/dev-ports.md — health is slot 0). The same
+# vars live in the root .env, so run-dev.sh, --force-stop, and honcho children
+# always agree on the actual ports.
 
-backend:    cd backend && PYTHONPATH=$(pwd):$(pwd)/.. exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+backend:    cd backend && PYTHONPATH=$(pwd):$(pwd)/.. exec uvicorn app.main:app --reload --host 0.0.0.0 --port ${BACKEND_PORT:-8000}
 worker:     cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=worker exec celery -A app.workers.celery_app worker --loglevel=info
 beat:       cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=beat   exec celery -A app.workers.celery_app beat --loglevel=info
-flower:     cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=flower FLOWER_UNAUTHENTICATED_API=true exec celery -A app.workers.celery_app flower --port=5555
-frontend:   cd frontend && exec npm run dev -- --host 0.0.0.0 --port 3000
+flower:     cd backend && PYTHONPATH=$(pwd):$(pwd)/.. HA_LOG_NAME=flower FLOWER_UNAUTHENTICATED_API=true exec celery -A app.workers.celery_app flower --port=${FLOWER_PORT:-5555}
+frontend:   cd frontend && exec npm run dev -- --host 0.0.0.0 --port ${FRONTEND_PORT:-3000}
