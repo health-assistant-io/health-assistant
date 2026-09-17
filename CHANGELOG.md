@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- **websockets 15 → 16.1** — max version compatible with langgraph-sdk's `<17` cap (17.x ignored until it relaxes); plus python-slugify 9, xxhash 4 (dependabot #128/#133/#135).
 - **Backend dependency batch** — langchain-openai 1.6.2 (with openai 2.54, staying under the langchain `<3` cap), fastmcp 4, bcrypt 5, + the grouped python/npm minor-and-patch updates (dependabot group PRs #127/#123). FE build/lint/651 tests + BE 3124 green.
 - **Dependabot ignores extended** — `openai >=3` (langchain-openai cap), `transformers >=5`, `torch >=2.2` (deliberate AI-pipeline versioning), `tailwind-merge >=3` (pairs with held Tailwind 3), `eslint >=9` (flat-config migration).
 - **Dropped the direct `pydantic_core` pin** — it's a transitive of pydantic (exact-pinned there); a direct pin only invites orphan bumps (this bit us twice: core 2.49.0 vs pydantic 2.13.x → 2.46.5).

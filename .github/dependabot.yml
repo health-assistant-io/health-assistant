@@ -23,6 +23,9 @@ updates:
       # langchain-openai caps openai<3.0.0 (ADR-0008: LangChain-only model access)
       - dependency-name: "openai"
         versions: [">=3"]
+      # langgraph-sdk caps websockets<17; pinned to max-compatible 16.x
+      - dependency-name: "websockets"
+        versions: [">=17"]
       # transformers 5 is a major; the embeddings path needs a dedicated validation pass first
       - dependency-name: "transformers"
         versions: [">=5"]
