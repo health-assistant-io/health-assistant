@@ -65,12 +65,6 @@ updates:
         versions: [">=19"]
       - dependency-name: "@types/react-dom"
         versions: [">=19"]
-      # Tailwind 4 is a CSS-first config migration — deliberate project, not a bump
-      - dependency-name: "tailwindcss"
-        versions: [">=4"]
-      # tailwind-merge v3 targets Tailwind v4; app holds Tailwind 3
-      - dependency-name: "tailwind-merge"
-        versions: [">=3"]
       # eslint 9+ requires flat-config migration (.eslintrc.json in use)
       - dependency-name: "eslint"
         versions: [">=9"]
