@@ -175,7 +175,7 @@ export const ConceptForm: React.FC<CatalogItemFormProps> = ({
           <select
             value={String(values.status ?? 'active')}
             onChange={(e) => onChange({ status: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden"
           >
             <option value="active">Active</option>
             <option value="draft">Draft</option>

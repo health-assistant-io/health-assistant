@@ -123,7 +123,7 @@ export const ObservationDetail: React.FC<InstanceDetailProps> = ({ id, patientId
                   onClick={() => setActiveTab(tabItem.id)}
                   className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
                     activeTab === tabItem.id
-                      ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm'
+                      ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs'
                       : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >

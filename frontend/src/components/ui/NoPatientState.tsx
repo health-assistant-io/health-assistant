@@ -99,7 +99,7 @@ export const NoPatientState: React.FC<NoPatientStateProps> = ({
           </button>
           <button
             onClick={() => navigate('/setup/wizard')}
-            className="w-full py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 rounded-2xl font-bold hover:from-blue-100 hover:to-indigo-100 transition-all inline-flex items-center justify-center gap-2"
+            className="w-full py-3 bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 rounded-2xl font-bold hover:from-blue-100 hover:to-indigo-100 transition-all inline-flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
             {t('common.no_patient_setup_action')}

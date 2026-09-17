@@ -98,7 +98,7 @@ export const CatalogItemSwitcher: React.FC<CatalogItemSwitcherProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search to switch item…"
-              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
             />
           </div>
           <div className="max-h-64 overflow-auto">

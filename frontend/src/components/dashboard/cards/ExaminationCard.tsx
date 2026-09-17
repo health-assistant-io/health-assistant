@@ -32,7 +32,7 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -40,7 +40,7 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -61,7 +61,7 @@ export const ExaminationCard = React.forwardRef((props: any, ref: any) => {
                 {doctor && <h4 className="font-bold text-gray-900 dark:text-dark-text">{doctor}</h4>}
                 <p className="text-xs text-gray-500 dark:text-dark-muted">{doctor ? t('examinations.attending_physician') : t('examinations.medical_record')}</p>
               </div>
-              <span className="px-2 py-1 text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">{date}</span>
+              <span className="px-2 py-1 text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-sm">{date}</span>
             </div>
 
             <p className="text-sm text-gray-500 dark:text-dark-muted italic line-clamp-2">

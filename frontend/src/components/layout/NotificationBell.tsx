@@ -126,7 +126,7 @@ export function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[550] sm:absolute sm:right-0 sm:mt-3 sm:inset-auto sm:w-96 bg-white dark:bg-dark-surface sm:border border-gray-100 dark:sm:border-dark-border sm:rounded-xl shadow-xl overflow-hidden safe-top sm:safe-top-0 animate-in fade-in slide-in-from-bottom-4 sm:slide-in-from-top-2 duration-200 flex flex-col">
+        <div className="fixed inset-0 z-550 sm:absolute sm:right-0 sm:mt-3 sm:inset-auto sm:w-96 bg-white dark:bg-dark-surface sm:border border-gray-100 dark:sm:border-dark-border sm:rounded-xl shadow-xl overflow-hidden safe-top sm:safe-top-0 animate-in fade-in slide-in-from-bottom-4 sm:slide-in-from-top-2 duration-200 flex flex-col">
            <div className="px-4 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gray-50/50 dark:bg-dark-bg/50 shrink-0">
              <h3 className="text-sm font-bold text-gray-700 dark:text-dark-text">
                {t('common.notifications')}
@@ -186,8 +186,8 @@ export function NotificationBell() {
                     >
                       <div className="flex space-x-3">
                         <div
-                          className={`mt-0.5 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                            isUnread ? 'bg-white dark:bg-dark-bg shadow-sm' : 'bg-gray-50 dark:bg-dark-bg'
+                          className={`mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                            isUnread ? 'bg-white dark:bg-dark-bg shadow-xs' : 'bg-gray-50 dark:bg-dark-bg'
                           }`}
                         >
                           <CategoryIcon category={notif.category} />
@@ -252,7 +252,7 @@ export function NotificationBell() {
                             markRead(item.recipient_id);
                           }}
                           title={t('common.mark_read', { defaultValue: 'Mark read' })}
-                          className="absolute top-3 right-3 p-1 bg-white dark:bg-dark-bg rounded-md shadow-sm border border-gray-100 dark:border-dark-border text-blue-500 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-3 right-3 p-1 bg-white dark:bg-dark-bg rounded-md shadow-xs border border-gray-100 dark:border-dark-border text-blue-500 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <Check className="w-3 h-3" />
                         </button>

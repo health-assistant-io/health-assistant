@@ -77,7 +77,7 @@ export const RedirectStep: React.FC<RedirectStepProps> = ({
         <button
           type="button"
           onClick={() => onNavigate(route)}
-          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-sm dark:shadow-none ${
+          className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors shadow-xs dark:shadow-none ${
             step.completed
               ? 'bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-border/50'
               : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'

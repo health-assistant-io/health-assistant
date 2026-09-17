@@ -194,7 +194,7 @@ const AnatomyOutcomeDetail: React.FC<{ task: TaskInfo }> = ({ task }) => {
                   <span className="text-gray-400 dark:text-dark-muted truncate">/{n.slug}</span>
                 )}
                 {n.class_concept_slug && (
-                  <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate">
+                  <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-sm bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate">
                     {n.class_concept_slug}
                   </span>
                 )}
@@ -218,9 +218,9 @@ const AnatomyOutcomeDetail: React.FC<{ task: TaskInfo }> = ({ task }) => {
             {edges.map((e, i) => (
               <li key={`${e.source_slug}-${e.target_slug}-${e.relation_type}-${i}`} className="flex items-center gap-2 text-xs min-w-0">
                 <span className="font-semibold text-gray-800 dark:text-dark-text truncate">{e.source_slug}</span>
-                <ArrowRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
                 <span className="font-semibold text-gray-800 dark:text-dark-text truncate">{e.target_slug}</span>
-                <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate flex-shrink-0">
+                <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-sm bg-gray-100 dark:bg-dark-bg text-[10px] font-bold text-gray-500 dark:text-dark-muted truncate shrink-0">
                   {RELATION_LABELS[e.relation_type] ?? e.relation_type}
                 </span>
               </li>
@@ -484,14 +484,14 @@ export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({
   }, [draft]);
 
   const inputCls =
-    'w-full px-2 py-1 text-[12px] rounded-md border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg/70 text-gray-800 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-indigo-400/40';
+    'w-full px-2 py-1 text-[12px] rounded-md border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg/70 text-gray-800 dark:text-dark-text focus:outline-hidden focus:ring-2 focus:ring-indigo-400/40';
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {error && (
         <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/10 p-3 text-[11px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
 
@@ -544,7 +544,7 @@ export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({
                 onClick={() => setView('graph')}
                 className={`px-3 py-1 text-[11px] font-bold rounded-md transition-colors ${
                   view === 'graph'
-                    ? 'bg-white dark:bg-dark-bg text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    ? 'bg-white dark:bg-dark-bg text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-gray-500 dark:text-dark-muted'
                 }`}
               >
@@ -555,7 +555,7 @@ export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({
                 onClick={() => setView('table')}
                 className={`px-3 py-1 text-[11px] font-bold rounded-md transition-colors ${
                   view === 'table'
-                    ? 'bg-white dark:bg-dark-bg text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    ? 'bg-white dark:bg-dark-bg text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-gray-500 dark:text-dark-muted'
                 }`}
               >

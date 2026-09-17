@@ -23,7 +23,7 @@ export function SyncIndicator({ className = '' }: { className?: string }) {
   if (!isOnline) {
     return (
       <div className={`flex items-center justify-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 rounded-full text-xs font-medium border border-amber-200 dark:border-amber-800 ${className}`}>
-        <CloudOff className="w-3.5 h-3.5 flex-shrink-0" />
+        <CloudOff className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate">Offline (Drafting)</span>
         {pendingCount > 0 && (
           <span className="ml-1 px-1.5 py-0.5 bg-amber-200 dark:bg-amber-800 rounded-full text-[10px]">
@@ -37,7 +37,7 @@ export function SyncIndicator({ className = '' }: { className?: string }) {
   if (syncingCount > 0) {
     return (
       <div className={`flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 rounded-full text-xs font-medium border border-blue-200 dark:border-blue-800 ${className}`}>
-        <RefreshCw className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+        <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
         <span className="truncate">Syncing...</span>
       </div>
     );
@@ -46,7 +46,7 @@ export function SyncIndicator({ className = '' }: { className?: string }) {
   if (pendingCount > 0) {
     return (
       <div className={`flex items-center justify-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 rounded-full text-xs font-medium border border-amber-200 dark:border-amber-800 ${className}`}>
-        <Cloud className="w-3.5 h-3.5 flex-shrink-0" />
+        <Cloud className="w-3.5 h-3.5 shrink-0" />
         <span className="truncate">Pending Sync ({pendingCount})</span>
       </div>
     );
@@ -54,7 +54,7 @@ export function SyncIndicator({ className = '' }: { className?: string }) {
 
   return (
     <div className={`flex items-center justify-center gap-2 px-3 py-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full text-xs font-medium border border-emerald-200 dark:border-emerald-800 ${className}`}>
-      <Cloud className="w-3.5 h-3.5 flex-shrink-0" />
+      <Cloud className="w-3.5 h-3.5 shrink-0" />
       <span className="truncate">Synced</span>
     </div>
   );

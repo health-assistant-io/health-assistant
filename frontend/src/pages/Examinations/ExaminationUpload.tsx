@@ -437,7 +437,7 @@ function ExaminationUpload() {
         }
       />
 
-      <form onSubmit={handleSubmit} className="bg-white dark:bg-dark-surface rounded-lg shadow p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-6 space-y-6">
         {/* Smart Mode & Bulk Toggle */}
         <div className="flex flex-col md:flex-row gap-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl">
           <div className="flex-1 flex items-center justify-between">
@@ -452,7 +452,7 @@ function ExaminationUpload() {
             <button
               type="button"
               onClick={() => setIsSmartMode(!isSmartMode)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isSmartMode ? 'bg-blue-600' : 'bg-gray-200 dark:bg-dark-border'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden ${isSmartMode ? 'bg-blue-600' : 'bg-gray-200 dark:bg-dark-border'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isSmartMode ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -473,7 +473,7 @@ function ExaminationUpload() {
                 setIsBulkMode(newBulk);
                 if (newBulk) setIsSmartMode(true); // Bulk usually implies smart mode
               }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isBulkMode ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-dark-border'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden ${isBulkMode ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-dark-border'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isBulkMode ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -482,7 +482,7 @@ function ExaminationUpload() {
 
         {isBulkMode && (
           <div className="flex items-center gap-2 p-3 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-xl">
-            <Info className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+            <Info className="w-4 h-4 text-indigo-500 shrink-0" />
             <p className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">
               <strong>Bulk Mode Instructions:</strong> Add documents to the top area, then drag them into examination bubbles below. You can create as many examination bubbles as needed. Each bubble represents a separate clinical visit.
             </p>
@@ -650,7 +650,7 @@ function ExaminationUpload() {
                           type="button"
                           disabled={isCreatingDoctor}
                           onClick={() => handleCreateDoctor(name)}
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100 transition-all shadow-sm"
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100 transition-all shadow-xs"
                         >
                           <Sparkles className="w-3 h-3" />
                           <span>Add suggested: Dr. {name}</span>
@@ -681,7 +681,7 @@ function ExaminationUpload() {
                     value={patientNotes}
                     onChange={(e) => setPatientNotes(e.target.value)}
                     placeholder="How do you feel? Why did you visit the doctor?"
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-none min-h-[80px]"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-hidden min-h-[80px]"
                   />
                 </div>
               </div>
@@ -725,7 +725,7 @@ function ExaminationUpload() {
                 value={patientNotes}
                 onChange={(e) => setPatientNotes(e.target.value)}
                 placeholder="How do you feel? Why did you visit the doctor?"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-none min-h-[80px]"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-hidden min-h-[80px]"
               />
             </div>
           </div>
@@ -742,7 +742,7 @@ function ExaminationUpload() {
           <button
             type="submit"
             disabled={uploading}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md"
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xs hover:shadow-md"
           >
             {uploading ? ((files.length > 0 || bulkFiles.length > 0) ? 'Creating & Uploading...' : 'Saving...') : (isBulkMode ? 'Save Examinations' : 'Save Examination')}
           </button>
@@ -751,7 +751,7 @@ function ExaminationUpload() {
 
       {/* Previews */}
       {isPreviewLoading && (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
            <div className="flex flex-col items-center gap-6">
               <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
               <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Initializing Diagnostic Preview</p>

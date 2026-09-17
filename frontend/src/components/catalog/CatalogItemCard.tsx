@@ -207,8 +207,8 @@ export const CatalogItemCard: React.FC<CatalogItemCardProps> = ({
       >
         <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse shrink-0" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          <div className="h-3.5 w-2/3 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+          <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
+          <div className="h-3.5 w-2/3 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
         </div>
       </div>
     );
@@ -304,7 +304,7 @@ export const CatalogItemCard: React.FC<CatalogItemCardProps> = ({
                   <dt className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                     {t(descriptor.labelKey, descriptor.labelFallback)}
                   </dt>
-                  <dd className="text-xs text-gray-700 dark:text-gray-200 break-words">
+                  <dd className="text-xs text-gray-700 dark:text-gray-200 wrap-break-word">
                     {node}
                   </dd>
                 </div>

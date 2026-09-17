@@ -20,7 +20,7 @@ function DemoBanner() {
   if (!isDemoMode) return null;
 
   return (
-    <div className="bg-blue-600 text-white shadow-sm print:hidden shrink-0">
+    <div className="bg-blue-600 text-white shadow-xs print:hidden shrink-0">
       <div className="max-w-7xl mx-auto px-4 py-1.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0 justify-center flex-1">
           <FlaskConical className="w-4 h-4 shrink-0" />

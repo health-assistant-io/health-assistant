@@ -73,7 +73,7 @@ export const CatalogItemSelector: React.FC<CatalogItemSelectorProps> = ({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t('catalogs.selector_search', 'Filter items…')}
-              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
             />
           </div>
           <div className="max-h-72 overflow-auto">

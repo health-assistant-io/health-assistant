@@ -280,9 +280,9 @@ export function AdminNotificationCenter() {
                         <p className="text-xs text-gray-500 dark:text-dark-muted line-clamp-1">{n.body}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span
-                        className={`px-1.5 py-0.5 text-[10px] font-bold rounded uppercase ${SOURCE_COLORS[n.source] ?? 'bg-gray-100 text-gray-600'}`}
+                        className={`px-1.5 py-0.5 text-[10px] font-bold rounded-sm uppercase ${SOURCE_COLORS[n.source] ?? 'bg-gray-100 text-gray-600'}`}
                       >
                         {n.source}
                       </span>
@@ -352,7 +352,7 @@ function StatusPill({ status }: { status: DeliveryStatus }) {
   };
   const cfg = map[status];
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded uppercase ${cfg.cls}`}>
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-sm uppercase ${cfg.cls}`}>
       {cfg.icon}
       {cfg.label}
     </span>

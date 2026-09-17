@@ -150,7 +150,7 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
               onClick={() => handleValueTypeChange(vt)}
               className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
                 valueType === vt
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm font-medium'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-xs font-medium'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
@@ -193,7 +193,7 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
                 type="checkbox"
                 checked={Boolean(values.supports_multi_state)}
                 onChange={(e) => onChange({ supports_multi_state: e.target.checked })}
-                className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                className="w-4 h-4 text-indigo-600 rounded-sm border-gray-300 focus:ring-indigo-500"
               />
               <span>{t('biomarkers.multi_state_panel', 'Multi-state panel')}</span>
             </label>
@@ -281,7 +281,7 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
             checked={isTelemetry}
             disabled={isState}
             onChange={(e) => onChange({ is_telemetry: e.target.checked })}
-            className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+            className="mt-0.5 w-4 h-4 text-indigo-600 rounded-sm border-gray-300 focus:ring-indigo-500"
           />
           <div className="flex flex-col">
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">

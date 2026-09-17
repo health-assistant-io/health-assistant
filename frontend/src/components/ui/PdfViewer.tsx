@@ -17,12 +17,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, filename, onClose }) 
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col bg-black/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-modal flex flex-col bg-black/95 backdrop-blur-xs">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-black/40 text-white">
         <div className="flex items-center space-x-4 overflow-hidden">
           <h2 className="text-lg font-bold truncate">{filename}</h2>
-          <span className="px-2 py-0.5 bg-blue-600 text-[10px] font-bold uppercase rounded">PDF View</span>
+          <span className="px-2 py-0.5 bg-blue-600 text-[10px] font-bold uppercase rounded-sm">PDF View</span>
         </div>
         <div className="flex items-center space-x-3">
           <a 

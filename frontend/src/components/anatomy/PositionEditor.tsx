@@ -275,7 +275,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
             <div
               ref={imgWrapRef}
-              className="relative flex-shrink-0 my-4"
+              className="relative shrink-0 my-4"
               style={{
                 height: `${zoom * 100}%`,
                 aspectRatio: figure ? `${figure.width} / ${figure.height}` : undefined,
@@ -326,7 +326,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           </div>
           {selectedMarker && (
-            <div className="absolute bottom-3 left-3 right-3 bg-white/90 dark:bg-dark-surface/90 backdrop-blur rounded-xl px-3 py-2 text-xs flex flex-col gap-2 border border-gray-100 dark:border-dark-border z-20">
+            <div className="absolute bottom-3 left-3 right-3 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm rounded-xl px-3 py-2 text-xs flex flex-col gap-2 border border-gray-100 dark:border-dark-border z-20">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-gray-700 dark:text-dark-text truncate">
                   {structures.find((s) => s.slug === selectedSlug)?.name}
@@ -344,7 +344,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
                 {saving.has(selectedSlug ?? '') && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex-shrink-0">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 shrink-0">
                   {t('anatomy.editor_size', { defaultValue: 'Size' })}
                 </span>
                 <input
@@ -365,7 +365,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        <div className="w-72 flex-shrink-0 flex flex-col bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl overflow-hidden">
+        <div className="w-72 shrink-0 flex flex-col bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl overflow-hidden">
           <div className="p-3 border-b border-gray-100 dark:border-dark-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -373,7 +373,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('anatomy.search_placeholder')}
-                className="w-full pl-10 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                className="w-full pl-10 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
               />
             </div>
           </div>
@@ -391,7 +391,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      className="w-2 h-2 rounded-full shrink-0"
                       style={{ background: CATEGORY_COLORS[s.category] ?? '#94a3b8' }}
                     />
                     <span className="text-gray-700 dark:text-dark-text truncate">{s.name}</span>
@@ -403,7 +403,7 @@ export const PositionEditor: React.FC<Props> = ({ isOpen, onClose }) => {
                       e.stopPropagation();
                       toggleMarker(s.slug);
                     }}
-                    className={`flex-shrink-0 ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                    className={`shrink-0 ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
                       has
                         ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
                         : 'bg-gray-100 dark:bg-dark-bg text-gray-400'

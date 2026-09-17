@@ -295,7 +295,7 @@ export default function NotificationManagement() {
           <>
             <button
               onClick={() => navigate('/notifications/settings')}
-              className="flex items-center px-3 py-2 border rounded-lg text-xs font-bold transition-colors bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted border-gray-200 dark:border-dark-border hover:text-blue-600 dark:hover:text-blue-400 shadow-sm"
+              className="flex items-center px-3 py-2 border rounded-lg text-xs font-bold transition-colors bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted border-gray-200 dark:border-dark-border hover:text-blue-600 dark:hover:text-blue-400 shadow-xs"
             >
               <Settings className="w-3.5 h-3.5 mr-1.5" />
               {t('notifications.settings_link', { defaultValue: 'Notification settings' })}
@@ -317,7 +317,7 @@ export default function NotificationManagement() {
                 if (activeTab === 'triggers') loadTriggers();
                 else loadInbox();
               }}
-              className="p-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-gray-500 hover:text-blue-600 transition-colors shadow-sm"
+              className="p-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-gray-500 hover:text-blue-600 transition-colors shadow-xs"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -334,7 +334,7 @@ export default function NotificationManagement() {
               onClick={() => setTab(tab.id)}
               className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 ${
                 activeTab === tab.id
-                  ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm'
+                  ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs'
                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-dark-text'
               }`}
             >
@@ -477,7 +477,7 @@ export default function NotificationManagement() {
       )}
 
       <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 flex items-start space-x-3">
-        <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+        <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
         <div className="text-sm text-blue-800 dark:text-blue-300 leading-relaxed">
           <p className="font-bold mb-1">{t('notifications.debug_title', { defaultValue: 'Real-time delivery' })}</p>
           <p>
@@ -530,7 +530,7 @@ function InboxList({
     );
   }
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
       <ul className="divide-y divide-gray-50 dark:divide-dark-border">
         {items.map((item) => (
           <NotificationItem
@@ -584,7 +584,7 @@ function TriggersTab({
       {triggers.map((trig) => (
         <div
           key={trig.id}
-          className="bg-white dark:bg-dark-surface rounded-2xl p-5 border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-md transition-all"
+          className="bg-white dark:bg-dark-surface rounded-2xl p-5 border border-gray-100 dark:border-dark-border shadow-xs hover:shadow-md transition-all"
         >
           <div className="flex items-start justify-between mb-4">
             <div

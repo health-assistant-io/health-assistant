@@ -164,7 +164,7 @@ export const LinksSection: React.FC<LinksSectionProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wide text-blue-500 shrink-0">
                   {sel.relation ?? ''}
                 </span>
-                <span className="text-gray-700 dark:text-gray-200 truncate max-w-[14rem]">
+                <span className="text-gray-700 dark:text-gray-200 truncate max-w-56">
                   {sel.label}
                 </span>
                 <span className="text-[10px] text-gray-400 uppercase">

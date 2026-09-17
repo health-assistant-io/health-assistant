@@ -75,7 +75,7 @@ const Integrations: React.FC = () => {
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Connected Integrations</h1>
       
       {/* Active Integrations */}
-      <div className="bg-white dark:bg-dark-surface shadow rounded-lg mb-8 overflow-hidden border border-gray-200 dark:border-dark-border">
+      <div className="bg-white dark:bg-dark-surface shadow-sm rounded-lg mb-8 overflow-hidden border border-gray-200 dark:border-dark-border">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-dark-border">
           <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Your Integrations</h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your connected health data sources.</p>
@@ -120,13 +120,13 @@ const Integrations: React.FC = () => {
                   <div className="flex space-x-2">
                     <Link
                       to={`/settings/integrations/${integration.id}`}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded shadow-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none"
+                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-sm shadow-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden"
                     >
                       <Settings className="h-4 w-4 mr-1"/> Details
                     </Link>
                     <button 
                       onClick={() => handleRemove(integration.id, integration.domain)}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 focus:outline-none"
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-sm text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 focus:outline-hidden"
                     >
                       Remove
                     </button>
@@ -139,7 +139,7 @@ const Integrations: React.FC = () => {
       </div>
 
       {/* Available Integrations — launcher card */}
-      <div className="bg-white dark:bg-dark-surface shadow rounded-lg border border-gray-200 dark:border-dark-border">
+      <div className="bg-white dark:bg-dark-surface shadow-sm rounded-lg border border-gray-200 dark:border-dark-border">
         <div className="p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
@@ -155,7 +155,7 @@ const Integrations: React.FC = () => {
           </div>
           <button
             onClick={() => setBrowseOpen(true)}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 shadow-sm shadow-blue-200/50 transition-colors shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 shadow-xs shadow-blue-200/50 transition-colors shrink-0"
           >
             <Search className="w-4 h-4" />
             Browse &amp; Connect

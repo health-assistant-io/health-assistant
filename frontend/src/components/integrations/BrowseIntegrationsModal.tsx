@@ -94,11 +94,11 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+        className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
         onClick={onClose}
       >
         <div
-          className="bg-white dark:bg-dark-surface w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-[10000]"
+          className="bg-white dark:bg-dark-surface w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-10000"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -135,7 +135,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by name, description, or category…"
-                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
+                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition"
               />
             </div>
           </div>
@@ -176,7 +176,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                               : 'text-gray-600 dark:text-dark-muted hover:bg-gray-100 dark:hover:bg-dark-border/50'
                           }`}
                         >
-                          <span className="truncate inline-block max-w-[8rem] align-bottom">{category}</span>
+                          <span className="truncate inline-block max-w-32 align-bottom">{category}</span>
                           <span className="float-right opacity-70 text-xs">{count}</span>
                         </button>
                       </li>
@@ -230,7 +230,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                     return (
                       <div
                         key={integration.domain}
-                        className="relative rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-4 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all"
+                        className="relative rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-4 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all"
                       >
                         <div className="mb-2">
                           <div className="flex items-start justify-between gap-2">
@@ -246,7 +246,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                               </span>
                             )}
                           </div>
-                          <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded">
+                          <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-sm">
                             {integration.author === 'Core' ? 'OFFICIAL' : 'COMMUNITY'}
                           </span>
                         </div>
@@ -263,7 +263,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                           <div className="flex space-x-2">
                             <button
                               onClick={() => onDocs(integration.domain)}
-                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none cursor-pointer"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden cursor-pointer"
                               title="Documentation"
                             >
                               <FileText className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
@@ -271,7 +271,7 @@ export const BrowseIntegrationsModal: React.FC<Props> = ({
                             </button>
                             <button
                               onClick={() => onAdd(integration.domain)}
-                              className="inline-flex items-center px-2.5 py-1.5 border border-transparent rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none cursor-pointer"
+                              className="inline-flex items-center px-2.5 py-1.5 border border-transparent rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-hidden cursor-pointer"
                               title="Connect"
                             >
                               <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />

@@ -67,7 +67,7 @@ export const SetupChecklistCard: React.FC<SetupChecklistCardProps> = ({ patientI
   }
 
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800/40 p-4">
+    <div className="rounded-2xl bg-linear-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-100 dark:border-blue-800/40 p-4">
       <div className="flex items-center gap-3 mb-3">
         <SetupProgressRing value={checklist.completion} size={48} stroke={5} />
         <div className="flex-1 min-w-0">

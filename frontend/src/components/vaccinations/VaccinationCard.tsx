@@ -106,7 +106,7 @@ export const VaccinationCard: React.FC<VaccinationCardProps> = ({
           top: `${coords.top + 8}px`,
           left: `${coords.left - 224 + coords.width}px`,
         }}
-        className="fixed w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-[9999] py-2 animate-in zoom-in-95 duration-200"
+        className="fixed w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-9999 py-2 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-2 border-b border-gray-50 dark:border-dark-border mb-1">
@@ -164,7 +164,7 @@ export const VaccinationCard: React.FC<VaccinationCardProps> = ({
     <div
       className={`relative flex flex-col ${
         compact ? 'p-3 sm:p-4 max-w-sm min-h-[110px]' : 'p-4 sm:p-6 w-full min-h-[140px]'
-      } bg-white dark:bg-dark-bg/60 border border-gray-100 dark:border-dark-border rounded-2xl group hover:border-indigo-300 transition-all shadow-sm`}
+      } bg-white dark:bg-dark-bg/60 border border-gray-100 dark:border-dark-border rounded-2xl group hover:border-indigo-300 transition-all shadow-xs`}
     >
       <div className="absolute top-3 right-3">
         <button
@@ -209,7 +209,7 @@ export const VaccinationCard: React.FC<VaccinationCardProps> = ({
               </p>
             )}
 
-            <p className={`${compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} font-black text-gray-900 dark:text-dark-text break-words`}>
+            <p className={`${compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} font-black text-gray-900 dark:text-dark-text wrap-break-word`}>
               {immunization.vaccine_code?.text}
             </p>
 

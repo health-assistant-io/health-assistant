@@ -150,9 +150,9 @@ export function SearchLauncher() {
 
   return (
     <div 
-      className={`fixed inset-0 z-[1000] flex items-start justify-center px-4 transition-all duration-300 ${
+      className={`fixed inset-0 z-modal flex items-start justify-center px-4 transition-all duration-300 ${
         searchMode === 'global' 
-          ? 'pt-[10vh] sm:pt-[15vh] pb-20 bg-black/20 dark:bg-black/40 backdrop-blur-sm pointer-events-auto' 
+          ? 'pt-[10vh] sm:pt-[15vh] pb-20 bg-black/20 dark:bg-black/40 backdrop-blur-xs pointer-events-auto' 
           : 'pt-4 sm:pt-6 pb-4 bg-transparent pointer-events-none'
       }`}
     >
@@ -193,7 +193,7 @@ export function SearchLauncher() {
           <input
             ref={inputRef}
             type="text"
-            className="w-full pl-12 pr-10 py-3 bg-gray-100 dark:bg-dark-bg border-none rounded-xl text-lg outline-none focus:ring-2 focus:ring-blue-500/50 dark:text-white placeholder-gray-400"
+            className="w-full pl-12 pr-10 py-3 bg-gray-100 dark:bg-dark-bg border-none rounded-xl text-lg outline-hidden focus:ring-2 focus:ring-blue-500/50 dark:text-white placeholder-gray-400"
             placeholder={
               searchMode === 'page' 
                 ? t('common.search_current_page', 'Search in current page...') 
@@ -251,7 +251,7 @@ export function SearchLauncher() {
                     onClick={() => handleGlobalResultClick(result)}
                     className="w-full flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-dark-bg rounded-xl transition-colors group text-left"
                   >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-dark-bg flex items-center justify-center mr-4 group-hover:bg-white dark:group-hover:bg-dark-surface border border-gray-200 dark:border-dark-border">
+                    <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-dark-bg flex items-center justify-center mr-4 group-hover:bg-white dark:group-hover:bg-dark-surface border border-gray-200 dark:border-dark-border">
                       {renderIconForType(result.type)}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -281,7 +281,7 @@ export function SearchLauncher() {
               {t('common.search_shortcuts', 'Navigation and search')}
             </span>
             <span className="flex items-center gap-2">
-               <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-dark-border font-sans font-medium text-[10px]">esc</kbd> {t('common.to_close', 'to close')}
+               <kbd className="px-1.5 py-0.5 rounded-sm bg-gray-200 dark:bg-dark-border font-sans font-medium text-[10px]">esc</kbd> {t('common.to_close', 'to close')}
             </span>
           </div>
         )}

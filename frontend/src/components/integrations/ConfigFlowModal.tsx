@@ -173,8 +173,8 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-[10000]">
+      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-10000">
         <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">
             {schema?.title || 'Configure Integration'}
@@ -291,7 +291,7 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
                                     : 'border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-dark-bg'
                                 }`}
                               >
-                                <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded flex items-center justify-center ${selected ? 'bg-blue-600 text-white' : 'border border-gray-300 dark:border-gray-600'}`}>
+                                <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-sm flex items-center justify-center ${selected ? 'bg-blue-600 text-white' : 'border border-gray-300 dark:border-gray-600'}`}>
                                   {selected && <Check className="w-3 h-3" />}
                                 </div>
                                 <div className="min-w-0">
@@ -387,7 +387,7 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
                         id={key}
                         checked={formData[key] || false}
                         onChange={(e) => handleChange(key, e.target.checked, prop.type)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-sm"
                       />
                     ) : (
                       <input

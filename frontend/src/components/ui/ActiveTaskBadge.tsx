@@ -105,7 +105,7 @@ export const ActiveTaskBadge: React.FC<Props> = ({
     return (
       <div key={index} className={`space-y-4 ${index > 0 ? 'pt-4 border-t border-gray-100 dark:border-dark-border' : ''}`}>
         {isMultipleTasks && (
-           <h5 className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded inline-block">
+           <h5 className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-sm inline-block">
              Task: {friendlyTaskName}
            </h5>
         )}
@@ -122,11 +122,11 @@ export const ActiveTaskBadge: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Provider</span>
                 {taskIsLocal ? (
-                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded-sm">
                     <Server className="w-3 h-3" /> Local
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded-sm">
                     <Globe className="w-3 h-3" /> Cloud
                   </span>
                 )}
@@ -168,7 +168,7 @@ export const ActiveTaskBadge: React.FC<Props> = ({
   const popover = isOpen ? createPortal(
     <div
       ref={dropdownRef}
-      className="fixed z-[99999] w-72 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+      className="fixed z-99999 w-72 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
       style={{
         top: `${coords.top + 8}px`,
         // Center the popover relative to the badge, but ensure it doesn't go off screen
@@ -212,7 +212,7 @@ export const ActiveTaskBadge: React.FC<Props> = ({
 
   const aiTextClasses = variant === 'white'
     ? "text-white font-black"
-    : "bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent font-black";
+    : "bg-linear-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-size-[200%_auto] animate-gradient-x bg-clip-text text-transparent font-black";
 
   const infoIconClasses = variant === 'white'
     ? "text-white/70 group-hover:text-white"

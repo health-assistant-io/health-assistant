@@ -94,7 +94,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
       onClick={() => !isEditMode && targetId && navigate(`/biomarkers/details/${targetId}`)}
     >
       {isEditMode && (
-        <div className="absolute top-2 right-2 flex items-center space-x-1 z-[70]">
+        <div className="absolute top-2 right-2 flex items-center space-x-1 z-70">
           <button 
             onClick={(e) => { e.stopPropagation(); onUpdateConfig(props.id, { ...config, showSparkline: !config.showSparkline }); }}
             className={`p-1.5 rounded-lg transition-all ${config.showSparkline !== false ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}
@@ -107,7 +107,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
 
       <div className="flex justify-between items-start mb-6">
         <div className="flex items-center space-x-3 min-w-0">
-          <div className="relative flex-shrink-0">
+          <div className="relative shrink-0">
             <button 
               type="button"
               disabled={!isEditMode}
@@ -119,7 +119,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
             </button>
 
             {isEditMode && showIconPicker && (
-              <div className="absolute top-full left-0 mt-2 z-[150] bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl p-4 w-44 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
+              <div className="absolute top-full left-0 mt-2 z-150 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl p-4 w-44 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
                 <p className="text-[9px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-3 px-1 border-b border-gray-100 dark:border-dark-border pb-2">{t('dashboard.config.appearance')}</p>
                 <div className="grid grid-cols-4 gap-2">
                   {Object.keys(IconMap).map((iconName) => {
@@ -174,12 +174,12 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
                   {latestPoint?.source_type && (
                     <div className="flex items-center">
                       {latestPoint.source_type === DataSourceType.TELEMETRY ? (
-                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded text-[8px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30">
+                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-sm text-[8px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30">
                           <Activity className="w-2.5 h-2.5" />
                           <span>Telemetry</span>
                         </span>
                       ) : (
-                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded text-[8px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800">
+                        <span className="flex items-center space-x-1 px-1.5 py-0.5 bg-slate-50 dark:bg-slate-900/20 text-slate-500 dark:text-slate-400 rounded-sm text-[8px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-800">
                           <Box className="w-2.5 h-2.5" />
                           <span>FHIR</span>
                         </span>
@@ -220,7 +220,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
         </div>
 
         {showSparkline && isNumericValue && (
-          <div className="w-32 h-16 flex-shrink-0 nodrag opacity-80 hover:opacity-100 transition-opacity">
+          <div className="w-32 h-16 shrink-0 nodrag opacity-80 hover:opacity-100 transition-opacity">
             <LineChart 
               data={data.slice(-10).map((d: any) => ({ 
                 name: d.date ? format(parseISO(d.date), 'MMM d') : '', 

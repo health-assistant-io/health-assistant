@@ -82,7 +82,7 @@ export function BridgeConnectCard({
   };
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+    <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
       <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-text mb-2">
         <Smartphone className="w-5 h-5 mr-2 text-blue-500" /> Connect your mobile app
       </h3>

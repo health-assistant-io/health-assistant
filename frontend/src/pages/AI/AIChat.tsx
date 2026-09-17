@@ -31,7 +31,7 @@ const AIChatPage: React.FC = () => {
       <StickyToolbar
         className="px-4 md:px-6 pt-4 mb-2"
         center={
-          <div className="flex items-center bg-gray-100 dark:bg-dark-surface/50 p-1 rounded-2xl border border-gray-200 dark:border-dark-border shadow-sm">
+          <div className="flex items-center bg-gray-100 dark:bg-dark-surface/50 p-1 rounded-2xl border border-gray-200 dark:border-dark-border shadow-xs">
             {[
               { id: 'chat', icon: MessageSquare, label: t('ai_chat.tabs.chat') },
               { id: 'insights', icon: BarChart2, label: t('ai_chat.tabs.insights') },

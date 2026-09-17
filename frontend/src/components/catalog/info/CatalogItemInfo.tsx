@@ -216,7 +216,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
         if (text === null) return <span className="text-gray-400">—</span>;
         return (
           <span className="inline-flex items-center gap-1.5">
-            <span className={d.mono ? 'font-mono break-all' : 'break-words'}>{text}</span>
+            <span className={d.mono ? 'font-mono break-all' : 'wrap-break-word'}>{text}</span>
             {d.copyable && raw !== null && raw !== undefined && (
               <CopyButton value={String(raw)} size={12} />
             )}
@@ -236,14 +236,14 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('catalogs.filter_fields', 'Filter fields…')}
-          className="w-full pl-7 pr-7 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-7 pr-7 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           aria-label={t('catalogs.filter_fields', 'Filter fields…')}
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery('')}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
             aria-label={t('common.clear', 'Clear')}
           >
             <X className="w-3.5 h-3.5" />
@@ -257,7 +257,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
             <button
               type="button"
               onClick={onJumpRelations}
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-500"
               title={t('catalogs.view_relations', 'View relations')}
             >
               <GitBranch className="w-3.5 h-3.5" aria-hidden />

@@ -45,7 +45,7 @@ export const AuthenticatedTextViewer: React.FC<AuthenticatedTextViewerProps> = (
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/95 backdrop-blur-sm">
+      <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/95 backdrop-blur-xs">
         <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
           <p className="text-white/50 text-sm animate-pulse">Decrypting content...</p>

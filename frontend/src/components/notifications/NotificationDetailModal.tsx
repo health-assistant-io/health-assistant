@@ -68,7 +68,7 @@ export function NotificationDetailModal({ item, dateLocale, onClose, onMarkRead 
                 <SeverityDot severity={n.severity} />
                 <span className="text-[10px] text-gray-400 uppercase">{n.severity}</span>
               </div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-dark-text break-words">{n.title}</h3>
+              <h3 className="text-base font-bold text-gray-900 dark:text-dark-text wrap-break-word">{n.title}</h3>
               {n.created_at && (
                 <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
@@ -135,12 +135,12 @@ export function NotificationDetailModal({ item, dateLocale, onClose, onMarkRead 
               </summary>
               <div className="px-3 pb-3 space-y-2">
                 {n.source_ref && (
-                  <pre className="text-[10px] bg-gray-50 dark:bg-dark-bg rounded p-2 overflow-x-auto text-gray-600 dark:text-dark-muted">
+                  <pre className="text-[10px] bg-gray-50 dark:bg-dark-bg rounded-sm p-2 overflow-x-auto text-gray-600 dark:text-dark-muted">
                     {JSON.stringify(n.source_ref, null, 2)}
                   </pre>
                 )}
                 {n.payload && (
-                  <pre className="text-[10px] bg-gray-50 dark:bg-dark-bg rounded p-2 overflow-x-auto text-gray-600 dark:text-dark-muted">
+                  <pre className="text-[10px] bg-gray-50 dark:bg-dark-bg rounded-sm p-2 overflow-x-auto text-gray-600 dark:text-dark-muted">
                     {JSON.stringify({ ...n.payload, actions: undefined, display_blocks: undefined }, null, 2)}
                   </pre>
                 )}

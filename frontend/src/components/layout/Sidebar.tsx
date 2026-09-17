@@ -106,7 +106,7 @@ function Sidebar() {
           {!effectiveCollapsed && !isShort && (
             <div
               aria-hidden
-              className="mt-2 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-dark-border"
+              className="mt-2 h-px bg-linear-to-r from-transparent via-gray-200 to-transparent dark:via-dark-border"
             />
           )}
           <div className={effectiveCollapsed || isShort ? undefined : 'pt-3'}>

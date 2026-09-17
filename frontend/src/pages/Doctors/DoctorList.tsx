@@ -221,7 +221,7 @@ function DoctorList() {
         {doctors.map((doctor) => (
           <div 
             key={doctor.id} 
-            className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border group relative hover:shadow-md transition-all cursor-pointer"
+            className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group relative hover:shadow-md transition-all cursor-pointer"
             onClick={() => navigate(`/doctors/${doctor.id}`)}
           >
             <div className="flex justify-between items-start mb-4">
@@ -280,7 +280,7 @@ function DoctorList() {
 
       {doctors.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-gray-50 dark:bg-dark-bg/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-dark-border">
-          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-sm mb-4">
+          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-xs mb-4">
             <User className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('doctors.no_doctors_added')}</h3>
@@ -319,7 +319,7 @@ function DoctorList() {
               <input
                 type="text"
                 required
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g. Sarah Wilson"
@@ -329,7 +329,7 @@ function DoctorList() {
               <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.specialty')}</label>
               <input
                 type="text"
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.specialty}
                 onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
                 placeholder="e.g. Cardiology"
@@ -344,7 +344,7 @@ function DoctorList() {
                 <ShieldCheck className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                   value={formData.license_number}
                   onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
                   placeholder="Medical License ID"
@@ -357,7 +357,7 @@ function DoctorList() {
                 <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                 <input
                   type="email"
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="doctor@example.com"
@@ -380,7 +380,7 @@ function DoctorList() {
                 <Hash className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                   value={formData.office_number}
                   onChange={(e) => setFormData({ ...formData, office_number: e.target.value })}
                   placeholder="Room 302"
@@ -391,7 +391,7 @@ function DoctorList() {
               <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('doctors.office_details')}</label>
               <input
                 type="text"
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.office_details}
                 onChange={(e) => setFormData({ ...formData, office_details: e.target.value })}
                 placeholder={t('doctors.office_details_placeholder')}
@@ -403,7 +403,7 @@ function DoctorList() {
             <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted">{t('doctors.address')}</label>
             <input
               type="text"
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text mb-2"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text mb-2"
               value={formData.address.line[0] || ''}
               onChange={(e) => handleUpdateAddress('line', e.target.value)}
               placeholder={t('doctors.street')}
@@ -411,28 +411,28 @@ function DoctorList() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <input
                 type="text"
-                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text text-sm"
                 value={formData.address.city}
                 onChange={(e) => handleUpdateAddress('city', e.target.value)}
                 placeholder={t('doctors.city')}
               />
               <input
                 type="text"
-                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text text-sm"
                 value={formData.address.state}
                 onChange={(e) => handleUpdateAddress('state', e.target.value)}
                 placeholder={t('doctors.state')}
               />
               <input
                 type="text"
-                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text text-sm"
                 value={formData.address.postalCode}
                 onChange={(e) => handleUpdateAddress('postalCode', e.target.value)}
                 placeholder={t('doctors.postal_code')}
               />
               <input
                 type="text"
-                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text text-sm"
+                className="px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text text-sm"
                 value={formData.address.country}
                 onChange={(e) => handleUpdateAddress('country', e.target.value)}
                 placeholder={t('doctors.country')}
@@ -468,7 +468,7 @@ function DoctorList() {
             {formData.telecom.map((item, index) => (
               <div key={index} className="flex items-center space-x-2 animate-in slide-in-from-left-2 duration-200">
                 <select
-                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
                   value={item.system}
                   onChange={(e) => handleUpdateTelecom(index, 'system', e.target.value)}
                 >
@@ -479,7 +479,7 @@ function DoctorList() {
                   <option value="other">Other</option>
                 </select>
                 <select
-                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
                   value={item.use}
                   onChange={(e) => handleUpdateTelecom(index, 'use', e.target.value)}
                 >
@@ -491,7 +491,7 @@ function DoctorList() {
                 <input
                   type="text"
                   required
-                  className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
                   value={item.value}
                   onChange={(e) => handleUpdateTelecom(index, 'value', e.target.value)}
                   placeholder="Value..."

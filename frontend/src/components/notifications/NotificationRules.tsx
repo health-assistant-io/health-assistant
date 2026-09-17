@@ -432,7 +432,7 @@ function RuleForm({
             ? t('notifications.rules.edit', { defaultValue: 'Edit rule' })
             : t('notifications.rules.create', { defaultValue: 'Create biomarker alert' })}
         </h3>
-        <button onClick={onCancel} className="p-1 text-gray-400 hover:text-gray-600 rounded">
+        <button onClick={onCancel} className="p-1 text-gray-400 hover:text-gray-600 rounded-sm">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -682,7 +682,7 @@ function RecipientPicker({
                   type="checkbox"
                   checked={selected.includes(it.id)}
                   onChange={() => onToggle(it.id)}
-                  className="mr-2 rounded"
+                  className="mr-2 rounded-sm"
                 />
                 <span className="text-sm text-gray-900 dark:text-dark-text">{it.label}</span>
               </label>

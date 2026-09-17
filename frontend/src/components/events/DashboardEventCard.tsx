@@ -21,13 +21,13 @@ export const DashboardEventCard: React.FC<Props> = ({
 
   return (
     <div 
-      className="bg-white dark:bg-dark-surface rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-md transition-all overflow-hidden group cursor-pointer"
+      className="bg-white dark:bg-dark-surface rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs hover:shadow-md transition-all overflow-hidden group cursor-pointer"
       onClick={onClick}
     >
       <div className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-4">
-            <div className="p-3 rounded-2xl bg-opacity-10 shadow-sm" style={{ backgroundColor: event.type_details?.color + '20', color: event.type_details?.color }}>
+            <div className="p-3 rounded-2xl shadow-xs" style={{ backgroundColor: event.type_details?.color + '20', color: event.type_details?.color }}>
               {getEventIcon(event.type_details?.slug || '', "w-5 h-5")}
             </div>
             <div>

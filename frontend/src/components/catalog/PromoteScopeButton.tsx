@@ -139,8 +139,8 @@ export const PromoteScopeButton: React.FC<PromoteScopeButtonProps> = ({
 
       {error && (
         <div className="absolute right-0 top-full mt-1 w-72 max-w-[80vw] rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/10 p-2.5 text-[11px] text-rose-700 dark:text-rose-300 z-20 flex items-start gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
     </div>

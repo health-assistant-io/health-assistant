@@ -194,7 +194,7 @@ export const AnatomyGraphModal: React.FC<Props> = ({
       {/* Graph canvas */}
       <div className="relative h-[58vh] rounded-xl overflow-hidden border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg">
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-dark-surface/50 backdrop-blur-sm">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-dark-surface/50 backdrop-blur-xs">
             <Activity className="w-7 h-7 text-blue-500 animate-spin" />
           </div>
         )}
@@ -211,17 +211,17 @@ export const AnatomyGraphModal: React.FC<Props> = ({
 
         {/* Floating inspector for the selected node */}
         {selectedNode && !isLoading && (
-          <div className="absolute bottom-3 left-3 z-20 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-100 dark:border-dark-border px-3 py-2.5 max-w-[260px]">
+          <div className="absolute bottom-3 left-3 z-20 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-xs rounded-xl shadow-lg border border-gray-100 dark:border-dark-border px-3 py-2.5 max-w-[260px]">
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{ background: CATEGORY_COLORS[selectedNode.category] }}
               />
               <span className="text-sm font-bold text-gray-800 dark:text-dark-text truncate">
                 {selectedNode.name}
               </span>
               {selectedNode.id !== rootStructure.id && (
-                <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 flex-shrink-0">
+                <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 shrink-0">
                   L{selectedNode.depth}
                 </span>
               )}

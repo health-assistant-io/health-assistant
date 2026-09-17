@@ -29,7 +29,7 @@ export const ChatLedgerOverlay: React.FC<ChatLedgerOverlayProps> = ({
   ));
 
   return (
-    <div className={`absolute inset-0 z-[200] animate-in slide-in-from-right duration-300 flex flex-col ${isFullScreen ? 'bg-white dark:bg-dark-bg' : 'bg-white dark:bg-dark-surface'}`}>
+    <div className={`absolute inset-0 z-200 animate-in slide-in-from-right duration-300 flex flex-col ${isFullScreen ? 'bg-white dark:bg-dark-bg' : 'bg-white dark:bg-dark-surface'}`}>
       <div className={`px-8 py-6 border-b flex items-center justify-between ${isFullScreen ? 'border-gray-100 dark:border-dark-border' : 'border-gray-50 dark:border-dark-border'}`}>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
@@ -56,7 +56,7 @@ export const ChatLedgerOverlay: React.FC<ChatLedgerOverlayProps> = ({
                   const latest = messages.flatMap(m => m.toolCalls || []).reverse().find(tc => tc.name === toolName && tc.status === 'finished');
                   if (latest) onInspectTool(latest);
                 }}
-                className={`w-full flex items-center justify-between p-6 rounded-[2rem] border transition-all ${
+                className={`w-full flex items-center justify-between p-6 rounded-4xl border transition-all ${
                   isFullScreen ? 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-surface/80 text-gray-700 dark:text-slate-300' : 'bg-gray-50 dark:bg-dark-bg/50 border-gray-100 dark:border-dark-border hover:border-indigo-200 dark:hover:border-indigo-900/50'
                 }`}
               >

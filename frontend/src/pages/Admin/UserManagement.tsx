@@ -126,7 +126,7 @@ function UserManagement() {
         }
       />
 
-      <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+      <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -147,7 +147,7 @@ function UserManagement() {
                       className="flex items-center space-x-3 text-left group/name"
                       title={t('common.view_details')}
                     >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-sm">
+                      <div className="w-10 h-10 rounded-full bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-xs">
                         {user.email[0].toUpperCase()}
                       </div>
                       <div>
@@ -192,7 +192,7 @@ function UserManagement() {
 
       {/* Create User Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-modal p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50">
               <h2 className="text-xl font-bold text-brand-navy dark:text-dark-text">{t('admin.invite_user')}</h2>
@@ -207,7 +207,7 @@ function UserManagement() {
                 <input
                   type="email"
                   required
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
                   value={createFormData.email}
                   onChange={(e) => setCreateFormData({ ...createFormData, email: e.target.value })}
                   placeholder="e.g. spouse@example.com"
@@ -220,7 +220,7 @@ function UserManagement() {
                   type="password"
                   required
                   minLength={8}
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
                   value={createFormData.password}
                   onChange={(e) => setCreateFormData({ ...createFormData, password: e.target.value })}
                 />
@@ -229,7 +229,7 @@ function UserManagement() {
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Role</label>
                 <select
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
                   value={createFormData.role}
                   onChange={(e) => setCreateFormData({ ...createFormData, role: e.target.value as UserRole })}
                 >

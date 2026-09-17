@@ -76,7 +76,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
         }
 
         return (
-          <div key={idx} className="bg-white dark:bg-dark-bg/40 rounded-xl border border-gray-100 dark:border-white/5 p-2 sm:p-3 shadow-sm group/item hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all">
+          <div key={idx} className="bg-white dark:bg-dark-bg/40 rounded-xl border border-gray-100 dark:border-white/5 p-2 sm:p-3 shadow-xs group/item hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all">
             {isObservation && (
               <div className="space-y-1.5 sm:space-y-2">
                 <div className="flex justify-between items-start gap-2">
@@ -138,11 +138,11 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                       <ExternalLink className="w-2 sm:w-2.5 h-2 sm:h-2.5 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
                     </h4>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="px-1 sm:px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
+                      <span className="px-1 sm:px-1.5 py-0.5 rounded-sm bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
                         Definition
                       </span>
                       {item.is_telemetry && (
-                        <span className="px-1 sm:px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
+                        <span className="px-1 sm:px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
                           <Activity className="w-2 h-2" />
                           Telemetry
                         </span>
@@ -182,7 +182,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                       <span className="truncate">{name}</span>
                       <ExternalLink className="w-2 sm:w-2.5 h-2 sm:h-2.5 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
                     </h4>
-                    <span className="px-1 sm:px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
+                    <span className="px-1 sm:px-1.5 py-0.5 rounded-sm bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
                       {item.status || 'Active'}
                     </span>
                   </div>
@@ -297,7 +297,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                       <span className="truncate">{item.filename}</span>
                       <ExternalLink className="w-2 sm:w-2.5 h-2 sm:h-2.5 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
                     </h4>
-                    <span className="px-1 sm:px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
+                    <span className="px-1 sm:px-1.5 py-0.5 rounded-sm bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0">
                       Document
                     </span>
                   </div>
@@ -332,7 +332,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                       <span className="truncate">{name !== 'Unknown Record' ? name : toolName.replace(/get_aggregated_|trends|_/g, ' ')}</span>
                     </h4>
                   </div>
-                  <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400`}>
+                  <span className={`px-1 sm:px-1.5 py-0.5 rounded-sm text-[7px] sm:text-[8px] font-black uppercase tracking-wider shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400`}>
                     Telemetry
                   </span>
                 </div>

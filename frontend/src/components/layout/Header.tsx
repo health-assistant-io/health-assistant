@@ -126,7 +126,7 @@ function Header() {
   };
 
   return (
-    <header className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 md:px-6 py-2 md:py-2.5 safe-top flex items-center justify-between z-[500] sticky top-0 shadow-sm transition-all duration-300">
+    <header className="bg-white dark:bg-dark-surface border-b border-gray-100 dark:border-dark-border px-4 md:px-6 py-2 md:py-2.5 safe-top flex items-center justify-between z-500 sticky top-0 shadow-xs transition-all duration-300">
       <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
         {/* Mobile/Tablet Sidebar Toggle */}
         <button 
@@ -137,7 +137,7 @@ function Header() {
         </button>
 
         {/* Dynamic Header Section (Title/Icon/Back) */}
-        <div className="flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-3 sm:pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-sm shadow-sm min-w-0 max-w-sm sm:max-w-md">
+        <div className="flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-3 sm:pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-xs shadow-xs min-w-0 max-w-sm sm:max-w-md">
           {pageHeaderConfig?.showBackButton && (
             <>
               <button 
@@ -153,7 +153,7 @@ function Header() {
 
           <div className="flex items-center space-x-3 min-w-0">
             {pageHeaderConfig?.icon && (
-              <div className={`hidden sm:flex w-9 h-9 ${isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md flex-shrink-0 overflow-hidden`}>
+              <div className={`hidden sm:flex w-9 h-9 ${isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? '' : 'bg-blue-600'} rounded-xl items-center justify-center text-white border border-blue-500/20 shadow-md shrink-0 overflow-hidden`}>
                 {isValidElement(pageHeaderConfig.icon) && pageHeaderConfig.icon.type === 'img' ? (
                   pageHeaderConfig.icon
                 ) : (
@@ -170,7 +170,7 @@ function Header() {
                   />
                 </div>
               )}
-              <h1 className="text-sm sm:text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none break-words">
+              <h1 className="text-sm sm:text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none wrap-break-word">
                 {getPageTitle()}
               </h1>
               {pageHeaderConfig?.subtitle && (
@@ -215,8 +215,8 @@ function Header() {
                   className="flex items-center pl-2 pr-1.5 py-1 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-l-xl transition-colors text-left"
                   title={t('common.edit_search', 'Edit search')}
                 >
-                  <Search className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 self-start" />
-                  <span className="text-[10px] sm:text-xs font-bold w-16 sm:w-24 md:w-32 whitespace-normal break-words line-clamp-2 leading-tight ml-1.5">
+                  <Search className="w-3.5 h-3.5 shrink-0 mt-0.5 self-start" />
+                  <span className="text-[10px] sm:text-xs font-bold w-16 sm:w-24 md:w-32 whitespace-normal wrap-break-word line-clamp-2 leading-tight ml-1.5">
                     {pageSearchTerm}
                   </span>
                 </button>
@@ -226,7 +226,7 @@ function Header() {
                     e.stopPropagation();
                     setPageSearchTerm('');
                   }}
-                  className="flex items-center justify-center px-1.5 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-r-xl transition-colors text-blue-400 flex-shrink-0"
+                  className="flex items-center justify-center px-1.5 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-r-xl transition-colors text-blue-400 shrink-0"
                   title={t('common.clear_search', 'Clear search')}
                 >
                   <X className="w-3.5 h-3.5" />

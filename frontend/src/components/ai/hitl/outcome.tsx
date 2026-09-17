@@ -94,14 +94,14 @@ export const OutcomeDetailModal: React.FC<OutcomeDetailModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
         className={`bg-white dark:bg-dark-surface w-full ${maxWidth} rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[85vh]`}
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-white dark:from-indigo-900/10 dark:to-dark-surface shrink-0">
+        <div className="px-5 py-3 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-linear-to-r from-indigo-50/50 to-white dark:from-indigo-900/10 dark:to-dark-surface shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             {Icon && (
               <div className={`p-1.5 rounded-lg bg-indigo-500/10 ${iconClassName ?? 'text-indigo-600 dark:text-indigo-400'}`}>

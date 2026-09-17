@@ -207,7 +207,7 @@ export const AnatomyExplorer: React.FC = () => {
         icon={<Network className="size-5" />}
       />
 
-      <PageContainer className="!space-y-0 px-6 pt-2 pb-6">
+      <PageContainer className="space-y-0! px-6 pt-2 pb-6">
         {/* Toolbar: search + add custom */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px] max-w-md">
@@ -290,7 +290,7 @@ export const AnatomyExplorer: React.FC = () => {
         {/* Main workspace: body map + detail */}
         <div className="flex-1 flex gap-4 min-h-0">
           {/* Left: body map */}
-          <div className="w-[240px] flex-shrink-0 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl p-4 flex flex-col items-center">
+          <div className="w-[240px] shrink-0 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl p-4 flex flex-col items-center">
             <div className="flex items-center justify-between w-full mb-3 gap-2">
               <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
                 {t('anatomy.body_map')}
@@ -298,7 +298,7 @@ export const AnatomyExplorer: React.FC = () => {
               <select
                 value={figureSlug}
                 onChange={(e) => setFigureSlug(e.target.value)}
-                className="text-[10px] font-black uppercase bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded-lg px-2 py-1 outline-none cursor-pointer"
+                className="text-[10px] font-black uppercase bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded-lg px-2 py-1 outline-hidden cursor-pointer"
               >
                 {Object.entries(figureGroups).map(([groupKey, figs]) => (
                   <optgroup key={groupKey} label={groupKey}>
@@ -407,7 +407,7 @@ const LandingOverview: React.FC<LandingOverviewProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
+      <div className="bg-linear-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
         <div className="flex items-center gap-2 mb-1">
           <Layers className="w-5 h-5" />
           <h2 className="text-lg font-black">{t('anatomy.overview_title')}</h2>
@@ -430,14 +430,14 @@ const LandingOverview: React.FC<LandingOverviewProps> = ({
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ background: CLASS_COLOR(sys.class_concept_slug) }}
                 />
                 <span className="font-medium text-gray-700 dark:text-dark-text truncate">
                   {sys.name}
                 </span>
               </div>
-              <span className="text-[9px] text-gray-400 uppercase tracking-tight flex-shrink-0">
+              <span className="text-[9px] text-gray-400 uppercase tracking-tight shrink-0">
                 {sys.class_concept_name ?? sys.category}
               </span>
             </button>

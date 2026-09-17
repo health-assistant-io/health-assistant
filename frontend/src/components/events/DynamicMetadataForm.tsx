@@ -115,7 +115,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               type="text"
               required={field.required}
               placeholder={field.placeholder ?? `Enter ${field.label.toLowerCase()}...`}
-              className="w-full pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all placeholder:font-normal placeholder:opacity-50"
+              className="w-full pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-hidden font-medium transition-all placeholder:font-normal placeholder:opacity-50"
               style={{ '--tw-ring-color': `${color}40` } as React.CSSProperties}
               value={(value as string) || ''}
               onChange={(e) => onChange(e.target.value)}
@@ -159,7 +159,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               min={field.min}
               max={field.max}
               required={field.required}
-              className="w-full pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all"
+              className="w-full pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-hidden font-medium transition-all"
               style={{ '--tw-ring-color': `${color}40` } as React.CSSProperties}
               value={value === undefined || value === null ? '' : String(value)}
               onChange={(e) =>
@@ -184,7 +184,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             <DatePicker
               placeholder={t('common.select_date', 'Select date')}
               required={field.required}
-              className="pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-none font-medium transition-all"
+              className="pl-11 pr-4 py-3 bg-white dark:bg-dark-surface border border-transparent rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 outline-hidden font-medium transition-all"
               value={(value as string) || ''}
               onChange={(date) => onChange(date)}
             />

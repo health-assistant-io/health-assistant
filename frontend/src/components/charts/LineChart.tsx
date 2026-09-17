@@ -294,7 +294,7 @@ const LineChart = React.memo(({
         <div className="absolute top-0 right-10 z-50 flex items-center space-x-2">
            <button 
             onClick={() => setZoomIndices(null)}
-            className="p-1.5 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm border border-gray-100 dark:border-dark-border rounded-lg shadow-sm text-gray-400 hover:text-blue-500 transition-all flex items-center space-x-1"
+            className="p-1.5 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-xs border border-gray-100 dark:border-dark-border rounded-lg shadow-xs text-gray-400 hover:text-blue-500 transition-all flex items-center space-x-1"
             title="Reset Zoom"
           >
             <RefreshCw className="w-3 h-3" />
@@ -364,7 +364,7 @@ const LineChart = React.memo(({
                   const dataObj = payload[0].payload;
                   if (hideAxes) {
                     return (
-                      <div className="bg-black/80 backdrop-blur-sm px-2 py-1.5 rounded-lg border border-white/10 shadow-xl flex flex-col items-center">
+                      <div className="bg-black/80 backdrop-blur-xs px-2 py-1.5 rounded-lg border border-white/10 shadow-xl flex flex-col items-center">
                         <div className="flex items-baseline space-x-1">
                           <p className="text-[10px] font-black text-white">{formatBiomarkerValue(dataObj[dataKey], precisionProfile)}</p>
                           {unit && <p className="text-[8px] font-bold text-gray-400 uppercase">{unit}</p>}

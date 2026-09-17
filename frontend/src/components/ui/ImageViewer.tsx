@@ -240,18 +240,18 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/95 backdrop-blur-sm">
-      <div className="absolute top-0 left-0 right-0 p-4 flex flex-col sm:flex-row sm:items-center justify-between z-10 bg-gradient-to-b from-black/80 to-transparent gap-4">
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/95 backdrop-blur-xs">
+      <div className="absolute top-0 left-0 right-0 p-4 flex flex-col sm:flex-row sm:items-center justify-between z-10 bg-linear-to-b from-black/80 to-transparent gap-4">
         <div className="flex flex-col px-2">
           <div className="flex items-center gap-2">
             <span className="text-white font-bold truncate max-w-lg text-shadow-sm">{filename}</span>
             {category && (
-              <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded tracking-wider shadow-sm">
+              <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-black uppercase rounded-sm tracking-wider shadow-xs">
                 {category}
               </span>
             )}
             {isEdited && (
-              <span className="px-2 py-0.5 bg-green-600 text-white text-[10px] font-black uppercase rounded tracking-wider shadow-sm">
+              <span className="px-2 py-0.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-sm tracking-wider shadow-xs">
                 EDITED
               </span>
             )}
@@ -454,13 +454,13 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       </div>
 
       {!isEditingMode && relatedImages && relatedImages.length > 1 && (
-        <div className="absolute bottom-0 left-0 right-0 p-6 flex justify-center z-10 bg-gradient-to-t from-black/80 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 p-6 flex justify-center z-10 bg-linear-to-t from-black/80 to-transparent">
           <div className="flex items-center gap-3 px-4 py-3 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-x-auto max-w-[90vw] scrollbar-hide no-scrollbar">
             {relatedImages.map((img) => (
               <button
                 key={img.id}
                 onClick={() => onSelectImage?.(img.id)}
-                className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all hover:scale-105 active:scale-95 ${
+                className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all hover:scale-105 active:scale-95 ${
                   currentId === img.id ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'border-transparent opacity-60 hover:opacity-100'
                 }`}
                 title={img.title}

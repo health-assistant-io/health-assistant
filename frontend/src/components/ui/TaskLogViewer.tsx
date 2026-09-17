@@ -67,8 +67,8 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div role="dialog" aria-modal="true" className="bg-[#0f172a] border border-slate-800 w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div role="dialog" aria-modal="true" className="bg-dark-bg border border-slate-800 w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center space-x-3">
@@ -132,7 +132,7 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
                         {hasData && (
-                          <span className="text-slate-500 flex-shrink-0">
+                          <span className="text-slate-500 shrink-0">
                             {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                           </span>
                         )}
@@ -144,7 +144,7 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
                           [{log.task_name}]
                         </span>
                         {log.stage && (
-                          <span className="px-1.5 py-0.5 bg-slate-800 rounded text-slate-400 font-bold uppercase text-[9px] break-all">
+                          <span className="px-1.5 py-0.5 bg-slate-800 rounded-sm text-slate-400 font-bold uppercase text-[9px] break-all">
                             {log.stage}
                           </span>
                         )}

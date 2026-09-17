@@ -258,7 +258,7 @@ export function NotificationSettings() {
       </div>
 
       {/* Master toggle + push setup */}
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 space-y-5">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900 dark:text-dark-text">
@@ -350,7 +350,7 @@ export function NotificationSettings() {
       </div>
 
       {/* Unified kind preferences (sources + channels + per-integration types) */}
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6">
         <div className="flex items-center gap-2 mb-1">
           <SlidersHorizontal className="w-4 h-4 text-gray-400" />
           <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text">

@@ -270,13 +270,13 @@ function DocumentList() {
            <div className="flex items-center bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg p-1">
               <button 
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-dark-bg shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-dark-bg shadow-xs text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <Grid className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-dark-bg shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-dark-bg shadow-xs text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <ListIcon className="w-4 h-4" />
               </button>
@@ -368,7 +368,7 @@ function DocumentList() {
           </>
         )}
         
-        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm text-white px-4 py-2 rounded-lg max-w-[60%] pointer-events-none">
+        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-xs text-white px-4 py-2 rounded-lg max-w-[60%] pointer-events-none">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
             {new Date(selectedDoc.created_at).toLocaleDateString()}
           </p>
@@ -382,14 +382,14 @@ function DocumentList() {
             else if (selectedDoc.filename.match(/\.pdf$/i)) setPdfViewerOpen(true);
             else setTextViewerOpen(true);
           }}
-          className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-white p-2 rounded-lg hover:bg-black/80 transition-colors"
+          className="absolute top-4 right-4 bg-black/60 backdrop-blur-xs text-white p-2 rounded-lg hover:bg-black/80 transition-colors"
           title={t('common.view_original')}
         >
           <Maximize2 className="w-5 h-5" />
         </button>
         
         {!selectedDoc.filename.match(/\.pdf$/i) && !selectedDoc.filename.toLowerCase().endsWith('.dcm') && (
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/60 backdrop-blur-sm rounded-full p-1 border border-white/10 z-10">
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/60 backdrop-blur-xs rounded-full p-1 border border-white/10 z-10">
             <button className="p-2 text-white hover:bg-white/20 rounded-full transition-colors"><ChevronLeft className="w-5 h-5" /></button>
             <div className="px-6 text-center">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t('documents_explorer.scan')}</p>
@@ -478,7 +478,7 @@ function DocumentList() {
       <StickyToolbar
         className="flex-col sm:flex-row items-stretch sm:items-center"
         actions={
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-shrink-0 pt-2 sm:pt-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0 pt-2 sm:pt-0">
             <div className="relative">
                <button 
                   onClick={(e) => {

@@ -83,7 +83,7 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
   if (loading) {
     return (
       <div className="animate-pulse bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border w-full h-full">
-        <div className="h-4 w-40 bg-gray-200 rounded mb-4" />
+        <div className="h-4 w-40 bg-gray-200 rounded-sm mb-4" />
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-10 bg-gray-50 rounded-xl" />
@@ -95,7 +95,7 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
         <SummaryCardHeader
           icon={Calendar}
           iconClassName="text-emerald-500"
@@ -123,7 +123,7 @@ const ScheduleSummary: React.FC<Props> = ({ patientId }) => {
   }
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
       <SummaryCardHeader
         icon={Calendar}
         iconClassName="text-emerald-500"
@@ -249,7 +249,7 @@ const OngoingRow: React.FC<{ item: CalendarEvent; t: any; onClick: () => void }>
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/30 dark:bg-purple-900/5 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all group"
+      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/30 dark:bg-purple-900/5 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-xs transition-all group"
     >
       <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${accent}`}>
         <Activity className="w-4 h-4" />
@@ -295,7 +295,7 @@ const ScheduleRow: React.FC<{ item: CalendarEvent; t: any; onClick: () => void }
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/30 hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-sm transition-all group"
+      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/30 hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-xs transition-all group"
     >
       <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${accent}`}>
         <Icon className="w-4 h-4" />

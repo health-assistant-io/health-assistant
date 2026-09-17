@@ -56,7 +56,7 @@ const SystemIntegrations: React.FC = () => {
         icon={<LinkIcon className="w-8 h-8 text-blue-500" />}
       />
 
-      <div className="bg-white dark:bg-dark-surface shadow rounded-2xl overflow-hidden border border-gray-100 dark:border-dark-border">
+      <div className="bg-white dark:bg-dark-surface shadow-sm rounded-2xl overflow-hidden border border-gray-100 dark:border-dark-border">
         {loading ? (
           <div className="p-8 text-center text-gray-500 dark:text-dark-muted">Loading system integrations...</div>
         ) : integrations.length === 0 ? (
@@ -83,7 +83,7 @@ const SystemIntegrations: React.FC = () => {
                   <button
                     onClick={() => handleToggle(integration.domain, integration.is_enabled)}
                     disabled={toggling === integration.domain}
-                    className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-sm focus:outline-none transition-all ${
+                    className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-xs focus:outline-hidden transition-all ${
                       integration.is_enabled
                         ? 'bg-red-50 text-red-700 hover:bg-red-100'
                         : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200/50'

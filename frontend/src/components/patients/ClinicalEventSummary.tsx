@@ -71,7 +71,7 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
   if (loading) {
     return (
       <div className="animate-pulse bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border w-full h-full">
-        <div className="h-4 w-40 bg-gray-200 rounded mb-4" />
+        <div className="h-4 w-40 bg-gray-200 rounded-sm mb-4" />
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-14 bg-gray-50 rounded-xl" />
@@ -83,7 +83,7 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
         <SummaryCardHeader
           icon={Activity}
           iconClassName="text-purple-500"
@@ -120,7 +120,7 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
   ].filter(Boolean) as React.ReactNode[];
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
       <SummaryCardHeader
         icon={Activity}
         iconClassName="text-purple-500"
@@ -197,7 +197,7 @@ const EventRow: React.FC<{ event: ClinicalEvent; t: any; onClick: () => void }> 
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/30 hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-sm transition-all group"
+      className="w-full text-left flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/30 hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-xs transition-all group"
     >
       <div className={`shrink-0 flex flex-col items-center justify-center w-10 h-10 rounded-lg ${isActive ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400' : 'bg-gray-100 dark:bg-dark-bg text-gray-400'}`}>
         {isActive ? <Activity className="w-4 h-4" /> : <Clock className="w-4 h-4" />}

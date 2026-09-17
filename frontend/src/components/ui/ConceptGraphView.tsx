@@ -334,7 +334,7 @@ const EDGE_TYPES = { floating: FloatingEdge };
 const GraphLegend: React.FC = () => {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden">
+    <div className="rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-xs overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 w-full"
@@ -348,7 +348,7 @@ const GraphLegend: React.FC = () => {
             <p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Nodes</p>
             {Object.entries(KIND_COLORS).slice(0, 8).map(([k, c]) => (
               <div key={k} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: c }} />
+                <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: c }} />
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">
                   {k.replace(/_/g, ' ')}
                 </span>
@@ -359,7 +359,7 @@ const GraphLegend: React.FC = () => {
             <p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Edges</p>
             {Object.entries(RELATION_COLORS).slice(0, 8).map(([k, c]) => (
               <div key={k} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-0.5 rounded-sm" style={{ backgroundColor: c }} />
+                <span className="w-2.5 h-0.5 rounded-xs" style={{ backgroundColor: c }} />
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">
                   {k.replace(/_/g, ' ')}
                 </span>
@@ -829,7 +829,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#cbd5e1" />
         <Controls
           showInteractive={false}
-          className="!bg-white dark:!bg-dark-surface !border-gray-200 dark:!border-dark-border"
+          className="bg-white! dark:bg-dark-surface! border-gray-200! dark:border-dark-border!"
         />
         {showMiniMap && (
           <MiniMap
@@ -837,7 +837,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
               const bg = node.style?.background as string;
               return typeof bg === 'string' ? bg : '#94a3b8';
             }}
-            className="!bg-gray-50 dark:!bg-dark-bg !border-gray-200 dark:!border-dark-border"
+            className="bg-gray-50! dark:bg-dark-bg! border-gray-200! dark:border-dark-border!"
             pannable
             zoomable
           />
@@ -845,7 +845,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
         <Panel position="top-right">
           <div className="flex items-center gap-1.5">
             {/* Layout mode toggle: force vs hierarchy */}
-            <div className="flex items-center rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm overflow-hidden">
+            <div className="flex items-center rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-xs overflow-hidden">
               <button
                 onClick={() => setLayoutMode('force')}
                 title="Force-directed layout"
@@ -872,7 +872,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
             {/* PNG export */}
             <button
               onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-medium text-slate-600 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-medium text-slate-600 dark:text-slate-200 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               PNG
@@ -882,7 +882,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
         {/* Search-to-find (top-left) */}
         <Panel position="top-left">
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-xs">
               <Search className="w-3.5 h-3.5 text-slate-400" />
               <input
                 value={searchTerm}
@@ -892,7 +892,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
                   if (e.key === 'Escape') setSearchTerm('');
                 }}
                 placeholder="Find…"
-                className="w-24 bg-transparent text-xs text-slate-600 dark:text-slate-200 placeholder-slate-400 outline-none"
+                className="w-24 bg-transparent text-xs text-slate-600 dark:text-slate-200 placeholder-slate-400 outline-hidden"
               />
               {lowerSearch && (
                 <span className="text-[10px] text-slate-400">
@@ -908,7 +908,7 @@ export const ConceptGraphView: React.FC<ConceptGraphViewProps> = ({
               const hn = rfNodes.find((n) => n.id === hoveredNodeId);
               const hd = (hn?.data as any) ?? {};
               return (
-                <div className="px-2 py-1 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm text-[10px] text-slate-500 dark:text-slate-300 max-w-[200px] truncate">
+                <div className="px-2 py-1 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-xs text-[10px] text-slate-500 dark:text-slate-300 max-w-[200px] truncate">
                   <span className="font-medium">{hd.name}</span>
                   {hd.type && <span className="opacity-60"> · {hd.type}</span>}
                   <span className="opacity-60"> · {hd.degree ?? 0} rel.</span>

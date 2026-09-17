@@ -211,7 +211,7 @@ function OrganizationList() {
         {organizations.map((org) => (
           <div 
             key={org.id} 
-            className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border group relative hover:shadow-md transition-all cursor-pointer"
+            className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group relative hover:shadow-md transition-all cursor-pointer"
             onClick={() => navigate(`/organizations/${org.id}`)}
           >
             <div className="flex justify-between items-start mb-4">
@@ -268,7 +268,7 @@ function OrganizationList() {
 
       {organizations.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-gray-50 dark:bg-dark-bg/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-dark-border">
-          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-sm mb-4">
+          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-xs mb-4">
             <Building2 className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('organizations.no_organizations_added')}</h3>
@@ -301,7 +301,7 @@ function OrganizationList() {
             <input
               type="text"
               required
-              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g. Central City Hospital"
@@ -311,7 +311,7 @@ function OrganizationList() {
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.type')}</label>
             <select
-              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
             >
@@ -325,7 +325,7 @@ function OrganizationList() {
             <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.email')}</label>
             <input
               type="email"
-              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="contact@facility.com"
@@ -336,7 +336,7 @@ function OrganizationList() {
             <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.phone')}</label>
             <input
               type="tel"
-              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+              className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               placeholder="+1 (555) 000-0000"
@@ -351,7 +351,7 @@ function OrganizationList() {
               <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.street')}</label>
               <input
                 type="text"
-                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.address.line}
                 onChange={(e) => setFormData({ ...formData, address: { ...formData.address, line: e.target.value } })}
               />
@@ -360,7 +360,7 @@ function OrganizationList() {
               <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.city')}</label>
               <input
                 type="text"
-                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.address.city}
                 onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
               />
@@ -369,7 +369,7 @@ function OrganizationList() {
               <label className="block text-sm font-semibold text-gray-700 dark:text-dark-muted mb-1">{t('organizations.state')}</label>
               <input
                 type="text"
-                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-shadow dark:text-dark-text"
+                className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-blue-500 outline-hidden transition-shadow dark:text-dark-text"
                 value={formData.address.state}
                 onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
               />

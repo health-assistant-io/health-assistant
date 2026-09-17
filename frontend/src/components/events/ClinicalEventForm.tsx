@@ -481,7 +481,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
     };
 
     const fieldInput =
-      'w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-none font-bold transition-all';
+      'w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-hidden font-bold transition-all';
 
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -490,7 +490,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
           <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-white dark:bg-dark-surface shrink-0">
             <div className="flex items-center space-x-4">
               <div
-                className="p-3 rounded-2xl bg-opacity-10 shadow-sm transition-all duration-500"
+                className="p-3 rounded-2xl shadow-xs transition-all duration-500"
                 style={{ backgroundColor: selectedType?.color ? selectedType.color + '20' : '#3b82f620' }}
               >
                 <div style={{ color: selectedType?.color || '#3b82f6' }}>
@@ -550,7 +550,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={t('events.search_types_placeholder', 'Search by name, description or category...')}
                   autoFocus
-                  className="w-full pl-11 pr-10 py-3 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-sm font-medium text-gray-900 dark:text-dark-text placeholder:text-gray-400 placeholder:font-medium focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-none transition-all"
+                  className="w-full pl-11 pr-10 py-3 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-sm font-medium text-gray-900 dark:text-dark-text placeholder:text-gray-400 placeholder:font-medium focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-hidden transition-all"
                 />
                 <button
                   type="button"
@@ -628,11 +628,11 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                           setActiveCategoryId(cat.id);
                         }
                       }}
-                      className="group flex flex-col p-4 rounded-2xl border border-transparent bg-gray-50 dark:bg-dark-bg hover:border-blue-200 dark:hover:border-blue-700/50 hover:bg-white dark:hover:bg-dark-surface transition-all text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="group flex flex-col p-4 rounded-2xl border border-transparent bg-gray-50 dark:bg-dark-bg hover:border-blue-200 dark:hover:border-blue-700/50 hover:bg-white dark:hover:bg-dark-surface transition-all text-left cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
                     >
                       <div className="flex items-start gap-4">
                         <div
-                          className="p-3 rounded-2xl bg-white dark:bg-dark-surface shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform"
+                          className="p-3 rounded-2xl bg-white dark:bg-dark-surface shadow-xs shrink-0 group-hover:scale-105 transition-transform"
                           style={{ color: cat.color || '#3b82f6' }}
                         >
                           {getEventIcon(cat.slug)}
@@ -642,7 +642,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                             <span className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-tight truncate">
                               {t(`events.category.${cat.slug}.name`, cat.name)}
                             </span>
-                            <span className="text-[9px] font-black text-gray-400 dark:text-dark-muted bg-gray-100 dark:bg-dark-hover px-2 py-0.5 rounded-full uppercase tracking-widest flex-shrink-0">
+                            <span className="text-[9px] font-black text-gray-400 dark:text-dark-muted bg-gray-100 dark:bg-dark-hover px-2 py-0.5 rounded-full uppercase tracking-widest shrink-0">
                               {typeCount}
                             </span>
                           </div>
@@ -680,7 +680,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                             >
                               {type.color && (
                                 <span
-                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
                                   style={{ backgroundColor: type.color }}
                                 />
                               )}
@@ -743,7 +743,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
             <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-900/15 border border-blue-100 dark:border-blue-800/30">
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className="p-2 rounded-xl bg-white dark:bg-dark-surface shadow-sm flex-shrink-0"
+                  className="p-2 rounded-xl bg-white dark:bg-dark-surface shadow-xs shrink-0"
                   style={{ color: selectedType.color || '#3b82f6' }}
                 >
                   {getEventIcon(selectedType.slug)}
@@ -774,7 +774,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                className="flex-shrink-0 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 bg-white dark:bg-dark-surface hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800/40 rounded-lg transition-colors"
+                className="shrink-0 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 bg-white dark:bg-dark-surface hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800/40 rounded-lg transition-colors"
               >
                 {t('events.change_type', 'Change')}
               </button>
@@ -830,7 +830,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                       isSelected ? toneClasses.selected : `bg-white dark:bg-dark-bg border-gray-100 dark:border-dark-border text-gray-400 ${toneClasses.idle}`
                     }`}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <Icon className="w-4 h-4 shrink-0" />
                     <span className="truncate block text-center leading-tight">{t(`events.status.${opt.value.toLowerCase()}`)}</span>
                   </button>
                 );
@@ -861,7 +861,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                 <textarea
                   rows={3}
                   placeholder={selectedType ? t(`events.placeholders.${selectedType.slug}.description`) : t('events.description_placeholder')}
-                  className="w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-none resize-none transition-all font-medium"
+                  className="w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-hidden resize-none transition-all font-medium"
                   value={formData.description}
                   onChange={e => setFormData({ ...formData, description: e.target.value })}
                 />
@@ -955,7 +955,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   <input
                     type="text"
                     placeholder={t('events.reason_for_visit_placeholder')}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-indigo-500/10 outline-hidden transition-all placeholder:font-medium dark:text-dark-text"
                     value={formData.examinations.find(e => e.examination_id === sel.id)?.reason || ''}
                     onChange={e => updateExamReason(sel.id, e.target.value)}
                   />
@@ -975,7 +975,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   <input
                     type="text"
                     placeholder={t('events.notes_for_biomarker_placeholder')}
-                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-blue-500/10 outline-hidden transition-all placeholder:font-medium dark:text-dark-text"
                     value={formData.observations.find(o => o.observation_id === sel.id)?.notes || ''}
                     onChange={e => updateObservationNotes(sel.id, e.target.value)}
                   />
@@ -1037,7 +1037,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                         }
                         className={`py-2.5 rounded-xl text-[10px] font-black uppercase transition-all border ${
                           formData.event_metadata?.recurrence?.frequency === f
-                            ? 'bg-blue-50 border-blue-200 text-blue-600 shadow-sm'
+                            ? 'bg-blue-50 border-blue-200 text-blue-600 shadow-xs'
                             : 'bg-white dark:bg-dark-bg border-gray-100 dark:border-dark-border text-gray-400'
                         }`}
                       >
@@ -1055,7 +1055,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                     <input
                       type="number"
                       min="1"
-                      className="w-20 px-4 py-2.5 bg-white dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm font-black outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="w-20 px-4 py-2.5 bg-white dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm font-black outline-hidden focus:ring-2 focus:ring-blue-500/20"
                       value={formData.event_metadata?.recurrence?.interval}
                       onChange={e =>
                         setFormData({
@@ -1161,14 +1161,14 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                   </div>
                 ) : (
                   formData.occurrences.map((occ, i) => (
-                    <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col gap-3 animate-in slide-in-from-top-2">
+                    <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs flex flex-col gap-3 animate-in slide-in-from-top-2">
                       {/* Row 1: date + time + delete */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-1">
                           <DatePicker
                             placeholder={t('common.select_date', 'Select date')}
                             variant="unstyled"
-                            className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-none w-28 dark:text-dark-text"
+                            className="px-2 py-1.5 bg-gray-50 dark:bg-dark-bg border-none rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-blue-500/20 outline-hidden w-28 dark:text-dark-text"
                             value={occ.date}
                             allowClear
                             onChange={date => {
@@ -1233,7 +1233,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                       <input
                         type="text"
                         placeholder={t('events.occurrence_notes_placeholder')}
-                        className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500/20 outline-none dark:text-dark-text"
+                        className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500/20 outline-hidden dark:text-dark-text"
                         value={occ.notes || ''}
                         onChange={e => {
                           const updated = [...formData.occurrences];
@@ -1260,7 +1260,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
                 <div className="relative">
                   <CodingSystemSelect
                     domain="clinical_event"
-                    className="w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-none appearance-none font-bold transition-all"
+                    className="w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-hidden appearance-none font-bold transition-all"
                     value={formData.coding_system}
                     onChange={(v) =>
                       setFormData((prev) => ({

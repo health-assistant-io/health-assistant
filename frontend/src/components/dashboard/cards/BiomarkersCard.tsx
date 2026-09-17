@@ -210,7 +210,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
         </td>
         <td className="py-3 px-4 font-bold text-gray-900 dark:text-dark-text">{lab.result} <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-tighter">{formatUnit(lab.unit)}</span></td>
         <td className="py-3 px-4">
-          <BiomarkerStatusIndicator interpretation={lab.status} compact={true} className="!items-start" />
+          <BiomarkerStatusIndicator interpretation={lab.status} compact={true} className="items-start!" />
         </td>
         <td className="py-3 px-4 text-right text-gray-400 dark:text-dark-muted font-bold text-[11px] whitespace-nowrap">{new Date(lab.date).toLocaleDateString()}</td>
       </tr>
@@ -221,7 +221,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -229,7 +229,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -308,7 +308,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
                 <button 
                   key={val}
                   onClick={() => onUpdateConfig(id, { ...config, limit: val })}
-                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${limit === val ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${limit === val ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                 >
                   {val}
                 </button>
@@ -344,25 +344,25 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
             <div className="flex flex-wrap gap-1 bg-white dark:bg-dark-surface p-0.5 rounded-lg border border-gray-200 dark:border-dark-border">
               <button 
                 onClick={() => onUpdateConfig(id, { ...config, sortBy: 'date' })}
-                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'date' ? 'bg-blue-50 text-blue-600 shadow-sm border border-blue-100' : 'text-gray-400 hover:text-gray-600 border border-transparent'}`}
+                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'date' ? 'bg-blue-50 text-blue-600 shadow-xs border border-blue-100' : 'text-gray-400 hover:text-gray-600 border border-transparent'}`}
               >
                 Date
               </button>
               <button 
                 onClick={() => onUpdateConfig(id, { ...config, sortBy: 'alerts' })}
-                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'alerts' ? 'bg-red-50 text-red-600 shadow-sm border border-red-100' : 'text-gray-400 hover:text-red-600 border border-transparent'}`}
+                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'alerts' ? 'bg-red-50 text-red-600 shadow-xs border border-red-100' : 'text-gray-400 hover:text-red-600 border border-transparent'}`}
               >
                 Alerts
               </button>
               <button 
                 onClick={() => onUpdateConfig(id, { ...config, sortBy: 'lowest' })}
-                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'lowest' ? 'bg-orange-50 text-orange-600 shadow-sm border border-orange-100' : 'text-gray-400 hover:text-orange-600 border border-transparent'}`}
+                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'lowest' ? 'bg-orange-50 text-orange-600 shadow-xs border border-orange-100' : 'text-gray-400 hover:text-orange-600 border border-transparent'}`}
               >
                 Lowest
               </button>
               <button 
                 onClick={() => onUpdateConfig(id, { ...config, sortBy: 'highest' })}
-                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'highest' ? 'bg-red-50 text-red-600 shadow-sm border border-red-100' : 'text-gray-400 hover:text-red-600 border border-transparent'}`}
+                className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${sortBy === 'highest' ? 'bg-red-50 text-red-600 shadow-xs border border-red-100' : 'text-gray-400 hover:text-red-600 border border-transparent'}`}
               >
                 Highest
               </button>

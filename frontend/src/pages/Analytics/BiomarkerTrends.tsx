@@ -27,10 +27,10 @@ const CategoryDropdown = ({ activePerspective, activeTab, tabs, setActivePerspec
   const [isOpen, setIsOpen] = useState(false);
   
   return (
-    <div className="relative flex-shrink-0">
+    <div className="relative shrink-0">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-3 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-sm text-sm font-bold text-gray-700 dark:text-dark-text active:scale-[0.98] transition-all hover:border-blue-300 dark:hover:border-blue-700/50"
+        className="flex items-center space-x-3 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xs text-sm font-bold text-gray-700 dark:text-dark-text active:scale-[0.98] transition-all hover:border-blue-300 dark:hover:border-blue-700/50"
       >
         <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
           {activePerspective === 'clinical' ? <Layers className="w-4 h-4 text-blue-600" /> : 
@@ -50,8 +50,8 @@ const CategoryDropdown = ({ activePerspective, activeTab, tabs, setActivePerspec
       
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-[35]" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-2 z-[40] w-72 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 border-t-4 border-t-blue-500">
+          <div className="fixed inset-0 z-35" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 mt-2 z-40 w-72 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 border-t-4 border-t-blue-500">
             <div className="max-h-96 overflow-y-auto p-1.5 custom-scrollbar">
               <div className="px-3 pt-3 pb-2">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('biomarkers.grouping_method')}</p>
@@ -109,7 +109,7 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-2.5 rounded-xl border transition-all shadow-sm active:scale-95 ${isOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg'}`}
+        className={`p-2.5 rounded-xl border transition-all shadow-xs active:scale-95 ${isOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg'}`}
         title={t('biomarkers.filters')}
       >
         <Filter className="w-5 h-5" />
@@ -117,8 +117,8 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] animate-in slide-in-from-top-4 duration-200">
+          <div className="fixed inset-0 z-60" onClick={() => setIsOpen(false)} />
+          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-4xl shadow-2xl z-70 animate-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between p-6 pb-0">
               <h3 className="text-sm font-black text-brand-navy dark:text-dark-text uppercase tracking-widest">{t('biomarkers.filters')}</h3>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
@@ -149,21 +149,21 @@ const FilterMenu = ({ dateRange, setDateRange, viewMode, setViewMode, t }: any) 
                 <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl">
                   <button 
                     onClick={() => setViewMode('grid')}
-                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
                   >
                     <Grid className="w-4 h-4 mb-1" />
                     <span>{t('biomarkers.views.grid')}</span>
                   </button>
                   <button 
                     onClick={() => setViewMode('list')}
-                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'list' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'list' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
                   >
                     <List className="w-4 h-4 mb-1" />
                     <span>{t('biomarkers.views.list')}</span>
                   </button>
                   <button 
                     onClick={() => setViewMode('table')}
-                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'table' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 flex flex-col items-center justify-center py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all ${viewMode === 'table' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
                   >
                     <TableIcon className="w-4 h-4 mb-1" />
                     <span className="whitespace-nowrap">{t('biomarkers.views.table')}</span>
@@ -339,7 +339,7 @@ function BiomarkerTrends() {
 
             <button 
               onClick={() => setShowAlertsOnly(!showAlertsOnly)}
-              className={`p-2.5 rounded-xl border transition-all active:scale-95 ${showAlertsOnly ? 'bg-red-50 border-red-200 text-red-600 shadow-sm' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-50'}`}
+              className={`p-2.5 rounded-xl border transition-all active:scale-95 ${showAlertsOnly ? 'bg-red-50 border-red-200 text-red-600 shadow-xs' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-50'}`}
               title={t('biomarkers.toggle_alerts')}
             >
               <AlertCircle className="w-5 h-5" />

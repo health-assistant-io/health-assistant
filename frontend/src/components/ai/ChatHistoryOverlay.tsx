@@ -37,15 +37,15 @@ export const ChatHistoryOverlay: React.FC<ChatHistoryOverlayProps> = ({
   );
 
   const sidebarClasses = isFullScreen 
-    ? `lg:relative fixed inset-y-0 left-0 z-[1050] w-72 sm:w-80 bg-white dark:bg-dark-bg border-r border-gray-100 dark:border-dark-border shadow-2xl lg:shadow-none transition-all duration-300 ease-in-out transform ${isOpen ? 'translate-x-0' : '-translate-x-full lg:hidden'}`
-    : `absolute inset-0 z-[200] animate-in slide-in-from-right duration-300 flex flex-col bg-white dark:bg-dark-surface`;
+    ? `lg:relative fixed inset-y-0 left-0 z-popover w-72 sm:w-80 bg-white dark:bg-dark-bg border-r border-gray-100 dark:border-dark-border shadow-2xl lg:shadow-none transition-all duration-300 ease-in-out transform ${isOpen ? 'translate-x-0' : '-translate-x-full lg:hidden'}`
+    : `absolute inset-0 z-200 animate-in slide-in-from-right duration-300 flex flex-col bg-white dark:bg-dark-surface`;
 
   return (
     <>
       {/* Backdrop for Mobile overlay mode */}
       {isOpen && isFullScreen && (
         <div 
-          className="fixed inset-0 lg:hidden bg-black/40 backdrop-blur-sm z-[1040] animate-in fade-in duration-500 cursor-pointer"
+          className="fixed inset-0 lg:hidden bg-black/40 backdrop-blur-xs z-1040 animate-in fade-in duration-500 cursor-pointer"
           onClick={onClose}
         />
       )}
@@ -55,7 +55,7 @@ export const ChatHistoryOverlay: React.FC<ChatHistoryOverlayProps> = ({
         {isFullScreen && isOpen && (
           <button
             onClick={onClose}
-            className="absolute left-full top-1/2 -translate-y-1/2 z-[500] group flex items-center"
+            className="absolute left-full top-1/2 -translate-y-1/2 z-500 group flex items-center"
           >
             <div className="bg-white dark:bg-dark-bg border border-l-0 border-gray-100 dark:border-dark-border py-8 px-1 rounded-r-2xl shadow-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all flex flex-col items-center gap-4">
                <ChevronLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
@@ -92,7 +92,7 @@ export const ChatHistoryOverlay: React.FC<ChatHistoryOverlayProps> = ({
               placeholder={t('common.search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 transition-all outline-none"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 transition-all outline-hidden"
             />
           </div>
         </div>

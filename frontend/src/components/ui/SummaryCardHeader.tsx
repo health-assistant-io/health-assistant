@@ -126,7 +126,7 @@ const SummaryCardHeader: React.FC<SummaryCardHeaderProps> = ({
                 {titleTo && (
                   <ExternalLink
                     onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(titleTo, '_blank', 'noopener,noreferrer'); }}
-                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:!text-blue-500 transition-opacity shrink-0"
+                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:text-blue-500! transition-opacity shrink-0"
                   />
                 )}
               </span>

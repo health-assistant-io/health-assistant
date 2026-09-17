@@ -19,7 +19,7 @@ export const BiomarkerInfoModal: React.FC<BiomarkerInfoModalProps> = ({ info, na
   useModalA11y(true, onClose);
   return createPortal(
   <div 
-    className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
   >
     <div

@@ -59,7 +59,7 @@ export const PatientSelect: React.FC<Props> = ({
 
   const containerClasses = className.includes('border-none') 
     ? "w-full min-h-[40px] px-0 py-1 bg-transparent text-gray-900 dark:text-dark-text cursor-pointer flex gap-2 items-center"
-    : "w-full min-h-[40px] px-3 py-1.5 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-sm text-gray-900 dark:text-dark-text focus-within:ring-2 focus-within:ring-blue-500/20 cursor-pointer flex gap-2 items-center transition-all duration-200 hover:border-gray-200 dark:hover:border-dark-border-strong";
+    : "w-full min-h-[40px] px-3 py-1.5 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xs text-gray-900 dark:text-dark-text focus-within:ring-2 focus-within:ring-blue-500/20 cursor-pointer flex gap-2 items-center transition-all duration-200 hover:border-gray-200 dark:hover:border-dark-border-strong";
 
   return (
     <div className={`relative ${className.replace('border-none', '')}`} ref={dropdownRef}>
@@ -68,7 +68,7 @@ export const PatientSelect: React.FC<Props> = ({
         onClick={() => setIsOpen(!isOpen)}
       >
         {showIcon && (
-          <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0 shadow-sm border border-blue-100/20">
+          <div className="w-8 h-8 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-xs border border-blue-100/20">
             <User className="w-4 h-4" />
           </div>
         )}
@@ -78,7 +78,7 @@ export const PatientSelect: React.FC<Props> = ({
             <div className="text-xs font-black text-brand-navy dark:text-dark-text truncate leading-tight">
               {getPatientName(currentPatient)}
             </div>
-            <div className="text-[9px] text-gray-400 dark:text-dark-muted font-black uppercase tracking-[0.1em] leading-tight mt-0.5 opacity-80">
+            <div className="text-[9px] text-gray-400 dark:text-dark-muted font-black uppercase tracking-widest leading-tight mt-0.5 opacity-80">
               {formatAge(currentPatient.birth_date)}
             </div>
           </div>
@@ -88,11 +88,11 @@ export const PatientSelect: React.FC<Props> = ({
           </span>
         )}
         
-        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
       {isOpen && (
-        <div className={`absolute z-[600] w-72 mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 ${align === 'right' ? 'right-0' : 'left-0'}`}>
+        <div className={`absolute z-600 w-72 mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 ${align === 'right' ? 'right-0' : 'left-0'}`}>
           <div className="p-3 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md z-10">
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('common.patients')}</span>
@@ -104,7 +104,7 @@ export const PatientSelect: React.FC<Props> = ({
                 type="text"
                 autoFocus
                 placeholder={t('patients.search_placeholder')}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50/80 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text transition-all"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50/80 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-xl text-xs outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -122,7 +122,7 @@ export const PatientSelect: React.FC<Props> = ({
                     onClick={() => handlePatientSelect(patient)}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-100 text-gray-400 dark:bg-dark-bg group-hover:bg-blue-100 group-hover:text-blue-500'}`}>
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-100 text-gray-400 dark:bg-dark-bg group-hover:bg-blue-100 group-hover:text-blue-500'}`}>
                         <span className="text-[11px] font-black uppercase">
                           {patient.name?.given?.[0]?.[0]}{patient.name?.family?.[0]}
                         </span>

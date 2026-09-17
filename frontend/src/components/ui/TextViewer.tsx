@@ -38,7 +38,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({ content: initialContent,
   const isMarkdown = filename.toLowerCase().endsWith('.md');
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col bg-black/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-modal flex flex-col bg-black/95 backdrop-blur-xs">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-black/40 text-white">
         <div className="flex items-center space-x-4 overflow-hidden">
@@ -46,7 +46,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({ content: initialContent,
             <FileText className="w-5 h-5 text-blue-400" />
           </div>
           <h2 className="text-lg font-bold truncate">{filename}</h2>
-          <span className="px-2 py-0.5 bg-gray-700 text-[10px] font-bold uppercase rounded">
+          <span className="px-2 py-0.5 bg-gray-700 text-[10px] font-bold uppercase rounded-sm">
             {isMarkdown ? 'Markdown' : 'Text File'}
           </span>
         </div>

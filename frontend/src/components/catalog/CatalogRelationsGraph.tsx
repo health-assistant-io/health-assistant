@@ -124,7 +124,7 @@ export const CatalogRelationsGraph: React.FC<CatalogRelationsGraphProps> = ({
         <select
           value={depth}
           onChange={(e) => setDepth(Number(e.target.value))}
-          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm"
+          className="rounded-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm"
         >
           <option value={1}>1 hop</option>
           <option value={2}>2 hops</option>

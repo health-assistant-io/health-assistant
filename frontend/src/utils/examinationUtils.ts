@@ -22,7 +22,7 @@ export const getCategoryStyles = (exam: any) => {
           color: details.color,
           borderColor: details.color 
         },
-        className: 'px-2 py-0.5 text-[10px] font-bold rounded uppercase border'
+        className: 'px-2 py-0.5 text-[10px] font-bold rounded-sm uppercase border'
       };
     }
   }
@@ -39,7 +39,7 @@ export const getCategoryStyles = (exam: any) => {
     }
   })();
 
-  return { className: `px-2 py-0.5 text-[10px] font-bold rounded uppercase ${classes}` };
+  return { className: `px-2 py-0.5 text-[10px] font-bold rounded-sm uppercase ${classes}` };
 };
 
 export const stripHtml = (html: string) => {

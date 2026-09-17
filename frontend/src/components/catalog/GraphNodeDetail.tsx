@@ -120,14 +120,14 @@ export const GraphNodeDetail: React.FC<GraphNodeDetailProps> = ({
             className="w-3.5 h-3.5 text-white"
           />
         </span>
-        <p className="flex-1 text-xs font-semibold text-gray-800 dark:text-gray-100 leading-snug break-words">
+        <p className="flex-1 text-xs font-semibold text-gray-800 dark:text-gray-100 leading-snug wrap-break-word">
           {node.name}
         </p>
         {onClose && (
           <button
             onClick={onClose}
             title="Close"
-            className="p-0.5 -mt-0.5 -mr-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded"
+            className="p-0.5 -mt-0.5 -mr-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-sm"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -138,7 +138,7 @@ export const GraphNodeDetail: React.FC<GraphNodeDetailProps> = ({
       <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
         {typeLabel && (
           <span
-            className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide rounded text-white"
+            className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide rounded-sm text-white"
             style={{ backgroundColor: typeColor }}
           >
             {typeLabel}
@@ -159,8 +159,8 @@ export const GraphNodeDetail: React.FC<GraphNodeDetailProps> = ({
         <div className="px-3 pb-2 space-y-1 border-t border-gray-100 dark:border-gray-700 pt-2">
           {loading && (
             <div className="space-y-1">
-              <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />
-              <div className="h-2 w-2/3 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />
+              <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-sm animate-pulse" />
+              <div className="h-2 w-2/3 bg-gray-100 dark:bg-gray-700 rounded-sm animate-pulse" />
             </div>
           )}
           {!loading && description && (

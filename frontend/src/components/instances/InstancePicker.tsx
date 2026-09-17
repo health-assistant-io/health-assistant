@@ -299,7 +299,7 @@ export const InstancePicker: React.FC<InstancePickerProps> = ({
             blurTimer.current = setTimeout(() => setShowResults(false), 150);
           }}
           placeholder={placeholderText}
-          className={`w-full pl-8 pr-20 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50`}
+          className={`w-full pl-8 pr-20 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden disabled:opacity-50`}
         />
         {/* Browse button */}
         <button
@@ -354,7 +354,7 @@ export const InstancePicker: React.FC<InstancePickerProps> = ({
                     </span>
                     <span className="truncate flex-1">{r.label}</span>
                     {r.subtitle && (
-                      <span className="text-[10px] text-gray-400 truncate max-w-[10rem]">
+                      <span className="text-[10px] text-gray-400 truncate max-w-40">
                         {r.subtitle}
                       </span>
                     )}
@@ -408,7 +408,7 @@ export const InstancePicker: React.FC<InstancePickerProps> = ({
                   {t(`instances.type_${sel.type}`, sel.type)}
                 </span>
               )}
-              <span className="text-gray-700 dark:text-gray-200 truncate max-w-[14rem]">
+              <span className="text-gray-700 dark:text-gray-200 truncate max-w-56">
                 {sel.label}
               </span>
               <button

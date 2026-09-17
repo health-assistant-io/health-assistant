@@ -80,7 +80,7 @@ export const SetupWizardDrawer: React.FC = () => {
   if (!isOpen) {
     if (wizardActive && checklist && checklist.completion < 1.0) {
       return (
-        <div className="fixed bottom-6 right-6 z-[540] flex items-center gap-2">
+        <div className="fixed bottom-6 right-6 z-540 flex items-center gap-2">
           <button
             onClick={() => { setOpen(true); setCollapsed(false); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-300 dark:shadow-none hover:bg-blue-700 transition-colors"
@@ -92,7 +92,7 @@ export const SetupWizardDrawer: React.FC = () => {
           <button
             onClick={() => setWizardActive(false)}
             title={t('setup.exit_wizard', 'Exit wizard')}
-            className="p-1.5 bg-white dark:bg-dark-surface rounded-full shadow border border-gray-200 dark:border-dark-border text-gray-400 hover:text-red-500"
+            className="p-1.5 bg-white dark:bg-dark-surface rounded-full shadow-sm border border-gray-200 dark:border-dark-border text-gray-400 hover:text-red-500"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>
@@ -107,7 +107,7 @@ export const SetupWizardDrawer: React.FC = () => {
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className="fixed bottom-6 right-6 z-[560] flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-dark-surface text-brand-navy dark:text-dark-text rounded-full shadow-lg border border-gray-200 dark:border-dark-border hover:bg-gray-50 transition-colors"
+        className="fixed bottom-6 right-6 z-560 flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-dark-surface text-brand-navy dark:text-dark-text rounded-full shadow-lg border border-gray-200 dark:border-dark-border hover:bg-gray-50 transition-colors"
       >
         {checklist && <SetupProgressRing value={checklist.completion} size={28} stroke={3} />}
         <span className="text-sm font-bold">{wizardLabel}</span>
@@ -141,11 +141,11 @@ export const SetupWizardDrawer: React.FC = () => {
   return (
     <>
       <div
-        className="fixed inset-0 z-[550] animate-in fade-in duration-200"
+        className="fixed inset-0 z-550 animate-in fade-in duration-200"
         onClick={() => setCollapsed(true)}
       />
       <aside
-        className="fixed top-0 right-0 h-screen w-full sm:w-[400px] bg-white dark:bg-dark-bg z-[560] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300 safe-top safe-bottom"
+        className="fixed top-0 right-0 h-screen w-full sm:w-[400px] bg-white dark:bg-dark-bg z-560 shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300 safe-top safe-bottom"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — context label + minimize */}
@@ -241,7 +241,7 @@ const CollapsibleStepCard: React.FC<{
   return (
     <div
       className={`rounded-xl border transition-all overflow-hidden ${
-        isExpanded ? 'border-blue-200 dark:border-blue-800/50 shadow-sm' : 'border-gray-100 dark:border-dark-border'
+        isExpanded ? 'border-blue-200 dark:border-blue-800/50 shadow-xs' : 'border-gray-100 dark:border-dark-border'
       }`}
     >
       <button

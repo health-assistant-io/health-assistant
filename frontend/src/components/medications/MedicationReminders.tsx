@@ -52,7 +52,7 @@ export function MedicationReminders({ medicationId, medicationName }: Props) {
   };
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-4 sm:p-6 mt-6">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-4 sm:p-6 mt-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-brand-navy dark:text-dark-text flex items-center">
           <Bell className="w-5 h-5 mr-2 text-indigo-500" />
@@ -118,7 +118,7 @@ export function MedicationReminders({ medicationId, medicationName }: Props) {
         {/* Placeholder for real triggers */}
         <div className="flex items-center justify-between p-3 bg-indigo-50/30 dark:bg-indigo-900/5 border border-indigo-100 dark:border-indigo-900/20 rounded-xl">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-50 dark:border-indigo-900/30">
+            <div className="w-10 h-10 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center text-indigo-600 shadow-xs border border-indigo-50 dark:border-indigo-900/30">
               <Clock className="w-5 h-5" />
             </div>
             <div>
@@ -130,7 +130,7 @@ export function MedicationReminders({ medicationId, medicationName }: Props) {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded uppercase flex items-center">
+            <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-sm uppercase flex items-center">
               <ShieldCheck className="w-3 h-3 mr-1" />
               Active
             </div>

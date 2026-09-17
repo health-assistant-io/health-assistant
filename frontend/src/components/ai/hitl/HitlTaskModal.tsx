@@ -60,7 +60,7 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
 
   return createPortal(
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -68,7 +68,7 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
         onClick={e => e.stopPropagation()}
       >
         {/* Uniform HITL header */}
-        <div className="px-6 py-4 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-white dark:from-indigo-900/10 dark:to-dark-surface shrink-0">
+        <div className="px-6 py-4 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-linear-to-r from-indigo-50/50 to-white dark:from-indigo-900/10 dark:to-dark-surface shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <HandlerIcon className="w-4 h-4" />

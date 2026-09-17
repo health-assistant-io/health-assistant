@@ -306,7 +306,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
                   <input
                     type="text"
                     placeholder={t('vaccinations.modal.name_placeholder')}
-                    className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-rose-500 outline-none dark:text-dark-text"
+                    className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-rose-500 outline-hidden dark:text-dark-text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     autoFocus
@@ -355,7 +355,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
                 {t('vaccinations.modal.status')}
               </label>
               <select
-                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500/40 outline-none dark:text-dark-text"
+                className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500/40 outline-hidden dark:text-dark-text"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
               >
@@ -399,7 +399,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
             <input
               type="text"
               placeholder={t('vaccinations.modal.dose_placeholder')}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-none"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-hidden"
               value={form.dose_number}
               onChange={(e) => setForm({ ...form, dose_number: e.target.value })}
             />
@@ -412,7 +412,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
             <input
               type="text"
               placeholder={t('vaccinations.modal.lot_placeholder')}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-none"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-hidden"
               value={form.lot_number}
               onChange={(e) => setForm({ ...form, lot_number: e.target.value })}
             />
@@ -424,7 +424,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
             <input
               type="text"
               placeholder={t('vaccinations.modal.manufacturer_placeholder')}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-none"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-hidden"
               value={form.manufacturer}
               onChange={(e) =>
                 setForm({ ...form, manufacturer: e.target.value })
@@ -439,7 +439,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
             <input
               type="text"
               placeholder={t('vaccinations.modal.location_placeholder')}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-none"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-hidden"
               value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })}
             />
@@ -455,7 +455,7 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
           <textarea
             rows={3}
             placeholder={t('vaccinations.modal.notes_placeholder')}
-            className="w-full px-4 py-4 bg-gray-50 dark:bg-dark-bg border-none rounded-2xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-none resize-none"
+            className="w-full px-4 py-4 bg-gray-50 dark:bg-dark-bg border-none rounded-2xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-rose-500/20 outline-hidden resize-none"
             value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
           />

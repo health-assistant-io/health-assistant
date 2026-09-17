@@ -100,12 +100,12 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200" onClick={onClose}>
       <div 
         className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[85vh] h-[85vh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-50 dark:border-dark-border flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-50/50 to-white dark:from-blue-900/10 dark:to-dark-surface">
+        <div className="px-6 py-4 border-b border-gray-50 dark:border-dark-border flex items-center justify-between shrink-0 bg-linear-to-r from-blue-50/50 to-white dark:from-blue-900/10 dark:to-dark-surface">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
               <Bot className="w-5 h-5" />
@@ -132,7 +132,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 <input
                   type="text"
                   placeholder="Search tools..."
-                  className="w-full pl-9 pr-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text transition-all"
+                  className="w-full pl-9 pr-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text transition-all"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                 />
@@ -144,7 +144,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeCategoryId === 'all' 
                     ? 'bg-blue-600 text-white shadow-md' 
-                    : 'text-gray-600 dark:text-dark-text hover:bg-white dark:hover:bg-dark-surface hover:shadow-sm'
+                    : 'text-gray-600 dark:text-dark-text hover:bg-white dark:hover:bg-dark-surface hover:shadow-xs'
                 }`}
               >
                 <Wrench className={`w-4 h-4 ${activeCategoryId === 'all' ? 'text-blue-200' : 'text-gray-400'}`} />
@@ -166,7 +166,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${
                       isActive 
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
-                        : 'text-gray-600 dark:text-dark-text hover:bg-white dark:hover:bg-dark-surface hover:shadow-sm'
+                        : 'text-gray-600 dark:text-dark-text hover:bg-white dark:hover:bg-dark-surface hover:shadow-xs'
                     }`}
                   >
                     <Icon className={`w-4 h-4 ${isActive ? 'text-blue-500' : 'text-gray-400'}`} />
@@ -210,12 +210,12 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text font-mono truncate">{selectedTool.name}</h3>
                       {selectedTool.source === 'integration' && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                           Integration
                         </span>
                       )}
                       {selectedTool.name.startsWith('propose_') && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                           HITL Action
                         </span>
                       )}
@@ -226,7 +226,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 
                 <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                   {/* Description Card */}
-                  <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-sm">
+                  <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-3">Description</h4>
                     <p className="text-sm text-gray-700 dark:text-dark-text leading-relaxed whitespace-pre-wrap">
                       {selectedTool.description}
@@ -234,7 +234,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                   </div>
 
                   {/* Arguments Card */}
-                  <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-sm">
+                  <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-4">Input Arguments</h4>
                     
                     {selectedTool.schema?.properties && Object.keys(selectedTool.schema.properties).length > 0 ? (
@@ -254,7 +254,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400 break-all">{argName}</span>
                                   {isRequired && (
-                                    <span className="text-[8px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400 px-1.5 py-0.5 rounded">Required</span>
+                                    <span className="text-[8px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400 px-1.5 py-0.5 rounded-sm">Required</span>
                                   )}
                                 </div>
                                 <div className="text-[10px] font-mono text-gray-400 dark:text-dark-muted mt-1">
@@ -274,7 +274,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                   </div>
                   
                   {/* Expected Output Card */}
-                  <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-sm">
+                  <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">Expected Output</h4>
                     <p className="text-xs text-gray-600 dark:text-dark-text leading-relaxed">
                       {selectedTool.name.startsWith('propose_') 
@@ -301,7 +301,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                             <button 
                               key={i} 
                               onClick={() => setSelectedTool(tool)}
-                              className="w-full text-left bg-gray-50/50 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-2xl p-4 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-900/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                              className="w-full text-left bg-gray-50/50 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-2xl p-4 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-900/50 transition-all focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
                             >
                               <div className="flex items-start gap-3">
                                 <div className="mt-0.5">
@@ -311,12 +311,12 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                                   <div className="flex items-center gap-2 mb-1">
                                     <h4 className="text-sm font-bold text-gray-900 dark:text-dark-text truncate font-mono text-[13px]">{tool.name}</h4>
                                     {tool.source === 'integration' && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                                         Integration
                                       </span>
                                     )}
                                     {tool.name.startsWith('propose_') && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                                         HITL Action
                                       </span>
                                     )}

@@ -71,7 +71,7 @@ export function IconPicker({ value, onChange, color = '#3b82f6', className = '' 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search icons..."
-              className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
+              className="flex-1 bg-transparent outline-hidden text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
               onKeyDown={(e) => { if (e.key === 'Escape') setIsOpen(false); }}
             />
           </div>

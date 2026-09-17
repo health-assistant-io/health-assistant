@@ -47,11 +47,11 @@ const IntegrationDocsModal: React.FC<IntegrationDocsModalProps> = ({ domain, onC
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[9999] overflow-y-auto">
+      <div className="fixed inset-0 z-9999 overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-          <div className="fixed inset-0 transition-opacity bg-gray-900/80 backdrop-blur-sm" onClick={onClose} />
+          <div className="fixed inset-0 transition-opacity bg-gray-900/80 backdrop-blur-xs" onClick={onClose} />
 
-          <div className="relative flex flex-col w-full max-w-5xl overflow-hidden text-left align-middle transition-all transform bg-white dark:bg-dark-surface shadow-2xl rounded-2xl border border-gray-100 dark:border-dark-border mt-8 mb-8 z-[10000]" style={{ height: '85vh' }}>
+          <div className="relative flex flex-col w-full max-w-5xl overflow-hidden text-left align-middle transition-all transform bg-white dark:bg-dark-surface shadow-2xl rounded-2xl border border-gray-100 dark:border-dark-border mt-8 mb-8 z-10000" style={{ height: '85vh' }}>
             <div className="flex items-center justify-between px-8 py-6 border-b border-gray-100 dark:border-dark-border bg-white dark:bg-dark-surface z-10">
               <h3 className="text-xl font-black text-gray-900 dark:text-dark-text capitalize flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-primary-600 dark:text-primary-400" />
@@ -59,7 +59,7 @@ const IntegrationDocsModal: React.FC<IntegrationDocsModalProps> = ({ domain, onC
               </h3>
               <button
                 onClick={onClose}
-                className="p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors dark:hover:text-gray-300 focus:outline-none"
+                className="p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-border rounded-full transition-colors dark:hover:text-gray-300 focus:outline-hidden"
               >
                 <span className="sr-only">Close</span>
                 <X className="w-6 h-6" />
@@ -105,7 +105,7 @@ const IntegrationDocsModal: React.FC<IntegrationDocsModalProps> = ({ domain, onC
               {/* Main Content */}
               <div className="flex-1 overflow-y-auto p-8 relative">
                 {loading && (
-                  <div className="absolute inset-0 bg-white/50 dark:bg-dark-surface/50 backdrop-blur-sm flex items-center justify-center z-10">
+                  <div className="absolute inset-0 bg-white/50 dark:bg-dark-surface/50 backdrop-blur-xs flex items-center justify-center z-10">
                     <LoadingState />
                   </div>
                 )}

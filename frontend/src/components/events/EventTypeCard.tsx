@@ -104,7 +104,7 @@ export const EventTypeCard: React.FC<EventTypeCardProps> = ({
         className={`p-2.5 rounded-xl transition-all duration-200 ${
           isSelected
             ? 'bg-blue-600 text-white'
-            : 'bg-white dark:bg-dark-surface shadow-sm text-gray-400 group-hover:text-blue-500'
+            : 'bg-white dark:bg-dark-surface shadow-xs text-gray-400 group-hover:text-blue-500'
         }`}
         style={isSelected ? undefined : { color: type.color }}
       >

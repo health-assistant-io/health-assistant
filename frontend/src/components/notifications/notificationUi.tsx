@@ -60,7 +60,7 @@ export function CategoryIcon({ category, className = 'w-4 h-4' }: { category: No
 export function SourceBadge({ source }: { source: NotificationSource }) {
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider ${SOURCE_COLORS[source] ?? 'bg-gray-100 text-gray-600'}`}
+      className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-sm uppercase tracking-wider ${SOURCE_COLORS[source] ?? 'bg-gray-100 text-gray-600'}`}
       title={`Source: ${source}`}
     >
       {source}

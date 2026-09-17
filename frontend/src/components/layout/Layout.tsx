@@ -85,13 +85,13 @@ function Layout() {
       {/* Sidebar Overlay (Mobile) */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-[900] lg:hidden backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/50 z-900 lg:hidden backdrop-blur-xs transition-opacity"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       
       {/* Sidebar Container */}
-      <div className={`fixed inset-y-0 left-0 z-[950] transform lg:relative lg:translate-x-0 transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <div className={`fixed inset-y-0 left-0 z-950 transform lg:relative lg:translate-x-0 transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <Sidebar />
       </div>
 

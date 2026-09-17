@@ -125,7 +125,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
   return (
     <Portal>
       <div 
-        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[250] flex items-center justify-center p-4 animate-in fade-in duration-300 overflow-hidden cursor-pointer"
+        className="fixed inset-0 bg-black/70 backdrop-blur-md z-250 flex items-center justify-center p-4 animate-in fade-in duration-300 overflow-hidden cursor-pointer"
         onClick={onClose}
       >
         <div 
@@ -143,14 +143,14 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
                 e.stopPropagation();
                 onClose();
               }}
-              className="absolute top-6 right-6 p-2 bg-black/10 hover:bg-black/30 text-white rounded-full transition-all z-[100] hover:rotate-90 active:scale-90 shadow-lg border border-white/10"
+              className="absolute top-6 right-6 p-2 bg-black/10 hover:bg-black/30 text-white rounded-full transition-all z-dropdown hover:rotate-90 active:scale-90 shadow-lg border border-white/10"
               aria-label="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
             
             <div className="flex items-start space-x-5 mb-2 relative z-10 pr-10">
-              <div className="p-4 sm:p-5 bg-white/20 rounded-[1.5rem] backdrop-blur-xl border border-white/20 shadow-2xl shrink-0">
+              <div className="p-4 sm:p-5 bg-white/20 rounded-3xl backdrop-blur-xl border border-white/20 shadow-2xl shrink-0">
                 <Icon className="w-8 h-8 sm:w-10 sm:h-10 text-white drop-shadow-lg" />
               </div>
               <div className="min-w-0 flex-1 pt-1">
@@ -217,7 +217,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
 
             {/* Dynamic Fields Grid */}
             {fields.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 bg-gray-50/50 dark:bg-dark-bg/20 p-8 rounded-[2rem] border border-gray-100 dark:border-dark-border">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6 bg-gray-50/50 dark:bg-dark-bg/20 p-8 rounded-4xl border border-gray-100 dark:border-dark-border">
                 {fields.map((field, idx) => (
                   <div key={idx} className={`${field.fullWidth ? 'col-span-1 sm:col-span-2' : 'col-span-1'} group`}>
                     <div className="flex items-center space-x-2 mb-2 px-1">
@@ -241,7 +241,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
                   <Info className="w-4 h-4 text-blue-500" />
                   <span>{descriptionLabel || t('common.info')}</span>
                 </h4>
-                <div className="p-8 bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm">
+                <div className="p-8 bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-xs">
                   <p className="text-gray-700 dark:text-dark-text leading-[1.6] font-medium text-sm sm:text-base">
                     {description}
                   </p>
@@ -272,7 +272,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
                 <button 
                   key={idx}
                   onClick={action.onClick}
-                  className={`flex-1 sm:flex-none px-6 py-3.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all shadow-sm active:scale-95 flex items-center justify-center space-x-2`}
+                  className={`flex-1 sm:flex-none px-6 py-3.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text font-black text-[11px] uppercase tracking-widest rounded-2xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all shadow-xs active:scale-95 flex items-center justify-center space-x-2`}
                 >
                   {action.icon && <action.icon className="w-4 h-4" />}
                   <span>{action.label}</span>
@@ -294,7 +294,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
               ) : (
                 <button 
                   onClick={onClose}
-                  className="px-12 py-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-900 dark:text-dark-text font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-gray-100 dark:hover:bg-dark-border transition-all shadow-sm active:scale-95"
+                  className="px-12 py-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-900 dark:text-dark-text font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-gray-100 dark:hover:bg-dark-border transition-all shadow-xs active:scale-95"
                 >
                   {t('common.dismiss')}
                 </button>

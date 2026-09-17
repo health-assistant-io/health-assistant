@@ -18,7 +18,7 @@ export const BiomarkerInsightsTab: React.FC<BiomarkerInsightsTabProps> = ({ biom
 
   return (
     <div className="p-8 animate-in fade-in duration-300">
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-8 text-white shadow-xl shadow-blue-200 dark:shadow-none">
+      <div className="bg-linear-to-br from-blue-600 to-indigo-700 rounded-4xl p-8 text-white shadow-xl shadow-blue-200 dark:shadow-none">
         <div className="flex items-center space-x-3 mb-6 flex-wrap">
           <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
             <Activity className="w-6 h-6 text-white" />

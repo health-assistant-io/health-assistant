@@ -90,7 +90,7 @@ export const AtlasManager: React.FC = () => {
                     <p className="text-[10px] text-gray-400 font-mono truncate">{f.slug}</p>
                   </div>
                   {!f.is_active && (
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-dark-bg text-gray-400">
+                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-sm bg-gray-100 dark:bg-dark-bg text-gray-400">
                       {t('common.inactive', { defaultValue: 'Inactive' })}
                     </span>
                   )}
@@ -302,7 +302,7 @@ const FigureForm: React.FC<FigureFormProps> = ({ isOpen, onClose, figure, onSave
     }
   };
 
-  const field = "w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text";
+  const field = "w-full px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text";
   const labelCls = "text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1 block";
 
   return (
@@ -372,7 +372,7 @@ const FigureForm: React.FC<FigureFormProps> = ({ isOpen, onClose, figure, onSave
           {/* Current image preview (edit mode only) */}
           {isEdit && currentImageUrl && !sourceUrl && (
             <div className="mb-3 flex items-center gap-3">
-              <div className="bg-gray-50 dark:bg-dark-bg rounded-xl p-1 flex-shrink-0">
+              <div className="bg-gray-50 dark:bg-dark-bg rounded-xl p-1 shrink-0">
                 <img src={currentImageUrl} alt="current" className="h-20 w-auto object-contain" />
               </div>
               <span className="text-[10px] text-gray-400">Current image (saved crop)</span>
@@ -396,7 +396,7 @@ const FigureForm: React.FC<FigureFormProps> = ({ isOpen, onClose, figure, onSave
                   else if (v === 'current') recropCurrent();
                   else if (v === 'original') recropOriginal();
                 }}
-                className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-xs font-bold outline-none cursor-pointer dark:text-dark-text"
+                className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-xs font-bold outline-hidden cursor-pointer dark:text-dark-text"
               >
                 <option value="" disabled>{t('anatomy.atlas_crop_actions', { defaultValue: 'Choose image source…' })}</option>
                 <option value="upload">{t('anatomy.atlas_upload', { defaultValue: 'Upload new image…' })}</option>

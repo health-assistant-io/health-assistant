@@ -258,7 +258,7 @@ function MedicationDetail() {
           <div className="flex items-center space-x-2">
             <p className="text-sm text-gray-500 dark:text-dark-muted font-medium">{t('medications.medication_id')}: {medication.id}</p>
             {medication.is_custom && (
-              <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
+              <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
                 {t('medications.custom_resource')}
               </span>
             )}
@@ -287,10 +287,10 @@ function MedicationDetail() {
                   </>
                 ) : (
                   <>
-                    <button onClick={handleReprocess} disabled={reprocessing} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition-all font-semibold shadow-sm active:scale-95 text-sm flex items-center space-x-2">
+                    <button onClick={handleReprocess} disabled={reprocessing} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition-all font-semibold shadow-xs active:scale-95 text-sm flex items-center space-x-2">
                       <Sparkles className="w-4 h-4" /> <span>{reprocessing ? t('medications.reprocessing') : t('medications.ai_reprocess')}</span>
                     </button>
-                    <button onClick={handleToggleEdit} className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-brand-navy dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm text-sm flex items-center space-x-2">
+                    <button onClick={handleToggleEdit} className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-brand-navy dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-xs text-sm flex items-center space-x-2">
                       <Edit2 className="w-4 h-4" /> <span>{t('common.edit')}</span>
                     </button>
                   </>
@@ -299,7 +299,7 @@ function MedicationDetail() {
             )}
             <a
               href={`/catalogs?type=medication&item=${medicationId}`}
-              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-sm"
+              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-xs"
               title="Manage in Catalogs"
             >
               <Database className="w-5 h-5" />
@@ -312,7 +312,7 @@ function MedicationDetail() {
       <div ref={tabsRef} className="flex items-center space-x-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl w-fit mb-8 border border-gray-200 dark:border-dark-border scroll-mt-32">
         <button 
           onClick={() => setActiveTab('info')}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Info className="w-4 h-4" />
           <span>{t('medications.general_info')}</span>
@@ -321,7 +321,7 @@ function MedicationDetail() {
         {currentPatient && (
           <button 
             onClick={() => setActiveTab('prescription')}
-            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'prescription' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'prescription' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
           >
             <Calendar className="w-4 h-4" />
             <span>{t('medications.my_prescription')}</span>
@@ -330,7 +330,7 @@ function MedicationDetail() {
 
         <button 
           onClick={() => setActiveTab('management')}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'management' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'management' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Users className="w-4 h-4" />
           <span>{t('medications.management')}</span>
@@ -342,7 +342,7 @@ function MedicationDetail() {
         {activeTab === 'info' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in duration-500">
             <div className="xl:col-span-2 space-y-6">
-              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-sm">
+              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-xs">
                 <h3 className="text-lg font-black text-brand-navy dark:text-dark-text mb-6 flex items-center uppercase tracking-tight">
                   <Info className="w-5 h-5 mr-3 text-blue-500" />
                   {t('medications.description')}
@@ -371,7 +371,7 @@ function MedicationDetail() {
                     </h4>
                     <div className="p-6 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100/50 dark:border-emerald-900/30 rounded-3xl">
                       {isEditing ? (
-                        <textarea className="w-full bg-transparent border-none outline-none text-sm text-emerald-800 dark:text-emerald-300 resize-none h-32" value={formData.indications || ''} onChange={e => setFormData({...formData, indications: e.target.value})} placeholder={t('medications.indications_placeholder')} />
+                        <textarea className="w-full bg-transparent border-none outline-hidden text-sm text-emerald-800 dark:text-emerald-300 resize-none h-32" value={formData.indications || ''} onChange={e => setFormData({...formData, indications: e.target.value})} placeholder={t('medications.indications_placeholder')} />
                       ) : (
                         <p className="text-emerald-800 dark:text-emerald-400 font-bold leading-relaxed">{medication.indications || t('medications.no_indications')}</p>
                       )}
@@ -385,7 +385,7 @@ function MedicationDetail() {
                     </h4>
                     <div className="p-6 bg-amber-50/30 dark:bg-amber-900/10 border border-amber-100/50 dark:border-amber-900/30 rounded-3xl">
                       {isEditing ? (
-                        <textarea className="w-full bg-transparent border-none outline-none text-sm text-amber-800 dark:text-amber-300 resize-none h-32" value={formData.contraindications || ''} onChange={e => setFormData({...formData, contraindications: e.target.value})} placeholder={t('medications.contraindications_placeholder')} />
+                        <textarea className="w-full bg-transparent border-none outline-hidden text-sm text-amber-800 dark:text-amber-300 resize-none h-32" value={formData.contraindications || ''} onChange={e => setFormData({...formData, contraindications: e.target.value})} placeholder={t('medications.contraindications_placeholder')} />
                       ) : (
                         <p className="text-amber-800 dark:text-amber-400 font-bold leading-relaxed">{medication.contraindications || t('medications.no_contraindications')}</p>
                       )}
@@ -396,7 +396,7 @@ function MedicationDetail() {
             </div>
 
             <div className="space-y-8">
-               <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+               <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
                   <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center">
                     <Users className="w-4 h-4 mr-2 text-rose-500" />
                     {t('medications.known_side_effects')}
@@ -414,14 +414,14 @@ function MedicationDetail() {
                     </div>
                     {isEditing && (
                       <form onSubmit={handleAddSideEffect} className="flex items-center space-x-2 mt-4">
-                        <input type="text" className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder={t('medications.add_side_effect_placeholder')} value={newSideEffect} onChange={e => setNewSideEffect(e.target.value)} />
+                        <input type="text" className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-xs outline-hidden focus:ring-2 focus:ring-blue-500" placeholder={t('medications.add_side_effect_placeholder')} value={newSideEffect} onChange={e => setNewSideEffect(e.target.value)} />
                         <button type="submit" className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors"><Plus className="w-4 h-4" /></button>
                       </form>
                     )}
                   </div>
                </div>
 
-               <div className="bg-blue-50/50 dark:bg-blue-900/10 rounded-[2rem] p-8 border border-blue-100/50 dark:border-blue-900/20">
+               <div className="bg-blue-50/50 dark:bg-blue-900/10 rounded-4xl p-8 border border-blue-100/50 dark:border-blue-900/20">
                   <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4 flex items-center">
                     <Clock className="w-4 h-4 mr-2" />
                     {t('medications.dosage_info')}
@@ -464,7 +464,7 @@ function MedicationDetail() {
                   <div className="space-y-6">
                     <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] px-1">{t('medications.active_prescription')}</h3>
                     {patientRecords.filter(r => r.status?.toLowerCase() === 'active').map(record => (
-                      <div key={record.id} className="bg-white dark:bg-dark-surface rounded-[2rem] border border-gray-100 dark:border-dark-border p-8 shadow-sm">
+                      <div key={record.id} className="bg-white dark:bg-dark-surface rounded-4xl border border-gray-100 dark:border-dark-border p-8 shadow-xs">
                         <div className="flex items-center justify-between mb-8">
                            <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-100 dark:border-emerald-800/30">
                              {record.status}
@@ -494,7 +494,7 @@ function MedicationDetail() {
                       </div>
                     ))}
 
-                    <div className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-[2rem] p-8 border border-indigo-100/50 dark:border-indigo-900/20">
+                    <div className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-4xl p-8 border border-indigo-100/50 dark:border-indigo-900/20">
                       <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-6 flex items-center">
                         <Activity className="w-4 h-4 mr-2" />
                         {t('medications.related_examinations')}
@@ -586,7 +586,7 @@ function MedicationDetail() {
         {activeTab === 'management' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in duration-500">
             <div className="xl:col-span-2 space-y-6">
-               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
+               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-xs">
                   <div className="p-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
                     <h3 className="text-lg font-black text-brand-navy dark:text-dark-text uppercase tracking-tight flex items-center">
                       <Users className="w-5 h-5 mr-3 text-purple-500" />
@@ -606,7 +606,7 @@ function MedicationDetail() {
                           onClick={() => navigate(`/patients/${item.patient.id}`)}
                         >
                           <div className="flex items-center space-x-6">
-                            <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100 dark:border-purple-800/30 shadow-sm">
+                            <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100 dark:border-purple-800/30 shadow-xs">
                               <User className="w-6 h-6" />
                             </div>
                             <div>
@@ -642,7 +642,7 @@ function MedicationDetail() {
             <div className="space-y-6">
                <MedicationReminders medicationId={medicationId!} medicationName={medication.name} />
                
-               <div className="bg-rose-50/50 dark:bg-rose-900/10 rounded-[2rem] p-8 border border-rose-100/50 dark:border-rose-900/20">
+               <div className="bg-rose-50/50 dark:bg-rose-900/10 rounded-4xl p-8 border border-rose-100/50 dark:border-rose-900/20">
                   <h4 className="text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] mb-6 flex items-center">
                     <Trash2 className="w-4 h-4 mr-2" />
                     {t('medications.administrative_actions')}
@@ -650,7 +650,7 @@ function MedicationDetail() {
                   <p className="text-xs text-rose-700 dark:text-rose-300 font-medium mb-6 leading-relaxed">
                     {t('medications.management_actions_desc')}
                   </p>
-                  <button className="w-full py-3 bg-white dark:bg-dark-surface border border-rose-200 dark:border-rose-800 text-rose-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all shadow-sm">
+                  <button className="w-full py-3 bg-white dark:bg-dark-surface border border-rose-200 dark:border-rose-800 text-rose-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all shadow-xs">
                     {t('medications.discontinue_globally')}
                   </button>
                </div>

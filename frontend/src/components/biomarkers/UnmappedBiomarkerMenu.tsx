@@ -147,7 +147,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
         </button>
 
         {isOpen && mode === 'menu' && (
-          <div className="absolute top-full right-0 mt-1.5 z-[200] w-60 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="absolute top-full right-0 mt-1.5 z-200 w-60 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-dark-border">
               <p className="text-[9px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
                 <Zap className="w-3 h-3" />
@@ -185,7 +185,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
         )}
 
         {isOpen && mode === 'map' && (
-          <div className="absolute top-full right-0 mt-1.5 z-[200] w-72 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="absolute top-full right-0 mt-1.5 z-200 w-72 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Map to existing</p>
               <button
@@ -202,7 +202,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
-                  className="w-full pl-8 pr-3 py-2 text-xs bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 dark:text-dark-text"
+                  className="w-full pl-8 pr-3 py-2 text-xs bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg outline-hidden focus:border-blue-400 focus:ring-1 focus:ring-blue-400 dark:text-dark-text"
                   placeholder="Search definitions..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -227,7 +227,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
                       className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-between ${isSelected ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-dark-text hover:bg-blue-50 dark:hover:bg-blue-900/40'}`}
                     >
                       <span className="truncate pr-2">{opt.name}</span>
-                      {isSelected && <Check className="w-3 h-3 flex-shrink-0" />}
+                      {isSelected && <Check className="w-3 h-3 shrink-0" />}
                     </button>
                   );
                 })

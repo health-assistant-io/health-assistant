@@ -106,7 +106,7 @@ const AskUserAnswersDetail: React.FC<{ task: TaskInfo }> = ({ task }) => {
           {questions.map(q => (
             <div key={q.id} className="text-[11px] leading-relaxed">
               <div className="font-semibold text-gray-500 dark:text-dark-muted">{q.prompt}</div>
-              <div className="text-gray-800 dark:text-dark-text break-words">
+              <div className="text-gray-800 dark:text-dark-text wrap-break-word">
                 {formatAskUserAnswer(q, answers[q.id])}
               </div>
             </div>
@@ -201,7 +201,7 @@ const FreetextQuestion: React.FC<{
       onChange(e.target.value),
     placeholder: q.placeholder ?? '',
     className:
-      'w-full px-2.5 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-800 dark:text-dark-text placeholder-gray-400 dark:placeholder-dark-muted focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 dark:focus:border-indigo-500/50 transition-shadow',
+      'w-full px-2.5 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg text-gray-800 dark:text-dark-text placeholder-gray-400 dark:placeholder-dark-muted focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 dark:focus:border-indigo-500/50 transition-shadow',
   };
   if (multiline) {
     return <textarea {...common} rows={2} />;
@@ -272,7 +272,7 @@ const MultiChoiceQuestion: React.FC<{
               type="checkbox"
               checked={checked}
               onChange={() => toggle(opt.value)}
-              className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500/40"
+              className="mt-0.5 rounded-sm text-indigo-600 focus:ring-indigo-500/40"
             />
             <div className="min-w-0">
               <div className="text-xs font-semibold text-gray-800 dark:text-dark-text">{opt.label}</div>
@@ -651,8 +651,8 @@ export const AskUserHandler: React.FC<HitlHandlerProps> = ({
 
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/10 p-2.5 text-[11px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
 

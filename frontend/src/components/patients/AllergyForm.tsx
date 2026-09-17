@@ -448,7 +448,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                       <input
                         type="text"
                         placeholder={t('allergies.modal.search_placeholder')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={newAllergenName}
                         onChange={e => setNewAllergenName(e.target.value)}
                         autoFocus
@@ -486,7 +486,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                       </label>
                       <textarea
                         rows={2}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={newDescription}
                         onChange={e => setNewDescription(e.target.value)}
                       />
@@ -498,7 +498,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                       <div className="flex gap-2 mb-2">
                         <input
                           type="text"
-                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                           placeholder={t('allergies.modal.add_reaction_placeholder', 'Add a typical reaction')}
                           value={newReactionInput}
                           onChange={e => setNewReactionInput(e.target.value)}
@@ -557,7 +557,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                     onClick={() => setFormData({ ...formData, clinical_status: s })}
                     className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                       formData.clinical_status === s
-                        ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm'
+                        ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs'
                         : 'text-gray-400 dark:text-dark-muted'
                     }`}
                   >
@@ -579,8 +579,8 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                     className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${
                       formData.criticality === c
                         ? c === 'HIGH'
-                          ? 'bg-red-600 text-white shadow-sm'
-                          : 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm'
+                          ? 'bg-red-600 text-white shadow-xs'
+                          : 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs'
                         : 'text-gray-400 dark:text-dark-muted'
                     }`}
                   >
@@ -650,7 +650,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                 <input
                   type="text"
                   placeholder={t('allergies.modal.manifestation_placeholder')}
-                  className="flex-1 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                  className="flex-1 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                   value={newReaction.manifestation}
                   onChange={e => setNewReaction({ ...newReaction, manifestation: e.target.value })}
                   onKeyDown={e => {
@@ -661,7 +661,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                   }}
                 />
                 <select
-                  className="px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                  className="px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                   value={newReaction.severity}
                   onChange={e => setNewReaction({ ...newReaction, severity: e.target.value as ReactionSeverity })}
                 >
@@ -685,7 +685,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                 {reactions.map((r, i) => (
                   <div
                     key={i}
-                    className="flex items-center space-x-2 bg-white dark:bg-dark-surface px-3 py-1.5 rounded-full border border-gray-100 dark:border-dark-border text-sm font-medium shadow-sm"
+                    className="flex items-center space-x-2 bg-white dark:bg-dark-surface px-3 py-1.5 rounded-full border border-gray-100 dark:border-dark-border text-sm font-medium shadow-xs"
                   >
                     <span
                       className={`w-2 h-2 rounded-full ${
@@ -719,7 +719,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
             </label>
             <textarea
               rows={3}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
               placeholder={t('allergies.modal.notes_placeholder')}
               value={formData.note}
               onChange={e => setFormData({ ...formData, note: e.target.value })}

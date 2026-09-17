@@ -23,7 +23,7 @@ export const ResolvedEventItem: React.FC<Props> = ({
       onClick={onClick}
     >
       <div className="flex items-center space-x-4">
-         <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-400 shadow-sm group-hover:text-blue-500 transition-colors">
+         <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-bg text-gray-400 shadow-xs group-hover:text-blue-500 transition-colors">
             {getEventIcon(event.type_details?.slug || '', "w-5 h-5")}
          </div>
          <div>

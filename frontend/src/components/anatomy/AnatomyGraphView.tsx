@@ -174,7 +174,7 @@ export const AnatomyGraphView: React.FC<Props> = ({
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#cbd5e1" />
         <Controls
           showInteractive={false}
-          className="!bg-white dark:!bg-dark-surface !border-gray-200 dark:!border-dark-border"
+          className="bg-white! dark:bg-dark-surface! border-gray-200! dark:border-dark-border!"
         />
         <MiniMap
           nodeColor={(node) => {
@@ -183,7 +183,7 @@ export const AnatomyGraphView: React.FC<Props> = ({
             );
             return cat ? CATEGORY_COLORS[cat] : '#94a3b8';
           }}
-          className="!bg-gray-50 dark:!bg-dark-bg !border-gray-200 dark:!border-dark-border"
+          className="bg-gray-50! dark:bg-dark-bg! border-gray-200! dark:border-dark-border!"
           pannable
           zoomable
         />

@@ -174,7 +174,7 @@ const NavArrow: React.FC<{ side: 'left' | 'right'; onClick: () => void }> = ({
   <button
     type="button"
     onClick={onClick}
-    className={`fixed top-1/2 -translate-y-1/2 z-[1001] p-3 rounded-full bg-white/10 hover:bg-white/25 text-white backdrop-blur-sm transition-all active:scale-90 ${
+    className={`fixed top-1/2 -translate-y-1/2 z-1001 p-3 rounded-full bg-white/10 hover:bg-white/25 text-white backdrop-blur-xs transition-all active:scale-90 ${
       side === 'left' ? 'left-4' : 'right-4'
     }`}
     title={side === 'left' ? 'Previous image' : 'Next image'}
@@ -199,7 +199,7 @@ const AttachmentThumb: React.FC<{
   const ready = !!attachment.dataUrl && !isEncoding;
   return (
     <div
-      className={`group relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 dark:border-dark-border bg-gray-100 dark:bg-dark-bg shadow-sm ${
+      className={`group relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 dark:border-dark-border bg-gray-100 dark:bg-dark-bg shadow-xs ${
         ready ? 'cursor-pointer' : ''
       }`}
       onClick={ready ? onOpen : undefined}

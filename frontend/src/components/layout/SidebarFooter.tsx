@@ -105,7 +105,7 @@ export function SidebarFooter({ collapsed, compact = false }: { collapsed: boole
         </a>
       )}
       {!compact && (
-        <div className="w-full rounded-[var(--as-radius)] bg-gray-50 px-2 pb-1.5 pt-2 dark:bg-white/5">
+        <div className="w-full rounded-(--as-radius) bg-gray-50 px-2 pb-1.5 pt-2 dark:bg-white/5">
           <p className="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             {t('footer.more_from_family', 'More from the family')}
           </p>
@@ -116,7 +116,7 @@ export function SidebarFooter({ collapsed, compact = false }: { collapsed: boole
               target="_blank"
               rel="noreferrer"
               aria-label={`${name} ${t('footer.assistant', 'Assistant')}`}
-              className="group flex items-center gap-2 rounded-[var(--as-radius-sm)] px-1.5 py-1 text-sm transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:hover:bg-white/5 dark:focus-visible:outline-blue-400"
+              className="group flex items-center gap-2 rounded-(--as-radius-sm) px-1.5 py-1 text-sm transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:hover:bg-white/5 dark:focus-visible:outline-blue-400"
             >
               <Mark size={16} />
               <span

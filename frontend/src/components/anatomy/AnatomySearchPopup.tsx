@@ -149,7 +149,7 @@ export const AnatomySearchPopup: React.FC<Props> = ({
             <>
               {CATEGORY_ICONS[selected.category]}
               <span className="font-bold">{selected.name}</span>
-              <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded text-gray-400 font-medium">
+              <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded-sm text-gray-400 font-medium">
                 {t(`anatomy.categories.${selected.category}`)}
               </span>
             </>
@@ -164,7 +164,7 @@ export const AnatomySearchPopup: React.FC<Props> = ({
       </div>
 
       {isOpen && (
-        <div className="absolute z-[210] w-full mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute z-210 w-full mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="p-3 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white dark:bg-dark-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -172,7 +172,7 @@ export const AnatomySearchPopup: React.FC<Props> = ({
                 type="text"
                 autoFocus
                 placeholder={t('anatomy.search_placeholder')}
-                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text"
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -208,7 +208,7 @@ export const AnatomySearchPopup: React.FC<Props> = ({
                     {CATEGORY_ICONS[s.category]}
                     <span>{s.name}</span>
                     {s.standard_code && (
-                      <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded text-gray-400 font-medium uppercase">
+                      <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded-sm text-gray-400 font-medium uppercase">
                         {s.standard_system}: {s.standard_code}
                       </span>
                     )}

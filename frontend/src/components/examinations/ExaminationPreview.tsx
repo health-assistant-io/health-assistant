@@ -85,7 +85,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
       {!hideHeader && (
         <div className="p-4 px-6 border-b border-gray-100 dark:border-dark-border flex items-start justify-between bg-white dark:bg-dark-surface sticky top-0 z-10">
           <div className="flex items-start space-x-4 min-w-0">
-            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 flex-shrink-0 shadow-sm mt-0.5">
+            <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 shadow-xs mt-0.5">
               <FileText className="w-5 h-5" />
             </div>
             <div className="min-w-0">
@@ -103,7 +103,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                   }
                   <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-blue-600 transition-all duration-300 group-hover:w-full opacity-50"></span>
                 </span>
-                <ArrowRight className="w-5 h-5 ml-2 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-blue-600 flex-shrink-0" />
+                <ArrowRight className="w-5 h-5 ml-2 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-blue-600 shrink-0" />
               </h2>
               <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500 dark:text-dark-muted">
                 <div className="flex items-center space-x-1.5 bg-gray-50 dark:bg-dark-bg px-2 py-0.5 rounded-md">
@@ -121,7 +121,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2 flex-shrink-0">
+          <div className="flex items-center space-x-2 shrink-0">
             <ExaminationAIActions examinationId={selectedExam.id} />
             <button 
               onClick={() => navigate(`/examinations/${selectedExam.id}`)}
@@ -183,7 +183,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
           {(selectedExam.diagnoses?.length > 0 || selectedExam.impressions || selectedExam.medications?.length > 0) && (
             <div className="flex flex-col space-y-4">
               {selectedExam.impressions && (
-                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm">
+                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-2">
                       <BriefcaseMedical className="w-4 h-4 text-blue-500" />
@@ -198,7 +198,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
               )}
 
               {selectedExam.diagnoses?.length > 0 && (
-                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm">
+                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-2">
                       <Bookmark className="w-4 h-4 text-blue-500" />
@@ -208,14 +208,14 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {selectedExam.diagnoses.map((d: string) => (
-                      <span key={d} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-100 dark:border-blue-800/30 shadow-sm">{d}</span>
+                      <span key={d} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-100 dark:border-blue-800/30 shadow-xs">{d}</span>
                     ))}
                   </div>
                 </div>
               )}
 
               {selectedExam.medications?.length > 0 && (
-                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm">
+                <div className="bg-white dark:bg-dark-surface/40 p-6 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-2">
                       <Pill className="w-4 h-4 text-indigo-500" />
@@ -225,7 +225,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {selectedExam.medications.map((m: any, idx: number) => (
-                      <div key={idx} className="bg-gray-50/50 dark:bg-dark-bg/30 p-4 rounded-xl border border-gray-100 dark:border-dark-border shadow-sm group relative">
+                      <div key={idx} className="bg-gray-50/50 dark:bg-dark-bg/30 p-4 rounded-xl border border-gray-100 dark:border-dark-border shadow-xs group relative">
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-black text-gray-900 dark:text-dark-text truncate">{m.code?.text}</p>
@@ -271,10 +271,10 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 <h3 className="text-sm font-bold uppercase tracking-wider">{t('examinations.key_biomarkers')}</h3>
               </div>
             </div>
-            <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl overflow-hidden shadow-sm">
+            <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl overflow-hidden shadow-xs">
               <div className="max-h-64 overflow-y-auto custom-scrollbar">
                 <table className="min-w-full divide-y divide-gray-100 dark:divide-dark-border relative">
-                  <thead className="bg-gray-50 dark:bg-dark-bg sticky top-0 z-10 shadow-sm">
+                  <thead className="bg-gray-50 dark:bg-dark-bg sticky top-0 z-10 shadow-xs">
                     <tr>
                       <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest bg-gray-50 dark:bg-dark-bg">{t('common.biomarkers')}</th>
                       <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest bg-gray-50 dark:bg-dark-bg">{t('examinations.table.result')}</th>
@@ -329,12 +329,12 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                   {examDocuments.filter(d => d.filename.match(/\.(png|jpe?g|webp|gif|bmp|dcm)$/i)).map((doc) => (
-                    <div key={doc.id} className="group relative aspect-square bg-gray-100 dark:bg-dark-bg rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 transition-all shadow-sm" onClick={() => onDocumentClick(doc)}>
+                    <div key={doc.id} className="group relative aspect-square bg-gray-100 dark:bg-dark-bg rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 transition-all shadow-xs" onClick={() => onDocumentClick(doc)}>
                       <AuthenticatedThumbnail documentId={doc.id} filename={doc.filename} className="transition-transform duration-500 group-hover:scale-110" />
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/20 z-20 transition-opacity">
                          <Search className="w-6 h-6 text-white" />
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent z-10">
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-linear-to-t from-black/60 to-transparent z-10">
                         <p className="text-[10px] text-white font-medium truncate">{doc.filename}</p>
                       </div>
                     </div>
@@ -351,8 +351,8 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {examDocuments.filter(d => !d.filename.match(/\.(png|jpe?g|webp|gif|bmp|dcm)$/i)).map((doc) => (
-                    <div key={doc.id} className="flex items-center p-4 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl hover:border-blue-200 dark:hover:border-blue-900 hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-all cursor-pointer group shadow-sm" onClick={() => onDocumentClick(doc)}>
-                      <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 rounded-xl flex items-center justify-center flex-shrink-0 mr-3 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
+                    <div key={doc.id} className="flex items-center p-4 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl hover:border-blue-200 dark:hover:border-blue-900 hover:bg-blue-50/30 dark:hover:bg-blue-900/20 transition-all cursor-pointer group shadow-xs" onClick={() => onDocumentClick(doc)}>
+                      <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 rounded-xl flex items-center justify-center shrink-0 mr-3 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
                         <FileText className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">

@@ -282,7 +282,7 @@ export const InstanceBrowseModal: React.FC<InstanceBrowseModalProps> = ({
       // content). Both dimensions are now pinned; the list + preview panes
       // scroll within this fixed frame. (`!` overrides Modal's sm:h/w-auto.)
       // Mobile stays full-screen.
-      className="sm:!h-[85vh] sm:!w-[92vw] xl:!w-[1100px]"
+      className="sm:h-[85vh]! sm:w-[92vw]! xl:w-[1100px]!"
       bodyClassName="p-4 sm:p-5"
       footer={footer}
     >
@@ -296,7 +296,7 @@ export const InstanceBrowseModal: React.FC<InstanceBrowseModalProps> = ({
                 setActiveType(e.target.value);
                 setSelectedRow(null);
               }}
-              className="px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
             >
               {supportsAll && (
                 <option value={ALL}>
@@ -316,7 +316,7 @@ export const InstanceBrowseModal: React.FC<InstanceBrowseModalProps> = ({
             </span>
           )}
 
-          <div className="relative flex-1 min-w-[12rem]">
+          <div className="relative flex-1 min-w-48">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               value={search}
@@ -326,7 +326,7 @@ export const InstanceBrowseModal: React.FC<InstanceBrowseModalProps> = ({
                   ? t('instances.search_all_placeholder', 'Search all records (min 2 chars)…')
                   : t('instances.search_placeholder', 'Search records…')
               }
-              className="w-full pl-8 pr-8 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full pl-8 pr-8 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
             />
             {search && (
               <button

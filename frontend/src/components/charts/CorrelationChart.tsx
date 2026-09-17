@@ -75,7 +75,7 @@ const CorrelationChart: React.FC<CorrelationChartProps> = ({
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-4 rounded-xl shadow-xl backdrop-blur-md bg-opacity-95">
+        <div className="bg-white/95 dark:bg-dark-surface/95 border border-gray-100 dark:border-dark-border p-4 rounded-xl shadow-xl backdrop-blur-md">
           <p className="text-xs font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-3 border-b border-gray-50 dark:border-dark-border pb-2">
             {label}
           </p>

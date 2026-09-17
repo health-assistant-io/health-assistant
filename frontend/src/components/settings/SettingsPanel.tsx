@@ -165,7 +165,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
     return (
       <div className="space-y-6">
         <PageHeader title={title} subtitle={subtitle} icon={icon} />
-        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-red-100 dark:border-red-900/30 p-8 flex items-start gap-3">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-red-100 dark:border-red-900/30 p-8 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-gray-900 dark:text-dark-text">
@@ -207,7 +207,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
         return (
           <div
             key={cat.key}
-            className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden"
+            className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden"
           >
             <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border">
               <h2 className="text-base font-black text-gray-900 dark:text-dark-text">
@@ -339,7 +339,7 @@ const SettingControl: React.FC<SettingControlProps> = ({ definition: d, value, o
         role="switch"
         aria-checked={on}
       >
-        <span className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${on ? 'left-6' : 'left-1'}`} />
+        <span className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-sm transition-all ${on ? 'left-6' : 'left-1'}`} />
       </button>
     );
   }

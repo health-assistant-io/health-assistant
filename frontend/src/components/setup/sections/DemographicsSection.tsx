@@ -67,7 +67,7 @@ export const DemographicsSection: React.FC<SectionProps> = ({ patient, onSaved }
                 onClick={() => { setGender(g); setSaved(false); }}
                 className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all capitalize ${
                   gender === g
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                     : 'bg-white dark:bg-dark-bg border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-50'
                 }`}
               >

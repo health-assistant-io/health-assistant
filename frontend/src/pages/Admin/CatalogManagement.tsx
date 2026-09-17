@@ -53,7 +53,7 @@ const CatalogManagement: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* URL Import */}
-        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
               <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -67,7 +67,7 @@ const CatalogManagement: React.FC = () => {
           <div className="space-y-4">
             <input 
               type="url" 
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden transition-all dark:text-dark-text"
               placeholder="https://..."
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -85,7 +85,7 @@ const CatalogManagement: React.FC = () => {
         </div>
 
         {/* File Import */}
-        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
           <div className="flex items-center space-x-3 mb-4">
             <div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
               <Upload className="w-5 h-5 text-purple-600 dark:text-purple-400" />
@@ -117,7 +117,7 @@ const CatalogManagement: React.FC = () => {
             ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/30' 
             : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/30'
         }`}>
-          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
           <div>
              <h4 className="font-bold text-sm">{message.type === 'success' ? 'Import Started' : 'Import Failed'}</h4>
              <p className="text-xs opacity-90">{message.text}</p>

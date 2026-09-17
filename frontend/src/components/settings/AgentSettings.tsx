@@ -55,7 +55,7 @@ export const AgentSettings: React.FC<AgentSettingsProps> = ({ scope, tenantId, u
               max="50"
               value={maxIterations}
               onChange={(e) => setMaxIterations(parseInt(e.target.value))}
-              className="flex-grow h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="grow h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
             />
             <input
               type="number"

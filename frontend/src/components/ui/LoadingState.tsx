@@ -22,7 +22,7 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
   const isInline = variant === 'inline';
 
   const containerClasses = {
-    fullscreen: 'fixed inset-0 z-[150] flex flex-col items-center justify-center bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm',
+    fullscreen: 'fixed inset-0 z-150 flex flex-col items-center justify-center bg-white/80 dark:bg-dark-bg/80 backdrop-blur-xs',
     section: 'flex flex-col items-center justify-center py-40 w-full',
     inline: 'flex items-center space-x-2 py-2',
     mini: 'flex items-center justify-center p-4',

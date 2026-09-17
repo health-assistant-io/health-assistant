@@ -98,7 +98,7 @@ export const BiomarkerConfigPanel: React.FC<BiomarkerConfigPanelProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-dark-surface p-6 rounded-3xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col h-full relative overflow-hidden">
+    <div className="bg-white dark:bg-dark-surface p-6 rounded-3xl border border-gray-100 dark:border-dark-border shadow-xs flex flex-col h-full relative overflow-hidden">
       {!canEdit && (
          <div className="absolute top-0 right-0 bg-gray-100 dark:bg-dark-bg px-3 py-1 text-[9px] font-black uppercase tracking-widest text-gray-500 rounded-bl-xl border-b border-l border-gray-200 dark:border-dark-border">
            Read Only
@@ -135,7 +135,7 @@ export const BiomarkerConfigPanel: React.FC<BiomarkerConfigPanelProps> = ({
             <input 
               type="number" step="any" placeholder="e.g. 3.9" 
               disabled={!canEdit}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden transition-all dark:text-dark-text disabled:opacity-70 disabled:cursor-not-allowed"
               value={formData.reference_range_min} 
               onChange={e => setFormData(prev => ({ ...prev, reference_range_min: e.target.value }))}
             />
@@ -145,7 +145,7 @@ export const BiomarkerConfigPanel: React.FC<BiomarkerConfigPanelProps> = ({
             <input 
               type="number" step="any" placeholder="e.g. 5.6" 
               disabled={!canEdit}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-dark-text disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden transition-all dark:text-dark-text disabled:opacity-70 disabled:cursor-not-allowed"
               value={formData.reference_range_max} 
               onChange={e => setFormData(prev => ({ ...prev, reference_range_max: e.target.value }))}
             />
@@ -159,7 +159,7 @@ export const BiomarkerConfigPanel: React.FC<BiomarkerConfigPanelProps> = ({
               disabled={!canEdit}
               checked={formData.is_telemetry}
               onChange={e => setFormData(prev => ({ ...prev, is_telemetry: e.target.checked }))}
-              className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 disabled:opacity-50"
+              className="w-4 h-4 text-indigo-600 rounded-sm border-gray-300 focus:ring-indigo-500 disabled:opacity-50"
             />
             <div className="flex flex-col">
               <span className="text-xs font-bold text-gray-900 dark:text-dark-text flex items-center gap-1.5">

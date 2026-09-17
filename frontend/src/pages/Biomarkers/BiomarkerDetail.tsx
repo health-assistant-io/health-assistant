@@ -435,7 +435,7 @@ const BiomarkerDetail: React.FC = () => {
         <div className="xl:col-span-2 space-y-6">
 
           {/* Details Section (Tabs) */}
-          <div ref={tabsRef} className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-sm min-h-[550px] flex flex-col scroll-mt-32">
+          <div ref={tabsRef} className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border shadow-xs min-h-[550px] flex flex-col scroll-mt-32">
             <div className="px-8 pt-8 pb-4 border-b border-gray-50 dark:border-dark-border">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex flex-wrap items-center gap-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-2xl w-fit max-w-full">
@@ -445,7 +445,7 @@ const BiomarkerDetail: React.FC = () => {
                       <button
                         key={tabItem.id}
                         onClick={() => handleTabChange(tabItem.id)}
-                        className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tabItem.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tabItem.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                       >
                         <Icon className="w-3.5 h-3.5" />
                         <span>{tabItem.label}</span>
@@ -516,7 +516,7 @@ const BiomarkerDetail: React.FC = () => {
             errorMessage={biomarker.meta_data?.migration_error}
             onRetry={handleRetryMigration}
           />
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <BiomarkerSnapshotCard
               biomarker={biomarker}
               trends={trends}

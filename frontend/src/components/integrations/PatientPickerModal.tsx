@@ -112,8 +112,8 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-[10000]">
+      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-10000">
           <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text">
               <User className="w-5 h-5 mr-2 text-blue-500" />
@@ -155,7 +155,7 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
 
             {error && (
               <div className="p-3 mb-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                 <p className="text-xs text-amber-700 dark:text-amber-300">{error}</p>
               </div>
             )}
@@ -185,7 +185,7 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
                       }`}
                     >
                       <div
-                        className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                        className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
                           isSelected ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-dark-bg text-gray-500'
                         }`}
                       >
@@ -201,7 +201,7 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
                           {m.gender && <span className="capitalize">{m.gender}</span>}
                         </div>
                       </div>
-                      <div className="flex-shrink-0 text-right">
+                      <div className="shrink-0 text-right">
                         <div className="text-xs font-mono text-gray-400">{m.id}</div>
                         <div className="text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400 mt-0.5">
                           {isSelecting ? 'Linking…' : isSelected ? 'Linked' : 'Select'}

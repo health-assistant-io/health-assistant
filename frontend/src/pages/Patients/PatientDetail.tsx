@@ -152,7 +152,7 @@ function PatientDetail() {
 
         {/* Sidebar: Personal Info (Top on small, Side on wide) */}
         <div className="2xl:col-span-1 order-1 2xl:order-2">
-          <div className="bg-gray-50 dark:bg-dark-bg/30 rounded-[2rem] p-6 2xl:p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-gray-50 dark:bg-dark-bg/30 rounded-4xl p-6 2xl:p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center space-x-2 mb-6">
               <User className="w-4 h-4 text-gray-400" />
               <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('patients.personal_info')}</h4>
@@ -162,7 +162,7 @@ function PatientDetail() {
               <div>
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('patients.mrn')}</p>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-[10px] font-mono font-black bg-white dark:bg-dark-surface px-3 py-1.5 rounded-lg border border-gray-200 dark:border-dark-border shadow-sm text-gray-700 dark:text-dark-text tracking-tight">{patient.mrn || '—'}</span>
+                  <span className="text-[10px] font-mono font-black bg-white dark:bg-dark-surface px-3 py-1.5 rounded-lg border border-gray-200 dark:border-dark-border shadow-xs text-gray-700 dark:text-dark-text tracking-tight">{patient.mrn || '—'}</span>
                 </div>
               </div>
 

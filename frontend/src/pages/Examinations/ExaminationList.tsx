@@ -498,7 +498,7 @@ function ExaminationList() {
         <div className="flex items-center mr-1">
           <input 
             type="checkbox" 
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
+            className="w-4 h-4 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
             checked={selectedIds.length === filteredExaminations.length && filteredExaminations.length > 0}
             onChange={toggleSelectAll}
           />
@@ -599,7 +599,7 @@ function ExaminationList() {
       <StickyToolbar
         className="flex-col sm:flex-row items-stretch sm:items-center"
         actions={
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-shrink-0 pt-2 sm:pt-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0 pt-2 sm:pt-0">
             {isEditMode && selectedIds.length > 0 && (
               <button 
                 onClick={handleBulkDelete}
@@ -616,7 +616,7 @@ function ExaminationList() {
                 setIsEditMode(!isEditMode);
                 setSelectedIds([]);
               }}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 border ${
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-xs active:scale-95 border ${
                 isEditMode 
                   ? 'bg-blue-600 text-white border-blue-700 shadow-lg shadow-blue-200/50' 
                   : 'bg-white dark:bg-dark-surface text-gray-700 dark:text-dark-text border-gray-200 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg'
@@ -631,7 +631,7 @@ function ExaminationList() {
                 <Calendar className="h-4 w-4 text-gray-400" />
               </div>
               <select
-                className="block w-full pl-10 pr-3 py-2 border border-gray-200 dark:border-dark-border rounded-xl leading-5 bg-white dark:bg-dark-surface dark:text-dark-text focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm appearance-none"
+                className="block w-full pl-10 pr-3 py-2 border border-gray-200 dark:border-dark-border rounded-xl leading-5 bg-white dark:bg-dark-surface dark:text-dark-text focus:outline-hidden focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm appearance-none"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
               >
@@ -672,7 +672,7 @@ function ExaminationList() {
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.from', 'From:')}</span>
             <DatePicker
               placeholder={t('common.select_date', 'Select date')} 
-              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
+              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-hidden dark:bg-dark-surface dark:text-dark-text"
               value={customRange.start}
               onChange={(date) => setCustomRange({ ...customRange, start: date })}
               variant="unstyled"
@@ -682,7 +682,7 @@ function ExaminationList() {
             <span className="text-xs font-bold text-gray-500 dark:text-dark-muted uppercase">{t('common.to', 'To:')}</span>
             <DatePicker
               placeholder={t('common.select_date', 'Select date')} 
-              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-none dark:bg-dark-surface dark:text-dark-text"
+              className="w-40 px-3 py-1.5 border border-gray-200 dark:border-dark-border rounded-lg text-sm focus-within:ring-1 focus-within:ring-blue-500 outline-hidden dark:bg-dark-surface dark:text-dark-text"
               value={customRange.end}
               onChange={(date) => setCustomRange({ ...customRange, end: date })}
               variant="unstyled"
@@ -745,7 +745,7 @@ function ExaminationList() {
       )}
 
       {selectedInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-dropdown flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
            <div className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-[2.5rem] p-10 border border-gray-100 dark:border-dark-border relative shadow-2xl">
               <button onClick={() => setSelectedInfo(null)} className="absolute top-6 right-6 p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
                 <X className="w-5 h-5 text-gray-400" />

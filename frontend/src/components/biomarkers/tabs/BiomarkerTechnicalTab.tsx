@@ -50,7 +50,7 @@ export const BiomarkerTechnicalTab: React.FC<BiomarkerTechnicalTabProps> = ({
           <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
             {(biomarker.coding_system || 'custom').toUpperCase()}
           </p>
-          <p className="text-[11px] font-mono font-black bg-white dark:bg-dark-surface px-2 py-1 rounded border border-gray-200 dark:border-dark-border shadow-sm w-fit">
+          <p className="text-[11px] font-mono font-black bg-white dark:bg-dark-surface px-2 py-1 rounded-sm border border-gray-200 dark:border-dark-border shadow-xs w-fit">
             {biomarker.code || biomarker.slug}
           </p>
         </div>
@@ -74,7 +74,7 @@ export const BiomarkerTechnicalTab: React.FC<BiomarkerTechnicalTabProps> = ({
             {biomarker.aliases.map((alias, idx) => (
               <div
                 key={idx}
-                className="px-2.5 py-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tight shadow-sm hover:scale-105 transition-transform cursor-default"
+                className="px-2.5 py-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tight shadow-xs hover:scale-105 transition-transform cursor-default"
               >
                 {alias}
               </div>

@@ -344,7 +344,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
       <span
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors shadow-sm cursor-help"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-800/50 transition-colors shadow-xs cursor-help"
       >
         <Database className="w-2.5 h-2.5" />
         {displayName}
@@ -353,7 +353,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
       {showPopup && createPortal(
         <div 
           ref={popupRef}
-          className={`fixed z-[1000] w-[calc(100vw-24px)] sm:w-80 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-100 dark:border-dark-border p-3 sm:p-4 animate-in fade-in zoom-in-95 duration-200 before:absolute before:-inset-4 before:z-[-1] before:content-['']`}
+          className={`fixed z-modal w-[calc(100vw-24px)] sm:w-80 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-100 dark:border-dark-border p-3 sm:p-4 animate-in fade-in zoom-in-95 duration-200 before:absolute before:-inset-4 before:z-[-1] before:content-['']`}
           style={{
             top: popupPosition.placement === 'top' ? 'auto' : `${popupPosition.top}px`,
             bottom: popupPosition.placement === 'top' ? `${window.innerHeight - popupPosition.top}px` : 'auto',
@@ -365,7 +365,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
         >
           {/* Arrow */}
           <div 
-            className={`absolute left-1/2 border-8 border-transparent drop-shadow-sm ${
+            className={`absolute left-1/2 border-8 border-transparent drop-shadow-xs ${
               popupPosition.placement === 'top' 
                 ? 'top-full -mt-0.5 border-t-white dark:border-t-dark-surface' 
                 : 'bottom-full -mb-0.5 border-b-white dark:border-b-dark-surface'

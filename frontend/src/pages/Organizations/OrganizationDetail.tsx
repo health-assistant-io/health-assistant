@@ -130,7 +130,7 @@ function OrganizationDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Info Card */}
         <div className="lg:col-span-1 space-y-8">
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="p-8">
               <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl flex items-center justify-center text-indigo-600 mb-6 border border-indigo-100 dark:border-indigo-800 shadow-inner mx-auto">
                 <Building className="w-10 h-10" />
@@ -188,7 +188,7 @@ function OrganizationDetail() {
           </div>
 
           {/* Medical Staff Summary */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden p-6">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5 text-blue-500" />
@@ -227,7 +227,7 @@ function OrganizationDetail() {
         {/* Right Column: Activity & Departments */}
         <div className="lg:col-span-2 space-y-8">
           {/* Clinical Activity */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
@@ -301,7 +301,7 @@ function OrganizationDetail() {
           </div>
 
           {/* Departments Section */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-xl">

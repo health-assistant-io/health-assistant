@@ -96,9 +96,9 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-        className={`w-full flex items-center justify-between transition-all outline-none focus:ring-2 focus:ring-blue-500/20 ${discreet 
+        className={`w-full flex items-center justify-between transition-all outline-hidden focus:ring-2 focus:ring-blue-500/20 ${discreet 
           ? 'px-2 py-1 bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-dark-surface rounded-lg' 
-          : 'px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted hover:bg-gray-100 dark:hover:bg-dark-surface hover:border-blue-300 shadow-sm'}`}
+          : 'px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted hover:bg-gray-100 dark:hover:bg-dark-surface hover:border-blue-300 shadow-xs'}`}
       >
         <span className="truncate mr-2 flex-1 text-left">{getDisplayValue()}</span>
         <div className="flex items-center space-x-1">
@@ -117,13 +117,13 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
       </button>
       
       {isOpen && (
-        <div className="absolute top-full right-0 mt-1.5 z-[150] bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden w-64 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div className="absolute top-full right-0 mt-1.5 z-150 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden w-64 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="p-2 border-b border-gray-100 dark:border-dark-border">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 type="text"
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 dark:text-dark-text"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg outline-hidden focus:border-blue-400 focus:ring-1 focus:ring-blue-400 dark:text-dark-text"
                 placeholder={t('common.search') || 'Search...'}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -153,7 +153,7 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
                     className={`w-full text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-between ${selected ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-dark-text hover:bg-blue-50 dark:hover:bg-blue-900/40'}`}
                   >
                     <span className="truncate pr-2">{label}</span>
-                    {selected && <Check className="w-3 h-3 flex-shrink-0" />}
+                    {selected && <Check className="w-3 h-3 shrink-0" />}
                   </button>
                 );
               })

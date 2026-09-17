@@ -40,9 +40,9 @@ export const DocumentCard: React.FC<Props> = ({
     return (
       <div 
         onClick={onClick}
-        className={`${CardStyles.container(isSelected)} flex flex-col items-center text-center p-4 h-full flex-shrink-0 ${className}`}
+        className={`${CardStyles.container(isSelected)} flex flex-col items-center text-center p-4 h-full shrink-0 ${className}`}
       >
-        <div className={`w-full aspect-square mb-3 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 transition-colors
+        <div className={`w-full aspect-square mb-3 rounded-xl overflow-hidden flex items-center justify-center shrink-0 transition-colors
           ${doc.status === 'failed' ? 'bg-red-50 dark:bg-red-900/20 text-red-500' : 
             isSelected ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-dark-bg text-gray-400 dark:text-dark-muted group-hover:bg-gray-200 dark:group-hover:bg-dark-border'}
         `}>
@@ -59,7 +59,7 @@ export const DocumentCard: React.FC<Props> = ({
         <div className="overflow-hidden w-full flex-1 flex flex-col justify-center">
           <div className="flex items-center justify-center mb-1">
             <span 
-              className="text-[9px] font-black uppercase tracking-[0.1em] truncate flex items-center gap-1"
+              className="text-[9px] font-black uppercase tracking-widest truncate flex items-center gap-1"
               style={{ color: categoryDetails?.color || '#9ca3af' }}
             >
                {categoryDetails?.icon && <DynamicIcon icon={categoryDetails.icon as any} className="w-2 h-2" />}
@@ -83,10 +83,10 @@ export const DocumentCard: React.FC<Props> = ({
   return (
     <div 
       onClick={onClick}
-      className={`${CardStyles.container(isSelected)} flex-shrink-0 ${className}`}
+      className={`${CardStyles.container(isSelected)} shrink-0 ${className}`}
     >
       <div className={`${CardStyles.inner} flex items-center space-x-4`}>
-        <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 transition-colors
+        <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shrink-0 transition-colors
           ${doc.status === 'failed' ? 'bg-red-50 dark:bg-red-900/20 text-red-500' : 
             isSelected ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-dark-bg text-gray-400 dark:text-dark-muted group-hover:bg-gray-200 dark:group-hover:bg-dark-border'}
         `}>
@@ -103,7 +103,7 @@ export const DocumentCard: React.FC<Props> = ({
         <div className="overflow-hidden flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <span 
-              className="text-[9px] font-black uppercase tracking-[0.1em] truncate pr-2 flex items-center gap-1"
+              className="text-[9px] font-black uppercase tracking-widest truncate pr-2 flex items-center gap-1"
               style={{ color: categoryDetails?.color || '#9ca3af' }}
             >
                {categoryDetails?.icon && <DynamicIcon icon={categoryDetails.icon as any} className="w-2 h-2" />}
@@ -111,7 +111,7 @@ export const DocumentCard: React.FC<Props> = ({
             </span>
             <div className="flex items-center space-x-3">
               {doc.status === 'processing' && (
-                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shadow-sm shadow-blue-500/50"></span>
+                <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shadow-xs shadow-blue-500/50"></span>
               )}
               <span className={CardStyles.date(isSelected)}>
                 {new Date(doc.created_at).toLocaleDateString()}

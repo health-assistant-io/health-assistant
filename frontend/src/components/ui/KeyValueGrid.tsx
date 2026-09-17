@@ -48,7 +48,7 @@ function renderValueNode(entry: KeyValueEntry): React.ReactNode {
   if (value === null || value === undefined || value === '') {
     return <span className="text-gray-400">—</span>;
   }
-  const valueCls = mono ? 'font-mono break-all' : 'break-words';
+  const valueCls = mono ? 'font-mono break-all' : 'wrap-break-word';
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={valueCls}>{value}</span>

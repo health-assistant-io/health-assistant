@@ -88,13 +88,13 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={{ ...style, zIndex: showConfig ? 100 : (style?.zIndex || 1) }}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
     >
       {isEditMode && (
-        <div className="absolute -top-3 -right-3 flex items-center space-x-2 z-[70] opacity-0 group-hover:opacity-100 transition-all">
+        <div className="absolute -top-3 -right-3 flex items-center space-x-2 z-70 opacity-0 group-hover:opacity-100 transition-all">
           <button 
             onClick={(e) => { e.stopPropagation(); setShowConfig(!showConfig); }}
             className={`bg-white dark:bg-dark-surface rounded-full p-2 shadow-xl border-4 border-white dark:border-dark-surface transition-all hover:scale-110 active:scale-95 ${showConfig ? 'text-blue-600' : 'text-gray-400'}`}
@@ -182,7 +182,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
       )}
 
       {isEditMode && showConfig && (
-        <div className="mb-6 p-6 bg-gray-50 dark:bg-dark-bg rounded-[2rem] border border-gray-100 dark:border-dark-border space-y-6 animate-in slide-in-from-top-4 duration-300 nodrag relative shadow-inner" onMouseDown={e => e.stopPropagation()}>
+        <div className="mb-6 p-6 bg-gray-50 dark:bg-dark-bg rounded-4xl border border-gray-100 dark:border-dark-border space-y-6 animate-in slide-in-from-top-4 duration-300 nodrag relative shadow-inner" onMouseDown={e => e.stopPropagation()}>
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-4">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('dashboard.config.chart_options')}</p>

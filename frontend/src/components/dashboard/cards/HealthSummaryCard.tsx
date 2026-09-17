@@ -121,7 +121,7 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
       ref={ref}
       data-card-id={id}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-5 flex flex-col relative group ${isEditMode ? '' : (showAbnormal ? 'overflow-visible' : 'overflow-hidden')}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-5 flex flex-col relative group ${isEditMode ? '' : (showAbnormal ? 'overflow-visible' : 'overflow-hidden')}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -129,7 +129,7 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -200,7 +200,7 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
 
       {/* Floating abnormal biomarker dropdown */}
       {showAbnormal && abnormalItems.length > 0 && (
-        <div className="absolute left-4 right-4 top-full z-[80] bg-white dark:bg-dark-surface rounded-xl border border-gray-100 dark:border-dark-border shadow-2xl p-2 space-y-1 max-h-[280px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200 nodrag">
+        <div className="absolute left-4 right-4 top-full z-80 bg-white dark:bg-dark-surface rounded-xl border border-gray-100 dark:border-dark-border shadow-2xl p-2 space-y-1 max-h-[280px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200 nodrag">
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 px-2 pb-1">
               {t('dashboard.summary.abnormal', { defaultValue: 'Abnormal' })} ({abnormalItems.length})
             </p>
@@ -212,10 +212,10 @@ export const HealthSummaryCard = React.forwardRef((props: any, ref: any) => {
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all hover:scale-[1.01] text-left ${getStatusColorClass(item.status)}`}
               >
                 <div className="flex items-center space-x-2 min-w-0">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span className="text-xs font-bold truncate">{item.name}</span>
                 </div>
-                <div className="flex items-center space-x-2 flex-shrink-0">
+                <div className="flex items-center space-x-2 shrink-0">
                   <span className="text-xs font-black">{formatBiomarkerValue(item.value, precisionProfile)} {formatUnit(item.unit)}</span>
                   <span className="text-[9px] font-black uppercase">{item.status}</span>
                 </div>

@@ -31,7 +31,7 @@ export const FilePreviewManager: React.FC<FilePreviewManagerProps> = ({
   }
   
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
        <div className="bg-white dark:bg-dark-surface rounded-2xl p-8 max-w-sm w-full text-center">
           <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
              <FileText className="w-8 h-8 text-blue-500" />

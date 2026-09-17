@@ -153,7 +153,7 @@ const ClinicalEventDetail: React.FC = () => {
           <div className="flex items-center space-x-3">
             <button 
               onClick={() => setIsEditModalOpen(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all font-semibold shadow-sm text-sm"
+              className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text rounded-xl hover:bg-gray-50 dark:hover:bg-dark-border transition-all font-semibold shadow-xs text-sm"
             >
               <Edit2 className="w-4 h-4" />
               <span className="hidden sm:inline">{t('common.edit')}</span>
@@ -172,11 +172,11 @@ const ClinicalEventDetail: React.FC = () => {
         {/* Left Column: Core Details */}
         <div className="xl:col-span-2 space-y-8">
           {/* Summary Card */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-start justify-between mb-8">
               <div className="flex items-center space-x-4">
                 <div 
-                  className="p-4 rounded-2xl bg-opacity-10" 
+                  className="p-4 rounded-2xl" 
                   style={{ backgroundColor: event.type_details?.color + '20', color: event.type_details?.color }}
                 >
                   {getEventIcon(event.type_details?.slug || '', "w-6 h-6")}
@@ -347,7 +347,7 @@ const ClinicalEventDetail: React.FC = () => {
                   <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-tight">{t('events.body_location')}</h3>
                 </div>
                 <div className="flex items-start gap-6">
-                  <div className="w-32 flex-shrink-0">
+                  <div className="w-32 shrink-0">
                     <OrganPreview
                       {...markerForStructure(bodyStructure, figureOrder)}
                       label={bodyStructure?.name}
@@ -357,7 +357,7 @@ const ClinicalEventDetail: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <Target className="w-3.5 h-3.5 text-blue-500" />
                       <p className="text-sm font-bold text-gray-900 dark:text-dark-text">{bodyStructure.name}</p>
-                      <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded text-gray-400 font-medium uppercase">
+                      <span className="text-[9px] bg-gray-100 dark:bg-dark-bg px-1.5 py-0.5 rounded-sm text-gray-400 font-medium uppercase">
                         {bodyStructure.category}
                       </span>
                     </div>
@@ -365,7 +365,7 @@ const ClinicalEventDetail: React.FC = () => {
                       <p className="text-xs text-gray-500 dark:text-dark-muted leading-relaxed">{bodyStructure.description}</p>
                     )}
                     {bodyStructure.standard_code && (
-                      <span className="inline-block text-[9px] bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded text-blue-500 font-medium uppercase">
+                      <span className="inline-block text-[9px] bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-sm text-blue-500 font-medium uppercase">
                         {bodyStructure.standard_system}: {bodyStructure.standard_code}
                       </span>
                     )}
@@ -464,7 +464,7 @@ const ClinicalEventDetail: React.FC = () => {
             <div className="space-y-4">
               {event.occurrences && event.occurrences.length > 0 ? (
                 [...event.occurrences].reverse().map((occ, i) => (
-                  <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-3xl border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-md transition-all animate-in slide-in-from-bottom-2 duration-300">
+                  <div key={i} className="bg-white dark:bg-dark-surface p-6 rounded-3xl border border-gray-100 dark:border-dark-border shadow-xs hover:shadow-md transition-all animate-in slide-in-from-bottom-2 duration-300">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-3">
                         <div className={`w-3 h-3 rounded-full ${occ.intensity > 7 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : (occ.intensity > 4 ? 'bg-yellow-500' : 'bg-green-500')}`} />
@@ -508,7 +508,7 @@ const ClinicalEventDetail: React.FC = () => {
         {/* Right Column: Linked Examinations & Coding */}
         <div className="space-y-8">
           {/* Linked Examinations */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center space-x-3 mb-6">
               <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
                 <FileText className="w-5 h-5 text-indigo-500" />
@@ -544,7 +544,7 @@ const ClinicalEventDetail: React.FC = () => {
           </div>
 
           {/* Linked Biomarkers */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center space-x-3 mb-6">
               <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                 <Activity className="w-5 h-5 text-blue-500" />
@@ -593,7 +593,7 @@ const ClinicalEventDetail: React.FC = () => {
 
           {/* Clinical Coding */}
           {event.code && (
-            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+            <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
               <div className="flex items-center space-x-3 mb-6">
                 <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                   <Info className="w-5 h-5 text-blue-500" />
@@ -605,13 +605,13 @@ const ClinicalEventDetail: React.FC = () => {
                 {event.coding_system && (
                   <div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{t('events.code_system')}</p>
-                    <code className="text-xs bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded text-blue-600 dark:text-blue-400 uppercase">{event.coding_system}</code>
+                    <code className="text-xs bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded-sm text-blue-600 dark:text-blue-400 uppercase">{event.coding_system}</code>
                   </div>
                 )}
                 {event.code && (
                   <div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{t('events.code_value')}</p>
-                    <code className="text-xs bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded text-blue-600 dark:text-blue-400">{event.code}</code>
+                    <code className="text-xs bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded-sm text-blue-600 dark:text-blue-400">{event.code}</code>
                   </div>
                 )}
               </div>

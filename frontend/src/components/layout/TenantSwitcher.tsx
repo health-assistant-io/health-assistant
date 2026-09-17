@@ -123,7 +123,7 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
         className={`flex items-center gap-2 px-3 h-9 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-gray-500 dark:text-dark-muted ${className}`}
         title={activeTenant?.description ?? activeName}
       >
-        <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
         <span className="text-xs font-bold truncate max-w-[140px]">{activeName}</span>
       </div>
     );
@@ -140,7 +140,7 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
           }`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Building2 className={`w-4 h-4 flex-shrink-0 ${switched ? 'text-amber-500' : 'text-gray-400'}`} />
+        <Building2 className={`w-4 h-4 shrink-0 ${switched ? 'text-amber-500' : 'text-gray-400'}`} />
         <div className="flex flex-col min-w-0 leading-tight">
           <span className="text-xs font-bold truncate max-w-[120px]">{activeName}</span>
           {switched ? (
@@ -153,11 +153,11 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
             </span>
           ) : null}
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''} ${switched ? 'text-amber-400' : 'text-gray-400'}`} />
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''} ${switched ? 'text-amber-400' : 'text-gray-400'}`} />
       </div>
 
       {isOpen && (
-        <div className="absolute right-0 z-[600] w-80 mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute right-0 z-600 w-80 mt-2 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
           {/* Search header */}
           <div className="p-3 border-b border-gray-50 dark:border-dark-border sticky top-0 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md z-10">
             <div className="flex items-center justify-between mb-2 px-1">
@@ -174,7 +174,7 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
                 type="text"
                 autoFocus
                 placeholder={t('common.search_tenants', { defaultValue: 'Search tenants...' })}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50/80 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text transition-all"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50/80 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-xl text-xs outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:text-dark-text transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -215,7 +215,7 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
                     onClick={() => !isDisabled && handleSelect(tenant)}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all
                         ${isActive
                           ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                           : 'bg-gray-100 text-gray-400 dark:bg-dark-bg group-hover:bg-blue-100 group-hover:text-blue-500'}`}>
@@ -237,9 +237,9 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
                         </div>
                       </div>
                     </div>
-                    {isActive && <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />}
+                    {isActive && <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />}
                     {switching === tenant.id && (
-                      <span className="text-[10px] text-blue-500 font-bold animate-pulse flex-shrink-0">
+                      <span className="text-[10px] text-blue-500 font-bold animate-pulse shrink-0">
                         {t('common.switching', { defaultValue: 'Switching...' })}
                       </span>
                     )}

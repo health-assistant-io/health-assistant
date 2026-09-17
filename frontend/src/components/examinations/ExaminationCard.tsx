@@ -114,7 +114,7 @@ export const ExaminationCard: React.FC<Props> = ({
           </div>
           <div className="flex items-center space-x-2">
              <span 
-               className={`${categoryIconOnly ? '' : styles.className} ${categoryIconOnly ? '' : '!text-[8px] px-1.5 py-0.5'} flex items-center`}
+               className={`${categoryIconOnly ? '' : styles.className} ${categoryIconOnly ? '' : 'text-[8px]! px-1.5 py-0.5'} flex items-center`}
                style={categoryIconOnly ? { color: styles.style?.color } : styles.style}
                title={category}
              >
@@ -166,7 +166,7 @@ export const ExaminationCard: React.FC<Props> = ({
 
   return (
     <div 
-      className={`${CardStyles.container(isSelected, isEditMode || isSelectable)} flex-shrink-0 ${className}`} 
+      className={`${CardStyles.container(isSelected, isEditMode || isSelectable)} shrink-0 ${className}`} 
       onClick={onClick}
     >
       <div className={CardStyles.inner}>
@@ -177,7 +177,7 @@ export const ExaminationCard: React.FC<Props> = ({
           }}>
              <input 
                 type="checkbox" 
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
+                className="w-4 h-4 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
                 checked={isSelected}
                 readOnly
               />
@@ -215,7 +215,7 @@ export const ExaminationCard: React.FC<Props> = ({
                   e.stopPropagation();
                   navigate(`/examinations/${examination.id}`);
                 }}
-                className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-500 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-sm hover:shadow-md"
+                className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-500 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-xs hover:shadow-md"
                 title={t('common.details')}
               >
                 <ExternalLink className="w-3 h-3" />

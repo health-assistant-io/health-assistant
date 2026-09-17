@@ -127,7 +127,7 @@ function Patients() {
           {filteredPatients.map((patient) => (
             <div 
               key={patient.id} 
-              className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden hover:shadow-md transition-all group"
+              className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden hover:shadow-md transition-all group"
             >
               <div className="p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -158,11 +158,11 @@ function Patients() {
                   </h3>
                   
                   <div className="flex items-center space-x-2 mt-2">
-                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${getGenderColor(patient.gender)}`}>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-sm ${getGenderColor(patient.gender)}`}>
                       {patient.gender}
                     </span>
                     {patient.mrn && (
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded-sm">
                         {t('patients.mrn')}: {patient.mrn}
                       </span>
                     )}
@@ -206,7 +206,7 @@ function Patients() {
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 bg-gray-50 dark:bg-dark-bg/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-dark-border">
-          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-sm mb-4">
+          <div className="w-16 h-16 bg-white dark:bg-dark-surface rounded-full flex items-center justify-center shadow-xs mb-4">
             <Users className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('patients.no_patients')}</h3>

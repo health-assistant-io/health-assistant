@@ -258,7 +258,7 @@ function TenantDetail() {
       )}
 
       {activeTab === 'settings' && (
-        <form onSubmit={handleSaveSettings} className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border space-y-5">
+        <form onSubmit={handleSaveSettings} className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border space-y-5">
           <div>
             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
               {t('admin.tenants.field_name')}
@@ -266,7 +266,7 @@ function TenantDetail() {
             <input
               type="text"
               required
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none dark:text-dark-text font-bold"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden dark:text-dark-text font-bold"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
@@ -277,7 +277,7 @@ function TenantDetail() {
             </label>
             <input
               type="text"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none dark:text-dark-text font-mono text-sm"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden dark:text-dark-text font-mono text-sm"
               value={form.slug}
               onChange={(e) => setForm({ ...form, slug: e.target.value })}
             />
@@ -288,7 +288,7 @@ function TenantDetail() {
             </label>
             <textarea
               rows={2}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none dark:text-dark-text text-sm"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden dark:text-dark-text text-sm"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
@@ -299,7 +299,7 @@ function TenantDetail() {
             </label>
             <textarea
               rows={8}
-              className="w-full px-4 py-3 bg-gray-900 text-green-400 border border-gray-800 rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-mono text-sm"
+              className="w-full px-4 py-3 bg-gray-900 text-green-400 border border-gray-800 rounded-xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden font-mono text-sm"
               value={form.settings}
               onChange={(e) => setForm({ ...form, settings: e.target.value })}
               spellCheck={false}
@@ -349,7 +349,7 @@ function TenantDetail() {
 
       {/* Hard-delete modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-modal p-4">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="px-6 py-4 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50 flex justify-between items-center">
               <h2 className="text-lg font-black text-red-700 dark:text-red-400 uppercase tracking-tight">
@@ -372,7 +372,7 @@ function TenantDetail() {
                 placeholder={detail.name}
                 value={deleteConfirm}
                 onChange={(e) => setDeleteConfirm(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-red-500/10 outline-none dark:text-dark-text font-mono"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl focus:ring-4 focus:ring-red-500/10 outline-hidden dark:text-dark-text font-mono"
               />
               <div className="flex gap-3 pt-2">
                 <button
@@ -384,7 +384,7 @@ function TenantDetail() {
                 <button
                   onClick={handleHardDelete}
                   disabled={deleting || deleteConfirm !== detail.name}
-                  className="flex-[2] px-4 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-2 px-4 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deleting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : t('admin.tenants.delete_confirm')}
                 </button>
@@ -427,7 +427,7 @@ function OverviewPanel({ detail }: { detail: TenantDetail }) {
           return (
             <div
               key={c.label}
-              className="bg-white dark:bg-dark-surface p-5 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm"
+              className="bg-white dark:bg-dark-surface p-5 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs"
             >
               <div className="flex items-center justify-between mb-2">
                 <Icon className={`w-5 h-5 text-${c.color}-500`} />
@@ -578,7 +578,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
       </div>
 
       {inviteOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-modal p-4">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-dark-border flex justify-between items-center">
               <h2 className="text-lg font-black uppercase tracking-tight">{t('admin.tenants.issue_invite')}</h2>
@@ -626,7 +626,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
                   <button
                     type="button"
                     onClick={() => navigator.clipboard.writeText(inviteResult)}
-                    className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded"
+                    className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded-sm"
                     title="Copy"
                   >
                     <Copy className="w-3.5 h-3.5" />

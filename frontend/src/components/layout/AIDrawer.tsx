@@ -86,14 +86,14 @@ export const AIDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[550] animate-in fade-in duration-300"
+        className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-550 animate-in fade-in duration-300"
         onClick={onClose}
       />
 
       {/* Drawer */}
       <div
         ref={drawerRef}
-        className="fixed top-0 right-0 h-screen w-full bg-white dark:bg-dark-bg z-[560] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300 safe-top safe-bottom"
+        className="fixed top-0 right-0 h-screen w-full bg-white dark:bg-dark-bg z-560 shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 dark:border-dark-border flex flex-col animate-in slide-in-from-right duration-300 safe-top safe-bottom"
         style={widthStyle}
       >
         <AIChatInterface isFullScreen={false} onClose={onClose} />
@@ -103,7 +103,7 @@ export const AIDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
           <div
             onMouseDown={startDrag}
             onTouchStart={startDrag}
-            className="group absolute left-0 top-0 h-full w-2 -ml-1 cursor-col-resize z-[570] flex items-center justify-center"
+            className="group absolute left-0 top-0 h-full w-2 -ml-1 cursor-col-resize z-570 flex items-center justify-center"
             title={t('ai_chat.tooltips.resize')}
             role="separator"
             aria-orientation="vertical"

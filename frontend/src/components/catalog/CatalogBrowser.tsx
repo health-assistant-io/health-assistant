@@ -94,7 +94,7 @@ const Highlight: React.FC<{ text: string; term?: string }> = ({ text, term }) =>
     out.push(
       <mark
         key={key++}
-        className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded px-0.5"
+        className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded-sm px-0.5"
       >
         {text.slice(idx, idx + q.length)}
       </mark>,
@@ -283,7 +283,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         title={t('catalogs.keyboard_hint', '↑↓ navigate · Esc clear')}
-        className="flex-1 overflow-y-auto min-h-0 custom-scrollbar outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-900 rounded-lg"
+        className="flex-1 overflow-y-auto min-h-0 custom-scrollbar outline-hidden focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-900 rounded-lg"
       >
       {/* Items */}
       {loading ? (
@@ -292,8 +292,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             {Array.from({ length: 7 }).map((_, i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3.5">
                 <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-2/3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                  <div className="h-3 w-1/2 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-3.5 w-2/3 bg-gray-200 dark:bg-gray-700 rounded-sm animate-pulse" />
+                  <div className="h-3 w-1/2 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <div className="h-3.5 w-12 bg-gray-100 dark:bg-gray-800 rounded-full animate-pulse" />
@@ -307,14 +307,14 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-2 min-h-[7rem]"
+                className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-2 min-h-28"
               >
                 <div className="space-y-2">
-                  <div className="h-3.5 w-3/4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                  <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-3.5 w-3/4 bg-gray-200 dark:bg-gray-700 rounded-sm animate-pulse" />
+                  <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
                 </div>
                 <div className="mt-auto pt-2 border-t border-gray-100 dark:border-gray-700/60">
-                  <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
                 </div>
               </div>
             ))}
@@ -471,15 +471,15 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                 key={String(item.id)}
                 data-item-id={String(item.id)}
                 onClick={() => onSelectItem(String(item.id))}
-                className={`rounded-xl border p-4 flex flex-col gap-2 min-h-[7rem] transition-all cursor-pointer ${
+                className={`rounded-xl border p-4 flex flex-col gap-2 min-h-28 transition-all cursor-pointer ${
                   active
                     ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-300 dark:ring-blue-700'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:shadow-sm'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:shadow-xs'
                 }`}
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <div className="text-left min-w-0 flex-1">
-                    <span className="font-semibold text-sm block break-words">
+                    <span className="font-semibold text-sm block wrap-break-word">
                       <Highlight text={itemLabel(item)} term={searchTerm} />
                     </span>
                     {desc ? (

@@ -172,7 +172,7 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
     <div 
       ref={ref}
       style={{ ...style, zIndex: (isSettingsOpen ? 100 : style?.zIndex || 1) }}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border flex flex-col relative group overflow-hidden`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border flex flex-col relative group overflow-hidden`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -181,13 +181,13 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
         <div className="absolute top-2 right-2 flex items-center space-x-1 z-50 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); setIsSettingsOpen(!isSettingsOpen); }}
-            className={`p-1.5 rounded-lg border shadow-sm transition-all active:scale-95 ${isSettingsOpen ? 'bg-blue-600 text-white border-blue-700' : 'bg-white dark:bg-dark-surface text-gray-400 border-gray-100 dark:border-dark-border hover:bg-gray-50'}`}
+            className={`p-1.5 rounded-lg border shadow-xs transition-all active:scale-95 ${isSettingsOpen ? 'bg-blue-600 text-white border-blue-700' : 'bg-white dark:bg-dark-surface text-gray-400 border-gray-100 dark:border-dark-border hover:bg-gray-50'}`}
           >
             <SettingsIcon className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-            className="p-1.5 bg-white dark:bg-dark-surface text-red-400 rounded-lg border border-gray-100 dark:border-dark-border shadow-sm hover:bg-red-50 transition-all active:scale-95"
+            className="p-1.5 bg-white dark:bg-dark-surface text-red-400 rounded-lg border border-gray-100 dark:border-dark-border shadow-xs hover:bg-red-50 transition-all active:scale-95"
           >
             <CloseIcon className="w-3.5 h-3.5" />
           </button>
@@ -195,7 +195,7 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
       )}
 
       {isSettingsOpen && (
-        <div className="absolute inset-0 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-sm z-[60] p-6 animate-in fade-in duration-200 overflow-y-auto custom-scrollbar">
+        <div className="absolute inset-0 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-xs z-60 p-6 animate-in fade-in duration-200 overflow-y-auto custom-scrollbar">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-sm font-black uppercase tracking-widest text-gray-900 dark:text-dark-text flex items-center">
               <SettingsIcon className="w-4 h-4 mr-2 text-blue-500" />
@@ -298,7 +298,7 @@ export const UnifiedHealthCalendarCard = React.forwardRef((props: any, ref: any)
                     {selectedCategories.includes(cat.id) ? (
                         <Check className="w-4 h-4 text-blue-600" />
                     ) : (
-                        <div className="w-4 h-4 border-2 border-gray-300 rounded" />
+                        <div className="w-4 h-4 border-2 border-gray-300 rounded-sm" />
                     )}
                   </button>
                 ))}

@@ -147,7 +147,7 @@ function TenantManagement() {
                 placeholder={t('admin.tenants.search_placeholder')}
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
-                className="pl-9 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none dark:text-dark-text w-64"
+                className="pl-9 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 outline-hidden dark:text-dark-text w-64"
               />
             </div>
             <button
@@ -171,7 +171,7 @@ function TenantManagement() {
           {tenants.map((tenant) => (
             <div
               key={tenant.id}
-              className={`bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-sm border ${
+              className={`bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border ${
                 tenant.is_active
                   ? 'border-gray-100 dark:border-dark-border'
                   : 'border-red-200 dark:border-red-900/50 opacity-75'
@@ -302,7 +302,7 @@ function TenantManagement() {
 
       {/* Create modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-modal p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50">
               <h2 className="text-xl font-black text-brand-navy dark:text-dark-text uppercase tracking-tight">
@@ -323,7 +323,7 @@ function TenantManagement() {
                 <input
                   type="text"
                   required
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-dark-text font-bold text-lg"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden transition-all dark:text-dark-text font-bold text-lg"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g. Northwell Health System"
@@ -335,7 +335,7 @@ function TenantManagement() {
                 </label>
                 <input
                   type="text"
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-dark-text font-mono text-sm"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden transition-all dark:text-dark-text font-mono text-sm"
                   value={formData.slug}
                   onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
                   placeholder="auto-generated from name if blank"
@@ -347,7 +347,7 @@ function TenantManagement() {
                 </label>
                 <textarea
                   rows={2}
-                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all dark:text-dark-text text-sm"
+                  className="w-full px-5 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden transition-all dark:text-dark-text text-sm"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
@@ -358,7 +358,7 @@ function TenantManagement() {
                 </label>
                 <textarea
                   rows={5}
-                  className="w-full px-5 py-4 bg-gray-900 text-green-400 border border-gray-800 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all font-mono text-sm leading-relaxed"
+                  className="w-full px-5 py-4 bg-gray-900 text-green-400 border border-gray-800 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-hidden transition-all font-mono text-sm leading-relaxed"
                   value={formData.settings}
                   onChange={(e) => setFormData({ ...formData, settings: e.target.value })}
                   spellCheck={false}
@@ -375,7 +375,7 @@ function TenantManagement() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-[2] px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-xl shadow-indigo-200 dark:shadow-none active:scale-95 disabled:opacity-60"
+                  className="flex-2 px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all font-bold flex items-center justify-center space-x-2 shadow-xl shadow-indigo-200 dark:shadow-none active:scale-95 disabled:opacity-60"
                 >
                   <Save className="w-5 h-5" />
                   <span className="uppercase tracking-widest text-sm">{t('admin.tenants.create')}</span>

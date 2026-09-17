@@ -68,7 +68,7 @@ export const DashboardCardTitle: React.FC<DashboardCardTitleProps> = ({
           {clickable && (
             <ExternalLink
               onClick={handleNewTab}
-              className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:!text-blue-500 transition-opacity shrink-0"
+              className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:text-blue-500! transition-opacity shrink-0"
             />
           )}
         </div>

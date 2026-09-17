@@ -376,7 +376,7 @@ function App() {
 
       {/* PWA Update / Offline Toast */}
       {(offlineReady || needRefresh) && !window.__HA_SCREENSHOT_CAPTURE__ && (
-        <div className="fixed bottom-4 right-4 z-[9999] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-4 max-w-sm flex flex-col gap-2">
+        <div className="fixed bottom-4 right-4 z-9999 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-4 max-w-sm flex flex-col gap-2">
           <div className="flex justify-between items-start">
             <span className="text-sm font-medium text-slate-900 dark:text-white">
               {offlineReady ? 'App is ready for offline use' : 'A new version is available!'}
@@ -390,7 +390,7 @@ function App() {
           {needRefresh && (
             <button
               onClick={() => updateServiceWorker(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-3 rounded transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-3 rounded-sm transition-colors"
             >
               Update now
             </button>

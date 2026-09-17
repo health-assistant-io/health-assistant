@@ -77,7 +77,7 @@ export const LogBiomarkerReadingModal: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {

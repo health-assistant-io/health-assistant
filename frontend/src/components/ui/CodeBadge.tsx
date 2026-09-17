@@ -101,7 +101,7 @@ export const CodeBadge: React.FC<CodeBadgeProps> = ({
           {sysLabel}
         </span>
       )}
-      <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-1.5 py-0.5 rounded">
+      <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-1.5 py-0.5 rounded-sm">
         {codeStr}
       </span>
       {href && (
@@ -109,7 +109,7 @@ export const CodeBadge: React.FC<CodeBadgeProps> = ({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+          className="inline-flex items-center text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
           aria-label={`${sysLabel || 'Code'} ${codeStr}, opens external`}
           title={`${sysLabel || 'Code'} ${codeStr} — opens external reference`}
         >

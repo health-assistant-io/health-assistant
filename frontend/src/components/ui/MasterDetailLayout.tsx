@@ -27,17 +27,17 @@ export const MasterDetailLayout: React.FC<Props> = ({
     <div ref={containerRef} className={`flex flex-1 gap-6 lg:gap-8 overflow-hidden min-h-0 ${className}`}>
       {/* Left Sidebar - Categories/Filters */}
       {sidebar && (
-        <div className="hidden lg:flex w-56 flex-shrink-0 flex-col overflow-y-auto no-scrollbar min-h-0">
+        <div className="hidden lg:flex w-56 shrink-0 flex-col overflow-y-auto no-scrollbar min-h-0">
           {sidebar}
         </div>
       )}
 
       {/* Middle Column - Main List */}
-      <div className={`w-full ${listWidth} flex-shrink-0 flex flex-col min-w-0 min-h-0`}>
+      <div className={`w-full ${listWidth} shrink-0 flex flex-col min-w-0 min-h-0`}>
         {withListStyling ? (
-          <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-50/50 dark:bg-dark-bg/50 rounded-[2rem]">
+          <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-50/50 dark:bg-dark-bg/50 rounded-4xl">
             {listHeader && (
-              <div className="flex items-center justify-between mb-4 flex-shrink-0 px-6 pt-6">
+              <div className="flex items-center justify-between mb-4 shrink-0 px-6 pt-6">
                 {listHeader}
               </div>
             )}
@@ -52,7 +52,7 @@ export const MasterDetailLayout: React.FC<Props> = ({
 
       {/* Right Content - Preview/Detail */}
       {showDetail && (
-        <div className="hidden lg:flex lg:flex-1 flex-col min-h-0 bg-white dark:bg-dark-surface rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-2xl shadow-blue-900/5 overflow-hidden">
+        <div className="hidden lg:flex lg:flex-1 flex-col min-h-0 bg-white dark:bg-dark-surface rounded-4xl border border-gray-100 dark:border-dark-border shadow-2xl shadow-blue-900/5 overflow-hidden">
           {detail}
         </div>
       )}

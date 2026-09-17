@@ -123,9 +123,9 @@ function DoctorDetail() {
       />
 
       {/* Profile Info Card */}
-      <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+      <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
         <div className="p-8 sm:p-10 flex flex-col md:flex-row items-center md:items-start gap-10">
-          <div className="w-40 h-40 bg-blue-50 dark:bg-blue-900/30 rounded-[3rem] flex items-center justify-center text-blue-600 border border-blue-100 dark:border-blue-800 shadow-inner relative flex-shrink-0">
+          <div className="w-40 h-40 bg-blue-50 dark:bg-blue-900/30 rounded-[3rem] flex items-center justify-center text-blue-600 border border-blue-100 dark:border-blue-800 shadow-inner relative shrink-0">
             <User className="w-20 h-20" />
             {doctor.license_number && (
                <div className="absolute -bottom-2 -right-2 bg-green-500 text-white p-2 rounded-2xl shadow-lg border-4 border-white dark:border-dark-surface" title="Verified License">
@@ -249,7 +249,7 @@ function DoctorDetail() {
 
       {/* Activity Section */}
       <div className="grid grid-cols-1 gap-8">
-        <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+        <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
           <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">

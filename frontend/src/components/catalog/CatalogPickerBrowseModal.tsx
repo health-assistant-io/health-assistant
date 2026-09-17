@@ -277,13 +277,13 @@ export const CatalogPickerBrowseModal: React.FC<CatalogPickerBrowseModalProps> =
                 </div>
               )}
 
-              <div className="relative flex-1 min-w-[12rem]">
+              <div className="relative flex-1 min-w-48">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('catalogs.picker_search', 'Search items…')}
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
                 />
                 {search && (
                   <button

@@ -32,7 +32,7 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -40,7 +40,7 @@ export const AllergyAlertsCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>

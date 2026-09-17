@@ -98,7 +98,7 @@ export const RangeGaugeCard = React.forwardRef((props: any, ref: any) => {
     <div
       ref={ref}
       style={{ ...style, zIndex: showConfig ? 100 : (style?.zIndex || 1) }}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'} ${isClickable ? 'cursor-pointer hover:border-blue-300 dark:hover:border-blue-700/50 hover:shadow-md transition-all' : ''}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'} ${isClickable ? 'cursor-pointer hover:border-blue-300 dark:hover:border-blue-700/50 hover:shadow-md transition-all' : ''}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -107,7 +107,7 @@ export const RangeGaugeCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -115,13 +115,13 @@ export const RangeGaugeCard = React.forwardRef((props: any, ref: any) => {
 
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2 min-w-0">
-          <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex-shrink-0">
+          <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg shrink-0">
             <Gauge className="w-4 h-4 text-indigo-500" />
           </div>
-          <h3 className="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight leading-tight break-words">{displayBiomarkerName}</h3>
+          <h3 className="text-sm font-black text-gray-900 dark:text-dark-text tracking-tight leading-tight wrap-break-word">{displayBiomarkerName}</h3>
         </div>
         {latestPoint?.info && (
-          <button onClick={(e) => { e.stopPropagation(); setSelectedInfo({ info: latestPoint.info, name: displayBiomarkerName }); }} className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0">
+          <button onClick={(e) => { e.stopPropagation(); setSelectedInfo({ info: latestPoint.info, name: displayBiomarkerName }); }} className="p-1.5 text-blue-400 hover:text-blue-600 transition-colors shrink-0">
             <Info className="w-3.5 h-3.5" />
           </button>
         )}

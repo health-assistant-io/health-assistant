@@ -70,7 +70,7 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
     return (
       <div className={`mt-4 rounded-2xl border ${tone.ring} bg-white dark:bg-dark-surface p-3`}>
         <div className="flex items-center gap-3">
-          <StatusIcon className={`w-4 h-4 flex-shrink-0 ${tone.icon}`} />
+          <StatusIcon className={`w-4 h-4 shrink-0 ${tone.icon}`} />
           <div className="min-w-0 flex-1">
             <div className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60">
               {t(statusMeta.labelKey)}
@@ -82,8 +82,8 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
           <div className="min-w-0">
             {errorMsg ? (
               <div className="flex items-start gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-dark-border text-[10px] text-rose-600 dark:text-rose-400">
-                <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                <span className="break-words">{errorMsg}</span>
+                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                <span className="wrap-break-word">{errorMsg}</span>
               </div>
             ) : (
               outcome
@@ -110,14 +110,14 @@ export const HitlTaskCard: React.FC<Props> = ({ task, sessionId, onResolved }) =
         {/* Header — base layout is a column (title full-width, status below)
             so the title is never squeezed by the status pill; a container
             query restores the inline row when the card is wide enough. */}
-        <div className="hitl-header px-4 py-3 border-b border-gray-50 dark:border-dark-border bg-gradient-to-r from-gray-50/60 to-white dark:from-dark-bg/40 dark:to-dark-surface">
+        <div className="hitl-header px-4 py-3 border-b border-gray-50 dark:border-dark-border bg-linear-to-r from-gray-50/60 to-white dark:from-dark-bg/40 dark:to-dark-surface">
           <div className="hitl-title-row flex items-center gap-2.5 min-w-0">
-            <div className={`p-1.5 rounded-lg ${accent.chip} flex-shrink-0`}>
+            <div className={`p-1.5 rounded-lg ${accent.chip} shrink-0`}>
               <HandlerIcon className="w-3.5 h-3.5" />
             </div>
             <div className="min-w-0 flex-1">
               <ActiveTaskBadge size="sm" label={t('ai_chat.hitl.proposal_label', 'Proposal')} workflow="chat" />
-              <div className="text-sm font-bold text-gray-800 dark:text-dark-text break-words leading-snug">
+              <div className="text-sm font-bold text-gray-800 dark:text-dark-text wrap-break-word leading-snug">
                 {task.title || t('ai_chat.hitl.default_title', 'Review proposed action')}
               </div>
             </div>

@@ -31,7 +31,7 @@ export const BiomarkerKpiStrip: React.FC<BiomarkerKpiStripProps> = ({
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs">
         <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
           {t('biomarkers.latest_result')}
         </p>
@@ -49,7 +49,7 @@ export const BiomarkerKpiStrip: React.FC<BiomarkerKpiStripProps> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs">
         <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
           {t('biomarkers.clinical_reference')}
         </p>
@@ -62,7 +62,7 @@ export const BiomarkerKpiStrip: React.FC<BiomarkerKpiStripProps> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs">
         <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
           {t('biomarkers.avg_overall')}
         </p>
@@ -73,7 +73,7 @@ export const BiomarkerKpiStrip: React.FC<BiomarkerKpiStripProps> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+      <div className="bg-white dark:bg-dark-surface p-4 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs">
         <p className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-1">
           {t('biomarkers.total_records')}
         </p>

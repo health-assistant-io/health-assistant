@@ -212,8 +212,8 @@ export const RelationTypeSelect: React.FC<RelationTypeSelectProps> = ({
         onKeyDown={onKeyDown}
         className={
           compact
-            ? 'inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 font-semibold text-blue-700 dark:text-blue-300 rounded-md pl-1.5 pr-1 py-0.5 text-[11px] outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors'
-            : 'inline-flex items-center gap-2 w-full bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors'
+            ? 'inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 font-semibold text-blue-700 dark:text-blue-300 rounded-md pl-1.5 pr-1 py-0.5 text-[11px] outline-hidden focus:ring-2 focus:ring-blue-500/40 transition-colors'
+            : 'inline-flex items-center gap-2 w-full bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 font-medium text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-blue-500/40 transition-colors'
         }
         title={selectedMeta?.description ?? t('catalogs.picker_relation', 'Relation')}
       >
@@ -251,7 +251,7 @@ export const RelationTypeSelect: React.FC<RelationTypeSelectProps> = ({
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={t('catalogs.picker_relation_filter', 'Filter relations…')}
-                className="w-full pl-7 pr-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full pl-7 pr-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
               />
             </div>
             <div className="max-h-72 overflow-auto custom-scrollbar py-1">

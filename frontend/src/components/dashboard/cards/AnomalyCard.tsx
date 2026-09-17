@@ -60,7 +60,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
     <div
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -68,7 +68,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -104,7 +104,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
             <div key={i} className={`p-3 rounded-xl border transition-all ${cfg.classes}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start space-x-2 min-w-0">
-                  <span className="flex-shrink-0 mt-0.5">{typeIcon(anomaly.type)}</span>
+                  <span className="shrink-0 mt-0.5">{typeIcon(anomaly.type)}</span>
                   <div className="min-w-0">
                     {anomaly.biomarker && (
                       <p className="font-bold text-sm truncate">
@@ -119,7 +119,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
                     <p className="text-[11px] mt-0.5 opacity-80 leading-tight">{anomaly.message}</p>
                   </div>
                 </div>
-                <span className="text-[8px] font-black uppercase tracking-tighter opacity-70 flex-shrink-0">{anomaly.severity}</span>
+                <span className="text-[8px] font-black uppercase tracking-tighter opacity-70 shrink-0">{anomaly.severity}</span>
               </div>
             </div>
           );

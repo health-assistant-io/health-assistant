@@ -73,17 +73,17 @@ export const AnatomyDetail: React.FC<Props> = ({
           >
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
+                className="w-2 h-2 rounded-full shrink-0"
                 style={{ background: CATEGORY_COLORS[rel.structure.category] }}
               />
               <span className="font-medium text-gray-700 dark:text-dark-text truncate">
                 {rel.structure.name}
               </span>
-              <span className="text-[9px] text-gray-400 uppercase flex-shrink-0">
+              <span className="text-[9px] text-gray-400 uppercase shrink-0">
                 {t(`anatomy.relations.${rel.relation_type}`)}
               </span>
             </div>
-            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-400 transition-colors shrink-0" />
           </button>
         ))}
       </div>
@@ -98,7 +98,7 @@ export const AnatomyDetail: React.FC<Props> = ({
       >
         <div className="flex items-start gap-3">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white flex-shrink-0"
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0"
             style={{ background: categoryColor }}
           >
             {CATEGORY_ICONS[structure.category]}
@@ -130,7 +130,7 @@ export const AnatomyDetail: React.FC<Props> = ({
 
         {structure.description && (
           <div className="mt-3 flex items-start gap-2">
-            <FileText className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+            <FileText className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
             <p className="text-sm text-gray-600 dark:text-dark-muted leading-relaxed">
               {structure.description}
             </p>

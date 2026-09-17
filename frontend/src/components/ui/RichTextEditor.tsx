@@ -80,7 +80,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }, [value]);
 
   return (
-    <div className={`modern-quill-wrapper rounded-[2rem] border border-gray-200 dark:border-dark-border overflow-hidden bg-white dark:bg-dark-surface shadow-inner ${className}`}>
+    <div className={`modern-quill-wrapper rounded-4xl border border-gray-200 dark:border-dark-border overflow-hidden bg-white dark:bg-dark-surface shadow-inner ${className}`}>
       <style>{`
         .ql-container { min-height: ${minHeight}; font-family: inherit; font-size: 1rem; }
         .ql-editor { padding: 24px; line-height: 1.8; }

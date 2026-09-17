@@ -408,7 +408,7 @@ const ExportImport: React.FC = () => {
       {activeTab === 'export' && (
         <div className="space-y-6">
           {/* Export configuration card */}
-          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center space-x-3 mb-4">
               <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
                 <FileArchive className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -427,7 +427,7 @@ const ExportImport: React.FC = () => {
                 <select
                   value={scope}
                   onChange={(e) => handleScopeChange(e.target.value as ExportScope)}
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                 >
                   <option value="patient">{EXPORT_SCOPE_LABELS.patient}</option>
                   <option value="group" disabled={!canUseGroupScope}>
@@ -441,7 +441,7 @@ const ExportImport: React.FC = () => {
                 </select>
                 <p className="mt-1 text-[11px] text-gray-400">
                   SMART scope:{' '}
-                  <code className="bg-gray-100 dark:bg-dark-border px-1 rounded">
+                  <code className="bg-gray-100 dark:bg-dark-border px-1 rounded-sm">
                     {scope === 'patient'
                       ? 'patient/*.rs'
                       : scope === 'group'
@@ -459,7 +459,7 @@ const ExportImport: React.FC = () => {
                 <select
                   value={exportType}
                   onChange={(e) => setExportType(e.target.value as ExportType)}
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                 >
                   <option value="fhir_only">{EXPORT_TYPE_LABELS.fhir_only}</option>
                   <option value="full_backup">{EXPORT_TYPE_LABELS.full_backup}</option>
@@ -602,7 +602,7 @@ const ExportImport: React.FC = () => {
           </div>
 
           {/* Export jobs table */}
-          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
             <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">
               Export jobs
             </h3>
@@ -689,7 +689,7 @@ const ExportImport: React.FC = () => {
 
       {activeTab === 'import' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center space-x-3 mb-4">
               <div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
                 <Upload className="w-5 h-5 text-purple-600 dark:text-purple-400" />
@@ -700,7 +700,7 @@ const ExportImport: React.FC = () => {
             </div>
 
             <div className="mb-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 flex items-start space-x-3">
-              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                 <p>
                   Accepted formats: <strong>ZIP</strong> (full backup),{' '}
@@ -799,11 +799,11 @@ const ExportImport: React.FC = () => {
                 }`}
               >
                 {importMessage.type === 'success' ? (
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
                 ) : importMessage.type === 'error' ? (
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <AlertCircle className="w-5 h-5 shrink-0" />
                 ) : (
-                  <Info className="w-5 h-5 flex-shrink-0" />
+                  <Info className="w-5 h-5 shrink-0" />
                 )}
                 <div className="flex-1">
                   <h4 className="font-bold text-sm">
@@ -826,7 +826,7 @@ const ExportImport: React.FC = () => {
           </div>
 
           {/* Import jobs table */}
-          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
             <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">
               Import jobs
             </h3>
@@ -958,7 +958,7 @@ const ExportImport: React.FC = () => {
             {selectedExportJob.error_message && (
               <div>
                 <span className="text-gray-500 dark:text-dark-muted block mb-1">Error Message</span>
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs break-words">
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs wrap-break-word">
                   {selectedExportJob.error_message}
                 </div>
               </div>
@@ -1011,7 +1011,7 @@ const ExportImport: React.FC = () => {
             {selectedImportJob.error_message && (
               <div>
                 <span className="text-gray-500 dark:text-dark-muted block mb-1">Fatal Error</span>
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs break-words">
+                <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs wrap-break-word">
                   {selectedImportJob.error_message}
                 </div>
               </div>
@@ -1055,7 +1055,7 @@ const ExportImport: React.FC = () => {
                 </span>
                 <ul className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                   {selectedImportJob.errors.map((err, i) => (
-                    <li key={i} className="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-2 rounded">
+                    <li key={i} className="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-2 rounded-sm">
                       {err}
                     </li>
                   ))}
@@ -1070,7 +1070,7 @@ const ExportImport: React.FC = () => {
                 </span>
                 <ul className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                   {selectedImportJob.warnings.map((warn, i) => (
-                    <li key={i} className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 p-2 rounded">
+                    <li key={i} className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 p-2 rounded-sm">
                       {warn}
                     </li>
                   ))}

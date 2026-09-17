@@ -55,7 +55,7 @@ const Highlight: React.FC<{ text: string; term?: string }> = ({ text, term }) =>
     out.push(
       <mark
         key={key++}
-        className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded px-0.5"
+        className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded-sm px-0.5"
       >
         {text.slice(idx, idx + q.length)}
       </mark>,
@@ -238,15 +238,15 @@ export const InstanceBrowser: React.FC<InstanceBrowserProps> = ({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         title={t('instances.keyboard_hint', '↑↓ navigate · Enter select · Esc clear')}
-        className="flex-1 overflow-y-auto min-h-0 custom-scrollbar outline-none focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-900 rounded-lg"
+        className="flex-1 overflow-y-auto min-h-0 custom-scrollbar outline-hidden focus:ring-1 focus:ring-blue-200 dark:focus:ring-blue-900 rounded-lg"
       >
         {loading ? (
           <ul className="divide-y divide-gray-100 dark:divide-gray-700 rounded-lg border border-gray-200 dark:border-gray-700">
             {Array.from({ length: 7 }).map((_, i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3.5">
                 <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-2/3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                  <div className="h-3 w-1/2 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-3.5 w-2/3 bg-gray-200 dark:bg-gray-700 rounded-sm animate-pulse" />
+                  <div className="h-3 w-1/2 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
                 </div>
                 <div className="h-3.5 w-12 bg-gray-100 dark:bg-gray-800 rounded-full animate-pulse" />
               </li>
@@ -355,7 +355,7 @@ export const InstanceBrowser: React.FC<InstanceBrowserProps> = ({
                       {/* Status badge */}
                       {row.status && (
                         <span
-                          className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5"
+                          className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5"
                           style={
                             row.statusColor
                               ? {
@@ -372,7 +372,7 @@ export const InstanceBrowser: React.FC<InstanceBrowserProps> = ({
                       {row.badges?.map((b, i) => (
                         <span
                           key={i}
-                          className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                          className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                           style={
                             b.color
                               ? {

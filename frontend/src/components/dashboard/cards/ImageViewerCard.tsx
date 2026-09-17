@@ -60,7 +60,7 @@ export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -68,7 +68,7 @@ export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -122,7 +122,7 @@ export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
               )}
               
               <div className="absolute top-3 left-3">
-                <span className="px-2 py-1 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-sm border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-bold text-blue-600 dark:text-blue-400 shadow-sm uppercase tracking-wider">
+                <span className="px-2 py-1 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-xs border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-bold text-blue-600 dark:text-blue-400 shadow-xs uppercase tracking-wider">
                   {currentStudy.category}
                 </span>
               </div>
@@ -148,11 +148,11 @@ export const ImageViewerCard = React.forwardRef((props: any, ref: any) => {
                 </p>
               </div>
 
-              <div className="flex flex-shrink-0 space-x-2">
+              <div className="flex shrink-0 space-x-2">
                 {currentStudy.examination_id && (
                   <button 
                     onClick={() => navigate(`/examinations/${currentStudy.examination_id}`)}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl text-[11px] font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors border border-blue-100 dark:border-blue-900/30 shadow-sm shadow-blue-50 dark:shadow-none active:scale-95"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl text-[11px] font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors border border-blue-100 dark:border-blue-900/30 shadow-xs shadow-blue-50 dark:shadow-none active:scale-95"
                     title={t('common.open_exam')}
                   >
                     <FileText className="w-3 h-3" />

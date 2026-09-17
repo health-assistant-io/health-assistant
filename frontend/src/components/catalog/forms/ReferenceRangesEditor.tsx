@@ -23,10 +23,10 @@ const SEX_OPTIONS: { value: '' | Sex; label: string }[] = [
 ];
 
 const selectCls =
-  'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none';
+  'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden';
 
 const inputCls =
-  'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none';
+  'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden';
 
 const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">

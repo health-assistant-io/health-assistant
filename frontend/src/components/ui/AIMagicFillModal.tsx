@@ -63,10 +63,10 @@ export const AIMagicFillModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
       <div role="dialog" aria-modal="true" className="bg-white dark:bg-dark-surface w-full max-w-2xl rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="px-10 py-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-blue-50/50 dark:from-indigo-900/10 dark:to-blue-900/10">
+        <div className="px-10 py-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-linear-to-r from-indigo-50/50 to-blue-50/50 dark:from-indigo-900/10 dark:to-blue-900/10">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none">
               <Sparkles className="w-6 h-6" />
@@ -93,12 +93,12 @@ export const AIMagicFillModal: React.FC<Props> = ({
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={placeholder}
-              className="w-full px-8 py-6 bg-gray-50 dark:bg-dark-bg border-none rounded-[2rem] text-sm text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner outline-none resize-none leading-relaxed"
+              className="w-full px-8 py-6 bg-gray-50 dark:bg-dark-bg border-none rounded-4xl text-sm text-gray-900 dark:text-dark-text placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner outline-hidden resize-none leading-relaxed"
             />
           </div>
 
           <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 p-6 rounded-3xl flex items-start gap-4">
-            <div className="p-2 bg-white dark:bg-dark-surface rounded-xl shadow-sm">
+            <div className="p-2 bg-white dark:bg-dark-surface rounded-xl shadow-xs">
               <Wand2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">

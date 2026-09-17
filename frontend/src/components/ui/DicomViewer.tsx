@@ -82,7 +82,7 @@ const DicomFrameThumbnail: React.FC<DicomFrameThumbnailProps> = ({
           #{pageIndex + 1}
         </div>
       )}
-      <div className="absolute top-1 left-1 px-1 bg-black/60 rounded text-[8px] font-black text-white pointer-events-none">
+      <div className="absolute top-1 left-1 px-1 bg-black/60 rounded-sm text-[8px] font-black text-white pointer-events-none">
         {pageIndex + 1}
       </div>
     </button>
@@ -213,18 +213,18 @@ export const DicomViewer: React.FC<DicomViewerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col bg-[#0a0a0a] text-gray-300 font-mono select-none">
+    <div className="fixed inset-0 z-modal flex flex-col bg-[#0a0a0a] text-gray-300 font-mono select-none">
       {/* Header Bar */}
       <div className="flex items-center justify-between px-6 py-4 bg-black/60 border-b border-white/5 backdrop-blur-md z-30">
         <div className="flex items-center gap-6">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="text-white font-black text-sm uppercase tracking-widest">{filename}</span>
-              <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded tracking-tighter shadow-lg shadow-indigo-500/20">
+              <span className="px-2 py-0.5 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-sm tracking-tighter shadow-lg shadow-indigo-500/20">
                 DICOM VIEW
               </span>
               {totalPages > 1 && (
-                <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[9px] font-black uppercase rounded border border-white/5">
+                <span className="px-2 py-0.5 bg-white/10 text-gray-400 text-[9px] font-black uppercase rounded-sm border border-white/5">
                   STACK: {totalPages} FRAMES
                 </span>
               )}
@@ -341,7 +341,7 @@ export const DicomViewer: React.FC<DicomViewerProps> = ({
           <div className="w-64 bg-black/80 border-r border-white/10 overflow-y-auto p-4 flex flex-col gap-4 z-20 animate-in slide-in-from-left duration-300">
              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
                 <span>Stack Frames</span>
-                <span className="bg-white/5 px-2 py-0.5 rounded text-gray-400">{totalPages}</span>
+                <span className="bg-white/5 px-2 py-0.5 rounded-sm text-gray-400">{totalPages}</span>
              </p>
              <div className="grid grid-cols-2 gap-3">
                 {Array.from({ length: totalPages }).map((_, i) => (

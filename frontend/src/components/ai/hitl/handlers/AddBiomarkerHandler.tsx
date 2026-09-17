@@ -143,13 +143,13 @@ export const AddBiomarkerHandler: React.FC<HitlHandlerProps> = ({ task, sessionI
     <div className="flex flex-col flex-1 min-h-0">
       {error && (
         <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/10 p-3 text-[11px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
       {examLabel && (
         <div className="mx-4 mt-4 flex items-center gap-2 text-[11px] text-gray-500 dark:text-dark-muted">
-          <Calendar className="w-3 h-3 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+          <Calendar className="w-3 h-3 text-emerald-500 dark:text-emerald-400 shrink-0" />
           <span>
             {t('ai_chat.hitl.add_biomarker.adding_to', 'Adding to:')}{' '}
             <span className="font-semibold text-gray-700 dark:text-dark-text">{examLabel}</span>

@@ -43,7 +43,7 @@ export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patie
   };
 
   return (
-    <div className="bg-gray-900 rounded-[2rem] p-6 shadow-sm overflow-hidden flex flex-col">
+    <div className="bg-gray-900 rounded-4xl p-6 shadow-xs overflow-hidden flex flex-col">
       <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-800">
         <h3 className="flex items-center text-sm font-bold text-gray-100 uppercase tracking-widest">
           <Terminal className="w-4 h-4 mr-2 text-green-400" /> Debug Console
@@ -80,7 +80,7 @@ export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patie
                 </div>
               </div>
               <div className="text-gray-300 mb-1 font-bold">{log.title}</div>
-              <pre className="overflow-x-auto bg-black p-2 rounded whitespace-pre-wrap break-all text-[10px] border border-gray-800 group-hover:border-gray-700 transition-colors">
+              <pre className="overflow-x-auto bg-black p-2 rounded-sm whitespace-pre-wrap break-all text-[10px] border border-gray-800 group-hover:border-gray-700 transition-colors">
                 {log.payload ? JSON.stringify(log.payload, null, 2) : "Empty Payload"}
               </pre>
             </div>

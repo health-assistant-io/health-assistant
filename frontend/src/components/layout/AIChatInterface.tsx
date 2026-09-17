@@ -862,7 +862,7 @@ export const AIChatInterface: React.FC<Props> = ({
         {isFullScreen && !isHistoryOpen && (
           <button
             onClick={() => setIsHistoryOpen(true)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-[960] group flex items-center"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-960 group flex items-center"
           >
             <div className="bg-white dark:bg-dark-surface border border-l-0 border-gray-100 dark:border-dark-border py-8 px-1 rounded-r-2xl shadow-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all flex flex-col items-center gap-4">
                <History className="w-4 h-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
@@ -899,7 +899,7 @@ export const AIChatInterface: React.FC<Props> = ({
                           ? `flex items-start space-x-2 md:space-x-4 max-w-[95%] md:max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`
                           : 'flex flex-col w-full'
                       }`}>
-                          <div className={`flex-shrink-0 shadow-sm ${
+                          <div className={`shrink-0 shadow-xs ${
                             isFullScreen ? 'p-2 md:p-2.5 rounded-xl md:rounded-2xl' : `p-1.5 rounded-lg mb-1.5 ${msg.role === 'user' ? 'self-end' : 'self-start'}`
                           } ${
                             msg.role === 'user'
@@ -1036,7 +1036,7 @@ export const AIChatInterface: React.FC<Props> = ({
                                         disabled={!tc.result}
                                         className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border transition-all ${
                                           tc.status === 'finished' 
-                                            ? (isFullScreen ? 'bg-gray-50 dark:bg-dark-bg border-gray-200 dark:border-dark-border text-indigo-600 dark:text-indigo-400 hover:bg-white dark:hover:bg-dark-surface' : 'bg-white dark:bg-dark-surface border-indigo-100/30 dark:border-indigo-900/20 text-indigo-500 hover:bg-indigo-50 shadow-sm') 
+                                            ? (isFullScreen ? 'bg-gray-50 dark:bg-dark-bg border-gray-200 dark:border-dark-border text-indigo-600 dark:text-indigo-400 hover:bg-white dark:hover:bg-dark-surface' : 'bg-white dark:bg-dark-surface border-indigo-100/30 dark:border-indigo-900/20 text-indigo-500 hover:bg-indigo-50 shadow-xs') 
                                             : 'bg-gray-50 dark:bg-dark-bg border-gray-100 dark:border-dark-border text-gray-400'
                                         }`}
                                       >
@@ -1171,7 +1171,7 @@ export const AIChatInterface: React.FC<Props> = ({
 
             {activeTab === 'insights' && (
               <div className="max-w-4xl mx-auto w-full p-4 md:p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className={`p-6 md:p-8 rounded-2xl md:rounded-[2rem] border shadow-2xl ${
+                  <div className={`p-6 md:p-8 rounded-2xl md:rounded-4xl border shadow-2xl ${
                     isFullScreen 
                       ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30 text-amber-900 dark:text-amber-200' 
                       : 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30 text-amber-900 dark:text-amber-200'
@@ -1199,7 +1199,7 @@ export const AIChatInterface: React.FC<Props> = ({
                       <button 
                         key={action.id} 
                         onClick={() => handleExecuteAction(action)}
-                        className={`group p-6 md:p-6 flex flex-col items-start gap-3 md:gap-4 rounded-2xl md:rounded-[2rem] border transition-all text-left hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] ${
+                        className={`group p-6 md:p-6 flex flex-col items-start gap-3 md:gap-4 rounded-2xl md:rounded-4xl border transition-all text-left hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] ${
                           isFullScreen 
                             ? 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border hover:border-indigo-300 dark:hover:border-indigo-500' 
                             : 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border hover:border-indigo-300 dark:hover:border-indigo-500'
@@ -1240,7 +1240,7 @@ export const AIChatInterface: React.FC<Props> = ({
                   }
                 }}
               >
-                  <div className={`absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] opacity-0 group-focus-within:opacity-30 blur transition-opacity duration-500 pointer-events-none`} />
+                  <div className={`absolute -inset-1 bg-linear-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] opacity-0 group-focus-within:opacity-30 blur-sm transition-opacity duration-500 pointer-events-none`} />
 
                   {/* Preview rail + recording banner live OUTSIDE the rounded
                       input box so neither thumbnails nor the banner are clipped
@@ -1281,7 +1281,7 @@ export const AIChatInterface: React.FC<Props> = ({
                     <textarea
                       ref={textareaRef}
                       rows={1}
-                      className="flex-1 pl-2 md:pl-3 pr-2 py-4 md:py-5 bg-transparent text-sm font-medium text-gray-900 dark:text-dark-text placeholder-gray-400 dark:placeholder-slate-500 resize-none outline-none border-none focus:ring-0 focus:outline-none focus-visible:ring-0 overflow-y-auto custom-scrollbar leading-relaxed shadow-none"
+                      className="flex-1 pl-2 md:pl-3 pr-2 py-4 md:py-5 bg-transparent text-sm font-medium text-gray-900 dark:text-dark-text placeholder-gray-400 dark:placeholder-slate-500 resize-none outline-hidden border-none focus:ring-0 focus:outline-hidden focus-visible:ring-0 overflow-y-auto custom-scrollbar leading-relaxed shadow-none"
                       placeholder={t('ai_chat.input.placeholder')}
                       value={userInput}
                       onChange={e => setUserInput(e.target.value)}

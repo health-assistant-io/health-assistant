@@ -128,7 +128,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
       </div>
 
       {/* Tab Content */}
-      <div className="bg-white dark:bg-dark-surface rounded-lg shadow p-6 mb-20">
+      <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-6 mb-20">
         {activeTab === 'providers' && (
           <ProviderManager 
             scope={scope} 

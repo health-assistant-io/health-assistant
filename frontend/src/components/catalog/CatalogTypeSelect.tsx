@@ -72,7 +72,7 @@ export const CatalogTypeSelect: React.FC<CatalogTypeSelectProps> = ({
     <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 min-w-[10rem] rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+        className="flex items-center gap-2 min-w-40 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
         title={t('catalogs.type_select_title', 'Catalog type')}
       >
         {active && <DynamicIcon icon={active.ui.icon} className="w-4 h-4 shrink-0" />}
@@ -91,7 +91,7 @@ export const CatalogTypeSelect: React.FC<CatalogTypeSelectProps> = ({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t('catalogs.type_select_search', 'Filter catalogs…')}
-              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
             />
           </div>
           <div className="max-h-72 overflow-auto">

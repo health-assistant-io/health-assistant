@@ -157,13 +157,13 @@ export const ClinicalEventList = () => {
            <div className="flex items-center bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg p-1">
               <button 
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-dark-bg shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-dark-bg shadow-xs text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-dark-bg shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-100 dark:bg-dark-bg shadow-xs text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <ListIcon className="w-4 h-4" />
               </button>
@@ -189,11 +189,11 @@ export const ClinicalEventList = () => {
 
   const Preview = selectedEvent ? (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="p-8 border-b border-gray-50 dark:border-dark-border flex-shrink-0">
+      <div className="p-8 border-b border-gray-50 dark:border-dark-border shrink-0">
          <div className="flex items-start justify-between mb-6">
              <div className="flex items-center space-x-4">
                 <div 
-                 className="p-3 rounded-2xl bg-opacity-10" 
+                 className="p-3 rounded-2xl" 
                  style={{ backgroundColor: selectedEvent.type_details?.color + '20', color: selectedEvent.type_details?.color }}
                 >
                    {getEventIcon(selectedEvent.type_details?.slug || '', "w-5 h-5")}
@@ -293,7 +293,7 @@ export const ClinicalEventList = () => {
       <StickyToolbar
         className="flex-col sm:flex-row items-stretch sm:items-center"
         actions={
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-shrink-0 pt-2 sm:pt-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0 pt-2 sm:pt-0">
             <button 
               onClick={handleCreateNew}
               className="w-full sm:w-auto flex items-center justify-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none font-bold active:scale-95 whitespace-nowrap"

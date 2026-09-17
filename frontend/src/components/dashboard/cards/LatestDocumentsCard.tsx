@@ -27,7 +27,7 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
     <div 
       ref={ref}
       style={style}
-      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
+      className={`${className || ''} bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex flex-col relative group ${isEditMode ? '' : 'overflow-hidden'}`}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
@@ -35,7 +35,7 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
       {isEditMode && onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(id); }}
-          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-[60] hover:bg-red-600 active:scale-95"
+          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-60 hover:bg-red-600 active:scale-95"
         >
           <X className="w-3 h-3" />
         </button>
@@ -69,7 +69,7 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
                   onClick={() => navigate(`/documents/${doc.id}`)}
                   className="flex items-center p-3 bg-gray-50/50 dark:bg-dark-bg/50 border border-gray-100 dark:border-dark-border rounded-xl hover:border-blue-200 dark:hover:border-blue-900 transition-all cursor-pointer group/item"
                 >
-                  <div className="w-10 h-10 rounded-lg bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border flex items-center justify-center mr-3 shadow-sm group-hover/item:border-blue-200">
+                  <div className="w-10 h-10 rounded-lg bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border flex items-center justify-center mr-3 shadow-xs group-hover/item:border-blue-200">
                     {doc.filename.match(/\.(png|jpe?g|webp|gif|bmp)$/i) ? (
                       <ImageIcon className="w-5 h-5 text-blue-500" />
                     ) : (

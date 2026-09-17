@@ -408,7 +408,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
           role="dialog"
           aria-modal="false"
           aria-label={t('catalogs.graph_filters', { defaultValue: 'Graph filters' })}
-          className="hidden md:flex absolute top-0 right-0 bottom-0 z-[200] w-80 flex-col bg-white dark:bg-dark-surface border-l border-gray-200 dark:border-dark-border shadow-2xl animate-in slide-in-from-right duration-300"
+          className="hidden md:flex absolute top-0 right-0 bottom-0 z-200 w-80 flex-col bg-white dark:bg-dark-surface border-l border-gray-200 dark:border-dark-border shadow-2xl animate-in slide-in-from-right duration-300"
         >
           {/* Header */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-dark-border">
@@ -456,7 +456,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
       {filtersOpen && (
         <>
           <div
-            className="md:hidden fixed inset-0 bg-black/40 z-[200]"
+            className="md:hidden fixed inset-0 bg-black/40 z-200"
             onClick={() => onFiltersOpenChange(false)}
             aria-hidden
           />
@@ -464,7 +464,7 @@ export const CatalogOntologyGraph: React.FC<CatalogOntologyGraphProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label={t('catalogs.graph_filters', { defaultValue: 'Graph filters' })}
-            className="md:hidden fixed inset-x-0 bottom-0 z-[201] max-h-[78vh] flex flex-col bg-white dark:bg-dark-surface rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
+            className="md:hidden fixed inset-x-0 bottom-0 z-201 max-h-[78vh] flex flex-col bg-white dark:bg-dark-surface rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
           >
             {/* Header — drag handle + title + active badge + close */}
             <div className="flex items-center justify-between gap-2 px-4 pt-2 pb-3 border-b border-gray-100 dark:border-dark-border">

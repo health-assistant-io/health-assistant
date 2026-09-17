@@ -71,7 +71,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
 
   if (loading) return (
     <div className="animate-pulse bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border w-full h-full">
-      <div className="h-4 w-32 bg-gray-200 rounded mb-4"></div>
+      <div className="h-4 w-32 bg-gray-200 rounded-sm mb-4"></div>
       <div className="flex space-x-2">
         <div className="h-8 w-24 bg-gray-100 rounded-full"></div>
         <div className="h-8 w-24 bg-gray-100 rounded-full"></div>
@@ -80,7 +80,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
   );
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
       <SummaryCardHeader
         icon={ShieldAlert}
         iconClassName="text-red-500"
@@ -129,8 +129,8 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                   <div className="flex items-start space-x-3 w-full pr-8">
                     <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${(allergy.criticality ?? '').toUpperCase() === 'HIGH' ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm leading-tight dark:text-dark-text break-words">{allergy.code.text}</p>
-                      <p className="text-[10px] opacity-70 font-medium uppercase tracking-tighter dark:text-dark-muted break-words">
+                      <p className="font-bold text-sm leading-tight dark:text-dark-text wrap-break-word">{allergy.code.text}</p>
+                      <p className="text-[10px] opacity-70 font-medium uppercase tracking-tighter dark:text-dark-muted wrap-break-word">
                         {allergy.category || t('allergies.uncategorized')}
                       </p>
                     </div>
@@ -213,14 +213,14 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                   <div className="flex bg-gray-100 dark:bg-dark-bg p-0.5 rounded-lg">
                     <button 
                       onClick={() => setResolvedViewMode('compact')}
-                      className={`p-1.5 rounded-md transition-all ${resolvedViewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted'}`}
+                      className={`p-1.5 rounded-md transition-all ${resolvedViewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-xs text-blue-600' : 'text-gray-400 dark:text-dark-muted'}`}
                       title={t('allergies.compact_view')}
                     >
                       <List className="w-3.5 h-3.5" />
                     </button>
                     <button 
                       onClick={() => setResolvedViewMode('timeline')}
-                      className={`p-1.5 rounded-md transition-all ${resolvedViewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted'}`}
+                      className={`p-1.5 rounded-md transition-all ${resolvedViewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-xs text-blue-600' : 'text-gray-400 dark:text-dark-muted'}`}
                       title={t('allergies.timeline_view')}
                     >
                       <Clock className="w-3.5 h-3.5" />
@@ -272,7 +272,7 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                             {allergy.reactions && allergy.reactions.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1">
                                 {allergy.reactions.map((r, i) => (
-                                  <span key={i} className="px-2 py-0.5 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded text-[9px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-tighter">
+                                  <span key={i} className="px-2 py-0.5 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-sm text-[9px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-tighter">
                                     {r.manifestation}
                                   </span>
                                 ))}

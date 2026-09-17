@@ -98,7 +98,7 @@ const TableRenderer: React.FC<{ block: TableBlock }> = ({ block }) => {
                   className={`px-4 py-2 text-sm text-gray-900 dark:text-dark-text ${
                     ci === 0
                       ? 'whitespace-nowrap font-mono text-xs'
-                      : 'whitespace-normal break-words'
+                      : 'whitespace-normal wrap-break-word'
                   } align-top`}
                 >
                   {cell === null || cell === undefined ? (

@@ -781,7 +781,7 @@ function Dashboard() {
           <div ref={layoutMenuRef} className="relative w-full sm:w-auto">
             <button 
               onClick={() => setIsLayoutMenuOpen(!isLayoutMenuOpen)}
-              className="w-full sm:w-auto flex items-center justify-between sm:justify-start space-x-2 px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-dark-bg transition-all active:scale-95"
+              className="w-full sm:w-auto flex items-center justify-between sm:justify-start space-x-2 px-4 py-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xs hover:bg-gray-50 dark:hover:bg-dark-bg transition-all active:scale-95"
             >
               <span className="text-sm font-bold text-gray-700 dark:text-dark-text truncate">{activeLayout?.name || t('dashboard.loading_layout')} </span>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isLayoutMenuOpen ? 'rotate-180' : ''}`} />
@@ -877,21 +877,21 @@ function Dashboard() {
           <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto overflow-x-auto sm:overflow-visible no-scrollbar pb-1 sm:pb-0">
             {isEditMode && (
               <>
-                <div ref={addCardMenuRef} className="relative flex-shrink-0">
+                <div ref={addCardMenuRef} className="relative shrink-0">
                   <button 
                     onClick={() => setIsAddCardMenuOpen(!isAddCardMenuOpen)}
-                    className="flex items-center space-x-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-sm hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all active:scale-95 shadow-sm border border-blue-100 dark:border-blue-900/30"
+                    className="flex items-center space-x-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-sm hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all active:scale-95 shadow-xs border border-blue-100 dark:border-blue-900/30"
                   >
                     <Plus className="w-4 h-4" />
                     <span className="hidden xs:inline">{t('dashboard.add_card')}</span>
                   </button>
                   {isAddCardMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl z-[60] py-2 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-xl shadow-xl z-60 py-2 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[70vh] overflow-y-auto custom-scrollbar">
                       {ADDABLE_CARDS.map((def) => {
                         const Icon = def.icon;
                         return (
                           <button key={def.type} onClick={() => addCard(def.type)} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-border dark:text-dark-text flex items-center space-x-2 transition-colors">
-                            <Icon className={`w-4 h-4 flex-shrink-0 ${def.iconClassName || ''}`} />
+                            <Icon className={`w-4 h-4 shrink-0 ${def.iconClassName || ''}`} />
                             <span>{t(def.labelKey)}</span>
                           </button>
                         );
@@ -901,7 +901,7 @@ function Dashboard() {
                 </div>
                 <button 
                   onClick={saveCurrentLayout}
-                  className="flex-shrink-0 flex items-center space-x-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200/50 dark:shadow-none active:scale-95"
+                  className="shrink-0 flex items-center space-x-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200/50 dark:shadow-none active:scale-95"
                 >
                   <Save className="w-4 h-4" />
                   <span className="hidden xs:inline">{t('dashboard.save_layout')}</span>
@@ -910,7 +910,7 @@ function Dashboard() {
             )}
             <button 
               onClick={() => setIsEditMode(!isEditMode)}
-              className={`flex-shrink-0 p-2.5 rounded-xl transition-all shadow-sm border ${isEditMode ? 'bg-orange-600 text-white border-orange-700' : 'bg-white dark:bg-dark-surface hover:bg-gray-50 dark:hover:bg-dark-border text-gray-500 dark:text-dark-muted border-gray-200 dark:border-dark-border'}`}
+              className={`shrink-0 p-2.5 rounded-xl transition-all shadow-xs border ${isEditMode ? 'bg-orange-600 text-white border-orange-700' : 'bg-white dark:bg-dark-surface hover:bg-gray-50 dark:hover:bg-dark-border text-gray-500 dark:text-dark-muted border-gray-200 dark:border-dark-border'}`}
               title={t('dashboard.edit_layout')}
             >
               <Settings className="w-5 h-5" />

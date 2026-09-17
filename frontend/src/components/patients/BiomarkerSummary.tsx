@@ -148,7 +148,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
   if (loading) {
     return (
       <div className="animate-pulse bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border w-full h-full">
-        <div className="h-4 w-32 bg-gray-200 rounded mb-4" />
+        <div className="h-4 w-32 bg-gray-200 rounded-sm mb-4" />
         <div className="grid grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-20 bg-gray-50 rounded-xl" />
@@ -160,7 +160,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
 
   if (error) {
     return (
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
         <SummaryCardHeader
           icon={Activity}
           iconClassName="text-gray-400"
@@ -203,7 +203,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
   ].filter(Boolean) as React.ReactNode[];
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full flex flex-col">
       <SummaryCardHeader
         icon={Activity}
         iconClassName="text-blue-500"
@@ -257,7 +257,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
                   onClick={() => handleTileClick(obs)}
                   disabled={!isClickable}
                   aria-label={`${t('biomarkers.trend_for', { name: obs.displayName })}: ${formatBiomarkerValue(obs.value.normalized ?? obs.value.raw, precisionProfile)} ${obs.unit?.normalizedSymbol || obs.unit?.rawSymbol || ''}`}
-                  className={`relative text-left rounded-xl border p-3 transition-all bg-gray-50/50 dark:bg-dark-bg/30 border-gray-100 dark:border-dark-border ${isClickable ? 'hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+                  className={`relative text-left rounded-xl border p-3 transition-all bg-gray-50/50 dark:bg-dark-bg/30 border-gray-100 dark:border-dark-border ${isClickable ? 'hover:border-blue-200 dark:hover:border-blue-900 hover:shadow-xs cursor-pointer' : 'cursor-default'}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <p className="text-[10px] font-black text-gray-500 dark:text-dark-muted uppercase tracking-widest truncate leading-tight">

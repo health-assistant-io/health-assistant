@@ -1,36 +1,163 @@
-@import 'react-grid-layout/css/styles.css';
-@import 'react-resizable/css/styles.css';
+@import 'react-grid-layout/css/styles.css' layer(base);
+@import 'react-resizable/css/styles.css' layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
-/* Custom React Grid Layout Styles */
-.react-grid-placeholder {
-  background: rgba(59, 130, 246, 0.08) !important;
-  border-radius: 1.25rem !important;
-  border: 2px dashed #3b82f6 !important;
-  opacity: 0.5 !important;
-  z-index: 2 !important;
-  transition-duration: 100ms;
+@plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --breakpoint-xs: 480px;
+
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-navy: #1a2b4b;
+  --color-brand-cyan: #0088cc;
+  --color-brand-cyanHover: #0077b3;
+
+  --color-dark-bg: #0f172a;
+  --color-dark-surface: #1e293b;
+  --color-dark-border: #334155;
+  --color-dark-text: #f8fafc;
+  --color-dark-muted: #94a3b8;
+  --color-dark-primary: #3b82f6;
+  --color-dark-hover: #1e293b;
+
+  --z-index-dropdown: 100;
+  --z-index-modal: 1000;
+  --z-index-popover: 1050;
+  --z-index-drawer: 1100;
+  --z-index-toast: 1200;
+
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-gradient-x: gradient-x 3s ease infinite;
+
+  @keyframes gradient-x {
+    0%,
+    100% {
+      background-size: 200% 200%;
+      background-position: left center;
+    }
+    50% {
+      background-size: 200% 200%;
+      background-position: right center;
+    }
+  }
 }
 
-.react-grid-item-resizing {
-  opacity: 0.6;
-  z-index: 3;
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-.react-grid-item-react-draggable-dragging {
-  opacity: 0.6;
-  z-index: 10;
-  cursor: grabbing !important;
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-.react-grid-item .react-resizable-handle::after {
-  border-right: 2px solid #cbd5e1 !important;
-  border-bottom: 2px solid #cbd5e1 !important;
-  width: 10px !important;
-  height: 10px !important;
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+  }
+  .dark &::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+  }
+  .dark &::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+@utility dark {
+  & .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  & .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+@utility safe-top {
+  /* iOS safe-area insets for notched phones (requires viewport-fit=cover) */
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+@utility safe-right {
+  padding-right: env(safe-area-inset-right);
+}
+
+@layer utilities {
+  /* Custom React Grid Layout Styles */
+  .react-grid-placeholder {
+    background: rgba(59, 130, 246, 0.08) !important;
+    border-radius: 1.25rem !important;
+    border: 2px dashed #3b82f6 !important;
+    opacity: 0.5 !important;
+    z-index: 2 !important;
+    transition-duration: 100ms;
+  }
+
+  .react-grid-item-resizing {
+    opacity: 0.6;
+    z-index: 3;
+  }
+
+  .react-grid-item-react-draggable-dragging {
+    opacity: 0.6;
+    z-index: 10;
+    cursor: grabbing !important;
+  }
+
+  .react-grid-item .react-resizable-handle::after {
+    border-right: 2px solid #cbd5e1 !important;
+    border-bottom: 2px solid #cbd5e1 !important;
+    width: 10px !important;
+    height: 10px !important;
+  }
 }
 
 @layer base {
@@ -88,100 +215,66 @@
   }
 }
 
-* {
-  border-color: hsl(var(--border));
-}
-
-body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-#root {
-  min-height: 100vh;
-}
-
-/* Custom scrollbar for dark mode */
-.dark ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.dark ::-webkit-scrollbar-track {
-  background: #0f172a; 
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155; 
-  border-radius: 4px;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569; 
-}
-
-/* Global focus rings for dark mode inputs/buttons */
-.dark *:focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
-
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin-slow {
-  animation: spin-slow 3s linear infinite;
-}
-
-/* Scrollbar Utilities */
 @layer utilities {
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  * {
+    border-color: hsl(var(--border));
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family:
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      sans-serif;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
   }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+
+  #root {
+    min-height: 100vh;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #e2e8f0;
-    border-radius: 10px;
+
+  /* Custom scrollbar for dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
-  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  .dark ::-webkit-scrollbar-track {
+    background: #0f172a;
+  }
+  .dark ::-webkit-scrollbar-thumb {
     background: #334155;
+    border-radius: 4px;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #cbd5e1;
-  }
-  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  .dark ::-webkit-scrollbar-thumb:hover {
     background: #475569;
   }
 
-  /* iOS safe-area insets for notched phones (requires viewport-fit=cover) */
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
+  /* Global focus rings for dark mode inputs/buttons */
+  .dark *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
   }
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
+
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
-  .safe-left {
-    padding-left: env(safe-area-inset-left);
+
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
   }
-  .safe-right {
-    padding-right: env(safe-area-inset-right);
-  }
+
+  /* Scrollbar Utilities */
 }
 
 /* HITL task card — responsive to its OWN width (the chat drawer is resizable,

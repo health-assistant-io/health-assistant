@@ -87,7 +87,7 @@ export function TaskProgressIndicator({
           {examinationId && (
             <button 
               onClick={() => setIsLogViewerOpen(true)}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded text-gray-400"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-sm text-gray-400"
               title="View technical logs"
               aria-label="View technical logs"
             >
@@ -196,7 +196,7 @@ export function TaskProgressIndicator({
                 </div>
                 
                 {doc.status === 'failed' ? (
-                  <div className="text-[9px] text-red-500 font-bold leading-tight bg-red-50/50 dark:bg-red-900/20 p-1.5 rounded border border-red-100/50 dark:border-red-900/10 break-all">
+                  <div className="text-[9px] text-red-500 font-bold leading-tight bg-red-50/50 dark:bg-red-900/20 p-1.5 rounded-sm border border-red-100/50 dark:border-red-900/10 break-all">
                     Error: {doc.error_message || 'Unknown processing error'}
                   </div>
                 ) : (

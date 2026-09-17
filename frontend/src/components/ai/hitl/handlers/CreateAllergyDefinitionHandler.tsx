@@ -190,8 +190,8 @@ export const CreateAllergyDefinitionHandler: React.FC<HitlHandlerProps> = ({
     <div className="flex flex-col flex-1 min-h-0">
       {error && (
         <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-900/10 p-3 text-[11px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span className="break-words">{error}</span>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="wrap-break-word">{error}</span>
         </div>
       )}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar">

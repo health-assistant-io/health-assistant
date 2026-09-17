@@ -49,7 +49,7 @@ export const SetupField: React.FC<{
 );
 
 const inputCls =
-  'w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2.5 text-sm text-gray-800 dark:text-dark-text focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all';
+  'w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2.5 text-sm text-gray-800 dark:text-dark-text focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-hidden transition-all';
 
 export const SetupInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   (props, ref) => <input ref={ref} {...props} className={`${inputCls} ${props.className ?? ''}`} />,

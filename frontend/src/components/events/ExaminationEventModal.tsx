@@ -134,7 +134,7 @@ export const ExaminationEventModal: React.FC<Props> = ({ isOpen, onClose, patien
             <input
               type="text"
               placeholder={t('events.reason_for_visit_placeholder')}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:font-medium dark:text-dark-text"
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-xl text-[11px] font-semibold focus:ring-4 focus:ring-blue-500/10 outline-hidden transition-all placeholder:font-medium dark:text-dark-text"
               value={eventReasons[sel.id] || ''}
               onChange={e => handleReasonChange(sel.id, e.target.value)}
             />

@@ -727,7 +727,7 @@ const ExaminationDetail = () => {
                       <ChevronDown className={`w-4 h-4 transition-transform ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isActionsDropdownOpen && (
-                      <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-[110] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-110 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                         {/* Add Results */}
                         <div className="p-2">
                           <button
@@ -877,7 +877,7 @@ const ExaminationDetail = () => {
  
        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
             {/* Examination Info Card */}
-            <div className="xl:col-span-1 bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm flex flex-col">
+            <div className="xl:col-span-1 bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs flex flex-col">
                <div className="flex items-center space-x-3 mb-8">
                   <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                      <ClipboardList className="w-5 h-5 text-blue-500" />
@@ -896,7 +896,7 @@ const ExaminationDetail = () => {
                            <DatePicker
                              placeholder={t('common.select_date', 'Select date')} 
                              variant="unstyled"
-                             className="w-full py-2 bg-transparent text-sm font-bold outline-none dark:text-dark-text"
+                             className="w-full py-2 bg-transparent text-sm font-bold outline-hidden dark:text-dark-text"
                              value={tempDate}
                              onChange={setTempDate}
                            />
@@ -956,7 +956,7 @@ const ExaminationDetail = () => {
                               {examination?.doctors?.length > 0 ? (
                                  examination.doctors.map((d: any) => (
                                     <Link key={d.id} to={`/doctors/${d.id}`} className="flex items-center space-x-2 group">
-                                       <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[8px] font-black text-blue-600 shadow-sm group-hover:bg-blue-600 group-hover:text-white transition-all">
+                                       <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[8px] font-black text-blue-600 shadow-xs group-hover:bg-blue-600 group-hover:text-white transition-all">
                                           {d.name.substring(0, 2).toUpperCase()}
                                        </div>
                                        <span className="text-sm font-bold text-gray-700 dark:text-dark-text group-hover:text-blue-600 transition-colors">{t('doctors.dr')} {d.name}</span>
@@ -996,7 +996,7 @@ const ExaminationDetail = () => {
             </div>
 
             {/* Key Biomarkers Widget */}
-            <div className="xl:col-span-2 bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm flex flex-col">
+            <div className="xl:col-span-2 bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs flex flex-col">
                <div className="flex items-center justify-between mb-8">
                   <div className="flex items-center space-x-3">
                      <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-xl">
@@ -1009,13 +1009,13 @@ const ExaminationDetail = () => {
                     <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
                         <button 
                           onClick={() => setBiomarkerDataMode('normalized')}
-                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${biomarkerDataMode === 'normalized' ? 'bg-white dark:bg-dark-surface text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${biomarkerDataMode === 'normalized' ? 'bg-white dark:bg-dark-surface text-indigo-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                         >
                           {t('biomarkers.data_modes.normalized')}
                         </button>
                         <button 
                           onClick={() => setBiomarkerDataMode('raw')}
-                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${biomarkerDataMode === 'raw' ? 'bg-white dark:bg-dark-surface text-amber-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${biomarkerDataMode === 'raw' ? 'bg-white dark:bg-dark-surface text-amber-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                         >
                           {t('biomarkers.data_modes.raw')}
                         </button>
@@ -1139,7 +1139,7 @@ const ExaminationDetail = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
                     <div className="space-y-8">
                        {examination?.impressions && (
-                         <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm animate-in slide-in-from-bottom-4 duration-500">
+                         <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs animate-in slide-in-from-bottom-4 duration-500">
                            <div className="flex items-center justify-between mb-6">
                              <div className="flex items-center space-x-2">
                                <BriefcaseMedical className="w-4 h-4 text-blue-500" />
@@ -1154,7 +1154,7 @@ const ExaminationDetail = () => {
                        )}
 
                        {examination?.diagnoses?.length > 0 && (
-                         <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm animate-in slide-in-from-bottom-4 duration-500">
+                         <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs animate-in slide-in-from-bottom-4 duration-500">
                            <div className="flex items-center justify-between mb-6">
                              <div className="flex items-center space-x-2">
                                <Bookmark className="w-4 h-4 text-blue-500" />
@@ -1164,7 +1164,7 @@ const ExaminationDetail = () => {
                            </div>
                            <div className="flex flex-wrap gap-2">
                              {examination.diagnoses.map((d: string) => (
-                               <span key={d} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-100 dark:border-blue-800/30 shadow-sm">{d}</span>
+                               <span key={d} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-100 dark:border-blue-800/30 shadow-xs">{d}</span>
                              ))}
                            </div>
                          </div>
@@ -1173,7 +1173,7 @@ const ExaminationDetail = () => {
 
                     <div className="space-y-8">
                        {examination?.medications?.length > 0 && (
-                          <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-[2rem] border border-gray-100 dark:border-dark-border shadow-sm animate-in slide-in-from-bottom-4 duration-500 h-full">
+                          <div className="bg-white dark:bg-dark-surface/40 p-8 rounded-4xl border border-gray-100 dark:border-dark-border shadow-xs animate-in slide-in-from-bottom-4 duration-500 h-full">
                             <div className="flex items-center justify-between mb-6">
                               <div className="flex items-center space-x-2">
                                 <Pill className="w-4 h-4 text-indigo-500" />
@@ -1209,13 +1209,13 @@ const ExaminationDetail = () => {
                      <div className="flex items-center space-x-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-xl">
                         <button 
                            onClick={() => setBiomarkerPerspective('clinical')}
-                           className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${biomarkerPerspective === 'clinical' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                           className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${biomarkerPerspective === 'clinical' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400'}`}
                         >
                            {t('examination_detail.biomarkers.clinical')}
                         </button>
                         <button 
                            onClick={() => setBiomarkerPerspective('technical')}
-                           className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${biomarkerPerspective === 'technical' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                           className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${biomarkerPerspective === 'technical' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400'}`}
                         >
                            {t('examination_detail.biomarkers.technical')}
                         </button>
@@ -1224,21 +1224,21 @@ const ExaminationDetail = () => {
                      <div className="flex items-center bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
                         <button 
                            onClick={() => setBiomarkerViewMode('table')} 
-                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'table' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'table' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                            title={t('biomarkers.views.table')}
                         >
                            <TableIcon className="w-4 h-4" />
                         </button>
                         <button 
                            onClick={() => setBiomarkerViewMode('list')} 
-                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'list' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'list' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                            title={t('biomarkers.views.list')}
                         >
                            <List className="w-4 h-4" />
                         </button>
                         <button 
                            onClick={() => setBiomarkerViewMode('grid')} 
-                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'grid' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                           className={`p-1.5 rounded-lg transition-all ${biomarkerViewMode === 'grid' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
                            title={t('biomarkers.views.grid')}
                         >
                            <LayoutGrid className="w-4 h-4" />
@@ -1287,7 +1287,7 @@ const ExaminationDetail = () => {
                     <div 
                       key={doc.id}
                       onClick={() => openViewer(doc)}
-                      className="group bg-white dark:bg-dark-surface rounded-[2rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm hover:shadow-2xl transition-all cursor-pointer aspect-square flex flex-col"
+                      className="group bg-white dark:bg-dark-surface rounded-4xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-xs hover:shadow-2xl transition-all cursor-pointer aspect-square flex flex-col"
                     >
                       <div className="flex-1 bg-gray-950 flex items-center justify-center overflow-hidden relative">
                          <AuthenticatedThumbnail documentId={doc.id} filename={doc.filename} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out opacity-90 group-hover:opacity-100" />
@@ -1336,7 +1336,7 @@ const ExaminationDetail = () => {
 
                 {docViewMode === 'list' ? (
                   <div className="w-full max-w-full">
-                    <div className="bg-white dark:bg-dark-surface rounded-[2rem] border border-gray-100 dark:border-dark-border overflow-x-auto shadow-sm w-full" style={{ overflowY: 'visible' }}>
+                    <div className="bg-white dark:bg-dark-surface rounded-4xl border border-gray-100 dark:border-dark-border overflow-x-auto shadow-xs w-full" style={{ overflowY: 'visible' }}>
                        <table className="min-w-full divide-y divide-gray-50 dark:divide-dark-border">
                         <thead className="bg-gray-50/50 dark:bg-dark-bg/50">
                           <tr>
@@ -1366,14 +1366,14 @@ const ExaminationDetail = () => {
                                     title={doc.include_in_extraction ? 'AI extraction enabled — click to disable' : 'AI extraction disabled — click to enable'}
                                     className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all border ${
                                        doc.include_in_extraction
-                                          ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm hover:bg-indigo-500/20'
+                                          ? 'bg-indigo-500/10 border-indigo-500/30 shadow-xs hover:bg-indigo-500/20'
                                           : 'bg-gray-500/5 border-transparent hover:bg-gray-500/10 hover:border-gray-300/30'
                                     }`}
                                  >
                                     <Sparkles className={`w-3 h-3 shrink-0 transition-colors ${doc.include_in_extraction ? 'text-indigo-500' : 'text-gray-400'}`} />
                                     <span className={`text-[9px] font-black uppercase tracking-tighter transition-colors ${
                                        doc.include_in_extraction
-                                          ? 'bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
+                                          ? 'bg-linear-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
                                           : 'text-gray-400'
                                     }`}>
                                        {doc.include_in_extraction ? t('examination_detail.repository.ai_extract', 'AI Extract') : t('examination_detail.repository.ai_off', 'AI Off')}
@@ -1441,9 +1441,9 @@ const ExaminationDetail = () => {
                        <div 
                          key={doc.id}
                          onClick={() => openViewer(doc)}
-                         className="bg-white dark:bg-dark-surface rounded-3xl border border-gray-100 dark:border-dark-border p-4 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col items-center text-center space-y-3 group"
+                         className="bg-white dark:bg-dark-surface rounded-3xl border border-gray-100 dark:border-dark-border p-4 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col items-center text-center space-y-3 group"
                        >
-                          <div className="w-full aspect-[3/4] bg-gray-50 dark:bg-dark-bg rounded-2xl overflow-hidden flex items-center justify-center relative border border-gray-50">
+                          <div className="w-full aspect-3/4 bg-gray-50 dark:bg-dark-bg rounded-2xl overflow-hidden flex items-center justify-center relative border border-gray-50">
                              <AuthenticatedThumbnail documentId={doc.id} filename={doc.filename} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
                                 <ExternalLink className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1461,14 +1461,14 @@ const ExaminationDetail = () => {
                                  title={doc.include_in_extraction ? 'AI extraction enabled — click to disable' : 'AI extraction disabled — click to enable'}
                                  className={`w-full flex items-center justify-center gap-1 py-1.5 rounded-lg transition-all border ${
                                     doc.include_in_extraction
-                                       ? 'bg-indigo-500/10 border-indigo-500/30 shadow-sm hover:bg-indigo-500/20'
+                                       ? 'bg-indigo-500/10 border-indigo-500/30 shadow-xs hover:bg-indigo-500/20'
                                        : 'bg-gray-500/5 border-transparent hover:bg-gray-500/10 hover:border-gray-300/30'
                                  }`}
                               >
                                  <Sparkles className={`w-3 h-3 shrink-0 transition-colors ${doc.include_in_extraction ? 'text-indigo-500' : 'text-gray-400'}`} />
                                  <span className={`text-[9px] font-black uppercase tracking-tighter transition-colors ${
                                     doc.include_in_extraction
-                                       ? 'bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
+                                       ? 'bg-linear-to-r from-indigo-600 via-purple-500 to-indigo-600 dark:from-indigo-400 dark:via-purple-400 dark:to-indigo-400 bg-clip-text text-transparent'
                                        : 'text-gray-400'
                                  }`}>
                                     {doc.include_in_extraction ? t('examination_detail.repository.ai_extract', 'AI Extract') : t('examination_detail.repository.ai_off', 'AI Off')}

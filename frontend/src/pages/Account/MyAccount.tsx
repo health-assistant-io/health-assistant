@@ -93,8 +93,8 @@ function MyAccount() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Profile Summary + Quick Links */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden p-8">
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-lg mx-auto mb-6">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden p-8">
+            <div className="w-24 h-24 bg-linear-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-lg mx-auto mb-6">
               {user.email[0].toUpperCase()}
             </div>
 
@@ -119,7 +119,7 @@ function MyAccount() {
           </div>
 
           {/* Quick Links */}
-          <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6">
             <h3 className="font-bold text-gray-900 dark:text-dark-text mb-4">{t('account.quick_links', 'Quick Links')}</h3>
             <div className="space-y-2">
               <button
@@ -161,7 +161,7 @@ function MyAccount() {
         {/* Right Column: Linked Records + Metadata */}
         <div className="lg:col-span-2 space-y-8">
           {/* Linked Clinical Profiles */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between bg-gray-50/30 dark:bg-dark-bg/20">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
@@ -255,7 +255,7 @@ function MyAccount() {
           </div>
 
           {/* Account Metadata */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
             <div className="flex items-center space-x-3 mb-6">
               <Activity className="w-5 h-5 text-indigo-500" />
               <h3 className="font-bold text-gray-900 dark:text-dark-text">{t('account.metadata', 'Account Metadata')}</h3>

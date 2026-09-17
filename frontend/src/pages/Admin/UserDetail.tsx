@@ -211,8 +211,8 @@ function UserDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Account Info */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden p-8">
-            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-lg mx-auto mb-6">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden p-8">
+            <div className="w-24 h-24 bg-linear-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-lg mx-auto mb-6">
               {user.email[0].toUpperCase()}
             </div>
 
@@ -249,7 +249,7 @@ function UserDetail() {
           </div>
 
           {/* Access Level */}
-          <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <Shield className="w-5 h-5 text-blue-500" />
@@ -330,7 +330,7 @@ function UserDetail() {
         {/* Right Column: Linked Records */}
         <div className="lg:col-span-2 space-y-8">
           {/* Linked Clinical Profiles */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between bg-gray-50/30 dark:bg-dark-bg/20">
                <div className="flex items-center space-x-3">
                   <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
@@ -433,7 +433,7 @@ function UserDetail() {
           </div>
 
           {/* Account Metadata */}
-          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+          <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
              <div className="flex items-center space-x-3 mb-6">
                 <Database className="w-5 h-5 text-indigo-500" />
                 <h3 className="font-bold text-gray-900 dark:text-dark-text">Account Metadata</h3>
@@ -454,7 +454,7 @@ function UserDetail() {
 
       {/* Linking Modal */}
       {isLinkModalOpen && user && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-modal p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-dark-surface rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex justify-between items-center bg-gray-50/50 dark:bg-dark-bg/50 shrink-0">
               <div>
@@ -538,7 +538,7 @@ function UserDetail() {
             <div className="p-8 bg-gray-50/50 dark:bg-dark-bg/50 border-t border-gray-100 dark:border-dark-border shrink-0">
                <button
                   onClick={() => setIsLinkModalOpen(false)}
-                  className="w-full px-4 py-3 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-white dark:hover:bg-dark-surface transition-colors font-bold text-gray-600 dark:text-dark-muted shadow-sm"
+                  className="w-full px-4 py-3 border border-gray-200 dark:border-dark-border rounded-xl hover:bg-white dark:hover:bg-dark-surface transition-colors font-bold text-gray-600 dark:text-dark-muted shadow-xs"
                 >
                   {t('common.close')}
                 </button>

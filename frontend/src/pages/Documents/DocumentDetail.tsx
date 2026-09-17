@@ -343,7 +343,7 @@ export default function DocumentDetail() {
         ) : (
           <div className="animate-pulse flex flex-col items-center">
             <div className="w-16 h-16 bg-gray-800 rounded-full mb-4"></div>
-            <div className="h-4 w-48 bg-gray-800 rounded"></div>
+            <div className="h-4 w-48 bg-gray-800 rounded-sm"></div>
           </div>
         )}
         
@@ -351,7 +351,7 @@ export default function DocumentDetail() {
         {docData && (
           <button 
             onClick={openFileViewer}
-            className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-white p-2 rounded-lg hover:bg-black/80 transition-colors z-10"
+            className="absolute top-4 right-4 bg-black/60 backdrop-blur-xs text-white p-2 rounded-lg hover:bg-black/80 transition-colors z-10"
             title="Open Fullscreen"
           >
             <Maximize2 className="w-5 h-5" />
@@ -362,7 +362,7 @@ export default function DocumentDetail() {
       {/* Main Action Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Examination — editable link (add / change / clear) */}
-          <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs">
             <InstanceField
               label={t('documents_explorer.origin')}
               allowedTypes={['examination']}
@@ -384,7 +384,7 @@ export default function DocumentDetail() {
           {docData?.patient_id && (
             <button 
               onClick={() => navigate(`/patients/${docData.patient_id}`)}
-              className="flex items-center justify-between bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-all group text-left shadow-sm"
+              className="flex items-center justify-between bg-white dark:bg-dark-surface p-6 rounded-2xl border border-gray-100 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-all group text-left shadow-xs"
             >
               <div className="flex items-center space-x-4">
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
@@ -404,7 +404,7 @@ export default function DocumentDetail() {
           )}
       </div>
 
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="space-y-1">
             <h3 className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest flex items-center justify-between">
@@ -425,7 +425,7 @@ export default function DocumentDetail() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="block w-full rounded-lg border-gray-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-xs dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
+                  className="block w-full rounded-lg border-gray-200 shadow-xs focus:border-blue-500 focus:ring-blue-500 sm:text-xs dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
                 >
                   <option value="">Select category...</option>
                   {getDocumentCategories().map((cat) => (
@@ -465,7 +465,7 @@ export default function DocumentDetail() {
             <h3 className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('examinations.metadata')}</h3>
             <p className="text-sm font-bold text-gray-900 dark:text-dark-text">
               {docData?.file_size ? (docData.file_size / 1024).toFixed(1) : '0'} KB
-              <span className="ml-2 px-1.5 py-0.5 bg-gray-100 dark:bg-dark-bg text-[10px] rounded text-gray-500 uppercase">
+              <span className="ml-2 px-1.5 py-0.5 bg-gray-100 dark:bg-dark-bg text-[10px] rounded-sm text-gray-500 uppercase">
                 {docData?.filename?.split('.').pop()}
               </span>
             </p>
@@ -515,7 +515,7 @@ export default function DocumentDetail() {
       {status === 'completed' && (
         <div className="space-y-6">
           {biomarkers.length > 0 && (
-            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
               <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text tracking-tight mb-6">
                 {t('documents_explorer.extracted_biomarkers')}
               </h2>
@@ -537,7 +537,7 @@ export default function DocumentDetail() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold">
                           <span className="text-blue-600 dark:text-blue-400 mr-2">{formatBiomarkerValue(b.value.raw, precisionProfile)}</span>
                           {isAbnormal(b.interpretation) && (
-                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${getStatusColorClass(b.interpretation)}`}>
+                            <span className={`px-2 py-0.5 rounded-sm text-[10px] uppercase font-bold border ${getStatusColorClass(b.interpretation)}`}>
                               {b.interpretation}
                             </span>
                           )}
@@ -555,14 +555,14 @@ export default function DocumentDetail() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {docData?.entities && docData.entities.diagnoses && docData.entities.diagnoses.length > 0 && (
-              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
                 <h2 className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-6">
                   {t('documents_explorer.diagnoses_found')}
                 </h2>
                 <ul className="space-y-4">
                   {docData.entities.diagnoses.map((d: string, idx: number) => (
                     <li key={idx} className="flex items-start">
-                      <div className="h-5 w-5 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
+                      <div className="h-5 w-5 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mr-3 mt-0.5 shrink-0">
                         <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
                       </div>
                       <span className="text-sm font-bold text-gray-700 dark:text-dark-text leading-tight">{d}</span>
@@ -573,14 +573,14 @@ export default function DocumentDetail() {
             )}
 
             {docData?.entities && docData.entities.medications && docData.entities.medications.length > 0 && (
-              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+              <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
                 <h2 className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-6">
                   {t('documents_explorer.medications_noted')}
                 </h2>
                 <ul className="space-y-4">
                   {docData.entities.medications.map((m: string, idx: number) => (
                     <li key={idx} className="flex items-start">
-                      <div className="h-5 w-5 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
+                      <div className="h-5 w-5 bg-green-50 dark:bg-green-900/20 rounded-full flex items-center justify-center mr-3 mt-0.5 shrink-0">
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                       </div>
                       <span className="text-sm font-bold text-gray-700 dark:text-dark-text leading-tight">{m}</span>
@@ -592,7 +592,7 @@ export default function DocumentDetail() {
           </div>
 
           {(docData?.extracted_text) && (
-            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-8">
+            <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-8">
               <h2 className="text-sm font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-6">
                 {t('documents_explorer.clinical_text')}
               </h2>
@@ -658,9 +658,9 @@ export default function DocumentDetail() {
 
       {/* Raw Extracted Text Modal */}
       {showRawText && docData?.extracted_text && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/50">
+        <div className="fixed inset-0 z-modal flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/50">
           <div className="relative w-full max-w-5xl p-4 mx-auto max-h-[90vh]">
-            <div className="relative bg-white rounded-2xl shadow dark:bg-dark-surface flex flex-col max-h-[90vh]">
+            <div className="relative bg-white rounded-2xl shadow-sm dark:bg-dark-surface flex flex-col max-h-[90vh]">
               <div className="flex items-center justify-between p-6 border-b rounded-t dark:border-dark-border shrink-0 bg-gray-50 dark:bg-dark-bg">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text">

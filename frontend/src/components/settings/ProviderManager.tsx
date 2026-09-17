@@ -130,7 +130,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                     </span>
                   )}
                   {!provider.is_active ? (
-                    <span className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-dark-border dark:text-dark-muted">
+                    <span className="rounded-sm border border-gray-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-dark-border dark:text-dark-muted">
                       {t('settings.ai.disabled')}
                     </span>
                   ) : null}
@@ -237,7 +237,7 @@ function ComplianceFields({
           type="text"
           value={companyName}
           onChange={(e) => onCompanyNameChange(e.target.value)}
-          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
+          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-xs outline-hidden transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
           placeholder="e.g. OpenAI, Inc."
         />
       </label>
@@ -249,7 +249,7 @@ function ComplianceFields({
           type="url"
           value={companyWebsite}
           onChange={(e) => onCompanyWebsiteChange(e.target.value)}
-          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
+          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-xs outline-hidden transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
           placeholder="https://openai.com"
         />
       </label>
@@ -379,7 +379,7 @@ const ProviderFormDialog: React.FC<{
               <select
                 value={providerType}
                 onChange={(e) => setProviderType(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm outline-none transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
+                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-xs outline-hidden transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
               >
                 <option value="openai">{t('settings.ai.type_openai')}</option>
                 <option value="tesseract">{t('settings.ai.type_tesseract')}</option>

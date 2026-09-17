@@ -32,7 +32,7 @@ export const VisualizationSettings: React.FC<VisualizationSettingsProps> = ({
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-2.5 rounded-xl border transition-all shadow-sm active:scale-95 ${isOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg'}`}
+        className={`p-2.5 rounded-xl border transition-all shadow-xs active:scale-95 ${isOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg'}`}
         title={t('biomarkers.visualization_settings')}
       >
         <Settings className={`w-5 h-5 ${isOpen ? 'animate-spin-slow' : ''}`} />
@@ -40,8 +40,8 @@ export const VisualizationSettings: React.FC<VisualizationSettingsProps> = ({
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-[70] animate-in slide-in-from-top-4 duration-200">
+          <div className="fixed inset-0 z-60" onClick={() => setIsOpen(false)} />
+          <div className="fixed sm:absolute inset-x-4 sm:inset-x-auto sm:right-0 top-1/2 -translate-y-1/2 sm:top-full sm:translate-y-0 mt-0 sm:mt-3 sm:w-80 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-4xl shadow-2xl z-70 animate-in slide-in-from-top-4 duration-200">
             <div className="flex items-center justify-between p-6 pb-0">
               <h3 className="text-sm font-black text-brand-navy dark:text-dark-text uppercase tracking-widest">{t('biomarkers.visualization_settings')}</h3>
               <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
@@ -57,7 +57,7 @@ export const VisualizationSettings: React.FC<VisualizationSettingsProps> = ({
                     { id: 'area', icon: Layers, label: t('biomarkers.styles.area') },
                     { id: 'bar', icon: Grid, label: t('biomarkers.styles.bar') },
                   ].map(type => (
-                    <button key={type.id} onClick={() => setChartType(type.id as ChartType)} className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-xl text-xs font-bold transition-all ${chartType === type.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <button key={type.id} onClick={() => setChartType(type.id as ChartType)} className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-xl text-xs font-bold transition-all ${chartType === type.id ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}>
                       <type.icon className="w-4 h-4" />
                       <span>{type.label}</span>
                     </button>

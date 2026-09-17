@@ -51,7 +51,7 @@ export const SetupLayout: React.FC<SetupLayoutProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left pane: progress + stepper (sticky on desktop) */}
           <aside className="lg:sticky lg:top-24 lg:self-start space-y-4">
-            <div className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-4 shadow-sm">
+            <div className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-4 shadow-xs">
               <div className="flex items-center gap-3">
                 <SetupProgressRing value={completion} size={56} />
                 <div>
@@ -62,7 +62,7 @@ export const SetupLayout: React.FC<SetupLayoutProps> = ({
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-3 shadow-sm">
+            <div className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-3 shadow-xs">
               <SetupStepList
                 steps={steps}
                 activeStepId={activeStepId}
@@ -73,7 +73,7 @@ export const SetupLayout: React.FC<SetupLayoutProps> = ({
           </aside>
 
           {/* Right pane: active step panel */}
-          <main className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-6 shadow-sm min-h-[400px]">
+          <main className="rounded-2xl bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border p-6 shadow-xs min-h-[400px]">
             {children}
             {footer && (
               <div className="mt-8 pt-6 border-t border-gray-100 dark:border-dark-border flex items-center justify-between gap-3">

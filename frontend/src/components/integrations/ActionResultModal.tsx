@@ -15,8 +15,8 @@ const ActionResultModal: React.FC<Props> = ({ result, actionLabel, onClose }) =>
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-[10000]">
+      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-dark-surface w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-10000">
           <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text">
               <Zap className="w-5 h-5 mr-2 text-yellow-500" />

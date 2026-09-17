@@ -303,7 +303,7 @@ const IntegrationDetail: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm mb-6">
+      <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] p-8 border border-gray-100 dark:border-dark-border shadow-xs mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-2xl flex items-center justify-center border border-gray-100 dark:border-dark-border">
@@ -330,17 +330,17 @@ const IntegrationDetail: React.FC = () => {
 
               <div className="flex items-center flex-wrap gap-3 mt-3">
                 {manifest?.author === 'Core' ? (
-                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white bg-blue-600 rounded">
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white bg-blue-600 rounded-sm">
                     OFFICIAL
                   </span>
                 ) : manifest?.author ? (
-                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded">
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-sm">
                     COMMUNITY
                   </span>
                 ) : null}
 
                 {manifest?.categories?.map((cat: string) => (
-                  <span key={cat} className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400 rounded border border-indigo-100 dark:border-indigo-800">
+                  <span key={cat} className="inline-block px-2 py-0.5 text-[10px] font-semibold tracking-wide text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-sm border border-indigo-100 dark:border-indigo-800">
                     {cat}
                   </span>
                 ))}
@@ -389,7 +389,7 @@ const IntegrationDetail: React.FC = () => {
             onClick={() => handleTabChange(tab.id)}
             className={`px-6 py-2 text-sm font-bold rounded-xl whitespace-nowrap transition-all ${
               activeTab === tab.id 
-                ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' 
+                ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' 
                 : 'text-gray-500 hover:text-gray-700 dark:text-dark-muted dark:hover:text-dark-text'
             }`}
           >
@@ -409,7 +409,7 @@ const IntegrationDetail: React.FC = () => {
             />
           )}
           {details.status === 'PENDING' && (
-            <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] p-8 border border-blue-200 dark:border-blue-800 shadow-sm">
+            <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 rounded-4xl p-8 border border-blue-200 dark:border-blue-800 shadow-xs">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div className="flex items-center">
                   <Cloud className="w-6 h-6 mr-3 text-blue-600" />
@@ -422,7 +422,7 @@ const IntegrationDetail: React.FC = () => {
                 </div>
                 <button
                   onClick={handleAuthorize}
-                  className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all"
+                  className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-xl shadow-xs text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all"
                 >
                   Authorize
                 </button>
@@ -430,7 +430,7 @@ const IntegrationDetail: React.FC = () => {
             </div>
           )}
           {details.custom_actions && details.custom_actions.length > 0 && (
-            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+            <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
                 <Zap className="w-5 h-5 mr-2 text-yellow-500" /> Actions
               </h3>
@@ -439,7 +439,7 @@ const IntegrationDetail: React.FC = () => {
                   <button
                     key={action.id}
                     onClick={() => handleCustomAction(action)}
-                    className={`inline-flex items-center px-4 py-2 border rounded-xl shadow-sm text-sm font-medium focus:outline-none ${
+                    className={`inline-flex items-center px-4 py-2 border rounded-xl shadow-xs text-sm font-medium focus:outline-hidden ${
                       action.style === 'danger' ? 'border-transparent text-red-700 bg-red-100 hover:bg-red-200' :
                       action.style === 'warning' ? 'border-transparent text-yellow-800 bg-yellow-100 hover:bg-yellow-200' :
                       action.style === 'primary' ? 'border-transparent text-white bg-blue-600 hover:bg-blue-700' :
@@ -454,7 +454,7 @@ const IntegrationDetail: React.FC = () => {
           )}
 
           {details.push_status && (
-            <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+            <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
                 <Upload className="w-5 h-5 mr-2 text-emerald-500" /> Last Push
               </h3>
@@ -484,7 +484,7 @@ const IntegrationDetail: React.FC = () => {
             </div>
           )}
           
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm h-96 flex flex-col">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs h-96 flex flex-col">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
                <Activity className="w-5 h-5 mr-2 text-gray-400" /> Sync History
             </h3>
@@ -524,7 +524,7 @@ const IntegrationDetail: React.FC = () => {
       )}
 
       {activeTab === 'examinations' && (
-        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+        <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
             <FileText className="w-5 h-5 mr-2 text-indigo-500" /> Synced Laboratory Reports
           </h3>
@@ -551,7 +551,7 @@ const IntegrationDetail: React.FC = () => {
       )}
 
       {activeTab === 'biomarkers' && (
-        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+        <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
             <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Dictionary
           </h3>
@@ -566,9 +566,9 @@ const IntegrationDetail: React.FC = () => {
                   <span className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600">{item.name}</span>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center space-x-2">
-                      <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded border border-gray-100 dark:border-dark-border">{item.category}</span>
+                      <span className="text-[10px] uppercase font-black text-gray-400 bg-white dark:bg-dark-surface px-2 py-0.5 rounded-sm border border-gray-100 dark:border-dark-border">{item.category}</span>
                       {details.synced_examinations && details.synced_examinations.length > 0 && (
-                         <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded flex items-center">
+                         <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-sm flex items-center">
                            <FileText className="w-2.5 h-2.5 mr-1" />
                            Report Sourced
                          </span>
@@ -591,7 +591,7 @@ const IntegrationDetail: React.FC = () => {
       )}
 
       {activeTab === 'data' && (
-        <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+        <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
             <Activity className="w-5 h-5 mr-2 text-green-500" /> Recent Raw Measurements
           </h3>
@@ -678,7 +678,7 @@ const IntegrationDetail: React.FC = () => {
       )}
 
       {activeTab === 'notifications' && notifKinds && notifKinds.length > 0 && (
-        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6">
           <h3 className="text-base font-bold text-gray-900 dark:text-dark-text mb-1">
             Notification types
           </h3>
@@ -719,7 +719,7 @@ const IntegrationDetail: React.FC = () => {
 
       {activeTab === 'settings' && (
         <div className="space-y-8">
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center justify-between mb-6">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text">
                 <Settings className="w-5 h-5 mr-2 text-gray-400" /> Configuration
@@ -745,7 +745,7 @@ const IntegrationDetail: React.FC = () => {
             <DebugConsole integrationId={id!} patientId={currentPatient!.id} />
           )}
 
-          <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-red-200 dark:border-red-900/30 shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-red-200 dark:border-red-900/30 shadow-xs">
             <h3 className="flex items-center text-lg font-bold text-red-600 dark:text-red-400 mb-6">
               Danger Zone
             </h3>

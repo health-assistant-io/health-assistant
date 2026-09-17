@@ -64,7 +64,7 @@ export const ClinicalEventCard: React.FC<Props> = ({
     const content = (
       <>
         <div className="flex items-start space-x-3 flex-1 min-w-0">
-          <div className="mt-1 p-2 rounded-xl bg-opacity-10 flex-shrink-0 transition-colors group-hover:bg-opacity-20" style={{ backgroundColor: event.type_details?.color + '20', color: event.type_details?.color }}>
+          <div className="mt-1 p-2 rounded-xl shrink-0 transition-colors" style={{ backgroundColor: event.type_details?.color + '20', color: event.type_details?.color }}>
             {getEventIcon(event.type_details?.slug || '', "w-4 h-4")}
           </div>
           <div className="flex-1 min-w-0 overflow-hidden">
@@ -76,16 +76,16 @@ export const ClinicalEventCard: React.FC<Props> = ({
             </p>
             
             {linkedExam?.reason && (
-              <div className="mt-2.5 flex items-start space-x-2.5 text-[10px] text-gray-500 dark:text-dark-muted italic bg-gray-50/50 dark:bg-dark-bg/30 p-3 rounded-2xl border border-gray-100 dark:border-dark-border/50 group-hover:border-blue-100 dark:group-hover:border-blue-900/30 transition-colors shadow-sm">
-                <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-blue-400" />
-                <span className="leading-relaxed break-words font-medium">{linkedExam.reason}</span>
+              <div className="mt-2.5 flex items-start space-x-2.5 text-[10px] text-gray-500 dark:text-dark-muted italic bg-gray-50/50 dark:bg-dark-bg/30 p-3 rounded-2xl border border-gray-100 dark:border-dark-border/50 group-hover:border-blue-100 dark:group-hover:border-blue-900/30 transition-colors shadow-xs">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-400" />
+                <span className="leading-relaxed wrap-break-word font-medium">{linkedExam.reason}</span>
               </div>
             )}
           </div>
         </div>
         
         {!readOnly && (
-          <div className="ml-3 p-1.5 rounded-lg text-gray-300 dark:text-dark-border group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-all transform group-hover:translate-x-1 flex-shrink-0 self-center">
+          <div className="ml-3 p-1.5 rounded-lg text-gray-300 dark:text-dark-border group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-all transform group-hover:translate-x-1 shrink-0 self-center">
             <ChevronRight className="w-4 h-4" />
           </div>
         )}
@@ -123,7 +123,7 @@ export const ClinicalEventCard: React.FC<Props> = ({
         <div className={CardStyles.header}>
           <div className="flex items-center space-x-3">
             <div 
-              className={`p-2.5 rounded-xl bg-opacity-10 transition-colors ${isSelected ? 'bg-white/20' : ''}`} 
+              className={`p-2.5 rounded-xl transition-colors ${isSelected ? 'bg-white/20' : ''}`} 
               style={!isSelected ? { backgroundColor: event.type_details?.color + '15', color: event.type_details?.color } : { color: 'white', backgroundColor: event.type_details?.color }}
             >
               {getEventIcon(event.type_details?.slug || '', "w-4 h-4")}
@@ -141,7 +141,7 @@ export const ClinicalEventCard: React.FC<Props> = ({
                 e.stopPropagation();
                 navigate(`/events/${event.id}`);
               }}
-              className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-500 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-sm hover:shadow-md"
+              className="p-1.5 bg-white dark:bg-dark-bg text-gray-400 hover:text-blue-500 rounded-lg border border-gray-100 dark:border-dark-border transition-all shadow-xs hover:shadow-md"
               title={t('common.details')}
             >
               <ExternalLink className="w-3 h-3" />

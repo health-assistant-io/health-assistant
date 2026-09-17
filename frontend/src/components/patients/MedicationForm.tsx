@@ -423,7 +423,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                       <input
                         type="text"
                         placeholder={t('medications.modal.name_placeholder')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={newMedName}
                         onChange={e => setNewMedName(e.target.value)}
                         autoFocus
@@ -435,7 +435,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                       <input
                         type="text"
                         placeholder={t('medications.modal.indications_q')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={formData.indications}
                         onChange={e => setFormData({ ...formData, indications: e.target.value })}
                       />
@@ -447,7 +447,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                         <input
                           type="text"
                           placeholder={t('medications.modal.add_side_effect')}
-                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                           onKeyDown={e => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
@@ -518,12 +518,12 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                       <input 
                         type="number" 
                         min="1"
-                        className="w-16 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="w-16 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={timing.period}
                         onChange={e => setTiming({...timing, period: parseInt(e.target.value) || 1})}
                       />
                       <select 
-                        className="flex-1 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none dark:text-dark-text"
+                        className="flex-1 px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                         value={timing.period_unit}
                         onChange={e => setTiming({...timing, period_unit: e.target.value as any})}
                       >
@@ -557,7 +557,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                     <input 
                       type="checkbox" 
                       id="as_needed" 
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="w-4 h-4 rounded-sm border-gray-300 text-blue-600 focus:ring-blue-500"
                       checked={timing.as_needed}
                       onChange={e => setTiming({...timing, as_needed: e.target.checked})}
                     />
@@ -582,7 +582,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             <div className="space-y-4">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">{t('medications.modal.current_status')}</label>
               <select
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-hidden"
                 value={formData.status}
                 onChange={e => setFormData({...formData, status: e.target.value as any})}
               >
@@ -599,7 +599,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
               <input
                 type="text"
                 placeholder={t('medications.modal.dosage_placeholder')}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-hidden"
                 value={formData.dosage}
                 onChange={e => setFormData({...formData, dosage: e.target.value})}
               />
@@ -610,7 +610,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
               <input
                 type="text"
                 placeholder={t('medications.modal.reason_placeholder')}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border-none rounded-xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-hidden"
                 value={formData.reason}
                 onChange={e => setFormData({...formData, reason: e.target.value})}
               />
@@ -667,7 +667,7 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             </label>
             <textarea
               rows={3}
-              className="w-full px-4 py-4 bg-gray-50 dark:bg-dark-bg border-none rounded-2xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-none resize-none"
+              className="w-full px-4 py-4 bg-gray-50 dark:bg-dark-bg border-none rounded-2xl text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 outline-hidden resize-none"
               placeholder={t('medications.modal.notes_placeholder')}
               value={formData.note}
               onChange={e => setFormData({...formData, note: e.target.value})}

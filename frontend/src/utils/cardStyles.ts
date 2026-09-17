@@ -7,14 +7,14 @@ export const CardStyles = {
     relative group border transition-all duration-200 cursor-pointer overflow-hidden rounded-2xl
     ${isSelected 
       ? 'bg-blue-50/50 dark:bg-blue-900/10 shadow-md border-blue-200 dark:border-blue-900 ring-1 ring-blue-500/30 z-10' 
-      : 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border hover:border-blue-100 hover:shadow-sm'
+      : 'bg-white dark:bg-dark-surface border-gray-100 dark:border-dark-border hover:border-blue-100 hover:shadow-xs'
     }
     ${isSelectable ? 'pl-2' : ''}
   `,
   
   // Compact variant for sidebar/smaller contexts
   compact: (isSelected: boolean) => `
-    group relative bg-white dark:bg-dark-surface p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-sm
+    group relative bg-white dark:bg-dark-surface p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-xs
     ${isSelected 
       ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-500 shadow-md ring-1 ring-blue-500/20' 
       : 'border-gray-100 dark:border-dark-border hover:border-blue-200'

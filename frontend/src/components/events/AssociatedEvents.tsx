@@ -46,7 +46,7 @@ export const AssociatedEvents: React.FC<Props> = ({
   if (loading && !compact) return (
     <div className="flex items-center space-x-2 animate-pulse">
       <div className="h-4 w-4 bg-gray-200 rounded-full" />
-      <div className="h-3 w-24 bg-gray-100 rounded" />
+      <div className="h-3 w-24 bg-gray-100 rounded-sm" />
     </div>
   );
 
@@ -86,7 +86,7 @@ export const AssociatedEvents: React.FC<Props> = ({
         {isEditing && patientId && !readOnly && (
           <button 
             onClick={() => setIsManagerOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 transition-all font-bold text-[10px] uppercase tracking-widest border border-blue-100 dark:border-blue-800/30 shadow-sm active:scale-95"
+            className="flex items-center space-x-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 transition-all font-bold text-[10px] uppercase tracking-widest border border-blue-100 dark:border-blue-800/30 shadow-xs active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>{t('events.manage')}</span>
@@ -108,7 +108,7 @@ export const AssociatedEvents: React.FC<Props> = ({
         {isEditing && events.length === 0 && patientId && !readOnly && (
            <button 
             onClick={() => setIsManagerOpen(true)}
-            className="col-span-full py-8 border-2 border-dashed border-gray-100 dark:border-dark-border rounded-[2rem] flex flex-col items-center justify-center space-y-3 text-gray-400 hover:text-blue-50 hover:border-blue-200 transition-all group"
+            className="col-span-full py-8 border-2 border-dashed border-gray-100 dark:border-dark-border rounded-4xl flex flex-col items-center justify-center space-y-3 text-gray-400 hover:text-blue-50 hover:border-blue-200 transition-all group"
            >
               <div className="p-3 bg-gray-50 dark:bg-dark-bg rounded-2xl group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-colors">
                 <Plus className="w-6 h-6" />

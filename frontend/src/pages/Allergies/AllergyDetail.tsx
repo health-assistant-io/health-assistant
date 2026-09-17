@@ -175,11 +175,11 @@ function AllergyDetail() {
             <p className="text-sm text-gray-500 dark:text-dark-muted font-medium">
               {t('allergies.allergen_id', { defaultValue: 'Allergen ID' })}: {allergy.id}
             </p>
-            <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
+            <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
               {allergy.category}
             </span>
             {allergy.is_custom && (
-              <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
+              <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
                 {t('medications.custom_resource')}
               </span>
             )}
@@ -216,14 +216,14 @@ function AllergyDetail() {
                     <button
                       onClick={handleReprocess}
                       disabled={reprocessing}
-                      className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition-all font-semibold shadow-sm active:scale-95 text-sm flex items-center space-x-2"
+                      className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition-all font-semibold shadow-xs active:scale-95 text-sm flex items-center space-x-2"
                     >
                       <Sparkles className="w-4 h-4" />{' '}
                       <span>{reprocessing ? t('allergies.reprocessing', 'Reprocessing…') : t('allergies.ai_reprocess', 'AI reprocess')}</span>
                     </button>
                     <button
                       onClick={handleToggleEdit}
-                      className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-brand-navy dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-sm text-sm flex items-center space-x-2"
+                      className="px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-brand-navy dark:text-dark-text rounded-xl hover:bg-gray-50 transition-all font-semibold shadow-xs text-sm flex items-center space-x-2"
                     >
                       <Edit2 className="w-4 h-4" /> <span>{t('common.edit')}</span>
                     </button>
@@ -233,7 +233,7 @@ function AllergyDetail() {
             )}
             <a
               href={`/catalogs?type=allergy&item=${allergyId}`}
-              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-sm"
+              className="p-2.5 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-gray-400 hover:text-purple-600 transition-all shadow-xs"
               title={t('allergies.manage_in_catalog', 'Manage in Catalogs')}
             >
               <Database className="w-5 h-5" />
@@ -249,21 +249,21 @@ function AllergyDetail() {
       >
         <button
           onClick={() => setActiveTab('info')}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'info' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Info className="w-4 h-4" />
           <span>{t('medications.general_info', 'Info')}</span>
         </button>
         <button
           onClick={() => setActiveTab('reactions')}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'reactions' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'reactions' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <AlertTriangle className="w-4 h-4" />
           <span>{t('allergies.reactions_tab', 'Reactions')}</span>
         </button>
         <button
           onClick={() => setActiveTab('management')}
-          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'management' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'management' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Users className="w-4 h-4" />
           <span>{t('allergies.management', 'Management')}</span>
@@ -275,7 +275,7 @@ function AllergyDetail() {
         {activeTab === 'info' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in duration-500">
             <div className="xl:col-span-2 space-y-6">
-              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-sm">
+              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-xs">
                 <h3 className="text-lg font-black text-brand-navy dark:text-dark-text mb-6 flex items-center uppercase tracking-tight">
                   <Info className="w-5 h-5 mr-3 text-blue-500" />
                   {t('medications.description', 'Description')}
@@ -306,7 +306,7 @@ function AllergyDetail() {
             </div>
 
             <div className="space-y-8">
-              <div className="bg-white dark:bg-dark-surface rounded-[2rem] p-8 border border-gray-100 dark:border-dark-border shadow-sm">
+              <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-6 flex items-center">
                   <AlertTriangle className="w-4 h-4 mr-2 text-rose-500" />
                   {t('allergies.typical_reactions', 'Typical reactions')}
@@ -334,7 +334,7 @@ function AllergyDetail() {
                     <form onSubmit={handleAddReaction} className="flex items-center space-x-2 mt-4">
                       <input
                         type="text"
-                        className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-4 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-xs outline-hidden focus:ring-2 focus:ring-blue-500"
                         placeholder={t('allergies.add_reaction_placeholder', 'Add a typical reaction')}
                         value={newReaction}
                         onChange={e => setNewReaction(e.target.value)}
@@ -350,7 +350,7 @@ function AllergyDetail() {
                 </div>
               </div>
 
-              <div className="bg-blue-50/50 dark:bg-blue-900/10 rounded-[2rem] p-8 border border-blue-100/50 dark:border-blue-900/20">
+              <div className="bg-blue-50/50 dark:bg-blue-900/10 rounded-4xl p-8 border border-blue-100/50 dark:border-blue-900/20">
                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4 flex items-center">
                   <Clock className="w-4 h-4 mr-2" />
                   {t('allergies.category_info', 'Category')}
@@ -427,7 +427,7 @@ function AllergyDetail() {
                                 {item.allergy.reactions.map((r, i) => (
                                   <span
                                     key={i}
-                                    className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${r.severity === 'SEVERE' ? 'bg-rose-50 text-rose-700 border-rose-100' : r.severity === 'MODERATE' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}
+                                    className={`px-2 py-0.5 rounded-sm text-[9px] font-bold uppercase border ${r.severity === 'SEVERE' ? 'bg-rose-50 text-rose-700 border-rose-100' : r.severity === 'MODERATE' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}
                                   >
                                     {r.manifestation}
                                   </span>
@@ -451,7 +451,7 @@ function AllergyDetail() {
         {activeTab === 'management' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-in fade-in duration-500">
             <div className="xl:col-span-2 space-y-6">
-              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
+              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border overflow-hidden shadow-xs">
                 <div className="p-8 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
                   <h3 className="text-lg font-black text-brand-navy dark:text-dark-text uppercase tracking-tight flex items-center">
                     <Users className="w-5 h-5 mr-3 text-purple-500" />
@@ -471,7 +471,7 @@ function AllergyDetail() {
                         onClick={() => navigate(`/patients/${item.patient.id}`)}
                       >
                         <div className="flex items-center space-x-6">
-                          <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100 dark:border-purple-800/30 shadow-sm">
+                          <div className="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100 dark:border-purple-800/30 shadow-xs">
                             <User className="w-6 h-6" />
                           </div>
                           <div>

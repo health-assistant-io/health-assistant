@@ -13,7 +13,7 @@ function Security() {
         icon={<Shield className="w-8 h-8" />}
       />
 
-      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-6 space-y-6">
+      <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Lock className="w-4 h-4 text-gray-400" />

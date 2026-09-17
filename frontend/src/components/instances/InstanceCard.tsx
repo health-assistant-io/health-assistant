@@ -152,8 +152,8 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
       >
         <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse shrink-0" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          <div className="h-3.5 w-2/3 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+          <div className="h-3 w-1/3 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
+          <div className="h-3.5 w-2/3 bg-gray-100 dark:bg-gray-800 rounded-sm animate-pulse" />
         </div>
       </div>
     );
@@ -213,7 +213,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
             </span>
           {row.status && (
             <span
-              className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5"
+              className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5"
               style={
                 row.statusColor
                   ? { backgroundColor: `${row.statusColor}1a`, color: row.statusColor }
@@ -242,7 +242,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
               {row.badges.map((b, i) => (
               <span
                 key={i}
-                className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                 style={
                   b.color
                     ? { backgroundColor: `${b.color}1a`, color: b.color }

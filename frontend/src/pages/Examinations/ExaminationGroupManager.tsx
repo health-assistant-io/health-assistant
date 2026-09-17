@@ -162,7 +162,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
       {/* Document Storage / Unassigned Area - Hidden in Single Mode */}
       {!isSingleMode && (
         <div 
-          className={`relative p-6 bg-gray-50/50 dark:bg-dark-bg/30 border-2 border-dashed rounded-[2rem] transition-all cursor-pointer hover:bg-gray-100/50 dark:hover:bg-dark-bg/50 ${
+          className={`relative p-6 bg-gray-50/50 dark:bg-dark-bg/30 border-2 border-dashed rounded-4xl transition-all cursor-pointer hover:bg-gray-100/50 dark:hover:bg-dark-bg/50 ${
             unassignedFiles.length === 0 ? 'border-gray-200 dark:border-dark-border' : 'border-blue-200 dark:border-blue-900/30 shadow-inner'
           }`}
           onDragOver={(e) => { e.preventDefault(); setHoveredGroupId('unassigned'); }}
@@ -182,7 +182,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
               <button 
                 type="button"
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-xs font-bold text-gray-700 dark:text-dark-text hover:border-blue-500 transition-all shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-xs font-bold text-gray-700 dark:text-dark-text hover:border-blue-500 transition-all shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Files</span>
@@ -191,7 +191,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
                 <button 
                   type="button"
                   onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-indigo-200 dark:border-indigo-900/30 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:border-indigo-500 transition-all shadow-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-indigo-200 dark:border-indigo-900/30 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:border-indigo-500 transition-all shadow-xs"
                 >
                   <Camera className="w-3.5 h-3.5" />
                   <span>Take Photo</span>
@@ -286,7 +286,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
 
       {/* Previews */}
       {isPreviewLoading && (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
            <div className="flex flex-col items-center gap-6">
               <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
               <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Initializing Diagnostic Preview</p>
@@ -347,33 +347,33 @@ const ExaminationBubble: React.FC<{
         isHovered 
           ? 'border-blue-500 shadow-2xl shadow-blue-500/10 scale-[1.02]' 
           : 'border-gray-100 dark:border-dark-border shadow-lg'
-      } ${isSingleMode ? 'border-none shadow-none !bg-transparent' : ''}`}
+      } ${isSingleMode ? 'border-none shadow-none bg-transparent!' : ''}`}
       onDragOver={(e) => { e.preventDefault(); if (!isSingleMode) onHoverChange(true); }}
       onDragLeave={() => !isSingleMode && onHoverChange(false)}
       onDrop={(e) => { if (!isSingleMode) onHoverChange(false); onDrop(e); }}
     >
       {/* Header */}
       {!isSingleMode && (
-        <div className="p-6 pb-4 flex items-start justify-between bg-gradient-to-br from-gray-50/50 to-transparent dark:from-dark-bg/20">
+        <div className="p-6 pb-4 flex items-start justify-between bg-linear-to-br from-gray-50/50 to-transparent dark:from-dark-bg/20">
           <div className="flex-1 space-y-1">
             <input 
               type="text" 
               value={group.name} 
               onChange={(e) => onUpdate({ name: e.target.value })}
-              className="text-xl font-black text-gray-900 dark:text-dark-text bg-transparent border-none outline-none focus:ring-0 p-0 w-full"
+              className="text-xl font-black text-gray-900 dark:text-dark-text bg-transparent border-none outline-hidden focus:ring-0 p-0 w-full"
               placeholder="Examination Name"
             />
             <div className="flex flex-wrap gap-3 mt-2">
               {!isSmartMode && (
                 <>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-100 dark:border-amber-900/20">
-                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
                     <DatePicker
                       placeholder={t('common.select_date', 'Select date')} 
                       variant="unstyled"
                       value={group.date}
                       onChange={(date) => onUpdate({ date })}
-                      className="bg-transparent border-none outline-none text-[10px] font-black uppercase p-0 focus:ring-0 cursor-pointer min-w-[70px]"
+                      className="bg-transparent border-none outline-hidden text-[10px] font-black uppercase p-0 focus:ring-0 cursor-pointer min-w-[70px]"
                     />
                   </div>
                   
@@ -437,7 +437,7 @@ const ExaminationBubble: React.FC<{
                      className="flex flex-col items-center gap-2 text-gray-400 hover:text-blue-500 transition-colors group/add"
                      onClick={() => fileInputRef.current?.click()}
                    >
-                      <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border group-hover/add:border-blue-200 transition-all">
+                      <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group-hover/add:border-blue-200 transition-all">
                          <Plus className="w-8 h-8" />
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest">Add Files</span>
@@ -449,7 +449,7 @@ const ExaminationBubble: React.FC<{
                       className="flex flex-col items-center gap-2 text-gray-400 hover:text-indigo-500 transition-colors group/cam"
                       onClick={() => cameraInputRef.current?.click()}
                     >
-                        <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border group-hover/cam:border-indigo-200 transition-all">
+                        <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group-hover/cam:border-indigo-200 transition-all">
                           <Camera className="w-8 h-8" />
                         </div>
                         <span className="text-[10px] font-black uppercase tracking-widest">Take Photo</span>
@@ -552,7 +552,7 @@ const ExaminationBubble: React.FC<{
                 value={group.patientNotes}
                 onChange={(e) => onUpdate({ patientNotes: e.target.value })}
                 placeholder="How do you feel? Why did you visit the doctor?"
-                className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-none focus:ring-1 focus:ring-blue-500 min-h-[80px]"
+                className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
               />
             </div>
           )}
@@ -568,7 +568,7 @@ const ExaminationBubble: React.FC<{
                   onSelect={(id) => onUpdate({ doctorIds: [...new Set([...group.doctorIds, id])] })}
                   onDeselect={(id) => onUpdate({ doctorIds: group.doctorIds.filter(i => i !== id) })}
                   onCreateDoctor={onAddDoctor}
-                  className="!bg-transparent"
+                  className="bg-transparent!"
                 />
               </div>
 
@@ -580,7 +580,7 @@ const ExaminationBubble: React.FC<{
                     value={group.patientNotes}
                     onChange={(e) => onUpdate({ patientNotes: e.target.value })}
                     placeholder="How do you feel? Why did you visit the doctor?"
-                    className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-none focus:ring-1 focus:ring-blue-500 min-h-[80px]"
+                    className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
                   />
                 </div>
                 
@@ -590,7 +590,7 @@ const ExaminationBubble: React.FC<{
                     value={group.notes}
                     onChange={(e) => onUpdate({ notes: e.target.value })}
                     placeholder="Add summary notes for this examination..."
-                    className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-none focus:ring-1 focus:ring-blue-500 min-h-[80px]"
+                    className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
                   />
                 </div>
               </div>
@@ -626,8 +626,8 @@ const CategoryDropdown: React.FC<{
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)} />
-          <div className="absolute z-[110] mt-2 w-56 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="fixed inset-0 z-dropdown" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-110 mt-2 w-56 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="p-2 border-b border-gray-100 dark:border-dark-border">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
@@ -636,7 +636,7 @@ const CategoryDropdown: React.FC<{
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search categories..."
-                  className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-[10px] outline-none"
+                  className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-[10px] outline-hidden"
                   autoFocus
                 />
               </div>

@@ -75,7 +75,7 @@ export const InstancePreview: React.FC<InstancePreviewProps> = ({
               </span>
               {row.status && (
                 <span
-                  className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5"
+                  className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5"
                   style={
                     row.statusColor
                       ? { backgroundColor: `${row.statusColor}1a`, color: row.statusColor }
@@ -86,7 +86,7 @@ export const InstancePreview: React.FC<InstancePreviewProps> = ({
                 </span>
               )}
             </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text break-words">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text wrap-break-word">
               {row.label}
             </h3>
             {(relDate || row.subtitle) && (
@@ -115,7 +115,7 @@ export const InstancePreview: React.FC<InstancePreviewProps> = ({
             {row.badges.map((b, i) => (
               <span
                 key={i}
-                className="text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                className="text-[10px] font-bold uppercase tracking-wide rounded-sm px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                 style={
                   b.color
                     ? { backgroundColor: `${b.color}1a`, color: b.color }

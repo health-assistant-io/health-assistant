@@ -58,7 +58,7 @@ export const InfoSection: React.FC<InfoSectionProps> = ({
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls={bodyId}
-          className="flex items-center gap-1.5 w-full text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+          className="flex items-center gap-1.5 w-full text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
         >
           {header}
         </button>

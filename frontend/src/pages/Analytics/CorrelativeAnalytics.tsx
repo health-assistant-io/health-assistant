@@ -265,7 +265,7 @@ const CorrelativeAnalytics: React.FC = () => {
         <aside className="w-full lg:w-96 flex flex-col gap-6 shrink-0">
           
           {/* Active Selections */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-6 shadow-sm">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-6 shadow-xs">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <FlaskConical className="w-4 h-4 text-blue-500" />
@@ -322,7 +322,7 @@ const CorrelativeAnalytics: React.FC = () => {
                               {marker?.latestValue} {marker?.unit}
                             </span>
                             {marker?.interpretation && (
-                              <span className={`px-1.5 py-0.5 text-[8px] font-black rounded uppercase border scale-90 ${getStatusColorClass(marker.interpretation)}`}>
+                              <span className={`px-1.5 py-0.5 text-[8px] font-black rounded-sm uppercase border scale-90 ${getStatusColorClass(marker.interpretation)}`}>
                                 {marker.interpretation}
                               </span>
                             )}
@@ -359,7 +359,7 @@ const CorrelativeAnalytics: React.FC = () => {
               <input 
                 type="text" 
                 placeholder={t('common.search_to_add')}
-                className="w-full pl-11 pr-12 py-3.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-gray-400"
+                className="w-full pl-11 pr-12 py-3.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-hidden transition-all placeholder:text-gray-400"
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -377,7 +377,7 @@ const CorrelativeAnalytics: React.FC = () => {
               {(searchTerm || isDropdownManualOpen) && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsDropdownManualOpen(false)} />
-                  <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-[2rem] shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                  <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-4xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-2">
                     <div className="p-3 bg-gray-50 dark:bg-dark-bg border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Available Results</span>
                        <button onClick={() => { setSearchTerm(''); setIsDropdownManualOpen(false); }}><X className="w-3 h-3 text-gray-400" /></button>
@@ -396,7 +396,7 @@ const CorrelativeAnalytics: React.FC = () => {
                           <div>
                             <p className="text-sm font-bold text-gray-900 dark:text-dark-text group-hover:text-blue-600 transition-colors">{b.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[9px] font-black text-blue-500 uppercase px-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-sm">{b.category}</span>
+                              <span className="text-[9px] font-black text-blue-500 uppercase px-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-xs">{b.category}</span>
                               <span className="text-[9px] font-bold text-gray-400 uppercase">{b.latestValue} {b.unit}</span>
                             </div>
                           </div>
@@ -411,7 +411,7 @@ const CorrelativeAnalytics: React.FC = () => {
           </div>
 
           {/* Smart Templates */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-6 shadow-sm flex-1">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-6 shadow-xs flex-1">
              <div className="flex items-center justify-between mb-6">
                <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-widest flex items-center gap-2">
                   <Zap className="w-4 h-4 text-amber-500" />
@@ -464,14 +464,14 @@ const CorrelativeAnalytics: React.FC = () => {
         {/* MAIN CONTENT AREA */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
           {/* Main Chart Card */}
-          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-sm flex flex-col h-full">
+          <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-8 shadow-xs flex flex-col h-full">
             <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <h2 className="text-3xl font-black text-brand-navy dark:text-dark-text tracking-tight">
                     Correlative Visualizer
                   </h2>
-                  <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase rounded border border-indigo-100 dark:border-indigo-800">
+                  <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase rounded-sm border border-indigo-100 dark:border-indigo-800">
                     High-Res
                   </div>
                 </div>
@@ -542,7 +542,7 @@ const CorrelativeAnalytics: React.FC = () => {
           {/* Intelligent Insights Footer */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
              {correlationScore !== null ? (
-               <div className="bg-gradient-to-br from-brand-navy to-[#2c3e50] rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-900/20 relative overflow-hidden group">
+               <div className="bg-linear-to-br from-brand-navy to-[#2c3e50] rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-900/20 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity">
                     <TrendingUp className="w-48 h-48" />
                   </div>
@@ -604,7 +604,7 @@ const CorrelativeAnalytics: React.FC = () => {
                           {getCorrelationLabel(correlationScore)}
                        </div>
                        
-                       <div className="flex items-start gap-4 p-5 bg-white/5 rounded-[1.5rem] backdrop-blur-md border border-white/10 mt-2">
+                       <div className="flex items-start gap-4 p-5 bg-white/5 rounded-3xl backdrop-blur-md border border-white/10 mt-2">
                         <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                         <div className="space-y-2">
                           <p className="text-xs text-blue-50/70 leading-relaxed font-bold">
@@ -628,7 +628,7 @@ const CorrelativeAnalytics: React.FC = () => {
                   </div>
                </div>
              ) : selectedBiomarkers.length > 2 ? (
-               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 flex flex-col justify-center shadow-sm">
+               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 flex flex-col justify-center shadow-xs">
                   <div className="flex items-center gap-3 mb-4">
                     <Activity className="w-5 h-5 text-indigo-500" />
                     <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">Multi-Variate Mode</h3>
@@ -641,7 +641,7 @@ const CorrelativeAnalytics: React.FC = () => {
                   </div>
                </div>
              ) : (
-               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 flex flex-col justify-center items-center text-center shadow-sm opacity-60">
+               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 flex flex-col justify-center items-center text-center shadow-xs opacity-60">
                   <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-2xl flex items-center justify-center mb-4">
                     <Sparkles className="w-8 h-8 text-gray-200" />
                   </div>
@@ -649,7 +649,7 @@ const CorrelativeAnalytics: React.FC = () => {
                </div>
              )}
              
-             <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 shadow-sm">
+             <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 shadow-xs">
                 <h3 className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-widest mb-8 flex items-center gap-2">
                   <Activity className="w-4 h-4 text-green-500" />
                   Clinical Methodology

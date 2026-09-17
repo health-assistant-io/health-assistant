@@ -102,7 +102,7 @@ export const AllowedStatesEditor: React.FC<Props> = ({ values, states, onChange 
                 type="checkbox"
                 checked={!!row.is_normal}
                 onChange={(e) => updateRow(row.state_slug, { is_normal: e.target.checked })}
-                className="w-3.5 h-3.5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                className="w-3.5 h-3.5 text-emerald-600 rounded-sm border-gray-300 focus:ring-emerald-500"
               />
               {t('biomarker_catalog.allowed_state_normal', 'Normal')}
             </label>

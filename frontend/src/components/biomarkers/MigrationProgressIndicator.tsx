@@ -61,7 +61,7 @@ export function MigrationProgressIndicator({
       </div>
       
       {isFailed && errorMessage && (
-        <div className="mt-3 p-2.5 bg-red-100/50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs rounded border border-red-200/50 dark:border-red-800 break-words font-mono">
+        <div className="mt-3 p-2.5 bg-red-100/50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs rounded-sm border border-red-200/50 dark:border-red-800 wrap-break-word font-mono">
           {errorMessage}
         </div>
       )}
@@ -72,7 +72,7 @@ export function MigrationProgressIndicator({
             onClick={onRetry}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 ${
               isFailed 
-                ? 'bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-200 dark:shadow-none' 
+                ? 'bg-red-600 text-white hover:bg-red-700 shadow-xs shadow-red-200 dark:shadow-none' 
                 : 'bg-white/50 dark:bg-dark-bg text-blue-600 hover:bg-white dark:hover:bg-dark-surface border border-blue-100 dark:border-blue-900/30'
             }`}
           >

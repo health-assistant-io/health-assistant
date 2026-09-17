@@ -50,7 +50,7 @@ export const RecordingBanner: React.FC<Props> = ({
   return (
     <div className="relative z-10 flex items-center justify-center px-1 pb-2">
       <div
-        className={`inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border shadow-sm ${
+        className={`inline-flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full border shadow-xs ${
           transcribing
             ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300'
             : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-300'

@@ -60,7 +60,7 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
 
   if (loading) return (
     <div className="animate-pulse bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border w-full h-full">
-      <div className="h-4 w-32 bg-gray-200 rounded mb-4"></div>
+      <div className="h-4 w-32 bg-gray-200 rounded-sm mb-4"></div>
       <div className="space-y-3">
         <div className="h-12 bg-gray-50 rounded-xl"></div>
         <div className="h-12 bg-gray-50 rounded-xl"></div>
@@ -69,7 +69,7 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
   );
 
   return (
-    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden w-full h-full">
       <SummaryCardHeader
         icon={Pill}
         iconClassName="text-blue-500"
@@ -100,21 +100,21 @@ export const MedicationSummary: React.FC<Props> = ({ patientId }) => {
               <div className="flex bg-gray-100 dark:bg-dark-bg p-0.5 rounded-lg">
                 <button
                   onClick={() => setViewMode('compact')}
-                  className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'compact' ? 'bg-white dark:bg-dark-surface shadow-xs text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
                   title={t('allergies.compact_view')}
                 >
                   <List className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setViewMode('timeline')}
-                  className={`p-1.5 rounded-md transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'timeline' ? 'bg-white dark:bg-dark-surface shadow-xs text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
                   title={t('allergies.timeline_view')}
                 >
                   <Clock className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setViewMode('calendar')}
-                  className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-dark-surface shadow-sm text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white dark:bg-dark-surface shadow-xs text-blue-600' : 'text-gray-400 dark:text-dark-muted hover:text-gray-600'}`}
                   title={t('dashboard.cards.unified_schedule')}
                 >
                   <Calendar className="w-3.5 h-3.5" />
@@ -205,7 +205,7 @@ const MedicationTimeline: React.FC<{
               {med.end_date && ` — ${new Date(med.end_date).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`}
               {med.status?.toLowerCase() === 'active' && !med.end_date && ` — ${t('common.today')}`}
             </span>
-            <span className={`text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 rounded ${med.status?.toLowerCase() === 'active' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 bg-gray-50 dark:bg-dark-bg'}`}>
+            <span className={`text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 rounded-sm ${med.status?.toLowerCase() === 'active' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 bg-gray-50 dark:bg-dark-bg'}`}>
                 {med.status}
             </span>
           </div>

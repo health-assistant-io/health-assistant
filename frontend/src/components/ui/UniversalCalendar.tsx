@@ -401,7 +401,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                             key={cond.id}
                             type="button"
                             onClick={() => handleEventClick(cond)}
-                            className="flex items-center gap-2.5 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/40 dark:bg-purple-900/10 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-sm transition-all text-left group/active"
+                            className="flex items-center gap-2.5 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/30 bg-purple-50/40 dark:bg-purple-900/10 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-xs transition-all text-left group/active"
                           >
                             <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${color}`} />
                             <div className="flex-1 min-w-0">
@@ -433,7 +433,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                             <div 
                               key={idx} 
                               onClick={() => handleEventClick(event)}
-                              className="flex items-center space-x-3 p-3 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm hover:border-blue-300 dark:hover:border-blue-900 transition-all cursor-pointer group active:scale-[0.98]"
+                              className="flex items-center space-x-3 p-3 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs hover:border-blue-300 dark:hover:border-blue-900 transition-all cursor-pointer group active:scale-[0.98]"
                             >
                                 <div className={`p-2 rounded-xl border ${getEventColor(event.type)} shrink-0`}>
                                     {getEventIcon(event.type)}
@@ -756,7 +756,7 @@ export const UniversalCalendar: React.FC<Props> = ({
             return (
               <div key={event.id} className="space-y-2">
                 {isNewDay && (
-                  <div className="sticky top-0 z-10 py-2 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 py-2 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-xs">
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{format(event.date, 'EEEE, MMMM d, yyyy')}</span>
                   </div>
                 )}
@@ -803,7 +803,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               }`}>
                 {getEventIcon(event.type)}
               </div>
-              <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-[2rem] p-6 hover:shadow-2xl hover:border-blue-200 transition-all cursor-pointer" onClick={() => handleEventClick(event)}>
+              <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-4xl p-6 hover:shadow-2xl hover:border-blue-200 transition-all cursor-pointer" onClick={() => handleEventClick(event)}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-1">{format(event.date, 'MMM d, yyyy')} @ {(event.time && event.time !== 'Unspecified') ? event.time : 'All day'}</span>
@@ -830,7 +830,7 @@ export const UniversalCalendar: React.FC<Props> = ({
   };
 
   return (
-    <div className={`flex flex-col w-full h-full ${transparent ? 'min-h-0' : `bg-white dark:bg-dark-surface rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden min-h-0 ${compact ? 'max-w-2xl' : 'w-full'}`}`}>
+    <div className={`flex flex-col w-full h-full ${transparent ? 'min-h-0' : `bg-white dark:bg-dark-surface rounded-[2.5rem] shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden min-h-0 ${compact ? 'max-w-2xl' : 'w-full'}`}`}>
       {!hideHeader ? (
         <div className={`px-6 py-4 border-b border-gray-50 dark:border-dark-border flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${transparent ? 'bg-transparent' : ''}`}>
           <div className={`flex items-center space-x-4 ${titleTo ? 'group/title relative cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
@@ -845,7 +845,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                 {titleTo && (
                   <ExternalLink
                     onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(titleTo, '_blank', 'noopener,noreferrer'); }}
-                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:!text-blue-500 transition-opacity shrink-0"
+                    className="w-4 h-4 text-gray-400 dark:text-dark-muted opacity-0 group-hover/title:opacity-100 hover:text-blue-500! transition-opacity shrink-0"
                   />
                 )}
               </h2>
@@ -865,13 +865,13 @@ export const UniversalCalendar: React.FC<Props> = ({
           <div className="flex flex-wrap items-center gap-2">
             {viewType === 'classic' && (
               <div className="flex items-center bg-gray-50 dark:bg-dark-bg p-1 rounded-xl border border-gray-100 dark:border-dark-border">
-                  <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 hover:bg-white dark:hover:bg-dark-surface rounded-lg transition-all shadow-sm">
+                  <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-1.5 hover:bg-white dark:hover:bg-dark-surface rounded-lg transition-all shadow-xs">
                       <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
                   </button>
                   <button onClick={() => setCurrentDate(new Date())} className="px-3 text-[10px] font-black text-gray-700 dark:text-dark-text uppercase hover:text-blue-600 transition-colors">
                       {t('common.today')}
                   </button>
-                  <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 hover:bg-white dark:hover:bg-dark-surface rounded-lg transition-all shadow-sm">
+                  <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-1.5 hover:bg-white dark:hover:bg-dark-surface rounded-lg transition-all shadow-xs">
                       <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
                   </button>
               </div>
@@ -884,7 +884,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                 placeholder={t('common.search')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border focus:border-blue-500/30 focus:bg-white dark:focus:bg-dark-surface rounded-xl text-xs font-bold outline-none transition-all w-36 focus:w-48"
+                className="pl-9 pr-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border focus:border-blue-500/30 focus:bg-white dark:focus:bg-dark-surface rounded-xl text-xs font-bold outline-hidden transition-all w-36 focus:w-48"
               />
             </div>
 
@@ -899,7 +899,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               </button>
               
               {isFilterDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-border z-[100] p-1.5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-border z-dropdown p-1.5 animate-in fade-in zoom-in-95 duration-200">
                   <div className="px-4 py-2 border-b border-gray-50 dark:border-dark-border mb-1">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Include Categories</p>
                   </div>
@@ -970,7 +970,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               </button>
               
               {isViewDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-border z-[100] p-1.5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-border z-dropdown p-1.5 animate-in fade-in zoom-in-95 duration-200">
                    {[
                      { id: 'timeline', icon: Layout, label: 'Timeline' },
                      { id: 'classic', icon: Grid, label: 'Calendar' },
@@ -1008,7 +1008,7 @@ export const UniversalCalendar: React.FC<Props> = ({
           renderModal(selectedEvent, () => setSelectedEvent(null))
         ) : (
           <Portal>
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-150 flex items-center justify-center p-4 animate-in fade-in duration-300">
               <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white/20">
                 <div className={`p-8 text-white relative ${
                   selectedEvent.type === 'medication' ? 'bg-blue-600' : 
@@ -1045,7 +1045,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                       <Info className="w-4 h-4" />
                       <span>Clinical Details</span>
                     </h4>
-                    <div className="p-6 bg-gray-50 dark:bg-dark-bg rounded-[2rem] border border-gray-100 dark:border-dark-border">
+                    <div className="p-6 bg-gray-50 dark:bg-dark-bg rounded-4xl border border-gray-100 dark:border-dark-border">
                       <p className="leading-relaxed font-medium">
                         {selectedEvent.subtitle || 'No additional clinical details available for this record.'}
                       </p>
@@ -1059,7 +1059,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                   )}
                 </div>
                 <div className="p-8 bg-gray-50 dark:bg-dark-bg border-t border-gray-100 dark:border-dark-border flex justify-end space-x-4">
-                  <button onClick={() => setSelectedEvent(null)} className="px-10 py-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-900 dark:text-dark-text font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-gray-100 dark:hover:bg-dark-border transition-all shadow-sm active:scale-95">
+                  <button onClick={() => setSelectedEvent(null)} className="px-10 py-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-gray-900 dark:text-dark-text font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-gray-100 dark:hover:bg-dark-border transition-all shadow-xs active:scale-95">
                     {t('common.dismiss')}
                   </button>
                   <button onClick={() => navigateToDetail(selectedEvent)} className="px-10 py-4 bg-brand-navy text-white font-black text-xs uppercase tracking-widest rounded-2xl hover:bg-black transition-all shadow-xl active:scale-95 flex items-center">

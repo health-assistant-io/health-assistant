@@ -93,7 +93,7 @@ const MedicationCard: React.FC<MedicationCardProps> = ({
     return createPortal(
       <div 
         ref={menuRef}
-        className="fixed w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-[9999] py-2 animate-in zoom-in-95 duration-200"
+        className="fixed w-56 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-2xl shadow-2xl z-9999 py-2 animate-in zoom-in-95 duration-200"
         style={{
           top: `${coords.top + 8}px`,
           left: `${coords.left - 224 + coords.width}px`,
@@ -139,7 +139,7 @@ const MedicationCard: React.FC<MedicationCardProps> = ({
   }, [menuOpen, coords, medication, t, navigate, onEdit, onDelete]);
 
   return (
-    <div className={`relative flex flex-col ${compact ? 'p-3 sm:p-4 max-w-sm min-h-[110px]' : 'p-4 sm:p-6 w-full min-h-[140px]'} bg-white dark:bg-dark-bg/60 border border-gray-100 dark:border-dark-border rounded-2xl group hover:border-indigo-300 transition-all shadow-sm`}>
+    <div className={`relative flex flex-col ${compact ? 'p-3 sm:p-4 max-w-sm min-h-[110px]' : 'p-4 sm:p-6 w-full min-h-[140px]'} bg-white dark:bg-dark-bg/60 border border-gray-100 dark:border-dark-border rounded-2xl group hover:border-indigo-300 transition-all shadow-xs`}>
       {/* Actions */}
       <div className="absolute top-3 right-3 flex items-center space-x-1">
         {medication.code?.catalog_id && (
@@ -227,7 +227,7 @@ const MedicationCard: React.FC<MedicationCardProps> = ({
       )}
       
       {medication.end_date && (
-        <div className="mt-4 flex items-center justify-between text-[9px] font-black text-gray-400 uppercase tracking-[0.1em]">
+        <div className="mt-4 flex items-center justify-between text-[9px] font-black text-gray-400 uppercase tracking-widest">
           <div className="flex items-center space-x-4">
             <span>{t('medications.ended')}: {new Date(medication.end_date).toLocaleDateString()}</span>
           </div>

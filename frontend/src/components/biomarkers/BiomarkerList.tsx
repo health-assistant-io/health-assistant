@@ -236,7 +236,7 @@ export const BiomarkerList = React.memo(({
     return (
       <div 
         key={marker.id} 
-        className={`bg-white dark:bg-dark-surface shadow-sm border border-gray-100 dark:border-dark-border hover:shadow-xl transition-all flex flex-col group relative ${
+        className={`bg-white dark:bg-dark-surface shadow-xs border border-gray-100 dark:border-dark-border hover:shadow-xl transition-all flex flex-col group relative ${
           compact ? 'rounded-2xl p-4' : 'rounded-3xl p-5 sm:p-6'
         } ${
           showCharts ? 'min-h-[300px] sm:min-h-[340px]' : 'min-h-fit'
@@ -397,7 +397,7 @@ export const BiomarkerList = React.memo(({
     const isNavigable = !!targetId;
 
     return (
-      <div key={marker.id} className="bg-white dark:bg-dark-surface rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border p-4 flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-8 hover:shadow-md transition-all group relative">
+      <div key={marker.id} className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-4 flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-8 hover:shadow-md transition-all group relative">
         <div className={`w-full sm:w-[250px] flex items-center shrink-0 ${isNavigable ? 'cursor-pointer' : ''}`} onClick={() => isNavigable && navigate(`/biomarkers/details/${targetId}`)}>
           <div className="flex flex-col min-w-0">
             <div className="flex items-center">
@@ -516,7 +516,7 @@ export const BiomarkerList = React.memo(({
         <div className="h-px flex-1 bg-gray-100 dark:bg-dark-border opacity-50"></div>
       </div>
       
-      <div className="bg-white dark:bg-dark-surface rounded-3xl border border-gray-100 dark:border-dark-border shadow-sm overflow-hidden overflow-x-auto no-scrollbar">
+      <div className="bg-white dark:bg-dark-surface rounded-3xl border border-gray-100 dark:border-dark-border shadow-xs overflow-hidden overflow-x-auto no-scrollbar">
          <table className="min-w-full divide-y divide-gray-50 dark:divide-dark-border">
             <thead className="bg-gray-50/30 dark:bg-dark-bg/30">
               <tr>
@@ -578,9 +578,9 @@ export const BiomarkerList = React.memo(({
                     >
                        <td className="px-8 py-5 align-middle max-w-[300px]">
                         <div className="flex items-center gap-2">
-                            <span className={`text-sm font-bold text-gray-900 dark:text-dark-text ${mNavigable ? 'group-hover:text-blue-600' : ''} transition-colors whitespace-normal break-words leading-snug min-w-0 flex-1`}>{m.displayName}</span>
+                            <span className={`text-sm font-bold text-gray-900 dark:text-dark-text ${mNavigable ? 'group-hover:text-blue-600' : ''} transition-colors whitespace-normal wrap-break-word leading-snug min-w-0 flex-1`}>{m.displayName}</span>
                             {m.isTelemetry && (
-                              <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded p-0.5 shrink-0" title="Telemetry/IoT Data">
+                              <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 rounded-sm p-0.5 shrink-0" title="Telemetry/IoT Data">
                                 <Activity className="w-3 h-3" />
                               </div>
                             )}
@@ -668,13 +668,13 @@ export const BiomarkerList = React.memo(({
            <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
               <button 
                  onClick={() => handleDataModeChange('normalized')}
-                 className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeDataMode === 'normalized' ? 'bg-white dark:bg-dark-surface text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                 className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeDataMode === 'normalized' ? 'bg-white dark:bg-dark-surface text-indigo-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
               >
                  {t('biomarkers.data_modes.normalized')}
               </button>
               <button 
                  onClick={() => handleDataModeChange('raw')}
-                 className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeDataMode === 'raw' ? 'bg-white dark:bg-dark-surface text-amber-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                 className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeDataMode === 'raw' ? 'bg-white dark:bg-dark-surface text-amber-600 shadow-xs' : 'text-gray-400 hover:text-gray-600'}`}
               >
                  {t('biomarkers.data_modes.raw')}
               </button>
@@ -703,7 +703,7 @@ export const BiomarkerList = React.memo(({
 
       {/* Biomarker Info Modal */}
       {selectedInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedInfo(null)}>
+        <div className="fixed inset-0 z-dropdown flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" onClick={() => setSelectedInfo(null)}>
           <div className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300" onClick={e => e.stopPropagation()}>
             <div className="p-8 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
               <div className="flex items-center space-x-4">
