@@ -1,3 +1,8 @@
+/* Library component CSS goes in its own cascade layer: its prebuilt rules
+   (incl. a few utilities like .flex/.hidden) must NOT outrank the app's
+   layered Tailwind utilities — unlayered CSS beats every @layer. */
+@import '@neuronection/assistant-ui/styles.css' layer(assistant-ui);
+
 @import 'react-grid-layout/css/styles.css' layer(base);
 @import 'react-resizable/css/styles.css' layer(base);
 

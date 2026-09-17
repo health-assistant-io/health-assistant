@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // The family UI library is served raw (optimizeDeps.exclude, per family
@@ -40,6 +41,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    tailwindcss(),
     react(),
     VitePWA({
       strategies: 'injectManifest',
