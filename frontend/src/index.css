@@ -1,6 +1,10 @@
-/* Library component CSS goes in its own cascade layer: its prebuilt rules
-   (incl. a few utilities like .flex/.hidden) must NOT outrank the app's
-   layered Tailwind utilities — unlayered CSS beats every @layer. */
+/* Library component CSS goes in its own cascade layer: the app's Tailwind
+   utilities must keep overriding library rules, but PREFLIGHT must not kill
+   them — `* { margin: 0 }` in @layer base otherwise beats the library's
+   `sm:mx-auto` etc. (layer order wins over specificity), which un-centers
+   every PanelModal dialog. The explicit statement pins the order:
+   preflight (base) < assistant-ui < app utilities. */
+@layer theme, base, assistant-ui, components, utilities;
 @import '@neuronection/assistant-ui/styles.css' layer(assistant-ui);
 
 @import 'react-grid-layout/css/styles.css' layer(base);

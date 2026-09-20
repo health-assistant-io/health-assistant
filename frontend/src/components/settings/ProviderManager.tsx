@@ -166,15 +166,17 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                   onTest={() => void runTest(provider).catch(() => undefined)}
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                title={t('settings.ai.setup.automatically')}
-                onClick={() => setRerunProvider(provider)}
-                disabled={!provider.preset_key}
-              >
-                <Sparkles className="h-4 w-4" aria-hidden />
-              </Button>
+              {provider.preset_key ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title={t('settings.ai.setup.automatically')}
+                  onClick={() => setRerunProvider(provider)}
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden />
+                  {t('settings.ai.setup.automatically')}
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="icon"
