@@ -13,8 +13,14 @@
 #       ai/graphs/ dir (python: backend/app/ai/graphs; js: src/main/ai/graphs)
 #   R4  langgraph (+ langgraph-checkpoint-* when persistent checkpointing
 #       is used) exists as a dependency when graphs exist
+#   R5  audio & model-catalog endpoint calls (audio/transcriptions,
+#       audio/speech, /v1/models — ADR-0018) stay inside the AI layer
+#       (python: backend/app/ai/; js: src/main/ai/) — these are raw
+#       httpx/fetch surfaces invisible to R1/R2's import checks
 #
 # Modes: strict (findings fail) or transition (findings reported, exit 0).
+# Repos with pre-existing R1–R5 surfaces run in transition until their
+# migration lands (ai-features §10).
 #
 # Usage:
 #   ./check-ai-alignment.sh                 # family scan from the dev repo
@@ -136,6 +142,15 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     case "$rel" in "$GRAPHS_DIR"/*|"$tests_dir"/*) ;; *) report R3 "$rel" 'graph (StateGraph/createAgent) outside the ai/graphs/ dir' ;; esac
   done < <(grep "${SCAN_ARGS[@]}" "$GRAPH_RE" "$scan_root" 2>/dev/null | sort -u)
 
+  # R5 (ADR-0018): audio/catalog REST surfaces are raw httpx/fetch, invisible
+  # to the import checks — pin them to the AI layer (url fragments composed
+  # with f-strings/templates, so no quote anchoring). Connection tests /
+  # provider services belong in gateway-owned modules (ai-features §1/§14).
+  while IFS= read -r f; do
+    rel="${f#"$dir"/}"
+    is_allowed_r2 "$rel" || report R5 "$rel" 'audio/catalog endpoint call outside the AI layer (ADR-0018)'
+  done < <(grep "${SCAN_ARGS[@]}" 'audio/transcriptions|audio/speech|/v1/models|generativelanguage[.]googleapis[.]com' "$backend" 2>/dev/null | sort -u)
+
   if [ "$graphs" -eq 1 ]; then
     grep -qh 'langgraph' "${DEPS_FILES[@]}" 2>/dev/null || report R4 'deps' 'graphs exist but no langgraph dependency'
     if [ "$kind" = "python" ] || grep -qhE 'langgraph-checkpoint|SqliteSaver|PostgresSaver' "$backend" 2>/dev/null; then
@@ -179,6 +194,6 @@ fi
 if [ "$fail" -eq 0 ]; then
   echo "ai alignment: no strict violations"
 else
-  echo "ai alignment: FAILURES above (see guidelines/ai-features.md, ADR-0008)" >&2
+  echo "ai alignment: FAILURES above (see guidelines/ai-features.md, ADR-0008/0018)" >&2
   exit 1
 fi
