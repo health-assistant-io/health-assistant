@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, FileText, AudioLines } from 'lucide-react';
+import { Eye, FileText, AudioLines, Cpu } from 'lucide-react';
 import {
   ModelRegistry,
   type CapabilityDescriptor,
@@ -19,14 +19,19 @@ const REASONING_EFFORT_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high'];
 const CAP_ICONS: Record<AIModelCapability, typeof FileText> = {
   text: FileText,
   vision: Eye,
-  audio_input: AudioLines,
+  tools: Cpu,
+  stt: AudioLines,
+  tts: AudioLines,
+  embeddings: FileText,
 };
 
 /** App-side capability inference for provider catalogs that don't report
- *  capabilities (mirrors app/ai/providers/capabilities.py semantics). */
+ *  capabilities (mirrors the §15 inference: whisper → stt, tts → tts). */
 function inferRemoteCaps(externalId: string): string[] {
   const id = externalId.toLowerCase();
-  if (/whisper|audio|speech|tts|stt/.test(id)) return ['audio_input'];
+  if (/embedding|bge/.test(id)) return ['embeddings'];
+  if (/whisper|transcribe|stt/.test(id)) return ['stt'];
+  if (/^tts|tts-|speech|voice/.test(id)) return ['tts'];
   if (/vision|vl|llava|omni|gpt-4o|gpt-4\.1|gpt-4-turbo|multimodal/.test(id))
     return ['text', 'vision'];
   return ['text'];
@@ -115,7 +120,7 @@ export const ModelsTab: React.FC = () => {
   }));
 
   const capDescriptors: CapabilityDescriptor[] = (
-    ['text', 'vision', 'audio_input'] as AIModelCapability[]
+    ['text', 'vision', 'tools', 'stt', 'tts', 'embeddings'] as AIModelCapability[]
   ).map((cap) => ({
     value: cap,
     label: t(`settings.ai.caps_${cap}`),

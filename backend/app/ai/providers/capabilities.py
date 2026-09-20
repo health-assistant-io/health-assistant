@@ -1,15 +1,16 @@
 """Map AI tasks to the model capabilities they require.
 
-A model advertises a SET of capabilities (``AIModelCapability``: text / vision
-/ audio_input) on its JSONB ``capabilities`` column. Each task type needs at
-least one specific capability; this module is the single source of truth for
-that mapping so the task-assignment picker only offers eligible models and the
-runtime factories can sanity-check their resolved model.
+A model advertises a SET of capabilities (``AIModelCapability``: the §15 family
+vocabulary text / vision / tools / stt / tts / embeddings) on its JSONB
+``capabilities`` column. Each task type needs at least one specific capability;
+this module is the single source of truth for that mapping so the
+task-assignment picker only offers eligible models and the runtime factories
+can sanity-check their resolved model.
 
 Examples:
   * ``chat``        → needs ``text``
   * ``ocr``         → needs ``vision``
-  * ``transcription`` → needs ``audio_input``
+  * ``transcription`` → needs ``stt``
   * every other text-generation task (define_*, magic_fill, …) → ``text``
 """
 
@@ -27,7 +28,7 @@ from app.models.enums import AIModelCapability
 TASK_REQUIRED_CAPABILITY: dict = {
     TaskType.CHAT: {AIModelCapability.TEXT},
     TaskType.OCR: {AIModelCapability.VISION},
-    TaskType.TRANSCRIPTION: {AIModelCapability.AUDIO_INPUT},
+    TaskType.TRANSCRIPTION: {AIModelCapability.STT},
 }
 
 
@@ -48,7 +49,7 @@ def normalize_capabilities(values: Optional[Iterable[object]]) -> Set[str]:
     ``text`` is the default modality (an empty/null payload falls back to
     ``{"text"}``) but is NOT forced when the payload already declares other
     capabilities — an STT-only model like ``whisper-1`` legitimately carries
-    only ``audio_input``.
+    only ``stt``.
     """
     if not values:
         return {AIModelCapability.TEXT.value}

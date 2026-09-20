@@ -221,6 +221,9 @@ class AIScope(str, enum.Enum):
 class AIModelCapability(str, enum.Enum):
     """The input/output modalities a model supports (its "features").
 
+    Family vocabulary (ai-features §15, frozen 2026-09-19):
+    ``text | vision | tools | stt | tts | embeddings``.
+
     A model carries a SET of these (stored as a JSONB array on ``AIModel``).
     Tasks require specific capabilities — a model is only eligible for a task
     assignment when it advertises the capability that task needs:
@@ -228,15 +231,19 @@ class AIModelCapability(str, enum.Enum):
       * ``TEXT``        — text in/out (chat, structured extraction, definitions).
                           Assumed for every model (the baseline modality).
       * ``VISION``      — image input (multimodal chat, vision-based OCR).
-      * ``AUDIO_INPUT`` — speech/audio input, i.e. speech-to-text (``whisper-1``).
-
-    This replaces a single coarse ``model_type`` (text|stt): a model can be both
-    a vision and a text model (``gpt-4o``), or audio-only (``whisper-1``).
+      * ``TOOLS``       — tool/function calling.
+      * ``STT``         — speech-to-text (``whisper-1``; the ``transcription``
+                          task). Replaces the legacy ``audio_input`` value.
+      * ``TTS``         — text-to-speech (no health task consumes it yet).
+      * ``EMBEDDINGS``  — embedding vectors (no health task consumes it yet).
     """
 
     TEXT = "text"
     VISION = "vision"
-    AUDIO_INPUT = "audio_input"
+    TOOLS = "tools"
+    STT = "stt"
+    TTS = "tts"
+    EMBEDDINGS = "embeddings"
 
     @classmethod
     def all_values(cls) -> list:

@@ -66,7 +66,7 @@ const STRINGS: Record<string, string> = {
   'settings.ai.hint': 'Register the models you want to use.',
   'settings.ai.caps_text': 'Text',
   'settings.ai.caps_vision': 'Vision',
-  'settings.ai.caps_audio_input': 'Audio Input',
+  'settings.ai.caps_stt': 'Speech-to-text',
   'settings.ai.caps_label': 'Capabilities',
   'settings.ai.caps_hint': 'Capabilities decide which tasks can use this model.',
   'settings.ai.add_model': 'Add model',
@@ -135,7 +135,7 @@ describe('ModelsTab', () => {
         expect.objectContaining({
           name: 'Whisper 1',
           model_name: 'whisper-1',
-          capabilities: ['audio_input'],
+          capabilities: ['stt'],
           is_active: true,
         }),
       ),

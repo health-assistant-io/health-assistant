@@ -1865,8 +1865,11 @@
     "ai": {
       "hint": "Register the models you want to use. Add them from the live provider catalog or enter the API identifier manually.",
       "caps_text": "Text",
+      "caps_tools": "Tools",
       "caps_vision": "Vision",
-      "caps_audio_input": "Audio Input",
+      "caps_stt": "Speech-to-text",
+      "caps_tts": "Text-to-speech",
+      "caps_embeddings": "Embeddings",
       "caps_label": "Capabilities",
       "caps_hint": "Capabilities decide which tasks can use this model.",
       "add_model": "Add model",

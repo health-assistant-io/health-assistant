@@ -542,7 +542,7 @@ async def transcribe(
 
     Accepts a compressed audio upload (Opus/WebM preferred), validates size +
     MIME, resolves the ``transcription`` task assignment (a model advertising
-    the ``audio_input`` capability), and returns ``{"text": "..."}``.
+    the ``stt`` capability), and returns ``{"text": "..."}``.
 
     The audio is **ephemeral**: it is streamed to the STT provider and never
     persisted to the DB or object storage (audio may contain PHI). The

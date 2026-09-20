@@ -3,7 +3,7 @@
 STT is a different endpoint from chat completions (``POST /audio/transcriptions``,
 multipart form), so the LangChain ``ChatOpenAI`` chat factory cannot serve it.
 This module is the thin client that resolves the ``transcription`` task
-assignment (a model advertising the ``audio_input`` capability) and POSTs the
+assignment (a model advertising the ``stt`` capability) and POSTs the
 compressed audio to the provider, returning plain text.
 
 Security / privacy
@@ -55,8 +55,8 @@ class TranscriptionError(RuntimeError):
 def _resolve_stt_target(provider, model) -> STTTarget:
     """Build the STT call target from a resolved provider+model (or env fallback).
 
-    Validates the resolved model advertises the ``audio_input`` capability —
-    a misconfigured assignment to a chat-only model is rejected early with a
+    Validates the resolved model advertises the ``stt`` capability — a
+    misconfigured assignment to a chat-only model is rejected early with a
     clear message instead of a cryptic provider 400.
     """
     api_key = provider.get_api_key_plaintext() if provider else None
@@ -71,7 +71,7 @@ def _resolve_stt_target(provider, model) -> STTTarget:
     if required and not any(c.value in have for c in required):
         raise TranscriptionError(
             f"Configured STT model '{model_name}' does not advertise the "
-            f"'audio_input' capability. Assign a speech-to-text model "
+            f"'stt' capability. Assign a speech-to-text model "
             f"(e.g. whisper-1) to the transcription task."
         )
 

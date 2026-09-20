@@ -752,7 +752,7 @@ class AIProviderService:
 
         Returns an :class:`app.ai.assistance.stt.STTTarget` describing the
         api_key / api_base / model_name to call. Validates the resolved model
-        advertises the ``audio_input`` capability (rejects a misconfigured
+        advertises the ``stt`` capability (rejects a misconfigured
         chat-only assignment early). Falls back to the ``OPENAI_*`` env STT
         model when no DB assignment exists.
         """

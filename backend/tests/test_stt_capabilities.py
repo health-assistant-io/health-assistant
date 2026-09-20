@@ -33,9 +33,9 @@ def test_ocr_requires_vision():
     assert required_capabilities_for_task(TaskType.OCR.value) == {AIModelCapability.VISION}
 
 
-def test_transcription_requires_audio_input():
+def test_transcription_requires_stt():
     assert required_capabilities_for_task(TaskType.TRANSCRIPTION.value) == {
-        AIModelCapability.AUDIO_INPUT
+        AIModelCapability.STT
     }
 
 
@@ -46,32 +46,32 @@ def test_unknown_task_defaults_to_text():
 
 def test_model_supports_all_required():
     assert model_supports(["text", "vision"], required_capabilities_for_task("ocr"))
-    assert model_supports(["audio_input", "text"], required_capabilities_for_task("transcription"))
+    assert model_supports(["stt", "text"], required_capabilities_for_task("transcription"))
 
 
 def test_model_supports_rejects_missing_capability():
-    # text-only model cannot do OCR (vision) or transcription (audio_input)
+    # text-only model cannot do OCR (vision) or transcription (stt)
     assert not model_supports(["text"], required_capabilities_for_task("ocr"))
     assert not model_supports(["text"], required_capabilities_for_task("transcription"))
 
 
 def test_audio_only_model_rejected_for_text_tasks():
     # An STT-only model (e.g. whisper-1) is NOT eligible for chat (text) or
-    # OCR (vision) — only for transcription (audio_input).
-    assert not model_supports(["audio_input"], required_capabilities_for_task("chat"))
-    assert not model_supports(["audio_input"], required_capabilities_for_task("ocr"))
+    # OCR (vision) — only for transcription (stt).
+    assert not model_supports(["stt"], required_capabilities_for_task("chat"))
+    assert not model_supports(["stt"], required_capabilities_for_task("ocr"))
     assert model_supports(
-        ["audio_input"], required_capabilities_for_task("transcription")
+        ["stt"], required_capabilities_for_task("transcription")
     )
 
 
 def test_normalize_capabilities_defaults_empty_to_text():
     # Empty/null falls back to the text baseline; non-empty is kept as-is
-    # (text is NOT forced — an STT-only model can be audio_input-only).
+    # (text is NOT forced — an STT-only model can be stt-only).
     assert normalize_capabilities(None) == {"text"}
     assert normalize_capabilities([]) == {"text"}
     assert normalize_capabilities(["vision"]) == {"vision"}
-    assert normalize_capabilities(["audio_input"]) == {"audio_input"}
+    assert normalize_capabilities(["stt"]) == {"stt"}
     assert normalize_capabilities(["text", "vision"]) == {"text", "vision"}
     # unknown values are dropped
     assert normalize_capabilities(["vision", "bogus"]) == {"vision"}
@@ -89,10 +89,10 @@ def test_model_get_capabilities_defaults_empty_to_text():
         capabilities = None
 
     stub = _Stub()
-    # Non-empty is kept as-is — an STT-only model stays audio_input-only
+    # Non-empty is kept as-is — an STT-only model stays stt-only
     # (text is NOT forced).
-    stub.capabilities = ["audio_input"]
-    assert AIModel.get_capabilities(stub) == ["audio_input"]
+    stub.capabilities = ["stt"]
+    assert AIModel.get_capabilities(stub) == ["stt"]
 
     stub.capabilities = ["vision", "text"]
     assert set(AIModel.get_capabilities(stub)) == {"vision", "text"}
@@ -124,9 +124,9 @@ def _fake_model(caps, model_name="whisper-1"):
     return m
 
 
-def test_resolve_stt_target_accepts_audio_input_model():
+def test_resolve_stt_target_accepts_stt_model():
     provider = _fake_provider()
-    model = _fake_model(["text", "audio_input"])
+    model = _fake_model(["text", "stt"])
     target = _resolve_stt_target(provider, model)
     assert isinstance(target, STTTarget)
     assert target.api_key == "sk-test"
@@ -137,19 +137,19 @@ def test_resolve_stt_target_accepts_audio_input_model():
 def test_resolve_stt_target_rejects_text_only_model():
     provider = _fake_provider()
     model = _fake_model(["text"], model_name="gpt-4o-mini")
-    with pytest.raises(TranscriptionError, match="audio_input"):
+    with pytest.raises(TranscriptionError, match="stt"):
         _resolve_stt_target(provider, model)
 
 
 def test_resolve_stt_target_rejects_missing_api_key():
     provider = _fake_provider(api_key_plain=None)
-    model = _fake_model(["audio_input"])
+    model = _fake_model(["stt"])
     with pytest.raises(TranscriptionError, match="API key"):
         _resolve_stt_target(provider, model)
 
 
 def test_resolve_stt_target_strips_trailing_slash():
     provider = _fake_provider(api_base="https://api.openai.com/v1/")
-    model = _fake_model(["audio_input"])
+    model = _fake_model(["stt"])
     target = _resolve_stt_target(provider, model)
     assert not target.api_base.endswith("/")

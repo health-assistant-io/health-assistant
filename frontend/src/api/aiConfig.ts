@@ -23,10 +23,24 @@ export interface AIProvider {
 }
 
 /** Modalities a model supports (its "features"). Mirrors the backend
- *  AIModelCapability enum. ``text`` is the baseline (every model). */
-export type AIModelCapability = 'text' | 'vision' | 'audio_input';
+ *  AIModelCapability enum (§15 family vocabulary). ``text`` is the
+ *  baseline (every model). */
+export type AIModelCapability =
+  | 'text'
+  | 'vision'
+  | 'tools'
+  | 'stt'
+  | 'tts'
+  | 'embeddings';
 
-export const ALL_MODEL_CAPABILITIES: AIModelCapability[] = ['text', 'vision', 'audio_input'];
+export const ALL_MODEL_CAPABILITIES: AIModelCapability[] = [
+  'text',
+  'vision',
+  'tools',
+  'stt',
+  'tts',
+  'embeddings',
+];
 
 export interface AIModel {
   id: string;
@@ -35,7 +49,7 @@ export interface AIModel {
   name: string;
   model_name: string;
   description?: string | null;
-  /** Capability set this model advertises (text / vision / audio_input). */
+  /** Capability set this model advertises (§15 family vocabulary). */
   capabilities?: AIModelCapability[];
   is_active: boolean;
   /** Null = cleared in settings; the runtime then uses the LLM's default. */

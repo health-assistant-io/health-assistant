@@ -13,7 +13,7 @@ interface TaskTypeDef {
   labelKey: string;
   /** Capability the backend requires for this task
    *  (app/ai/providers/capabilities.py; unmapped tasks default to text). */
-  requires: 'text' | 'vision' | 'audio_input';
+  requires: 'text' | 'vision' | 'stt';
   icon: LucideIcon;
 }
 
@@ -78,7 +78,7 @@ const TASK_TYPES: TaskTypeDef[] = [
   {
     value: 'transcription',
     labelKey: 'settings.ai.task_transcription',
-    requires: 'audio_input',
+    requires: 'stt',
     icon: AudioLines,
   },
 ];

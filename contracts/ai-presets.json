@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "capabilityVocabulary": ["text", "vision", "tools", "stt", "tts", "embeddings"],
+  "presetOrder": ["openai", "gemini", "openrouter", "anthropic", "groq", "mistral", "deepseek", "ollama"],
+  "presets": {
+    "openai": {
+      "name": "OpenAI",
+      "wireType": "openai_compatible",
+      "baseUrl": "https://api.openai.com/v1",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "preferredModel": { "id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "caps": ["text", "tools", "vision"] },
+      "curatedModels": ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "whisper-1"],
+      "sttModel": "whisper-1",
+      "steps": [
+        "Open {url} and sign in.",
+        "Create a new secret key.",
+        "Copy the key — it starts with sk-. Note: DeepSeek keys look similar.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": null
+    },
+    "gemini": {
+      "name": "Google Gemini",
+      "wireType": "google",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "fixedBase": true,
+      "local": false,
+      "keyUrl": "https://aistudio.google.com/app/apikey",
+      "preferredModel": { "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "caps": ["text", "tools", "vision"] },
+      "curatedModels": ["gemini-3.8-flash"],
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in with a Google account.",
+        "Create an API key — the free tier is enough to start.",
+        "Copy the key — it starts with AIza.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": "Google offers a free AI Studio tier — no credit card required."
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "wireType": "openai_compatible",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://openrouter.ai/settings/keys",
+      "preferredModel": { "id": "openrouter/auto", "name": "Auto (best match)", "caps": ["text", "tools"] },
+      "curatedModels": ["openrouter/auto"],
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key — it starts with sk-or-v1-.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": "OpenRouter lists free models alongside paid ones."
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "wireType": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "fixedBase": true,
+      "local": false,
+      "keyUrl": "https://console.anthropic.com/settings/keys",
+      "preferredModel": { "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "caps": ["text", "tools", "vision"] },
+      "curatedModels": ["claude-sonnet-5"],
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key — it starts with sk-ant-.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": null
+    },
+    "groq": {
+      "name": "Groq",
+      "wireType": "openai_compatible",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://console.groq.com/keys",
+      "preferredModel": null,
+      "curatedModels": null,
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key — it starts with gsk_.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": null
+    },
+    "mistral": {
+      "name": "Mistral",
+      "wireType": "openai_compatible",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://console.mistral.ai/api-keys",
+      "preferredModel": null,
+      "curatedModels": null,
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key and keep it private.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": null
+    },
+    "deepseek": {
+      "name": "DeepSeek",
+      "wireType": "openai_compatible",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://platform.deepseek.com/api_keys",
+      "preferredModel": null,
+      "curatedModels": null,
+      "sttModel": null,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key — it starts with sk-. Note: OpenAI keys look similar.",
+        "Paste it below and connect."
+      ],
+      "freeTierNote": null
+    },
+    "ollama": {
+      "name": "Ollama (local)",
+      "wireType": "openai_compatible",
+      "baseUrl": "http://localhost:11434/v1",
+      "fixedBase": false,
+      "local": true,
+      "keyUrl": null,
+      "preferredModel": null,
+      "curatedModels": null,
+      "sttModel": null,
+      "steps": [
+        "Install Ollama from ollama.com.",
+        "Pull a model, e.g. run: ollama pull llama3.3",
+        "Make sure Ollama is running on this machine.",
+        "Connect below — no API key needed."
+      ],
+      "freeTierNote": null
+    }
+  },
+  "keyPrefixHints": [
+    { "prefix": "sk-ant-", "preset": "anthropic" },
+    { "prefix": "sk-or-v1-", "preset": "openrouter" },
+    { "prefix": "gsk_", "preset": "groq" },
+    { "prefix": "AIza", "preset": "gemini" },
+    { "prefix": "sk-", "preset": "openai" }
+  ]
+}

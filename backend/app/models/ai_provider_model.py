@@ -32,6 +32,9 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     provider_type = Column(String(50), nullable=False)  # "openai", "tesseract"
     api_base = Column(String(500), nullable=False)
     api_key = Column(String(500), nullable=True)
+    # BYOK setup stamp (§15): the preset this row was created/re-setup from.
+    # NULL = a manual row (adoptable by a later setup with the same type+base).
+    preset_key = Column(String(40), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     settings = Column(JSONB, nullable=True, default=dict)
 
@@ -120,10 +123,10 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     model_name = Column(String(200), nullable=False)  # Actual API model name
     description = Column(Text, nullable=True)
     # Feature flags — which modalities this model supports. A SET of
-    # AIModelCapability values (text / vision / audio_input). Tasks require
-    # specific capabilities (chat→text, ocr→vision, transcription→audio_input)
-    # so the task-assignment picker only offers eligible models. JSONB array;
-    # defaults to ["text"] (the baseline modality every model has).
+    # AIModelCapability values (text / vision / tools / stt / tts / embeddings).
+    # Tasks require specific capabilities (chat→text, ocr→vision,
+    # transcription→stt) so the task-assignment picker only offers eligible
+    # models. JSONB array; defaults to ["text"] (the baseline modality).
     capabilities = Column(
         JSONB,
         nullable=False,
@@ -152,9 +155,9 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
 
         ``text`` is the DEFAULT (every pre-existing model + new models start
         with it) but is NOT forced — an STT-only model like ``whisper-1``
-        legitimately carries only ``audio_input``. An empty/null column falls
-        back to ``["text"]`` for backward compatibility with rows predating
-        the capabilities feature.
+        legitimately carries only ``stt``. An empty/null column falls back to
+        ``["text"]`` for backward compatibility with rows predating the
+        capabilities feature.
         """
         caps = self.capabilities if isinstance(self.capabilities, list) else []
         vals = [c for c in caps if isinstance(c, str)]

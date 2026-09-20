@@ -132,9 +132,10 @@ class AIModelCreate(BaseModel):
         description=(
             "Modalities this model supports (its features): 'text' (baseline, "
             "every model), 'vision' (image input — multimodal chat / vision "
-            "OCR), 'audio_input' (speech-to-text — the 'transcription' task). "
-            "Tasks require specific capabilities, so the task-assignment "
-            "picker only offers eligible models."
+            "OCR), 'stt' (speech-to-text — the 'transcription' task), plus "
+            "'tools' / 'tts' / 'embeddings' (§15 family vocabulary). Tasks "
+            "require specific capabilities, so the task-assignment picker "
+            "only offers eligible models."
         ),
     )
     is_active: bool = Field(default=True, description="Enable/disable model")
