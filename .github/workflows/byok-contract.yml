@@ -1,0 +1,38 @@
+name: BYOK setup contract
+
+# §15 family gate — vendored copy of dev's check-byok-contract.sh
+# (must stay byte-identical; drift is caught by dev's verify-wiring.sh).
+# Runs beside check-ai-alignment.yml: R1 preset data drift, R2 legacy
+# capability literals, R3 setup-orchestration placement, R4 contract-test
+# matrix presence, R5 options naming.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'contracts/**'
+      - 'scripts/check-byok-contract.sh'
+      - 'scripts/sync-ai-presets.mjs'
+      - '.github/workflows/byok-contract.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'contracts/**'
+      - 'scripts/check-byok-contract.sh'
+      - 'scripts/sync-ai-presets.mjs'
+      - '.github/workflows/byok-contract.yml'
+  workflow_dispatch:
+
+jobs:
+  byok:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run BYOK contract gate
+        run: bash scripts/check-byok-contract.sh --self

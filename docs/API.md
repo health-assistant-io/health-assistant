@@ -859,6 +859,9 @@ telemetry split + OHLC aggregation are documented in
 | Method | Path | Auth | Body / Query | Response |
 |---|---|---|---|---|
 | `POST` | `/ai-config/providers` | `check_scope_access` | `AIProviderCreate` | `AIProviderResponse` (`201`) |
+| `GET` | `/ai-config/provider-presets` | any | — | `ProviderPresetsResponse` (§15 setup tile surface: enabled presets + disabled-with-reason; metadata only) |
+| `POST` | `/ai-config/providers/{preset_key}/setup` | any (USER scope) | `ProviderSetupRequest` (`api_key`, `name?`, `options{curated_ids, bind_chat, bind_vision, bind_stt}`) | `ProviderSetupResponse` — fetch-first validation; 404 unknown preset; 422 `{code, suspected_vendor, message}` on classified failure (nothing persisted); 400 SSRF-guard violation |
+| `PUT` | `/ai-config/providers/{provider_id}/set-default` | `verify_provider_access` + USER-scope owner | `ProviderSetDefaultRequest` (`model_name`, `task?="default"`) | `ProviderSetDefaultResponse` — capability-guarded; 409 cross-provider model; 422 capability/unknown-task |
 | `GET` | `/ai-config/providers` | any | `tenant_id?`, `user_id?`, `scope?`, `is_active?=true`, `include_models?=false` | `List[AIProviderResponse]` |
 | `GET` | `/ai-config/providers/{provider_id}` | `verify_provider_access` | — | `AIProviderResponse` |
 | `GET` | `/ai-config/providers/{provider_id}/with-models` | `verify_provider_access` | — | `AIProviderWithModelsResponse` |

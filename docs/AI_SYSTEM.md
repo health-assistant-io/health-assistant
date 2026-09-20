@@ -65,6 +65,18 @@ cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
 
 **Scope checks:** every `/ai-config/providers/*` and `/ai-config/models/*` endpoint enforces USER/TENANT/SYSTEM scope via `verify_provider_access` / `verify_model_access`. `fetch-external-models` additionally rejects `api_base` values that point at loopback / private / link-local addresses in production (`DEBUG=False`).
 
+### BYOK one-click provider setup (§15)
+
+Health implements the family-uniform BYOK setup contract (ai-features §15, frozen 2026-09-19; Python reference: study-assistant). One call takes a user from no provider to working defaults, at **USER scope only** — SYSTEM/TENANT providers and assignments are never read for adoption and never written.
+
+- **Canonical data** lives in `dev/contracts/ai-presets.json` and is synced into `backend/app/ai/providers/presets_data.py` by `scripts/sync-ai-presets.mjs` (GENERATED — never hand-edited; `scripts/check-byok-contract.sh` gates drift). The hand-written overlay `backend/app/ai/providers/presets.py` maps canonical wire types onto health's `ProviderType` (`openai_compatible` → `openai`) and records per-app enablement deltas: `gemini` (no wired `google` builder) and `anthropic` (reserved stub) are disabled with reasons — enabling them later is a one-line overlay change once the matching factory branch lands.
+- **Setup semantics** (`backend/app/ai/providers/setup.py`): fetch-first validation (the key is verified against the vendor's real catalog before anything persists), curated allowlists matched exact-or-snapshot-suffix, append-union on re-run (user models are never deleted), gap-fill only into empty/dead slots, `preset_key` stamping + adoption of manual rows (same type + base, earliest first). Options body: `curated_ids / bind_chat / bind_vision / bind_stt`.
+- **Slot mapping (health delta):** the family chat slot binds health's `default` task (the resolution fallback), vision binds `ocr`, STT binds `transcription`. Health has no embeddings slot.
+- **Secrets:** keys follow the existing encrypted-at-rest pattern (`encrypt_secret` on `ai_providers.api_key`) — never plaintext, never logged; preset bases are SSRF-guarded like the manual path. Setup touches catalogs only — no PHI flows through it, and no telemetry captures prompts or keys during setup (data-sensitivity review, §15).
+- **Errors** are classified into the §15 i18n enum (`invalid_key | insufficient_credit | new_user_quota | region_unavailable | timeout | local_not_running | unknown`) with `suspected_vendor` mis-paste hints; the endpoint returns `{code, suspected_vendor, message}` on 422 and the UI routes them through i18n.
+- **Model capabilities** use the §15 family vocabulary `text | vision | tools | stt | tts | embeddings`. The legacy health value `audio_input` (verified transcription-only) migrated to `stt` in revision `b1y2o3k4s5e6`, which also added `ai_providers.preset_key` (nullable; NULL = manual row). The revision is round-trip tested (`tests/test_byok_migration.py`).
+- **Tests:** the uniform 12-case contract matrix + USER-scope isolation cases live in `backend/tests/test_ai_provider_setup_contract.py` (mock transport, no network).
+
 ---
 
 ## 3. Generic Processors (Dependency Injection)
