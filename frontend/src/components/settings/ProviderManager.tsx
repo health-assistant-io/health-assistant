@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { House, Loader2, Pencil, Plus, Save, Trash2 } from 'lucide-react';
+import { House, Loader2, Pencil, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
 import {
   ConnectionTestRow,
   ProviderForm,
@@ -13,6 +13,8 @@ import { Button } from '../ui/Button';
 import { Card, CardContent } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { COUNTRIES } from '../../utils/countryUtils';
+import { ProviderSetupModal } from './byok/ProviderSetupModal';
+import { ReRunSetupDialog } from './byok/ReRunSetupDialog';
 
 const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({
   value: c.code,
@@ -50,6 +52,8 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
   } = useAIConfigStore();
 
   const [dialog, setDialog] = useState<{ provider: AIProvider | null } | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [rerunProvider, setRerunProvider] = useState<AIProvider | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
 
   const runTest = async (provider: AIProvider) => {
@@ -87,7 +91,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
         <p className="text-sm text-gray-500 dark:text-dark-muted">
           {t('settings.ai.providers_hint')}
         </p>
-        <Button size="sm" onClick={() => setDialog({ provider: null })}>
+        <Button size="sm" onClick={() => setSetupOpen(true)}>
           <Plus aria-hidden />
           {t('settings.ai.add_provider')}
         </Button>
@@ -165,6 +169,15 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
               <Button
                 variant="ghost"
                 size="icon"
+                title={t('settings.ai.setup.automatically')}
+                onClick={() => setRerunProvider(provider)}
+                disabled={!provider.preset_key}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 title={t('settings.ai.edit_provider')}
                 onClick={() => setDialog({ provider })}
               >
@@ -206,6 +219,16 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
           tenantId={tenantId}
           onClose={() => setDialog(null)}
         />
+      ) : null}
+
+      <ProviderSetupModal
+        open={setupOpen}
+        onClose={() => setSetupOpen(false)}
+        onManual={() => setDialog({ provider: null })}
+      />
+
+      {rerunProvider ? (
+        <ReRunSetupDialog provider={rerunProvider} onClose={() => setRerunProvider(null)} />
       ) : null}
     </div>
   );

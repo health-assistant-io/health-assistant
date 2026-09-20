@@ -16,6 +16,8 @@ export interface AIProvider {
   company_name?: string | null;
   company_website?: string | null;
   company_country?: string | null;
+  /** §15 stamp: the preset this row was created/re-setup from (null = manual). */
+  preset_key?: string | null;
   tenant_id?: string;
   user_id?: string;
   created_at?: string;
@@ -123,6 +125,57 @@ export interface TaskAssignment {
   provider?: AIProvider;
   model?: AIModel;
   assignment_id?: string;
+}
+
+// ---------------------------------------------------------------------------
+// BYOK one-click setup (§15)
+// ---------------------------------------------------------------------------
+
+/** One enabled setup preset (§15 canonical data, health overlay applied). */
+export interface ProviderPreset {
+  key: string;
+  name: string;
+  provider_type: string;
+  wire_type: string;
+  base_url: string;
+  fixed_base: boolean;
+  local: boolean;
+  key_url?: string | null;
+  preferred_model?: { id: string; name: string; caps: string[] } | null;
+  curated_models?: string[] | null;
+  stt_model?: string | null;
+  steps?: string[] | null;
+  free_tier_note?: string | null;
+}
+
+export interface ProviderPresets {
+  order: string[];
+  presets: Record<string, ProviderPreset>;
+  /** Registry-native presets health does not offer yet, with reasons. */
+  disabled: Record<string, string>;
+}
+
+export interface ProviderSetupOptionsBody {
+  curated_ids?: string[];
+  bind_chat?: boolean;
+  bind_vision?: boolean;
+  bind_stt?: boolean;
+}
+
+export interface ProviderSetupResult {
+  provider: AIProvider;
+  catalog_count: number;
+  curated_missed: boolean;
+  assigned_chat_model?: string | null;
+  assigned_vision_model?: string | null;
+  assigned_stt_model?: string | null;
+}
+
+/** §15 error enum + mis-paste hint, served by the setup endpoint on 422. */
+export interface ProviderSetupErrorDetail {
+  code: string;
+  suspected_vendor?: string | null;
+  message?: string;
 }
 
 export interface AIConfigSummary {
@@ -368,8 +421,52 @@ export const aiConfigApi = {
     const params = new URLSearchParams();
     if (tenant_id) params.append('tenant_id', tenant_id);
     if (user_id) params.append('user_id', user_id);
-    
+
     const response = await api.get(`/ai-config/default-for-task/${task_type}?${params}`);
     return response.data;
   },
+
+  // BYOK one-click setup (§15)
+  listProviderPresets: async (): Promise<ProviderPresets> => {
+    const response = await api.get('/ai-config/provider-presets');
+    return response.data;
+  },
+
+  setupProviderPreset: async (
+    preset_key: string,
+    body: { api_key?: string | null; name?: string | null; options?: ProviderSetupOptionsBody }
+  ): Promise<ProviderSetupResult> => {
+    const response = await api.post(`/ai-config/providers/${preset_key}/setup`, body);
+    return response.data;
+  },
+
+  setProviderDefault: async (
+    provider_id: string,
+    body: { model_name: string; task?: string }
+  ): Promise<{ task: string; model: AIModel }> => {
+    const response = await api.put(`/ai-config/providers/${provider_id}/set-default`, body);
+    return response.data;
+  },
 };
+
+/** Extract the §15 error detail from an axios error (null = not a classified
+ *  setup failure — surface err.message instead). */
+export function setupErrorDetail(err: unknown): ProviderSetupErrorDetail | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
+    ?.detail;
+  if (
+    detail !== null &&
+    typeof detail === 'object' &&
+    !Array.isArray(detail) &&
+    typeof (detail as { code?: unknown }).code === 'string'
+  ) {
+    const record = detail as ProviderSetupErrorDetail;
+    return {
+      code: record.code,
+      suspected_vendor:
+        typeof record.suspected_vendor === 'string' ? record.suspected_vendor : null,
+      message: typeof record.message === 'string' ? record.message : '',
+    };
+  }
+  return null;
+}

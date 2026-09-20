@@ -36,6 +36,19 @@ vi.mock('../../store/slices/aiConfigSlice', () => ({
   useAIConfigStore: Object.assign(vi.fn(() => store), { getState: vi.fn() }),
 }));
 
+vi.mock('../../api/aiConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/aiConfig')>();
+  return {
+    ...actual,
+    aiConfigApi: {
+      ...actual.aiConfigApi,
+      listProviderPresets: vi
+        .fn()
+        .mockResolvedValue({ order: [], presets: {}, disabled: {} }),
+    },
+  };
+});
+
 vi.mock('../../store/slices/uiSlice', () => ({
   useUIStore: Object.assign(
     vi.fn((selector: (state: { showConfirmation: unknown }) => unknown) =>
@@ -82,6 +95,10 @@ const STRINGS: Record<string, string> = {
   'settings.ai.cancel': 'Cancel',
   'settings.ai.save': 'Save',
   'settings.ai.dismiss': 'Dismiss',
+  'settings.ai.setup.title': 'Add a provider',
+  'settings.ai.setup.modal_hint': 'Connect a provider with your own API key.',
+  'settings.ai.setup.custom': 'Custom',
+  'settings.ai.setup.automatically': 'Set up automatically',
 };
 
 vi.mock('react-i18next', () => ({
@@ -142,11 +159,13 @@ describe('ProviderManager', () => {
     expect(store.updateProvider.mock.calls[0][1]).not.toHaveProperty('api_key');
   });
 
-  it('creates a provider in the current scope with transparency fields', async () => {
+  it('creates a provider through the setup modal custom tile in the current scope', async () => {
     const user = userEvent.setup();
     render(<ProviderManager scope="user" userId="u1" />);
     await user.click(screen.getByRole('button', { name: 'Add Provider' }));
-    const dialog = screen.getByRole('dialog');
+    expect(await screen.findByText('Add a provider')).toBeInTheDocument();
+    await user.click(screen.getByText('Custom'));
+    const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Friendly Name'), 'My Ollama');
     await user.click(within(dialog).getByRole('button', { name: 'Local / On-Premise' }));
     await user.click(within(dialog).getByRole('button', { name: 'Create Provider' }));

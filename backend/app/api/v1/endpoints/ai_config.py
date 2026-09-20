@@ -24,6 +24,8 @@ from app.ai.schemas.config import (
     ProviderSetupResponse,
     ProviderSetDefaultRequest,
     ProviderSetDefaultResponse,
+    ProviderPresetsResponse,
+    ProviderPresetResponse,
 )
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -708,6 +710,45 @@ async def get_default_for_task(
 
 
 # BYOK one-click setup (§15) — USER scope only
+
+
+@router.get("/provider-presets", response_model=ProviderPresetsResponse)
+async def list_provider_presets():
+    """The one-click setup tile surface (§15 canonical data + health overlay).
+
+    Public metadata only — no keys, no secrets. Disabled registry-native
+    presets are reported with their recorded reasons so the UI stays
+    explainable.
+    """
+    from app.ai.providers.presets import (
+        DISABLED_PRESET_REASONS,
+        PRESET_ORDER,
+        SETUP_PRESETS,
+    )
+
+    presets = {
+        key: ProviderPresetResponse(
+            key=key,
+            name=row["name"],
+            provider_type=row["type"],
+            wire_type=row["wire_type"],
+            base_url=row["base_url"],
+            fixed_base=row["fixed_base"],
+            local=row["local"],
+            key_url=row["key_url"],
+            preferred_model=row["preferred_model"],
+            curated_models=row["curated_models"],
+            stt_model=row["stt_model"],
+            steps=row["steps"],
+            free_tier_note=row["free_tier_note"],
+        )
+        for key, row in SETUP_PRESETS.items()
+    }
+    return ProviderPresetsResponse(
+        order=[key for key in PRESET_ORDER if key in presets],
+        presets=presets,
+        disabled=dict(DISABLED_PRESET_REASONS),
+    )
 
 
 def _user_scope_ids(current_user: TokenData) -> Dict[str, Any]:

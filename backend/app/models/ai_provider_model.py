@@ -83,6 +83,7 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
             "company_name": self.company_name,
             "company_website": self.company_website,
             "company_country": self.company_country,
+            "preset_key": self.preset_key,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "user_id": str(self.user_id) if self.user_id else None,
             "created_at": str(self.created_at) if self.created_at else None,

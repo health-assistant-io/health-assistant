@@ -1,12 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AudioLines, Cpu, type LucideIcon } from 'lucide-react';
+import { AudioLines, Cpu, Sparkles, type LucideIcon } from 'lucide-react';
 import {
   TaskAssignmentPicker,
   type ModelPickerProvider,
   type TaskAssignmentSection,
 } from '@neuronection/assistant-ui';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
+import { Button } from '../ui/Button';
+import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
 interface TaskTypeDef {
   value: string;
@@ -101,6 +103,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     providers,
     models,
     taskAssignments,
+    configSummary,
     createTaskAssignment,
     updateTaskAssignment,
     deleteTaskAssignment,
@@ -108,6 +111,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     error,
     clearError,
   } = useAIConfigStore();
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const assignmentFor = (taskType: string) =>
     taskAssignments.find((a) => a.task_type === taskType && a.is_active);
@@ -199,6 +203,17 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   return (
     <div className="max-w-3xl space-y-4">
       <p className="text-sm text-gray-500 dark:text-dark-muted">{t('settings.ai.tasks_hint')}</p>
+      {!configSummary?.default?.model ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-900/20">
+          <span className="text-sm text-amber-700 dark:text-amber-400">
+            {t('settings.ai.setup.no_model_deep_link')}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setSetupOpen(true)}>
+            <Sparkles aria-hidden />
+            {t('settings.ai.setup.open')}
+          </Button>
+        </div>
+      ) : null}
       {error ? (
         <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-100 p-3 dark:border-red-900/50 dark:bg-red-900/30">
           <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
@@ -239,6 +254,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             </p>
           );
         }}
+      />
+      <ProviderSetupModal
+        open={setupOpen}
+        onClose={() => setSetupOpen(false)}
+        onManual={() => setSetupOpen(false)}
       />
     </div>
   );

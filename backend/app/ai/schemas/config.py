@@ -101,6 +101,7 @@ class AIProviderResponse(BaseModel):
     company_name: Optional[str] = None
     company_website: Optional[str] = None
     company_country: Optional[str] = None
+    preset_key: Optional[str] = None
     tenant_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
@@ -263,6 +264,7 @@ class AIProviderWithModelsResponse(BaseModel):
     company_name: Optional[str] = None
     company_website: Optional[str] = None
     company_country: Optional[str] = None
+    preset_key: Optional[str] = None
     tenant_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -370,3 +372,30 @@ class ProviderSetDefaultRequest(BaseModel):
 class ProviderSetDefaultResponse(BaseModel):
     task: str
     model: AIModelResponse
+
+
+class ProviderPresetResponse(BaseModel):
+    """One enabled setup preset (§15 canonical data, health overlay applied)."""
+
+    key: str
+    name: str
+    provider_type: str
+    wire_type: str
+    base_url: str
+    fixed_base: bool
+    local: bool
+    key_url: Optional[str] = None
+    preferred_model: Optional[Dict[str, Any]] = None
+    curated_models: Optional[List[str]] = None
+    stt_model: Optional[str] = None
+    steps: Optional[List[str]] = None
+    free_tier_note: Optional[str] = None
+
+
+class ProviderPresetsResponse(BaseModel):
+    """The setup tile surface: enabled presets (family order) + disabled
+    registry-native presets with their recorded reasons (§15 overlay)."""
+
+    order: List[str]
+    presets: Dict[str, ProviderPresetResponse]
+    disabled: Dict[str, str]
