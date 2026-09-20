@@ -6,6 +6,7 @@ from uuid import UUID
 from app.core.database import get_db
 from app.core.config import settings
 from app.ai.providers.service import AIProviderService
+from app.ai.providers import setup as byok_setup
 from app.ai.schemas.config import (
     AIProviderCreate,
     AIProviderUpdate,
@@ -19,6 +20,10 @@ from app.ai.schemas.config import (
     AIProviderWithModelsResponse,
     AIConfigSummary,
     AIConfigUpdate,
+    ProviderSetupRequest,
+    ProviderSetupResponse,
+    ProviderSetDefaultRequest,
+    ProviderSetDefaultResponse,
 )
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -700,3 +705,116 @@ async def get_default_for_task(
         "provider": AIProviderResponse.model_validate(provider),
         "model": AIModelResponse.model_validate(model) if model else None,
     }
+
+
+# BYOK one-click setup (§15) — USER scope only
+
+
+def _user_scope_ids(current_user: TokenData) -> Dict[str, Any]:
+    """The (tenant_id, user_id) pair every USER-scope setup row binds to."""
+    return {
+        "tenant_id": current_user.tenant_id,
+        "user_id": current_user.user_id,
+    }
+
+
+@router.post(
+    "/providers/{preset_key}/setup",
+    response_model=ProviderSetupResponse,
+)
+async def setup_provider(
+    preset_key: str,
+    body: ProviderSetupRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """One-click provider setup from a curated preset (ai-features §15).
+
+    Fetch-first validation: the key is verified against the vendor's real
+    catalog before anything persists. Failures return the §15 error enum
+    (``code`` + optional ``suspected_vendor``) — never a raw vendor dump.
+    """
+    try:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            preset_key,
+            body.api_key,
+            name=body.name,
+            options=byok_setup.SetupOptions(
+                curated_ids=body.options.curated_ids,
+                bind_chat=body.options.bind_chat,
+                bind_vision=body.options.bind_vision,
+                bind_stt=body.options.bind_stt,
+            ),
+            **_user_scope_ids(current_user),
+        )
+    except byok_setup.UnknownPresetError:
+        raise HTTPException(status_code=404, detail="Unknown provider preset")
+    except byok_setup.SetupError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": exc.classified.code.value,
+                "suspected_vendor": exc.classified.suspected_vendor,
+                "message": exc.vendor_message,
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    provider = await AIProviderService(db).get_provider(outcome.provider_id)
+    return ProviderSetupResponse(
+        provider=AIProviderResponse.model_validate(provider),
+        catalog_count=outcome.catalog_count,
+        curated_missed=outcome.curated_missed,
+        assigned_chat_model=outcome.assigned_chat_model,
+        assigned_vision_model=outcome.assigned_vision_model,
+        assigned_stt_model=outcome.assigned_stt_model,
+    )
+
+
+@router.put(
+    "/providers/{provider_id}/set-default",
+    response_model=ProviderSetDefaultResponse,
+)
+async def set_provider_default(
+    provider_id: UUID,
+    body: ProviderSetDefaultRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Bind one of the provider's models to a USER-scope task slot.
+
+    Capability-guarded (the model must advertise the task's required
+    capability) and cross-provider-safe (another provider's model id → 409).
+    """
+    service = AIProviderService(db)
+    provider = await service.get_provider(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    verify_provider_access(provider, current_user)
+    if provider.scope != AIScope.USER or str(provider.user_id) != str(
+        current_user.user_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="set-default is USER-scope only — manage other scopes via task assignments",
+        )
+
+    try:
+        model = await byok_setup.set_default_model(
+            db,
+            provider,
+            body.model_name,
+            body.task,
+            **_user_scope_ids(current_user),
+        )
+    except byok_setup.CrossProviderModelError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return ProviderSetDefaultResponse(
+        task=body.task, model=AIModelResponse.model_validate(model)
+    )

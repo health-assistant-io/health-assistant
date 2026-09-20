@@ -319,3 +319,54 @@ class AIConfigUpdate(BaseModel):
     """Schema for updating AI configuration settings"""
 
     ai_agent_max_iterations: Optional[int] = Field(None, ge=1, le=100)
+
+
+class ProviderSetupOptions(BaseModel):
+    """§15 options body (editable review surfaces).
+
+    Field names ARE the contract (snake_case in Python payloads — byok gate
+    R5): ``curated_ids / bind_chat / bind_vision / bind_stt``.
+    """
+
+    curated_ids: Optional[List[str]] = None
+    bind_chat: bool = True
+    bind_vision: bool = True
+    bind_stt: bool = True
+
+
+class ProviderSetupRequest(BaseModel):
+    """Request for one-click setup of a provider preset (USER scope)."""
+
+    api_key: Optional[str] = Field(
+        None, max_length=500, description="Vendor API key (not needed for local presets)"
+    )
+    name: Optional[str] = Field(None, max_length=100, description="Connection name")
+    options: ProviderSetupOptions = Field(default_factory=ProviderSetupOptions)
+
+
+class ProviderSetupResponse(BaseModel):
+    """Outcome of a successful setup run (provider key is masked)."""
+
+    provider: AIProviderResponse
+    catalog_count: int
+    curated_missed: bool
+    assigned_chat_model: Optional[str] = None
+    assigned_vision_model: Optional[str] = None
+    assigned_stt_model: Optional[str] = None
+
+
+class ProviderSetDefaultRequest(BaseModel):
+    """Bind one of the provider's models to a USER-scope task slot."""
+
+    model_name: str = Field(..., min_length=1, max_length=200)
+    task: str = Field(
+        "default",
+        min_length=1,
+        max_length=50,
+        description="Task slot (TaskType value; 'default' is the chat/text fallback)",
+    )
+
+
+class ProviderSetDefaultResponse(BaseModel):
+    task: str
+    model: AIModelResponse
