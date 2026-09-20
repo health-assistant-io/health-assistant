@@ -61,6 +61,20 @@ from app.models.ai_provider_model import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def allow_local_preset_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opt the SSRF guard's local hosts in for this module.
+
+    The §15 matrix includes ``local`` presets (Ollama on ``localhost``), whose
+    loopback target is allowed in real deployments via
+    ``INTEGRATION_ALLOWED_HOSTS`` / ``DEBUG``. ``net_guard`` reads the env var
+    per call, so declaring it here keeps the contract tests independent of the
+    developer ``.env`` (absent on CI, where ``DEBUG=false`` and the guard
+    would otherwise block the preset before the mocked fetch runs).
+    """
+    monkeypatch.setenv("INTEGRATION_ALLOWED_HOSTS", "localhost")
+
+
 @pytest_asyncio.fixture
 async def user_ctx():
     """A real tenant + USER-role JWT + a raw id pair for direct assertions."""
