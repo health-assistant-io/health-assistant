@@ -1973,7 +1973,7 @@
         "connection_name": "Connection name",
         "no_key_needed": "No API key needed for this local provider.",
         "advanced": "Advanced",
-        "base_edit_hint": "Changing the base URL routes through the manual form.",
+        "base_edit_hint": "Automatic setup uses the preset's own URL — an edited base URL connects manually.",
         "choose_another": "Choose another provider",
         "automatically": "Set up automatically",
         "custom": "Custom",
@@ -1999,7 +1999,9 @@
           "local_not_running": "Could not reach the local provider — make sure it is running.",
           "unknown": "The provider reported an unexpected error.",
           "suspected_vendor": "Heads-up: this key looks like a {{vendor}} key."
-        }
+        },
+        "manually": "Set up manually",
+        "manually_hint": "Create the provider without fetching models or changing defaults — configure it by hand afterwards."
       }
     },
     "notifications_source_system": "System notifications",

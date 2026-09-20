@@ -223,6 +223,7 @@ export const ProviderSetupModal: React.FC<{
 }> = ({ open, onClose, onManual, scope = 'user' }) => {
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
+  const createProvider = useAIConfigStore((state) => state.createProvider);
 
   const [presets, setPresets] = useState<Record<string, ProviderPreset> | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -283,12 +284,6 @@ export const ProviderSetupModal: React.FC<{
 
   const connect = async () => {
     if (preset === null || presetKey === null) return;
-    if (forcedManual) {
-      // §15: any edit to base/hosting/country routes through the manual form.
-      onClose();
-      onManual();
-      return;
-    }
     setPending(true);
     setError(null);
     setPlainError(null);
@@ -305,6 +300,33 @@ export const ProviderSetupModal: React.FC<{
       const detail = setupErrorDetail(err);
       setError(detail);
       setPlainError(detail ? null : (err?.message ?? String(err)));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  /** Manual setup: create the provider row from the (possibly edited) form
+   *  fields via the plain CRUD path — no catalog fetch, no model curation,
+   *  no default binding. The user configures models by hand afterwards. */
+  const connectManual = async () => {
+    if (preset === null) return;
+    setPending(true);
+    setError(null);
+    setPlainError(null);
+    try {
+      await createProvider({
+        name: name.trim() || preset.name,
+        provider_type: preset.provider_type,
+        api_base: advancedBase.trim() || preset.base_url,
+        is_active: true,
+        is_local: isLocal,
+        company_country: country.trim() || null,
+        scope: SCOPE_MAP[scope],
+        ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
+      });
+      onClose();
+    } catch (err: any) {
+      setPlainError(err?.message ?? 'Failed to save provider');
     } finally {
       setPending(false);
     }
@@ -358,18 +380,31 @@ export const ProviderSetupModal: React.FC<{
             <Button variant="ghost" size="sm" onClick={backToTiles}>
               {t('settings.ai.setup.choose_another')}
             </Button>
-            <Button
-              size="sm"
-              disabled={(!preset.local && apiKey.trim().length === 0) || pending}
-              onClick={() => void connect().catch(() => undefined)}
-            >
-              {pending ? (
-                <Loader2 className="animate-spin" aria-hidden />
-              ) : (
-                <Check aria-hidden />
-              )}
-              {t('settings.ai.setup.automatically')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                title={t('settings.ai.setup.manually_hint')}
+                onClick={() => void connectManual().catch(() => undefined)}
+              >
+                {t('settings.ai.setup.manually')}
+              </Button>
+              {!forcedManual ? (
+                <Button
+                  size="sm"
+                  disabled={(!preset.local && apiKey.trim().length === 0) || pending}
+                  onClick={() => void connect().catch(() => undefined)}
+                >
+                  {pending ? (
+                    <Loader2 className="animate-spin" aria-hidden />
+                  ) : (
+                    <Check aria-hidden />
+                  )}
+                  {t('settings.ai.setup.automatically')}
+                </Button>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="flex w-full items-center justify-end gap-2">

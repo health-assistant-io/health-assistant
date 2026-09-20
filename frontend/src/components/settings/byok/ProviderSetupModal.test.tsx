@@ -5,10 +5,12 @@ import { ProviderSetupModal } from './ProviderSetupModal';
 
 const setupProvider = vi.fn();
 const setProviderDefault = vi.fn();
+const createProvider = vi.fn();
 
 const storeState = {
   setupProvider,
   setProviderDefault,
+  createProvider,
   configSummary: {
     models: [
       {
@@ -132,7 +134,9 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.connection_name': 'Connection name',
   'settings.ai.setup.no_key_needed': 'No API key needed for this local provider.',
   'settings.ai.setup.advanced': 'Advanced',
-  'settings.ai.setup.base_edit_hint': 'Changing the base URL routes through the manual form.',
+  'settings.ai.setup.base_edit_hint': 'Automatic setup uses the preset URL — edited bases connect manually.',
+  'settings.ai.setup.manually': 'Set up manually',
+  'settings.ai.setup.manually_hint': 'Create the provider without fetching models or changing defaults.',
   'settings.ai.setup.choose_another': 'Choose another provider',
   'settings.ai.setup.automatically': 'Set up automatically',
   'settings.ai.setup.custom': 'Custom',
@@ -275,18 +279,60 @@ describe('ProviderSetupModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('editing the base URL routes through the manual form instead of the setup call', async () => {
+  it('editing the base URL hides automatic setup; manual connect creates the row without auto-configure', async () => {
     const user = userEvent.setup();
     const { onClose, onManual } = renderModal();
-    setupProvider.mockResolvedValue(SETUP_OK);
+    createProvider.mockResolvedValue({ id: 'prov-9' });
     await user.click(await screen.findByText('OpenAI'));
-    await user.type(await screen.findByLabelText('API Key'), 'sk-test');
     await user.click(screen.getByText('Advanced'));
-    await user.type(screen.getByDisplayValue('https://api.openai.com/v1'), 'x');
-    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+    const baseInput = screen.getByLabelText('API Base URL');
+    await user.clear(baseInput);
+    await user.type(baseInput, 'https://relay.test/v1');
 
-    await waitFor(() => expect(onManual).toHaveBeenCalled());
-    expect(onClose).toHaveBeenCalled();
+    // edited preset → automatic setup no longer represents it
+    expect(
+      screen.queryByRole('button', { name: 'Set up automatically' }),
+    ).not.toBeInTheDocument();
+
+    await user.type(await screen.findByLabelText('API Key'), 'sk-test');
+    await user.click(screen.getByRole('button', { name: 'Set up manually' }));
+
+    await waitFor(() =>
+      expect(createProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'OpenAI',
+          provider_type: 'openai',
+          api_base: 'https://relay.test/v1',
+          api_key: 'sk-test',
+          scope: 'USER',
+        }),
+      ),
+    );
     expect(setupProvider).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(onManual).not.toHaveBeenCalled();
+  });
+
+  it('set up manually creates the provider without fetching models or binding defaults', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+    createProvider.mockResolvedValue({ id: 'prov-9' });
+    await user.click(await screen.findByText('OpenAI'));
+    await user.type(await screen.findByLabelText('API Key'), 'sk-manual');
+    await user.click(screen.getByRole('button', { name: 'Set up manually' }));
+
+    await waitFor(() =>
+      expect(createProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'OpenAI',
+          provider_type: 'openai',
+          api_base: 'https://api.openai.com/v1',
+          api_key: 'sk-manual',
+          scope: 'USER',
+        }),
+      ),
+    );
+    expect(setupProvider).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
   });
 });
