@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { SegmentedTabs } from '@neuronection/assistant-ui';
 import { ProviderManager } from '../../components/settings/ProviderManager';
 import { ModelsTab } from '../../components/settings/ModelsTab';
 import { TaskAssignment } from '../../components/settings/TaskAssignment';
@@ -80,51 +81,20 @@ export const AIConfig: React.FC<AIConfigProps> = ({
         />
       )}
 
-      {/* Tabs */}
-      <div className="flex space-x-2 border-b border-gray-200 dark:border-dark-border">
-        <button
-          onClick={() => setActiveTab('providers')}
-          className={`px-4 py-2 font-medium rounded-lg ${
-            activeTab === 'providers'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 dark:bg-dark-border text-gray-700 dark:text-dark-text'
-          }`}
-        >
-          Providers
-        </button>
-        <button
-          onClick={() => setActiveTab('models')}
-          className={`px-4 py-2 font-medium rounded-lg ${
-            activeTab === 'models'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 dark:bg-dark-border text-gray-700 dark:text-dark-text'
-          }`}
-        >
-          Models
-        </button>
-        <button
-          onClick={() => setActiveTab('tasks')}
-          className={`px-4 py-2 font-medium rounded-lg ${
-            activeTab === 'tasks'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 dark:bg-dark-border text-gray-700 dark:text-dark-text'
-          }`}
-        >
-          Task Assignments
-        </button>
-        {showAgentSettings && (
-          <button
-            onClick={() => setActiveTab('agent')}
-            className={`px-4 py-2 font-medium rounded-lg ${
-              activeTab === 'agent'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 dark:bg-dark-border text-gray-700 dark:text-dark-text'
-            }`}
-          >
-            Agent Settings
-          </button>
-        )}
-      </div>
+      {/* Tabs (library SegmentedTabs — desktop/study parity) */}
+      <SegmentedTabs
+        ariaLabel="AI configuration sections"
+        items={[
+          { value: 'providers', label: 'Providers' },
+          { value: 'models', label: 'Models' },
+          { value: 'tasks', label: 'Task Assignments' },
+          ...(showAgentSettings
+            ? [{ value: 'agent', label: 'Agent Settings' }]
+            : []),
+        ]}
+        value={activeTab}
+        onValueChange={(next) => setActiveTab(next as AITab)}
+      />
 
       {/* Tab Content */}
       <div className="bg-white dark:bg-dark-surface rounded-lg shadow-sm p-6 mb-20">

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AudioLines, Cpu, Sparkles, type LucideIcon } from 'lucide-react';
+import { AudioLines, Cpu, Eye, MessageSquare, Sparkles, type LucideIcon } from 'lucide-react';
 import {
   TaskAssignmentPicker,
   type ModelPickerProvider,
@@ -10,18 +10,19 @@ import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { Button } from '../ui/Button';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
-interface TaskTypeDef {
-  value: string;
-  labelKey: string;
-  /** Capability the backend requires for this task
-   *  (app/ai/providers/capabilities.py; unmapped tasks default to text). */
-  requires: 'text' | 'vision' | 'stt';
-  icon: LucideIcon;
-}
+const DEFAULT_SLOT_TASKS = [
+  { value: 'default', labelKey: 'settings.ai.task_default', requires: 'text' as const, icon: MessageSquare, secondaryOnly: true },
+  { value: 'ocr', labelKey: 'settings.ai.task_ocr', requires: 'vision' as const, icon: Eye },
+  {
+    value: 'transcription',
+    labelKey: 'settings.ai.task_transcription',
+    requires: 'stt' as const,
+    icon: AudioLines,
+  },
+];
 
-const TASK_TYPES: TaskTypeDef[] = [
-  { value: 'ocr', labelKey: 'settings.ai.task_ocr', requires: 'vision', icon: Cpu },
-  { value: 'nlp', labelKey: 'settings.ai.task_nlp', requires: 'text', icon: Cpu },
+const OTHER_TASKS = [
+  { value: 'nlp', labelKey: 'settings.ai.task_nlp', requires: 'text' as const, icon: Cpu },
   {
     value: 'medication_interaction',
     labelKey: 'settings.ai.task_medication_interaction',
@@ -77,12 +78,6 @@ const TASK_TYPES: TaskTypeDef[] = [
     icon: Cpu,
   },
   { value: 'chat', labelKey: 'settings.ai.task_chat', requires: 'text', icon: Cpu },
-  {
-    value: 'transcription',
-    labelKey: 'settings.ai.task_transcription',
-    requires: 'stt',
-    icon: AudioLines,
-  },
 ];
 
 const DEFAULT_TASK_TYPE = 'default';
@@ -136,7 +131,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
   const value: Record<string, string | null> = {};
   const secondaryValue: Record<string, string | null> = {};
-  for (const task of TASK_TYPES) {
+  for (const task of [...DEFAULT_SLOT_TASKS, ...OTHER_TASKS]) {
     value[task.value] = assignmentFor(task.value)?.model_id ?? null;
   }
   secondaryValue[DEFAULT_TASK_TYPE] =
@@ -173,25 +168,25 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
+  // §15 defaults-first IA (desktop parity): the modality slots (text /
+  // vision / stt) lead, derived tasks follow as a separate group.
   const sections: TaskAssignmentSection[] = [
     {
-      id: 'fallback',
-      label: t('settings.ai.section_fallback'),
-      description: t('settings.ai.section_fallback_hint'),
-      tasks: [
-        {
-          id: DEFAULT_TASK_TYPE,
-          label: t('settings.ai.task_default'),
-          requires: 'text',
-          icon: Cpu,
-          secondaryOnly: true,
-        },
-      ],
+      id: 'defaults',
+      label: t('settings.ai.section_defaults'),
+      description: t('settings.ai.section_defaults_hint'),
+      tasks: DEFAULT_SLOT_TASKS.map((task) => ({
+        id: task.value,
+        label: t(task.labelKey),
+        requires: task.requires,
+        icon: task.icon,
+        ...(task.secondaryOnly ? { secondaryOnly: true } : {}),
+      })),
     },
     {
-      id: 'tasks',
+      id: 'other',
       label: t('settings.ai.section_tasks'),
-      tasks: TASK_TYPES.map((task) => ({
+      tasks: OTHER_TASKS.map((task) => ({
         id: task.value,
         label: t(task.labelKey),
         requires: task.requires,

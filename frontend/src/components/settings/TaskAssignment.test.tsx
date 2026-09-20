@@ -69,9 +69,9 @@ vi.mock('../../store/slices/aiConfigSlice', () => ({
 
 const STRINGS: Record<string, string> = {
   'settings.ai.tasks_hint': 'Assign a model to each AI task.',
-  'settings.ai.section_fallback': 'Global Default Fallback',
-  'settings.ai.section_fallback_hint': 'This model is used for every task without its own assignment.',
-  'settings.ai.section_tasks': 'Task Assignments',
+  'settings.ai.section_defaults': 'Default models',
+  'settings.ai.section_defaults_hint': 'The modality slots every task falls back to.',
+  'settings.ai.section_tasks': 'Other tasks',
   'settings.ai.task_default': 'Global Default Fallback',
   'settings.ai.task_ocr': 'Document Parsing (OCR)',
   'settings.ai.task_nlp': 'Text Analysis & Extraction (NLP)',
@@ -121,6 +121,17 @@ describe('TaskAssignment', () => {
     expect(screen.getByText('Document Parsing (OCR)')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Fallback — Global Default Fallback' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Global Default Fallback' })).not.toBeInTheDocument();
+  });
+
+  it('groups the modality slots (defaults) ahead of the derived tasks (§15 IA)', () => {
+    render(<TaskAssignment scope="user" userId="u1" />);
+    const defaults = screen.getByText('Default models');
+    const other = screen.getByText('Other tasks');
+    expect(defaults.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // vision + transcription live in the defaults group; chat is a derived task
+    const defaultsGroup = defaults.closest('div')?.parentElement ?? document.body;
+    expect(within(defaultsGroup).getByText('Document Parsing (OCR)')).toBeInTheDocument();
+    expect(within(defaultsGroup).getByText('Voice Input (Speech-to-Text)')).toBeInTheDocument();
   });
 
   it('shows the stored default in the fallback picker and inherit hints on unassigned tasks', () => {
