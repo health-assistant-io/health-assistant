@@ -35,6 +35,13 @@ interface AIConfigState {
   createTaskAssignment: (data: any) => Promise<AITaskAssignment>;
   updateTaskAssignment: (id: string, data: Partial<AITaskAssignment>) => Promise<AITaskAssignment>;
   deleteTaskAssignment: (id: string) => Promise<void>;
+
+  // BYOK one-click setup (§15)
+  setupProvider: (
+    preset_key: string,
+    body: { api_key?: string | null; name?: string | null; options?: any }
+  ) => Promise<import('../../api/aiConfig').ProviderSetupResult>;
+  setProviderDefault: (provider_id: string, model_name: string, task?: string) => Promise<void>;
   
   // Summary
   loadConfigSummary: (tenant_id?: string, user_id?: string, scope?: string) => Promise<void>;
@@ -171,6 +178,35 @@ export const useAIConfigStore = create<AIConfigState>()(
           return models;
         } catch (error: any) {
           set({ error: error.message || 'Failed to fetch external models' });
+          throw error;
+        }
+      },
+
+      // BYOK one-click setup (§15)
+      setupProvider: async (preset_key, body) => {
+        set({ error: null });
+        try {
+          const result = await aiConfigApi.setupProviderPreset(preset_key, body);
+          const [providers, summary] = await Promise.all([
+            aiConfigApi.getProviders(),
+            aiConfigApi.getConfigSummary(),
+          ]);
+          set({ providers, configSummary: summary });
+          return result;
+        } catch (error: any) {
+          set({ error: error.message || 'Setup failed' });
+          throw error;
+        }
+      },
+
+      setProviderDefault: async (provider_id, model_name, task = 'default') => {
+        set({ error: null });
+        try {
+          await aiConfigApi.setProviderDefault(provider_id, { model_name, task });
+          const summary = await aiConfigApi.getConfigSummary();
+          set({ configSummary: summary });
+        } catch (error: any) {
+          set({ error: error.message || 'Failed to set default model' });
           throw error;
         }
       },
