@@ -199,35 +199,59 @@ async def fetch_remote_models(
 
 
 async def _resolve_target_row(
-    db: AsyncSession, preset_key: str, preset: dict[str, Any], tenant_id: Any, user_id: Any
+    db: AsyncSession,
+    preset_key: str,
+    preset: dict[str, Any],
+    scope: AIScope,
+    tenant_id: Any,
+    user_id: Any,
 ) -> Optional[AIProviderModel]:
-    """Find the USER-scope row to reuse: preset-stamped first, then the
-    earliest manual row with the same type + base (§15 adoption)."""
+    """Find the row to reuse at the REQUESTED scope: preset-stamped first,
+    then the earliest manual row with the same type + base (§15 adoption).
+    Adoption never crosses scopes."""
+    filters = [
+        AIProviderModel.scope == scope,
+        AIProviderModel.preset_key == preset_key,
+    ]
+    filters.append(
+        AIProviderModel.tenant_id.is_(None)
+        if tenant_id is None
+        else AIProviderModel.tenant_id == tenant_id
+    )
+    filters.append(
+        AIProviderModel.user_id.is_(None)
+        if user_id is None
+        else AIProviderModel.user_id == user_id
+    )
     existing = (
         await db.execute(
             select(AIProviderModel)
-            .where(
-                AIProviderModel.scope == AIScope.USER,
-                AIProviderModel.tenant_id == tenant_id,
-                AIProviderModel.user_id == user_id,
-                AIProviderModel.preset_key == preset_key,
-            )
+            .where(*filters)
             .order_by(AIProviderModel.created_at, AIProviderModel.id)
         )
     ).scalars().first()
     if existing is not None:
         return existing
+    manual_filters = [
+        AIProviderModel.scope == scope,
+        AIProviderModel.preset_key.is_(None),
+        AIProviderModel.provider_type == preset["type"],
+        AIProviderModel.api_base == preset["base_url"],
+    ]
+    manual_filters.append(
+        AIProviderModel.tenant_id.is_(None)
+        if tenant_id is None
+        else AIProviderModel.tenant_id == tenant_id
+    )
+    manual_filters.append(
+        AIProviderModel.user_id.is_(None)
+        if user_id is None
+        else AIProviderModel.user_id == user_id
+    )
     return (
         await db.execute(
             select(AIProviderModel)
-            .where(
-                AIProviderModel.scope == AIScope.USER,
-                AIProviderModel.tenant_id == tenant_id,
-                AIProviderModel.user_id == user_id,
-                AIProviderModel.preset_key.is_(None),
-                AIProviderModel.provider_type == preset["type"],
-                AIProviderModel.api_base == preset["base_url"],
-            )
+            .where(*manual_filters)
             .order_by(AIProviderModel.created_at, AIProviderModel.id)
         )
     ).scalars().first()
@@ -272,20 +296,34 @@ async def _upsert_persisted_models(
 
 
 async def _slot_alive(
-    db: AsyncSession, tenant_id: Any, user_id: Any, task_type: str
+    db: AsyncSession,
+    scope: AIScope,
+    tenant_id: Any,
+    user_id: Any,
+    task_type: str,
 ) -> tuple[Optional[AITaskAssignment], Optional[AIModel]]:
-    """The USER-scope slot for a task: its highest-priority active row + the
-    assigned model if that row is live (model present and existing)."""
+    """The slot for a task at the given scope: its highest-priority active
+    row + the assigned model if that row is live (model present and
+    existing)."""
+    filters = [
+        AITaskAssignment.scope == scope,
+        AITaskAssignment.task_type == task_type,
+        AITaskAssignment.is_active.is_(True),
+    ]
+    filters.append(
+        AITaskAssignment.tenant_id.is_(None)
+        if tenant_id is None
+        else AITaskAssignment.tenant_id == tenant_id
+    )
+    filters.append(
+        AITaskAssignment.user_id.is_(None)
+        if user_id is None
+        else AITaskAssignment.user_id == user_id
+    )
     row = (
         await db.execute(
             select(AITaskAssignment)
-            .where(
-                AITaskAssignment.scope == AIScope.USER,
-                AITaskAssignment.tenant_id == tenant_id,
-                AITaskAssignment.user_id == user_id,
-                AITaskAssignment.task_type == task_type,
-                AITaskAssignment.is_active.is_(True),
-            )
+            .where(*filters)
             .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
         )
     ).scalars().first()
@@ -303,25 +341,27 @@ async def _slot_alive(
 
 async def _bind_slot(
     db: AsyncSession,
+    scope: AIScope,
     tenant_id: Any,
     user_id: Any,
     task_type: str,
     provider: AIProviderModel,
     model: AIModel,
 ) -> None:
-    """Bind a USER-scope slot, deactivating sibling active rows (mirrors the
-    CRUD surface's one-active-assignment invariant). Never touches rows of
-    another scope."""
+    """Bind a slot at the given scope, deactivating sibling active rows
+    (mirrors the CRUD surface's one-active-assignment invariant). Never
+    touches rows of another scope."""
+    filters = [
+        AITaskAssignment.scope == scope,
+        AITaskAssignment.tenant_id == tenant_id,
+        AITaskAssignment.user_id == user_id,
+        AITaskAssignment.task_type == task_type,
+        AITaskAssignment.is_active.is_(True),
+    ]
     siblings = (
         await db.execute(
             select(AITaskAssignment)
-            .where(
-                AITaskAssignment.scope == AIScope.USER,
-                AITaskAssignment.tenant_id == tenant_id,
-                AITaskAssignment.user_id == user_id,
-                AITaskAssignment.task_type == task_type,
-                AITaskAssignment.is_active.is_(True),
-            )
+            .where(*filters)
             .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
         )
     ).scalars().all()
@@ -329,7 +369,7 @@ async def _bind_slot(
     if row is None:
         row = AITaskAssignment(
             task_type=task_type,
-            scope=AIScope.USER,
+            scope=scope,
             tenant_id=tenant_id,
             user_id=user_id,
             provider_id=provider.id,
@@ -366,13 +406,15 @@ async def setup_provider_from_preset(
     preset_key: str,
     api_key: Optional[str],
     *,
+    scope: AIScope,
     tenant_id: Any,
     user_id: Any,
     name: Optional[str] = None,
     options: Optional[SetupOptions] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> SetupOutcome:
-    """Run the §15 setup flow for one preset, at USER scope."""
+    """Run the §15 setup flow for one preset, at the requested scope
+    (SYSTEM / TENANT / USER — the caller enforces role access)."""
     options = options or SetupOptions()
     preset = SETUP_PRESETS.get(preset_key)
     if preset is None:
@@ -380,7 +422,9 @@ async def setup_provider_from_preset(
 
     guard_api_base(preset["base_url"])
 
-    existing = await _resolve_target_row(db, preset_key, preset, tenant_id, user_id)
+    existing = await _resolve_target_row(
+        db, preset_key, preset, scope, tenant_id, user_id
+    )
     key = "" if preset["local"] else (api_key or "").strip()
     if not key and existing is not None:
         key = decrypt_secret(existing.api_key) or ""
@@ -392,7 +436,7 @@ async def setup_provider_from_preset(
     else:
         provider = AIProviderModel(
             name=(name or "").strip() or preset["name"],
-            scope=AIScope.USER,
+            scope=scope,
             tenant_id=tenant_id,
             user_id=user_id,
             provider_type=preset["type"],
@@ -486,7 +530,7 @@ async def setup_provider_from_preset(
         assignment_vision_capable = False
 
     _, chat_model = await _slot_alive(
-        db, tenant_id, user_id, _SLOT_TASK_TYPES["chat"]
+        db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["chat"]
     )
     vision_candidate_id: Optional[str] = None
     vision_capable_flag = False
@@ -506,6 +550,7 @@ async def setup_provider_from_preset(
         assigned["chat"] = assignment_candidate_id
         await _bind_slot(
             db,
+            scope,
             tenant_id,
             user_id,
             _SLOT_TASK_TYPES["chat"],
@@ -514,12 +559,13 @@ async def setup_provider_from_preset(
         )
     if options.bind_vision and vision_candidate_id and vision_capable_flag:
         _, vision_model = await _slot_alive(
-            db, tenant_id, user_id, _SLOT_TASK_TYPES["vision"]
+            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["vision"]
         )
         if vision_model is None:
             assigned["vision"] = vision_candidate_id
             await _bind_slot(
                 db,
+                scope,
                 tenant_id,
                 user_id,
                 _SLOT_TASK_TYPES["vision"],
@@ -541,12 +587,13 @@ async def setup_provider_from_preset(
         )
     if options.bind_stt and stt_resolved_id:
         _, stt_model = await _slot_alive(
-            db, tenant_id, user_id, _SLOT_TASK_TYPES["stt"]
+            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["stt"]
         )
         if stt_model is None:
             assigned["stt"] = stt_resolved_id
             await _bind_slot(
                 db,
+                scope,
                 tenant_id,
                 user_id,
                 _SLOT_TASK_TYPES["stt"],
@@ -571,11 +618,9 @@ async def set_default_model(
     provider: AIProviderModel,
     model_name: str,
     task: str = "default",
-    *,
-    tenant_id: Any,
-    user_id: Any,
 ) -> AIModel:
-    """Bind one of the provider's models to a USER-scope task slot.
+    """Bind one of the provider's models to a task slot at the PROVIDER's
+    own scope (the endpoint enforces role access via ``check_scope_access``).
 
     Capability-guarded (a model must advertise the task's required
     capability); unknown model ids are created as manual rows; ids that
@@ -620,6 +665,14 @@ async def set_default_model(
     if required and not any(c in have for c in (r.value for r in required)):
         raise ValueError(f"task requires the '{sorted(r.value for r in required)[0]}' capability")
 
-    await _bind_slot(db, tenant_id, user_id, task, provider, model)
+    await _bind_slot(
+        db,
+        provider.scope,
+        provider.tenant_id,
+        provider.user_id,
+        task,
+        provider,
+        model,
+    )
     await db.commit()
     return model

@@ -434,7 +434,12 @@ export const aiConfigApi = {
 
   setupProviderPreset: async (
     preset_key: string,
-    body: { api_key?: string | null; name?: string | null; options?: ProviderSetupOptionsBody }
+    body: {
+      api_key?: string | null;
+      name?: string | null;
+      scope?: 'SYSTEM' | 'TENANT' | 'USER';
+      options?: ProviderSetupOptionsBody;
+    }
   ): Promise<ProviderSetupResult> => {
     const response = await api.post(`/ai-config/providers/${preset_key}/setup`, body);
     return response.data;

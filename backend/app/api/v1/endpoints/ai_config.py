@@ -709,7 +709,7 @@ async def get_default_for_task(
     }
 
 
-# BYOK one-click setup (§15) — USER scope only
+# BYOK one-click setup (§15) — scope-aware (SYSTEM / TENANT / USER)
 
 
 @router.get("/provider-presets", response_model=ProviderPresetsResponse)
@@ -751,12 +751,17 @@ async def list_provider_presets():
     )
 
 
-def _user_scope_ids(current_user: TokenData) -> Dict[str, Any]:
-    """The (tenant_id, user_id) pair every USER-scope setup row binds to."""
-    return {
-        "tenant_id": current_user.tenant_id,
-        "user_id": current_user.user_id,
-    }
+def _scope_context(scope: AIScope, current_user: TokenData) -> Dict[str, Any]:
+    """The (tenant_id, user_id) pair the requested scope binds to.
+
+    Mirrors ``create_provider``: SYSTEM rows carry neither id, TENANT rows
+    the caller's tenant, USER rows the caller's own ids.
+    """
+    if scope == AIScope.SYSTEM:
+        return {"tenant_id": None, "user_id": None}
+    if scope == AIScope.TENANT:
+        return {"tenant_id": current_user.tenant_id, "user_id": None}
+    return {"tenant_id": current_user.tenant_id, "user_id": current_user.user_id}
 
 
 @router.post(
@@ -771,15 +776,25 @@ async def setup_provider(
 ):
     """One-click provider setup from a curated preset (ai-features §15).
 
-    Fetch-first validation: the key is verified against the vendor's real
-    catalog before anything persists. Failures return the §15 error enum
-    (``code`` + optional ``suspected_vendor``) — never a raw vendor dump.
+    Scope-aware: SYSTEM (system admins), TENANT (tenant admins) or USER
+    (personal). Fetch-first validation: the key is verified against the
+    vendor's real catalog before anything persists. Failures return the
+    §15 error enum (``code`` + optional ``suspected_vendor``) — never a raw
+    vendor dump.
     """
+    check_scope_access(
+        body.scope,
+        current_user,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+    )
+
     try:
         outcome = await byok_setup.setup_provider_from_preset(
             db,
             preset_key,
             body.api_key,
+            scope=body.scope,
             name=body.name,
             options=byok_setup.SetupOptions(
                 curated_ids=body.options.curated_ids,
@@ -787,7 +802,7 @@ async def setup_provider(
                 bind_vision=body.options.bind_vision,
                 bind_stt=body.options.bind_stt,
             ),
-            **_user_scope_ids(current_user),
+            **_scope_context(body.scope, current_user),
         )
     except byok_setup.UnknownPresetError:
         raise HTTPException(status_code=404, detail="Unknown provider preset")
@@ -824,7 +839,8 @@ async def set_provider_default(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Bind one of the provider's models to a USER-scope task slot.
+    """Bind one of the provider's models to a task slot at the provider's
+    own scope (SYSTEM/TENANT/USER, guarded by ``verify_provider_access``).
 
     Capability-guarded (the model must advertise the task's required
     capability) and cross-provider-safe (another provider's model id → 409).
@@ -835,22 +851,9 @@ async def set_provider_default(
         raise HTTPException(status_code=404, detail="Provider not found")
 
     verify_provider_access(provider, current_user)
-    if provider.scope != AIScope.USER or str(provider.user_id) != str(
-        current_user.user_id
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="set-default is USER-scope only — manage other scopes via task assignments",
-        )
 
     try:
-        model = await byok_setup.set_default_model(
-            db,
-            provider,
-            body.model_name,
-            body.task,
-            **_user_scope_ids(current_user),
-        )
+        model = await byok_setup.set_default_model(db, provider, body.model_name, body.task)
     except byok_setup.CrossProviderModelError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:

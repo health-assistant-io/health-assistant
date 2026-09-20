@@ -337,12 +337,18 @@ class ProviderSetupOptions(BaseModel):
 
 
 class ProviderSetupRequest(BaseModel):
-    """Request for one-click setup of a provider preset (USER scope)."""
+    """Request for one-click setup of a provider preset.
+
+    ``scope`` picks the config layer (SYSTEM: system admins, TENANT: tenant
+    admins, USER: personal — the default). Role access is enforced by the
+    endpoint's ``check_scope_access``.
+    """
 
     api_key: Optional[str] = Field(
         None, max_length=500, description="Vendor API key (not needed for local presets)"
     )
     name: Optional[str] = Field(None, max_length=100, description="Connection name")
+    scope: AIScope = Field(AIScope.USER, description="Config layer to create/adopt in")
     options: ProviderSetupOptions = Field(default_factory=ProviderSetupOptions)
 
 

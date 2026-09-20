@@ -39,7 +39,12 @@ interface AIConfigState {
   // BYOK one-click setup (§15)
   setupProvider: (
     preset_key: string,
-    body: { api_key?: string | null; name?: string | null; options?: any }
+    body: {
+      api_key?: string | null;
+      name?: string | null;
+      scope?: 'SYSTEM' | 'TENANT' | 'USER';
+      options?: any;
+    }
   ) => Promise<import('../../api/aiConfig').ProviderSetupResult>;
   setProviderDefault: (provider_id: string, model_name: string, task?: string) => Promise<void>;
   

@@ -225,12 +225,17 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
 
       <ProviderSetupModal
         open={setupOpen}
+        scope={scope}
         onClose={() => setSetupOpen(false)}
         onManual={() => setDialog({ provider: null })}
       />
 
       {rerunProvider ? (
-        <ReRunSetupDialog provider={rerunProvider} onClose={() => setRerunProvider(null)} />
+        <ReRunSetupDialog
+          provider={rerunProvider}
+          scope={scope}
+          onClose={() => setRerunProvider(null)}
+        />
       ) : null}
     </div>
   );

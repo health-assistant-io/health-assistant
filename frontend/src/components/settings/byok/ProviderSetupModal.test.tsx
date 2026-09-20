@@ -39,6 +39,7 @@ vi.mock('../../../store/slices/aiConfigSlice', () => ({
 }));
 
 const listProviderPresets = vi.fn();
+const getProviderWithModels = vi.fn();
 
 vi.mock('../../../api/aiConfig', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/aiConfig')>();
@@ -47,6 +48,7 @@ vi.mock('../../../api/aiConfig', async (importOriginal) => {
     aiConfigApi: {
       ...actual.aiConfigApi,
       listProviderPresets: () => listProviderPresets(),
+      getProviderWithModels: () => getProviderWithModels(),
     },
   };
 });
@@ -161,6 +163,26 @@ function renderModal(onManual = vi.fn()) {
 beforeEach(() => {
   vi.clearAllMocks();
   listProviderPresets.mockResolvedValue(PRESETS);
+  getProviderWithModels.mockResolvedValue({
+    models: [
+      {
+        id: 'm1',
+        provider_id: 'prov-1',
+        name: 'GPT-5.6 Terra',
+        model_name: 'gpt-5.6-terra',
+        capabilities: ['text', 'vision', 'tools'],
+        is_active: true,
+      },
+      {
+        id: 'm2',
+        provider_id: 'prov-1',
+        name: 'whisper-1',
+        model_name: 'whisper-1',
+        capabilities: ['stt'],
+        is_active: true,
+      },
+    ],
+  });
 });
 
 describe('ProviderSetupModal', () => {
@@ -205,6 +227,7 @@ describe('ProviderSetupModal', () => {
       expect(setupProvider).toHaveBeenCalledWith('openai', {
         api_key: 'sk-test',
         name: null,
+        scope: 'USER',
       }),
     );
     expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();

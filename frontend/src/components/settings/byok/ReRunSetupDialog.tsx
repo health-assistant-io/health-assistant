@@ -89,7 +89,8 @@ function SwitchRow({
 export const ReRunSetupDialog: React.FC<{
   provider: AIProvider;
   onClose: () => void;
-}> = ({ provider, onClose }) => {
+  scope?: 'global' | 'tenant' | 'user';
+}> = ({ provider, onClose, scope = 'user' }) => {
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
   const configSummary = useAIConfigStore((state) => state.configSummary);
@@ -137,6 +138,7 @@ export const ReRunSetupDialog: React.FC<{
     try {
       await setupProvider(presetKey, {
         api_key: null,
+        scope: scope === 'global' ? 'SYSTEM' : scope === 'tenant' ? 'TENANT' : 'USER',
         options: {
           curated_ids: preset?.curated_models ? selected : undefined,
           bind_chat: fillText,

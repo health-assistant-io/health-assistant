@@ -263,6 +263,7 @@ async def test_case_1_happy_path_bindings(
             db,
             "openai",
             "  sk-live-key  ",
+            scope=AIScope.USER,
             tenant_id=tenant_id,
             user_id=user_id,
         )
@@ -304,7 +305,7 @@ async def test_case_1_happy_path_ollama_keyless(
     calls = install_catalog(monkeypatch, wire_catalog(["llama3.3"]))
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
-            db, "ollama", "", tenant_id=tenant_id, user_id=user_id
+            db, "ollama", "", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     providers, _ = await user_rows(tenant_id)
@@ -328,14 +329,14 @@ async def test_case_3_re_setup_appends_the_fetched_catalog_and_dedupes(
     install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "gpt-5.6-luna"]))
     async with AsyncSessionLocal() as db:
         first = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-first", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-first", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
     manual_model = await _seed_model(first.provider_id, "old-favorite", ["text"])
 
     install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "gpt-5.6-sol"]))
     async with AsyncSessionLocal() as db:
         await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-second", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-second", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     providers, models = await user_rows(tenant_id)
@@ -366,7 +367,7 @@ async def test_case_4_adopts_manual_row_earliest_first_and_stamps(
 
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-new", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-new", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     assert outcome.provider_id == earliest.id
@@ -397,7 +398,7 @@ async def test_case_5_never_clobbers_live_assignments(
 
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-key", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     assert outcome.assigned_chat_model is None
@@ -431,7 +432,7 @@ async def test_case_6_empty_and_dead_slots_rebind(
 
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-key", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     providers, models = await user_rows(tenant_id)
@@ -468,7 +469,7 @@ async def test_case_7_invalid_key_persists_nothing(
     async with AsyncSessionLocal() as db:
         with pytest.raises(byok_setup.SetupError) as excinfo:
             await byok_setup.setup_provider_from_preset(
-                db, "openai", "sk-bad", tenant_id=tenant_id, user_id=user_id
+                db, "openai", "sk-bad", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
             )
     assert excinfo.value.classified.code.value == "invalid_key"
 
@@ -491,7 +492,7 @@ async def test_case_8_unknown_preset_typed_error_without_fetch(
     async with AsyncSessionLocal() as db:
         with pytest.raises(byok_setup.UnknownPresetError):
             await byok_setup.setup_provider_from_preset(
-                db, "not-a-preset", "sk-key", tenant_id=tenant_id, user_id=user_id
+                db, "not-a-preset", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
             )
     assert calls == []
 
@@ -509,7 +510,7 @@ async def test_case_9_hanging_fetch_times_out_and_local_refused_is_local_not_run
     async with AsyncSessionLocal() as db:
         with pytest.raises(byok_setup.SetupError) as timeout_error:
             await byok_setup.setup_provider_from_preset(
-                db, "openai", "sk-key", tenant_id=tenant_id, user_id=user_id
+                db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
             )
     assert timeout_error.value.classified.code.value == "timeout"
 
@@ -517,7 +518,7 @@ async def test_case_9_hanging_fetch_times_out_and_local_refused_is_local_not_run
     async with AsyncSessionLocal() as db:
         with pytest.raises(byok_setup.SetupError) as refused_error:
             await byok_setup.setup_provider_from_preset(
-                db, "ollama", "", tenant_id=tenant_id, user_id=user_id
+                db, "ollama", "", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
             )
     assert refused_error.value.classified.code.value == "local_not_running"
 
@@ -598,7 +599,7 @@ async def test_case_11_snapshot_suffix_curation_and_zero_match_fallback(
     )
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-key", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     assert outcome.curated_missed is False
@@ -608,7 +609,7 @@ async def test_case_11_snapshot_suffix_curation_and_zero_match_fallback(
     install_catalog(monkeypatch, wire_catalog(["gpt-99-turbo", "gpt-99-mini"]))
     async with AsyncSessionLocal() as db:
         drifted = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-key", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
     assert drifted.curated_missed is True
@@ -754,13 +755,13 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
     # another user's personal setup in the same tenant
     async with AsyncSessionLocal() as db:
         await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-other", tenant_id=tenant_id, user_id=other_user
+            db, "openai", "sk-other", scope=AIScope.USER, tenant_id=tenant_id, user_id=other_user
         )
 
     # OUR setup
     async with AsyncSessionLocal() as db:
         ours = await byok_setup.setup_provider_from_preset(
-            db, "openai", "sk-ours", tenant_id=tenant_id, user_id=user_id
+            db, "openai", "sk-ours", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
     assert ours.assigned_chat_model == "gpt-5.6-terra"
 
@@ -848,6 +849,7 @@ async def test_setup_options_are_honored_and_use_contract_names(
             db,
             "openai",
             "sk-key",
+            scope=AIScope.USER,
             tenant_id=tenant_id,
             user_id=user_id,
             options=byok_setup.SetupOptions(bind_chat=False, bind_stt=False),
@@ -877,3 +879,104 @@ async def test_setup_endpoint_maps_classified_errors_to_the_15_body(
         headers=user_ctx["headers"],
     )
     assert unknown.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# scope-aware setup (SYSTEM / TENANT / USER)
+# ---------------------------------------------------------------------------
+
+
+async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
+    async_client, user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The admin system/tenant surfaces run the SAME one-click setup against
+    their own config layer (recorded plan-17 Phase 3 delta: health's setup is
+    scope-aware, not USER-only)."""
+    install_catalog(
+        monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"])
+    )
+
+    sysadmin_token = create_access_token(
+        {
+            "sub": "sysadmin2@test.local",
+            "user_id": str(uuid.uuid4()),
+            "tenant_id": str(user_ctx["tenant_id"]),
+            "role": "SYSTEM_ADMIN",
+        }
+    )
+    sysadmin_headers = {"Authorization": f"Bearer {sysadmin_token}"}
+    admin_token = create_access_token(
+        {
+            "sub": "tenantadmin@test.local",
+            "user_id": str(uuid.uuid4()),
+            "tenant_id": str(user_ctx["tenant_id"]),
+            "role": "ADMIN",
+        }
+    )
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # SYSTEM scope
+    setup_system = await async_client.post(
+        "/api/v1/ai-config/providers/openai/setup",
+        json={"api_key": "sk-sys", "scope": "SYSTEM"},
+        headers=sysadmin_headers,
+    )
+    assert setup_system.status_code == 200, setup_system.text
+    assert setup_system.json()["provider"]["scope"] == "SYSTEM"
+
+    # TENANT scope (tenant admin)
+    setup_tenant = await async_client.post(
+        "/api/v1/ai-config/providers/openai/setup",
+        json={"api_key": "sk-tenant", "scope": "TENANT"},
+        headers=admin_headers,
+    )
+    assert setup_tenant.status_code == 200, setup_tenant.text
+    tenant_provider = setup_tenant.json()["provider"]
+    assert tenant_provider["scope"] == "TENANT"
+    assert tenant_provider["tenant_id"] == str(user_ctx["tenant_id"])
+
+    # USER scope (default) — untouched semantics
+    setup_user = await async_client.post(
+        "/api/v1/ai-config/providers/openai/setup",
+        json={"api_key": "sk-user"},
+        headers=user_ctx["headers"],
+    )
+    assert setup_user.status_code == 200, setup_user.text
+    assert setup_user.json()["provider"]["scope"] == "USER"
+
+    async with AsyncSessionLocal() as session:
+        providers = (
+            await session.execute(
+                select(AIProviderModel).where(
+                    AIProviderModel.preset_key == "openai",
+                    AITaskAssignment.__table__  is not None,  # noqa: E501 (placeholder removed below)
+                )
+            )
+        ).scalars().all()
+
+        slots = (
+            await session.execute(
+                select(AITaskAssignment).where(
+                    AITaskAssignment.task_type == "default",
+                    AITaskAssignment.is_active.is_(True),
+                )
+            )
+        ).scalars().all()
+        assert sorted(s.scope.value for s in slots) == ["SYSTEM", "TENANT", "USER"]
+
+        # cleanup SYSTEM + TENANT rows created here (user_ctx cleans its own)
+        await session.execute(
+            delete(AITaskAssignment).where(AITaskAssignment.scope != AIScope.USER)
+        )
+        await session.execute(
+            delete(AIProviderModel).where(AIProviderModel.scope != AIScope.USER)
+        )
+        await session.commit()
+
+    # role guard: a plain USER cannot create SYSTEM/TENANT rows
+    forbidden = await async_client.post(
+        "/api/v1/ai-config/providers/openai/setup",
+        json={"api_key": "sk-x", "scope": "SYSTEM"},
+        headers=user_ctx["headers"],
+    )
+    assert forbidden.status_code == 403

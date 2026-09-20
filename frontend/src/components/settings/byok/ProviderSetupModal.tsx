@@ -14,6 +14,7 @@ import { ModelPicker, type ModelPickerProvider } from '@neuronection/assistant-u
 import {
   aiConfigApi,
   setupErrorDetail,
+  type AIModel,
   type ProviderPreset,
   type ProviderSetupErrorDetail,
   type ProviderSetupResult,
@@ -27,6 +28,12 @@ import { ProviderLogo } from './ProviderLogo';
 import { SetupErrorPanel } from './setupErrors';
 
 type Phase = 'tiles' | 'form' | 'done';
+
+const SCOPE_MAP = {
+  global: 'SYSTEM',
+  tenant: 'TENANT',
+  user: 'USER',
+} as const;
 
 function HostingToggle({
   local,
@@ -103,13 +110,27 @@ function SuccessDefaults({
   result: ProviderSetupResult;
 }) {
   const { t } = useTranslation();
-  const configSummary = useAIConfigStore((state) => state.configSummary);
   const setProviderDefault = useAIConfigStore((state) => state.setProviderDefault);
+  const [models, setModels] = useState<AIModel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const providerModels = (configSummary?.models ?? []).filter(
-    (model) => model.provider_id === providerId && model.is_active,
-  );
+  useEffect(() => {
+    let cancelled = false;
+    aiConfigApi
+      .getProviderWithModels(providerId)
+      .then((data) => {
+        if (!cancelled) setModels(data.models ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId]);
+
+  if (models === null) return null;
+  const providerModels = models.filter((model) => model.is_active);
   const catalog: ModelPickerProvider[] = [
     {
       id: providerId,
@@ -198,7 +219,8 @@ export const ProviderSetupModal: React.FC<{
   open: boolean;
   onClose: () => void;
   onManual: () => void;
-}> = ({ open, onClose, onManual }) => {
+  scope?: 'global' | 'tenant' | 'user';
+}> = ({ open, onClose, onManual, scope = 'user' }) => {
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
 
@@ -274,6 +296,7 @@ export const ProviderSetupModal: React.FC<{
       const data = await setupProvider(presetKey, {
         api_key: preset.local ? null : apiKey.trim() || null,
         name: name.trim() || null,
+        scope: SCOPE_MAP[scope],
       });
       setResultName(name.trim() || preset.name);
       setResult(data);
@@ -293,6 +316,13 @@ export const ProviderSetupModal: React.FC<{
         open
         onOpenChange={(o) => (!o ? onClose() : undefined)}
         title={t('settings.ai.setup.title')}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              {t('settings.ai.close')}
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-3">
           <p className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-dark-text">
@@ -308,11 +338,6 @@ export const ProviderSetupModal: React.FC<{
             </p>
           ) : null}
           <SuccessDefaults providerId={result.provider.id} result={result} />
-          <div className="flex justify-end">
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              {t('settings.ai.close')}
-            </Button>
-          </div>
         </div>
       </Modal>
     );
@@ -326,6 +351,33 @@ export const ProviderSetupModal: React.FC<{
         phase === 'form' && preset
           ? t('settings.ai.setup.form_title', { name: preset.name })
           : t('settings.ai.setup.title')
+      }
+      footer={
+        phase === 'form' && preset ? (
+          <div className="flex w-full items-center justify-between gap-2">
+            <Button variant="ghost" size="sm" onClick={backToTiles}>
+              {t('settings.ai.setup.choose_another')}
+            </Button>
+            <Button
+              size="sm"
+              disabled={(!preset.local && apiKey.trim().length === 0) || pending}
+              onClick={() => void connect().catch(() => undefined)}
+            >
+              {pending ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : (
+                <Check aria-hidden />
+              )}
+              {t('settings.ai.setup.automatically')}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex w-full items-center justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              {t('settings.ai.cancel')}
+            </Button>
+          </div>
+        )
       }
     >
       <div className="space-y-3">
@@ -470,19 +522,6 @@ export const ProviderSetupModal: React.FC<{
               </div>
             </details>
             <SetupErrorPanel error={error} plainError={plainError} />
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" size="sm" onClick={backToTiles}>
-                {t('settings.ai.setup.choose_another')}
-              </Button>
-              <Button
-                size="sm"
-                disabled={(!preset.local && apiKey.trim().length === 0) || pending}
-                onClick={() => void connect().catch(() => undefined)}
-              >
-                {pending ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
-                {t('settings.ai.setup.automatically')}
-              </Button>
-            </div>
           </>
         ) : null}
       </div>
