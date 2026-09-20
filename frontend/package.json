@@ -16,7 +16,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@neuronection/assistant-ui": "^0.36.1",
+    "@neuronection/assistant-ui": "^0.43.0",
     "@tailwindcss/typography": "^0.5.20",
     "@types/d3-force": "^3.0.10",
     "@types/dagre": "^0.7.54",

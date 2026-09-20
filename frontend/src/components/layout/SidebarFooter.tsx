@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowUpRight, Heart } from 'lucide-react';
 import {
   CareerMark,
+  DesktopMark,
   HealthMark,
   Modal,
   ModalContent,
@@ -36,6 +37,7 @@ const FAMILY_LINKS: {
   { name: 'Health', Mark: HealthMark, href: 'https://health-assistant.io', current: true },
   { name: 'Career', Mark: CareerMark, href: 'https://neuronection.com/en/career/' },
   { name: 'Study', Mark: StudyMark, href: 'https://neuronection.com/en/study/' },
+  { name: 'Desktop', Mark: DesktopMark, href: 'https://neuronection.com/en/desktop/' },
 ];
 
 /**

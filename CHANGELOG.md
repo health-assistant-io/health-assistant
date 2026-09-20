@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **BYOK setup is now scope-aware** — running one-click setup from `/admin/system/ai-config` (or the tenant AI config surface) creates the provider + slot assignments at the SYSTEM/TENANT layer instead of always creating a personal USER-scope row invisible on that page (`ProviderSetupRequest.scope`, guarded by `check_scope_access`; adoption and gap-fill stay strictly within the requested scope, and `set-default` binds at the provider's own scope). The setup modal also now fetches the freshly persisted models directly for its rebind pickers (fixes a contradictory "no models were persisted" panel), ships the missing `settings.ai.close` label, and moves its actions into the dialog footer so Add and Edit provider share the same layout. Preset forms gain an explicit **Set up manually** action (creates the provider row as-is — no catalog fetch, no model curation, no default binding); editing the preset's base URL switches the form to manual-only.
 ### Changed
+- **assistant-ui 0.36.1 → 0.43.0** — catch-up to the family version (study/desktop run ^0.42). Drop-in: no app code changes required by the bump. Unlocks the library's `DesktopMark` + desktop-aware family defaults (`FamilyBadge` default order now includes Desktop, so the About page lists it automatically).
+- **Sidebar family menu lists Desktop Assistant** — new row (library `DesktopMark`, linking to neuronection.com/en/desktop/) alongside Health / Career / Study.
+
+### Added
 - **Task Assignments adopt the §15 defaults-first grouping (desktop parity)** — the modality slots (Global Default Fallback / text, Document Parsing / vision, Voice Input / stt) lead as a "Default models" section; the eleven derived tasks (NLP, chat, Magic Fill, …) follow as "Other tasks". The AI-config page's Providers / Models / Task Assignments / Agent Settings sub-tabs now use the library `SegmentedTabs` (replacing the hand-rolled button strip).
 
 ### Added
