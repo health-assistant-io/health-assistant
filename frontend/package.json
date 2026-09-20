@@ -1,6 +1,6 @@
 {
   "name": "health-assistant",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Universal Health Data Platform",
   "scripts": {
     "dev": "vite",
