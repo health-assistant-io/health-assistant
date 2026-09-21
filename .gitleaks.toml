@@ -1,0 +1,26 @@
+# Gitleaks config — extends the default ruleset.
+# The repo-history scan (security-scan.yml, fetch-depth: 0) previously failed on
+# 34 findings, all false positives: dummy test fixtures, placeholder tokens in
+# docs, and settings label keys. backend/tests/ and docs/ are excluded by path
+# because their contents are, by design, fake fixtures and doc examples;
+# real secrets committed anywhere else (backend/app/, integrations/, etc.) are
+# still caught by the default rules.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, docs placeholders, settings label keys"
+paths = [
+  '''backend/tests/.*''',
+  '''docs/.*''',
+]
+regexes = [
+  # Truncated example JWTs in API docs (header-only, no signature)
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.''',
+  # Obvious dummy fixtures used in backend tests and docs examples
+  '''a-strong-unique-passphrase|a-very-strong-secret|strong-secret-key-for-jwt|sk-legacy-|securepassword123|test-vapid-public-key''',
+  # Settings definitions: key="settings.…"/"appearance.…" with hex-like chars
+  '''key="(settings|appearance)\.''',
+  # 123e4567-e89b-12d3-a456-426614174001 — RFC 4122 documented example UUID
+  '''123e4567-e89b-12d3-a456-426614174001''',
+]
