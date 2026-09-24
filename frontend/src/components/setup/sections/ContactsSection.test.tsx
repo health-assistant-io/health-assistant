@@ -60,14 +60,30 @@ describe('ContactsSection', () => {
     expect(streetInput.value).toBe('c/o Someone\n123 Main St');
   });
 
-  it('surfaces a backend Pydantic 422 error message instead of failing silently', async () => {
+  it('keeps address elements the form does not edit', async () => {
+    const patient: Patient = {
+      ...basePatient,
+      address: [{ use: 'home', line: ['123 Main St'], city: 'Springfield', state: 'IL', period: { start: '2020-01-01' } }],
+    } as any;
+    render(<ContactsSection patient={patient} />);
+    fireEvent.change(screen.getByPlaceholderText('123 Main St'), { target: { value: '124 Main St' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => expect(updatePatient).toHaveBeenCalled());
+    const [, payload] = (updatePatient as any).mock.calls[0];
+    expect(payload.address).toEqual([
+      { use: 'home', line: ['124 Main St'], city: 'Springfield', state: 'IL', period: { start: '2020-01-01' } },
+    ]);
+  });
+
+  it('surfaces the FHIR validation error instead of failing silently', async () => {
+    // Shape of the global FhirSerializationError handler (HTTP 400).
     (updatePatient as any).mockRejectedValueOnce({
       response: {
-        status: 422,
+        status: 400,
         data: {
-          detail: [
-            { loc: ['body', 'address', 0, 'line'], msg: 'Input should be a valid list', type: 'list_type' },
-          ],
+          message: 'FHIR validation failed',
+          detail: '1 validation error for Patient\naddress.0.line\n  Input should be a valid list [type=list_type]',
         },
       },
     });

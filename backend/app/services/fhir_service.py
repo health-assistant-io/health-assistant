@@ -118,6 +118,7 @@ async def create_patient(patient_data: dict, tenant_id: str | UUID) -> Patient |
         mrn=mrn,
         address=patient_data.get("address"),
         telecom=patient_data.get("telecom"),
+        emergency_contact=patient_data.get("emergency_contact"),
         extensions=extensions,
     )
     assert_valid_fhir(new_patient)
@@ -226,6 +227,9 @@ async def update_patient(patient_id: str | UUID, patient_data: dict) -> Patient 
 
             if "telecom" in patient_data:
                 patient.telecom = patient_data["telecom"]
+
+            if "emergency_contact" in patient_data:
+                patient.emergency_contact = patient_data["emergency_contact"]
 
             if "extensions" in patient_data:
                 try:

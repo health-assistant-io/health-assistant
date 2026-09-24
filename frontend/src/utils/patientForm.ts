@@ -1,11 +1,17 @@
 import type { Patient } from '../types/patient';
 
+/**
+ * FHIR R4 Address. The forms edit `line`, `city`, `postalCode`, `country` and
+ * `text`; any other element (`use`, `type`, `state`, `district`, `period`,
+ * `extension`, ...) is carried through a save untouched.
+ */
 export interface PatientAddress {
   line?: string[];
   city?: string;
   postalCode?: string;
   country?: string;
   text?: string;
+  [element: string]: unknown;
 }
 
 export interface PatientAddressFormValue {
@@ -14,11 +20,15 @@ export interface PatientAddressFormValue {
   postalCode?: string;
   country?: string;
   text?: string;
+  [element: string]: unknown;
 }
 
 interface StoredPatientAddress extends Omit<PatientAddress, 'line'> {
   line?: string[] | string;
 }
+
+/** Elements that make an address worth keeping once the edited fields are cleaned. */
+const ADDRESS_CONTENT = ['line', 'city', 'postalCode', 'country', 'text', 'state', 'district'];
 
 export function toPatientAddressFormValues(
   addresses: StoredPatientAddress[] | StoredPatientAddress | null | undefined,
@@ -36,17 +46,17 @@ export function toPatientAddresses(
   addresses: PatientAddressFormValue[],
 ): PatientAddress[] {
   return addresses
-    .map(({ line, city, postalCode, country, text }) => {
+    .map(({ line, city, postalCode, country, text, ...rest }) => {
+      const address: PatientAddress = { ...rest };
       const lines = (line ?? '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
-      const address: PatientAddress = {};
       if (lines.length) address.line = lines;
-      if (city) address.city = city;
-      if (postalCode) address.postalCode = postalCode;
-      if (country) address.country = country;
-      if (text) address.text = text;
+      for (const [key, value] of Object.entries({ city, postalCode, country, text })) {
+        const trimmed = typeof value === 'string' ? value.trim() : '';
+        if (trimmed) address[key] = trimmed;
+      }
       return address;
     })
-    .filter((address) => Object.keys(address).length > 0);
+    .filter((address) => ADDRESS_CONTENT.some((key) => key in address));
 }
 
 export function formatPatientSaveError(error: unknown, fallback: string): string {
