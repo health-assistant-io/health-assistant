@@ -501,6 +501,7 @@ async def run_sync(
                 pass
 
     result: Optional[SyncResult] = None
+    observations_data: Any = None
     try:
         # ---- pull ----
         observations_data = await provider.pull_data(integration)
@@ -1232,6 +1233,7 @@ async def run_sync(
 
     except IntegrationAuthError as e:
         await db.rollback()
+        await db.refresh(integration)
         logger.warning("Auth error for %s: %s", integration.provider, e)
         await _debug("Auth Error", {"error": str(e), "source": source}, level="error")
         integration.status = IntegrationStatus.ERROR
@@ -1248,6 +1250,7 @@ async def run_sync(
 
     except IntegrationRateLimitError as e:
         await db.rollback()
+        await db.refresh(integration)
         logger.warning("Rate limit for %s: %s", integration.provider, e)
         await _debug(
             "Rate Limit Error", {"error": str(e), "source": source}, level="warning"
@@ -1274,6 +1277,7 @@ async def run_sync(
 
     except Exception as e:
         await db.rollback()
+        await db.refresh(integration)
         logger.error("Sync error for %s: %s", integration.provider, e, exc_info=True)
         await _debug("Sync Error", {"error": str(e), "source": source}, level="error")
         _write_failed_log(db, integration, started, str(e))

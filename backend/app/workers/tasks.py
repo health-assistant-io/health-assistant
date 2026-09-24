@@ -7,6 +7,7 @@ from uuid import UUID
 from typing import Optional, Tuple
 
 from sqlalchemy import select, delete, and_, update
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
@@ -348,6 +349,18 @@ async def sync_active_integrations(self):
             )
 
             for integration in active_integrations:
+                # ``run_sync`` rolls the session back when a sync fails, and a
+                # rollback expires every instance in the session, not just
+                # the one that failed. Reload through the async API before
+                # touching attributes; a lazy load here would raise
+                # MissingGreenlet and abort the rest of the cycle.
+                try:
+                    await db.refresh(integration)
+                except InvalidRequestError:
+                    continue  # deleted since the query above
+                if integration.status != IntegrationStatus.ACTIVE:
+                    continue  # disconnected/errored since the query above
+
                 start_time = datetime.datetime.now(datetime.timezone.utc)
 
                 # Rate-limit cooldown (item 1 of the integrations-sdk-
