@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Fix: manual "Sync Now" returned HTTP 500 when an integration's pull failed.** After rolling back, `run_sync` read attributes of the expired integration row, which triggered a synchronous lazy load and raised `MissingGreenlet`. The failure was never recorded: no failed sync-log entry, no `ERROR` status on auth errors, no rate-limit cooldown. The integration is now reloaded asynchronously after the rollback, so provider errors produce the intended failed result for both manual and background syncs.
+- **Fix: a failed integration sync returned HTTP 500 and aborted the background sync cycle.** When the sync pipeline raised, `run_sync` rolled back and then read attributes of the expired integration row, which triggered a synchronous lazy load and raised `MissingGreenlet`. The failure was never recorded: no failed sync-log entry, no `ERROR` status on auth errors, no rate-limit cooldown. Manual "Sync Now" returned 500, and the background task, which syncs all active integrations in one session, skipped every integration after the failing one because the rollback had expired them too. `run_sync` now reloads the integration after the rollback, and the background loop reloads each integration before using it.
 
 ## [v0.8.0] - 2026-09-20
 

@@ -144,3 +144,82 @@ async def test_pull_data_error_returns_failed_result(integration_id, exc, error_
         IntegrationStatus.ERROR if error_type == "auth" else IntegrationStatus.ACTIVE
     )
     assert fresh.status == expected_status
+
+
+@pytest.mark.asyncio
+async def test_worker_keeps_syncing_after_a_failed_integration():
+    """The beat task syncs every active integration in one session. A failed
+    sync's rollback expires all of them, so the loop must reload each one
+    instead of aborting the cycle on the next attribute access."""
+    from app.workers import tasks as worker_tasks
+
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    patient_id = uuid.uuid4()
+    integration_ids = [uuid.uuid4(), uuid.uuid4()]
+
+    async with AsyncSessionLocal() as db:
+        db.add(
+            TenantModel(
+                id=tenant_id,
+                name="Worker Sync Error T.",
+                slug=f"wsyncerr-{tenant_id.hex[:8]}",
+            )
+        )
+        await db.flush()
+        db.add(
+            UserModel(
+                id=user_id,
+                email=f"wsyncerr-{user_id.hex[:6]}@test.local",
+                tenant_id=tenant_id,
+                role="ADMIN",
+            )
+        )
+        await db.flush()
+        db.add(
+            Patient(
+                id=patient_id,
+                tenant_id=tenant_id,
+                name={"family": "Worker", "given": ["Error"]},
+                gender="UNKNOWN",
+            )
+        )
+        await db.flush()
+        for integration_id in integration_ids:
+            db.add(
+                UserIntegration(
+                    id=integration_id,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    patient_id=patient_id,
+                    provider="test_sync_error",
+                    status="ACTIVE",
+                    user_config={},
+                )
+            )
+        await db.commit()
+
+    with patch.object(
+        worker_tasks.integration_registry, "initialize", AsyncMock()
+    ), patch.object(
+        worker_tasks.integration_registry,
+        "get_provider",
+        lambda domain: _raising_provider(RuntimeError("boom")),
+    ), patch.object(svc, "post_sync_notifications", AsyncMock()):
+        await worker_tasks.sync_active_integrations.__wrapped__.__wrapped__(None)
+
+    async with AsyncSessionLocal() as db:
+        synced = (
+            (
+                await db.execute(
+                    select(IntegrationSyncLog.integration_id).where(
+                        IntegrationSyncLog.integration_id.in_(integration_ids),
+                        IntegrationSyncLog.status == "failed",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert sorted(synced) == sorted(integration_ids)
