@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: patient wizard and setup contacts saves sent `Address.line` as a string.** FHIR R4 requires this field to be a list of strings. Backend validation rejected the update, so edits did not persist; in create mode the initial patient record could exist even though saving its contacts failed. Both forms now convert newline-separated street input to a FHIR string list and restore stored lines in the input. Save failures also show backend validation details or an available error message.
+
 ## [v0.8.0] - 2026-09-20
 
 ### Added
