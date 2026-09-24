@@ -5,7 +5,7 @@
  * these against `pathname + search`.
  */
 export const SERVER_NAVIGATION_DENYLIST: RegExp[] = [
-  /^\/api\//,
+  /^\/api(?:\/|\?|$)/,
   /^\/health(?:\?|$)/,
   /^\/flower(?:\/|\?|$)/,
 ];

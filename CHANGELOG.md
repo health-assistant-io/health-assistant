@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Fix: OAuth integrations could not finish connecting while the service worker was active.** The service worker served the app shell for every page navigation, including the provider's redirect back to `/api/v1/integrations/<domain>/oauth/callback`, so the callback never reached the backend and the integration stayed pending. Navigations to server-owned paths (`/api/`, `/health`, `/flower/`) now go to the network.
+- **Fix: OAuth integrations could not finish connecting while the service worker was active.** The service worker served the app shell for every page navigation, including the provider's redirect back to `/api/v1/integrations/<domain>/oauth/callback`, so the callback never reached the backend and the integration stayed pending. Opening a document download link (`/api/v1/documents/<id>/download?token=…`) in a new tab showed the app instead of the file for the same reason. Navigations to server-owned paths (`/api`, `/health`, `/flower`) now go to the network. Existing installs pick up the fix once the updated service worker activates, i.e. after all app tabs and installed-app windows have been closed.
 
 ## [v0.8.0] - 2026-09-20
 

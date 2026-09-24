@@ -20,6 +20,8 @@ describe('service worker navigation fallback', () => {
     '/api/v1/integrations/fhir_server/oauth/callback?state=abc&code=xyz',
     '/api/v1/integrations/any_domain/oauth/callback',
     '/api/v1/users/me',
+    '/api/v1/documents/abc/download?token=xyz',
+    '/api',
     '/health',
     '/health?probe=1',
     '/flower/',
@@ -35,6 +37,8 @@ describe('service worker navigation fallback', () => {
     '/integrations/abc/details',
     '/healthcare',
     '/apis',
+    '/api-keys',
+    '/settings/api',
   ])('serves the SPA shell for %s', (path) => {
     expect(servesShell(path)).toBe(true);
   });
