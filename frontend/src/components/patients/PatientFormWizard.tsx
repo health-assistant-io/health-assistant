@@ -10,12 +10,17 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import type { Patient, PatientExtensions } from '../../types/patient';
 import type { ExtensionCatalog, ExtensionOption } from '../../types/setup';
 import { SetupField, SetupInput, SetupSelect } from '../setup/sections/_shared';
+import {
+  formatPatientSaveError,
+  patientAddresses,
+  toPatientAddressFormValues,
+  toPatientAddresses,
+  type PatientAddressFormValue,
+} from '../../utils/patientForm';
 
 const GENDERS = ['male', 'female', 'other', 'unknown'] as const;
 
-interface AddressRow {
-  line?: string; city?: string; postalCode?: string; country?: string; text?: string;
-}
+type AddressRow = PatientAddressFormValue;
 interface TelecomRow {
   system?: 'phone' | 'email' | 'sms' | 'other'; value?: string; use?: 'home' | 'work' | 'mobile' | 'temp';
 }
@@ -106,7 +111,7 @@ export const PatientFormWizard: React.FC<PatientFormWizardProps> = ({
         gender: (patient.gender ?? 'unknown').toLowerCase(),
         birthDate: patient.birth_date ?? '',
         mrn: patient.mrn ?? '',
-        addresses: toAddressRows(patient.address),
+        addresses: toPatientAddressFormValues(patientAddresses(patient)),
         telecom: toTelecomRows(patient.telecom),
         emergency: patient.emergency_contact ?? {},
         extensions: patient.extensions ?? {},
@@ -125,7 +130,7 @@ export const PatientFormWizard: React.FC<PatientFormWizardProps> = ({
     gender: draft.gender,
     birth_date: draft.birthDate || null,
     mrn: draft.mrn || null,
-    address: draft.addresses.filter((a) => a.line || a.city || a.postalCode || a.country || a.text) || null,
+    address: toPatientAddresses(draft.addresses),
     telecom: draft.telecom.filter((tc) => tc.value) || null,
     emergency_contact: (draft.emergency.name || draft.emergency.phone) ? draft.emergency : null,
     extensions: Object.keys(draft.extensions).length ? cleanExtensions(draft.extensions) : null,
@@ -163,8 +168,7 @@ export const PatientFormWizard: React.FC<PatientFormWizardProps> = ({
       }
       onClose();
     } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : t('common.error', 'Failed to save.'));
+      setError(formatPatientSaveError(err, t('common.error', 'Failed to save.')));
     } finally {
       setSaving(false);
     }
@@ -333,7 +337,7 @@ const ContactInfoStep: React.FC<{ draft: DraftState; patch: (p: Partial<DraftSta
         </div>
         {draft.addresses.map((a, i) => (
           <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2 p-3 rounded-xl bg-gray-50 dark:bg-dark-bg/50">
-            <SetupField label="Street"><SetupInput value={a.line ?? ''} onChange={(e) => patchAddr(i, 'line', e.target.value)} placeholder="123 Main St" /></SetupField>
+            <SetupField label="Street"><textarea value={a.line ?? ''} onChange={(e) => patchAddr(i, 'line', e.target.value)} placeholder="123 Main St" rows={2} className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2.5 text-sm dark:text-dark-text" /></SetupField>
             <SetupField label="City"><SetupInput value={a.city ?? ''} onChange={(e) => patchAddr(i, 'city', e.target.value)} /></SetupField>
             <SetupField label="Postal code"><SetupInput value={a.postalCode ?? ''} onChange={(e) => patchAddr(i, 'postalCode', e.target.value)} /></SetupField>
             <SetupField label="Country"><SetupInput value={a.country ?? ''} onChange={(e) => patchAddr(i, 'country', e.target.value)} /></SetupField>
@@ -422,11 +426,6 @@ const DemographicsStep: React.FC<{ draft: DraftState; patch: (p: Partial<DraftSt
 };
 
 // --- helpers ---
-function toAddressRows(raw: any): AddressRow[] {
-  if (!raw) return [{}];
-  const arr = Array.isArray(raw) ? raw : [raw];
-  return arr.length ? arr : [{}];
-}
 function toTelecomRows(raw: any): TelecomRow[] {
   if (!raw) return [{}];
   const arr = Array.isArray(raw) ? raw : [raw];

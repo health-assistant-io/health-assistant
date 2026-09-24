@@ -2,18 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { updatePatient } from '../../../services/patientService';
 import { SectionHeader, SetupField, SetupInput, SaveBar, type SectionProps } from './_shared';
+import {
+  formatPatientSaveError,
+  patientAddresses,
+  toPatientAddressFormValues,
+  toPatientAddresses,
+  type PatientAddressFormValue,
+} from '../../../utils/patientForm';
 
 /**
  * FHIR address line (0..*). Stored as a list on `Patient.address`.
  * Each row: line1, city, postalCode, country, text.
  */
-interface AddressRow {
-  line?: string;
-  city?: string;
-  postalCode?: string;
-  country?: string;
-  text?: string;
-}
+type AddressRow = PatientAddressFormValue;
 
 interface TelecomRow {
   system?: 'phone' | 'email' | 'sms' | 'other';
@@ -27,11 +28,6 @@ interface EmergencyContact {
   phone?: string;
 }
 
-function toAddressRows(raw: any): AddressRow[] {
-  if (!raw) return [{}];
-  const arr = Array.isArray(raw) ? raw : [raw];
-  return arr.length ? arr : [{}];
-}
 function toTelecomRows(raw: any): TelecomRow[] {
   if (!raw) return [{}];
   const arr = Array.isArray(raw) ? raw : [raw];
@@ -43,14 +39,15 @@ function toTelecomRows(raw: any): TelecomRow[] {
  * All are FHIR 0..* lists (repeatable). Bound to `PUT /patients/:id`.
  */
 export const ContactsSection: React.FC<SectionProps> = ({ patient, activeField, onSaved }) => {
-  const [addresses, setAddresses] = useState<AddressRow[]>(() => toAddressRows(patient.address));
+  const [addresses, setAddresses] = useState<AddressRow[]>(() => toPatientAddressFormValues(patientAddresses(patient)));
   const [telecom, setTelecom] = useState<TelecomRow[]>(() => toTelecomRows(patient.telecom));
   const [emergency, setEmergency] = useState<EmergencyContact>(() => patient.emergency_contact ?? {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setAddresses(toAddressRows(patient.address));
+    setAddresses(toPatientAddressFormValues(patientAddresses(patient)));
     setTelecom(toTelecomRows(patient.telecom));
     setEmergency(patient.emergency_contact ?? {});
   }, [patient.id, patient.address, patient.telecom, patient.emergency_contact]);
@@ -69,8 +66,9 @@ export const ContactsSection: React.FC<SectionProps> = ({ patient, activeField, 
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
+    setError(null);
     try {
-      const cleanAddresses = addresses.filter((a) => a.text || a.line || a.city || a.postalCode || a.country);
+      const cleanAddresses = toPatientAddresses(addresses);
       const cleanTelecom = telecom.filter((t) => t.value);
       await updatePatient(patient.id, {
         address: cleanAddresses.length ? cleanAddresses : null,
@@ -79,8 +77,9 @@ export const ContactsSection: React.FC<SectionProps> = ({ patient, activeField, 
       });
       setSaved(true);
       onSaved?.();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save contacts', err);
+      setError(formatPatientSaveError(err, 'Failed to save.'));
     } finally {
       setSaving(false);
     }
@@ -106,7 +105,7 @@ export const ContactsSection: React.FC<SectionProps> = ({ patient, activeField, 
           {addresses.map((a, i) => (
             <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-gray-50 dark:bg-dark-bg/50">
               <SetupField label="Street">
-                <SetupInput value={a.line ?? ''} onChange={(e) => patchAddress(i, 'line', e.target.value)} placeholder="123 Main St" />
+                <textarea value={a.line ?? ''} onChange={(e) => patchAddress(i, 'line', e.target.value)} placeholder="123 Main St" rows={2} className="w-full rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2.5 text-sm dark:text-dark-text" />
               </SetupField>
               <SetupField label="Full (one-line)">
                 <SetupInput value={a.text ?? ''} onChange={(e) => patchAddress(i, 'text', e.target.value)} placeholder="123 Main St, Athens, 10000, GR" />
@@ -207,6 +206,12 @@ export const ContactsSection: React.FC<SectionProps> = ({ patient, activeField, 
           </SetupField>
         </div>
       </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 text-red-600 dark:text-red-400 text-sm rounded-xl">
+          {error}
+        </div>
+      )}
 
       <SaveBar onSave={handleSave} saving={saving} saved={saved} />
     </section>

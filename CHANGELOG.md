@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fix: patient wizard and setup contacts saves failed or lost data.** Both forms sent `Address.line` as a string; FHIR R4 requires a list of strings, so the write-time FHIR validation rejected the update with HTTP 400 and nothing in the edit was saved (in create mode the patient record was already created by then). Both forms now convert newline-separated street input to a string list, trim the other address fields, and keep address elements they do not edit (`use`, `state`, `period`, ...). The emergency contact was never stored at all: the patient create/update service ignored `emergency_contact`, so it is now persisted. The setup contacts section now shows save errors instead of only logging them.
+
 ## [v0.8.0] - 2026-09-20
 
 ### Added
