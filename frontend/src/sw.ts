@@ -1,15 +1,21 @@
 /// <reference lib="webworker" />
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
+import { SERVER_NAVIGATION_DENYLIST } from './swNavigation';
 
 declare const self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Offline navigation fallback: serve the precached SPA shell for every
-// navigation (dev is excluded — the dev server owns routing/HMR).
+// navigation except server-owned paths (dev is excluded — the dev server
+// owns routing/HMR).
 if (import.meta.env.PROD) {
-  registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html')));
+  registerRoute(
+    new NavigationRoute(createHandlerBoundToURL('/index.html'), {
+      denylist: SERVER_NAVIGATION_DENYLIST,
+    }),
+  );
 }
 
 self.addEventListener('push', (event) => {
