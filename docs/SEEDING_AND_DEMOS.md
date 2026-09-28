@@ -276,20 +276,28 @@ images are out of scope for the seed ZIP (managed via the Atlas Editor).
 
 See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
 
-## 8. Demo Mode (`DEMO_MODE`)
+## 8. Demo Mode (`HA_DEMO_MODE`)
 
-Demo mode is a single env flag that turns a Health Assistant instance into a
+Demo mode turns a Health Assistant instance into a
 self-contained public demo: visitors are signed in automatically (no login
 form), the data is synthetic, and a pinned banner makes the demo state
 visible on every page. It is orthogonal to `APP_ENV` — the live demo stack
-runs `APP_ENV=production` + `DEMO_MODE=true`.
+runs `APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
+`DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production gate
+requires).
+
+`demo_mode` is an **instance fact** (identity-auth §4/§13): `HA_DEMO_MODE`
+is consumed **only when initializing an empty database** and then lives in
+`instance_settings.demo_mode`. Post-init env flips are ignored with a loud
+warning — the DB value stays authoritative — and unknown/missing values
+fail closed to `demo_mode=false`.
 
 ### Enabling it
 
-Set `DEMO_MODE=true` in `.env`:
+Set `HA_DEMO_MODE=true` (on an empty DB) in `.env`:
 
 ```bash
-DEMO_MODE=true
+HA_DEMO_MODE=true
 DEMO_USER_EMAIL=demo@healthassistant.local
 DEMO_USER_PASSWORD=Demo1234!
 ```
@@ -299,10 +307,10 @@ DEMO_USER_PASSWORD=Demo1234!
 capture tooling in §3). A loud warning is logged on every boot while demo
 mode is on.
 
-> **Never enable `DEMO_MODE` on an instance that holds real health data.**
+> **Never enable `HA_DEMO_MODE` on an instance that holds real health data.**
 >
 > **Fail-closed gate (audit 2026-08 CFG-H6):** with `APP_ENV` set to anything
-> other than `development`/`test`, `DEMO_MODE=true` **refuses to boot** unless
+> other than `development`/`test`, `HA_DEMO_MODE=true` **refuses to boot** unless
 > you also set `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` explicitly. A single
 > flipped env var can no longer silently open a real instance.
 > It bypasses authentication entirely — anyone who reaches the app is
@@ -310,16 +318,44 @@ mode is on.
 
 ### What happens on boot
 
-When `DEMO_MODE` is on, the backend lifespan runs `scripts/seed_demo.py`
-(idempotent — §1-4) after the normal catalog seed pipeline, creating or
-reconciling the demo tenant, admin user, three patients, and clinical data.
+When the DB fact `demo_mode` is true, the backend lifespan runs
+`scripts/seed_demo.py` (idempotent — §1-4) after the normal catalog seed
+pipeline, creating or reconciling the demo tenant, admin user, three
+patients, and clinical data. The seeder itself carries §13 guard rails and
+**refuses any other target** — loudly, exit code 2:
+
+| Guard rail | Refuses when | Note |
+|---|---|---|
+| target name | the PostgreSQL database is not named `*_demo` | refused before the DB is touched; health has no SQLite/demo-dir flavor |
+| instance flag | `instance_settings.demo_mode` is not `true` | unreadable facts (unmigrated schema) refuse too — fail-closed |
+| `--init-demo` | the demo database is not **empty** | the flag may only initialize a fresh, migrated `*_demo` DB |
+
+So the demo dataset only ever lands on `neuro_health_demo`-style targets.
+A `--reset` flag is deliberately absent: demo resets are volume-level —
+the demo tree's `reset-demo.sh` wipes the DB volume and the stack re-seeds
+on boot.
+
+> **Local screenshot captures** must therefore point the stack at a
+> `*_demo`-named database with `HA_DEMO_MODE=true` set on first boot (a
+> scratch `health_capture_demo` works), or reuse the demo compose. Seeding
+> a plain dev database (`health_assistant`) is refused by design.
 
 ### Credential-free login
 
 `POST /auth/demo-login` mints access + refresh tokens for the demo user
-**with no credentials**. It returns 404 when `DEMO_MODE` is off, so the
-route is inert on normal instances. The tokens carry a `demo: true` JWT
-claim that survives `/auth/refresh`.
+**with no credentials**. It returns 404 when the DB fact `demo_mode` is
+off, so the route is inert on normal instances (a probe is audited as a
+denied `auth.demo_login` event). The tokens carry the contract claim
+`auth_mode: "demo"`.
+
+**Every verifier rejects `demo` tokens while `demo_mode=false`**
+(identity-auth §13/§18.11): HTTP dependencies, the WebSocket handshake,
+the presigned-preview Bearer path, and — as of plan 16 H7 — the refresh
+path, which re-checks the live instance fact on **every rotation**. A
+demo sign-in minted on a demo instance dies with the instance's
+`demo_mode`; no env flip can extend it. Symmetrically, the demo principal
+can never mint tenant-switch tokens (`POST /admin/tenants/{id}/switch`
+refuses it with 403).
 
 The frontend detects demo mode via `GET /auth/setup-status` (which reports
 `demo_mode: true`) and auto-calls `/auth/demo-login` on the login page —
@@ -328,8 +364,8 @@ the login form is never shown.
 ### Demo banner
 
 A pinned banner above the header ("Demo mode — data is synthetic…") appears
-on every authenticated page, driven by the `demo` claim in the JWT. An
-"Exit demo" link on the right opens the main product site.
+on every authenticated page, driven by the `auth_mode: "demo"` claim in
+the JWT. An "Exit demo" link on the right opens the main product site.
 
 ### Session persistence across resets
 
@@ -341,6 +377,6 @@ JWTs keep referencing valid entities.
 
 If a session does go stale (transition period, or the access token expired
 past 24h), the frontend auto-recovers: `getCurrentUser()` fails → the app
-detects the `demo` claim → auto-logout → the login page auto-calls
+detects the `auth_mode: "demo"` claim → auto-logout → the login page auto-calls
 `demo-login` → fresh token. The visitor never has to click anything.
 

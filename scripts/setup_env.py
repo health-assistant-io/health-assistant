@@ -2,10 +2,10 @@
 """Interactive environment-setup wizard for Health Assistant.
 
 Copies ``.env.example`` to ``.env`` and writes auto-generated secure
-values into it: ``SECRET_KEY``, ``INTEGRATION_SECRET_KEY`` (Fernet),
-``POSTGRES_PASSWORD``, ``FLOWER_PASSWORD``, a VAPID P-256 key pair
-for Web Push, and (in Quick Start / Full Setup mode)
-``VAPID_ADMIN_EMAIL`` plus the first-run ``SETUP_TOKEN_MODE`` (+
+values into it: the §8 key family (``HA_SESSION_KEY``, ``HA_REFRESH_KEY``,
+``HA_DATA_KEY`` — Fernet), ``POSTGRES_PASSWORD``, ``FLOWER_PASSWORD``,
+a VAPID P-256 key pair for Web Push, and (in Quick Start / Full Setup
+mode) ``VAPID_ADMIN_EMAIL`` plus the first-run ``SETUP_TOKEN_MODE`` (+
 ``SETUP_BOOTSTRAP_TOKEN`` when ``env`` mode).
 
 Usage:
@@ -192,7 +192,7 @@ def _run_quick_start(config):
 
     Host-based first-run setup-token choice: localhost → ``log`` (localhost
     skips the token anyway); any other host → ``env`` with a generated
-    bootstrap token and a printed one-click wizard URL. Writes ``DEMO_MODE``
+    bootstrap token and a printed one-click wizard URL. Writes ``HA_DEMO_MODE``
     off and never writes the demo/dev-tooling credentials.
     """
     print("\n--- Quick Start (recommended) ---")
@@ -208,9 +208,9 @@ def _run_quick_start(config):
     config["APP_ENV"] = "production"
     config["DEBUG"] = "false"
     config["VAPID_ADMIN_EMAIL"] = _derive_email_default(config["APP_URL"])
-    config["TRUSTED_PROXY_COUNT"] = "1"
+    config["HA_TRUSTED_PROXY_COUNT"] = "1"
     config["CELERY_WORKER_CONCURRENCY"] = "2"
-    config["DEMO_MODE"] = "false"
+    config["HA_DEMO_MODE"] = "false"
 
     if _is_localhost_host(config["APP_URL"]):
         config["SETUP_TOKEN_MODE"] = "log"
@@ -335,15 +335,17 @@ if not os.path.exists(".env.example"):
     print("Please run this script from the root of the repository.")
     sys.exit(1)
 
-# Generate secure keys (always done)
-secret_key = secrets.token_urlsafe(48)
+# Generate secure keys (always done) — the §8 per-purpose key family
+# (plan 16 H4): two independent signing secrets + the Fernet at-rest key.
+ha_session_key = secrets.token_urlsafe(48)
+ha_refresh_key = secrets.token_urlsafe(48)
 postgres_password = secrets.token_urlsafe(24)
 flower_password = secrets.token_urlsafe(24)
 redis_password = secrets.token_urlsafe(24)
 
 # Generate a valid Fernet key (32 bytes, base64url encoded)
 fernet_key_bytes = os.urandom(32)
-integration_secret_key = base64.urlsafe_b64encode(fernet_key_bytes).decode('utf-8')
+ha_data_key = base64.urlsafe_b64encode(fernet_key_bytes).decode('utf-8')
 
 # Generate a VAPID P-256 key pair for Web Push (browser notifications).
 # Required in production — the app refuses to boot without these when
@@ -363,11 +365,12 @@ setup_mode = _PRESET_MODE or prompt("\nSelect setup mode", default="1", options=
 # Default configs — just the keys. Quick Start / Full Setup add the rest;
 # Keys Only keeps everything else at the .env.example defaults.
 config = {
-    "SECRET_KEY": secret_key,
+    "HA_SESSION_KEY": ha_session_key,
+    "HA_REFRESH_KEY": ha_refresh_key,
     "POSTGRES_PASSWORD": postgres_password,
     "FLOWER_PASSWORD": flower_password,
     "REDIS_PASSWORD": redis_password,
-    "INTEGRATION_SECRET_KEY": integration_secret_key,
+    "HA_DATA_KEY": ha_data_key,
     "VAPID_PUBLIC_KEY": vapid_public_key,
     "VAPID_PRIVATE_KEY": vapid_private_key,
 }
@@ -406,7 +409,7 @@ try:
                 stripped = line.strip()
                 if stripped.startswith((f"# {key}=", f"#{key}=")):
                     # Only uncomment a real assignment, not a prose comment
-                    # like "# APP_ENV=production + DEMO_MODE=true)." — real
+                    # like "# APP_ENV=production + HA_DEMO_MODE=true)." — real
                     # values are single tokens (no whitespace).
                     if " " not in stripped.split("=", 1)[1]:
                         env_file.write(f"{key}={val}\n")
@@ -420,13 +423,13 @@ try:
                 else:
                     env_file.write(line)
 
-    # Audit 2026-08 CFG-L3: the .env holds SECRET_KEY / DB / Fernet / VAPID
+    # Audit 2026-08 CFG-L3: the .env holds the key family / DB / VAPID
     # secrets — restrict to owner-only permissions.
     os.chmod(".env", 0o600)
     print("\n✅ Environment configured successfully! (permissions set to 600)")
     print("✨ Secure keys have been automatically generated for:")
-    print("   - SECRET_KEY")
-    print("   - INTEGRATION_SECRET_KEY")
+    print("   - HA_SESSION_KEY / HA_REFRESH_KEY (JWT signing, §8 key separation)")
+    print("   - HA_DATA_KEY (Fernet at-rest encryption)")
     print("   - VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (Web Push)")
     print("   - POSTGRES_PASSWORD")
     print("   - FLOWER_PASSWORD")

@@ -27,7 +27,7 @@ async def _seed_tenant_user_doc(session) -> tuple:
     user = UserModel(
         id=uuid.uuid4(),
         email=f"b2-{uuid.uuid4().hex[:8]}@test.local",
-        hashed_password="x",
+        password_hash="x",
         role=Role.USER,
         tenant_id=tenant.id,
         is_active=True,

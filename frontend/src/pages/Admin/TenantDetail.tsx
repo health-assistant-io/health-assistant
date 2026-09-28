@@ -27,7 +27,6 @@ function TenantDetail() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const showConfirmation = useUIStore((s) => s.showConfirmation);
-  const login = useAuthStore((s) => s.login);
   const updateUser = useAuthStore((s) => s.updateUser);
   const clearPatientContext = usePatientStore((s) => s.clearPatientContext);
 
@@ -71,7 +70,9 @@ function TenantDetail() {
     if (!detail) return;
     setSwitching(true);
     try {
-      await performTenantSwitch(detail.id, (access, refresh) => login(access, refresh));
+      // §10: the backend re-stamps the cookie triple with the scoped
+      // session — no tokens are handled client-side.
+      await performTenantSwitch(detail.id);
       // Reflect the scoped tenant_id on the user object so downstream
       // patient-context fetchers and the Header pick up the new tenant.
       updateUser({ tenant_id: detail.id } as any);

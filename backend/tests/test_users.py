@@ -1,9 +1,11 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from unittest.mock import patch
 from app.models.enums import Role
-from app.models.user_model import UserModel
 import uuid
+
+from ._auth_helpers import create_user
 
 
 # Helper to mock the dependency
@@ -52,15 +54,12 @@ def override_get_switched_admin():
     tok.switched = True
     return tok
 
-@pytest.fixture
-def mock_target_user():
-    return UserModel(
-        id=uuid.uuid4(),
-        email="target@example.com",
-        role=Role.USER,
-        tenant_id=uuid.uuid4(),
-        is_active=True,
-        settings={},
+@pytest_asyncio.fixture
+async def mock_target_user():
+    # Real, committed row — responses are serialized through the
+    # PublicUser contract (full_name must be a string, not None).
+    return await create_user(
+        email="target@example.com", role=Role.USER, full_name=""
     )
 
 
@@ -91,24 +90,27 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
     or the query returns 404."""
     from app.main import app
     from app.core.security import get_current_user
+    from ._auth_helpers import create_tenant
 
     switched_admin = override_get_switched_admin()
+    # The original tenant must be a real row (users.tenant_id FK).
+    switched_admin.original_tenant_id = await create_tenant()
     app.dependency_overrides[get_current_user] = lambda: switched_admin
 
-    admin_user = UserModel(
-        id=switched_admin.user_id,
+    # A real admin row living in the ORIGINAL tenant (full_name must be a
+    # string for the PublicUser contract serialization).
+    admin_user = await create_user(
         email="sysadmin@example.com",
         role=Role.SYSTEM_ADMIN,
         tenant_id=switched_admin.original_tenant_id,
-        is_active=True,
-        settings={},
+        full_name="",
     )
     mock_get_user_by_id.return_value = admin_user
 
     response = await async_client.get("/api/v1/users/me")
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "sysadmin@example.com"
+    assert data["email"] == admin_user.email
 
     # Verify the lookup used original_tenant_id, NOT the scoped tenant_id
     call_args = mock_get_user_by_id.call_args
@@ -123,6 +125,7 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.users.get_user_by_id")
+@pytest.mark.contract  # §18.7 — non-admin on user management ⇒ 403
 async def test_get_user_forbidden(
     mock_get_user_by_id, async_client: AsyncClient, mock_target_user
 ):
@@ -153,20 +156,25 @@ async def test_get_user_admin_allowed(
     response = await async_client.get(f"/api/v1/users/{mock_target_user.id}")
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "target@example.com"
+    assert data["email"] == mock_target_user.email
 
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.endpoints.users.get_user_by_id")
 @patch("app.api.v1.endpoints.users.update_user")
 async def test_update_user_admin(
-    mock_update_user, async_client: AsyncClient, mock_target_user
+    mock_update_user, mock_get_user_by_id, async_client: AsyncClient, mock_target_user
 ):
     from app.main import app
     from app.core.security import get_current_user
 
     app.dependency_overrides[get_current_user] = override_get_admin_user
+
+    # H2: the endpoint snapshots the pre-update row (for the §17 audit
+    # diff) before mutating — both lookups are mocked here.
+    mock_get_user_by_id.return_value = mock_target_user
 
     # Mocks the updated user response
     mock_target_user.email = "updated@example.com"
@@ -205,6 +213,7 @@ async def test_delete_user_admin(
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.7 — non-admin on user management ⇒ 403
 async def test_delete_user_forbidden(async_client: AsyncClient, mock_target_user):
     from app.main import app
     from app.core.security import get_current_user

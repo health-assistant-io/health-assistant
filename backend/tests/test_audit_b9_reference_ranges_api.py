@@ -12,7 +12,7 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.tenant_model import TenantModel
 
@@ -30,16 +30,15 @@ async def _make_biomarker(*, tenant_id=None, slug=None) -> str:
         return str(bio.id)
 
 
-def _user_headers(tenant_id, role="USER") -> dict:
-    token = create_access_token(
+async def _user_headers(tenant_id, role="USER") -> dict:
+    tok_headers = await headers_for_claims(
         {
-            "sub": f"{role.lower()}@test.local",
-            "user_id": str(uuid.uuid4()),
+        "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
     )
-    return {"Authorization": f"Bearer {token}"}
+    return tok_headers
 
 
 @pytest.mark.asyncio
@@ -159,7 +158,7 @@ async def test_user_cannot_manage_system_scope_ranges(async_client, system_admin
         await db.commit()
         user_tenant = tenant.id
 
-    user = _user_headers(user_tenant, role="USER")
+    user = await _user_headers(user_tenant, role="USER")
 
     # Read is allowed (system rows are visible).
     read = await async_client.get(

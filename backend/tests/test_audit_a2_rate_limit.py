@@ -46,7 +46,7 @@ class TestClientIP:
         from unittest.mock import MagicMock
 
         monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=0)
+            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=0)
         )
         req = FakeRequest(ip="10.0.0.9", forwarded="203.0.113.5, 10.0.0.1")
         assert rl_mod._client_ip(req) == "10.0.0.9"
@@ -57,7 +57,7 @@ class TestClientIP:
         from unittest.mock import MagicMock
 
         monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=1)
+            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1)
         )
         req = FakeRequest(ip="10.0.0.1", forwarded="203.0.113.5, 10.0.0.1")
         assert rl_mod._client_ip(req) == "10.0.0.1"
@@ -66,7 +66,7 @@ class TestClientIP:
         from unittest.mock import MagicMock
 
         monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(TRUSTED_PROXY_COUNT=1)
+            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1)
         )
         assert rl_mod._client_ip(FakeRequest(ip="10.0.0.9")) == "10.0.0.9"
 

@@ -1,7 +1,7 @@
 """FHIR R4B Provenance resource model.
 
 Audit item C10: Provenance records who/when/why for every create/update/
-delete on a clinical resource. Unlike the internal ``audit_logs`` table,
+delete on a clinical resource. Unlike the internal ``audit_events`` table,
 Provenance is a FHIR resource that travels with the data on export.
 
 Spec: https://hl7.org/fhir/R4/provenance.html

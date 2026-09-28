@@ -296,8 +296,13 @@ jobs:
             # Application
             APP_ENV=production
             DEBUG=false
-            SECRET_KEY=${{ secrets.SECRET_KEY }}
-            INTEGRATION_SECRET_KEY=${{ secrets.INTEGRATION_SECRET_KEY }}
+            # Per-purpose key family (identity-auth §8, plan 16 H4). The
+            # single all-purpose SECRET_KEY is retired from all signing.
+            HA_SESSION_KEY=${{ secrets.HA_SESSION_KEY }}
+            HA_REFRESH_KEY=${{ secrets.HA_REFRESH_KEY }}
+            # Fernet at-rest key (legacy secret name still feeds it).
+            HA_DATA_KEY=${{ secrets.HA_DATA_KEY || secrets.INTEGRATION_SECRET_KEY }}
+            HA_DATA_KEY_PREVIOUS=${{ secrets.HA_DATA_KEY_PREVIOUS }}
             # Default 1h since the 2026-08 security audit (was 24h).
             JWT_EXPIRATION_HOURS=${{ secrets.JWT_EXPIRATION_HOURS || '1' }}
             # Reverse-proxy chain depth for rate-limit identity (audit 2026-08

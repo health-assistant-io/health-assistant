@@ -1,5 +1,16 @@
-import api from '../api/axios';
+import api, { csrfToken } from '../api/axios';
 import { TaskInfo } from '../types/ai';
+
+
+/**
+ * §10 (plan 16 H3): raw-fetch auth init — the HttpOnly cookie session rides
+ * `credentials: 'include'`, and non-safe requests echo the readable
+ * `nx_csrf` cookie (double submit). No Authorization header from storage.
+ */
+function sessionFetchHeaders(): Record<string, string> {
+  const csrf = csrfToken();
+  return csrf ? { 'X-CSRF-Token': csrf } : {};
+}
 
 export interface AIAssistanceRequest {
   task_type: 'fill_biomarker_form' | 'fill_medication_form' | 'define_biomarker' | 'define_medication' | 'define_anatomy_graph' | 'chat' | 'magic_fill_examination' | 'suggest_category_icon' | 'generate_category_icon';
@@ -95,15 +106,15 @@ export const resumeHitlSession = async (
   onComplete: () => void,
   onError: (error: any) => void
 ) => {
-  const token = localStorage.getItem('accessToken');
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
     const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume?flow_events=true`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        ...sessionFetchHeaders(),
       },
       body: JSON.stringify(params && params.messageId ? { message_id: params.messageId } : {})
     });
@@ -237,15 +248,15 @@ export const streamAIAssistance = async (
   onComplete: () => void,
   onError: (error: any) => void
 ) => {
-  const token = localStorage.getItem('accessToken');
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
     const response = await fetch(`${API_BASE_URL}/ai-assistance/stream?flow_events=true`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        ...sessionFetchHeaders(),
       },
       body: JSON.stringify(request)
     });
@@ -394,16 +405,16 @@ export const transcribeAudio = async (
   blob: Blob,
   filename: string = 'recording.webm',
 ): Promise<TranscriptionResult> => {
-  const token = localStorage.getItem('accessToken');
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
   const form = new FormData();
   form.append('file', blob, filename);
 
   const response = await fetch(`${API_BASE_URL}/ai-assistance/transcribe`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       // Do NOT set Content-Type — the browser sets the multipart boundary.
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...sessionFetchHeaders(),
     },
     body: form,
   });

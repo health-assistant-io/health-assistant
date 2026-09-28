@@ -12,7 +12,8 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from app.services.user_service import get_user_by_id
+from tests._auth_helpers import auth_headers
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import HitlTaskStatus, Role
 from app.models.fhir.medication import MedicationCatalog
@@ -76,15 +77,11 @@ async def owner_headers_and_integration():
         )
         await db.commit()
 
-    token = create_access_token(
-        {
-            "sub": f"hitl-api-{user_id.hex[:6]}@test.local",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": "ADMIN",
-        }
-    )
-    return {"Authorization": f"Bearer {token}"}, tenant_id, user_id, integration_id
+    from app.services.user_service import get_user_by_id
+
+    user_row = await get_user_by_id(user_id)
+    headers = await auth_headers(user_row)
+    return headers, tenant_id, user_id, integration_id
 
 
 @pytest_asyncio.fixture
@@ -108,15 +105,10 @@ async def other_user_headers(owner_headers_and_integration):
             )
         )
         await db.commit()
-    token = create_access_token(
-        {
-            "sub": f"other-{user_id.hex[:6]}@test.local",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": "ADMIN",
-        }
-    )
-    return {"Authorization": f"Bearer {token}"}
+    from app.services.user_service import get_user_by_id
+
+    user_row = await get_user_by_id(user_id)
+    return await auth_headers(user_row)
 
 
 async def _seed_proposal(integration_id, tenant_id, user_id, spec=None):
@@ -444,15 +436,10 @@ async def test_resolve_user_role_forbidden(
     )
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
-    user_token = create_access_token(
-        {
-            "sub": "user-role@test.local",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": Role.USER.value,
-        }
+    user_token_headers = await auth_headers(
+        await get_user_by_id(user_id), extra_claims={"role": Role.USER.value}
     )
-    user_headers = {"Authorization": f"Bearer {user_token}"}
+    user_headers = user_token_headers
 
     resp = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",

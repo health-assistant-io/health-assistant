@@ -12,6 +12,256 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **SECURITY.md — §20 threat model filled (plan 16 H8):** all
+  nine surfaces answered concretely (auth surface with rate-limit
+  numbers, DB-authoritative instance state, §10 cookie/CSRF/revocation
+  semantics, trust boundaries incl. the codified machine/device class —
+  the integrations HMAC bridge with its one-patient blast radius —
+  multi-tenant isolation with hidden-404, per-purpose key families,
+  the audit_events coverage map, admin blast radius, deployment
+  exposure incl. the demo stack); an 11-item known-gaps section records
+  what the code does not do (init-only instance modes, per-endpoint
+  auth without a route-scan guard, list-reads unaudited, no self-serve
+  password change/reset, bridge doc drift on 'UUID-only' mode).
+- **TOTP two-factor authentication (family plan 16 H5, identity-auth
+  §5.14/§20 kit extension, implemented health-direct per §5.10):**
+  optional per-account MFA, admin-forceable (promoted for institute
+  use). RFC 6238 TOTP (SHA1, 6 digits, 30 s step, ±1 drift window) with
+  the standard `otpauth://` provisioning URI + QR rendered in the
+  frontend (`qrcode.react`); 20-byte base32 secrets stored **encrypted
+  at rest under the `HA_DATA_KEY` family** (`app/core/totp.py`,
+  `app/services/mfa_service.py` — Fernet `enc::` ciphertext, never
+  plaintext); 8 single-use recovery codes bcrypt-hashed like passwords
+  and shown exactly once at enrollment (consumption removes just the
+  spent hash). New `users` columns (migration `h5m2f3a4t6o7`, no table
+  rename): `mfa_secret_enc`, `mfa_recovery_codes` (JSON hash array),
+  `mfa_pending` (JSONB in-flight enrollment), `mfa_enforced`. Login
+  with a password on an MFA account answers **401**
+  `{"detail": "mfa_required", "mfa_token", "enrollment_needed"}` — a
+  new `mfa_challenge` JWT kind (session key family, mutually exclusive
+  with session tokens, 5-min TTL, single-use via the token store) —
+  and `POST /auth/mfa/verify` (`{mfa_token, code}` — TOTP or recovery
+  code) issues the normal session (§10 cookie triple + body tokens).
+  **Failed MFA codes count toward the §7 lockout** (same counter as
+  wrong passwords; resets on password success and challenge success —
+  documented decision). Admin force: `PATCH /admin/tenants/{tid}/
+  users/{uid}/mfa` `{enforced}` (ADMIN in own tenant / SYSTEM_ADMIN;
+  audited as `user.mfa_enforce`) — the member's next login demands
+  enrollment (`enrollment_needed: true` + challenge-token-gated
+  `POST /auth/mfa/enroll` provisioning; verify confirms + signs in in
+  one step). Self-service under `/me` (matching the `/me/sessions`
+  neighbor): `GET /me/mfa`, `POST /me/mfa/enroll|confirm`,
+  `DELETE /me/mfa` (password-confirmed; 403 while enforced). Frontend:
+  login page MFA step (incl. forced-enrollment QR + recovery codes),
+  Settings → Security MFA card, admin Users "Require MFA" row action;
+  the axios interceptor special-cases `auth/mfa` 401s (never triggers
+  the refresh-retry loop). MFA gates **login only** — live sessions
+  and §9 Bearer clients (Android, OAuth facade) are unaffected; the
+  bridge is untouched. `/auth/mfa/*` joins the CSRF-exempt bootstrap
+  prefixes (pre-session, like login).
+- **Demo hygiene: full §13 verifier sweep + seeder guard rails (family
+  plan 16 H7, identity-auth §13 — closes the S-7 residual):** every
+  session-class surface now rejects `auth_mode="demo"` tokens unless the
+  live DB fact `instance_settings.demo_mode` is true. `POST /auth/refresh`
+  re-checks the fact on **every rotation** — a demo refresh family minted
+  on a demo instance dies with the instance's `demo_mode` (the stamp
+  still travels with the family, but cannot extend it); the denial writes
+  an `auth.refresh` audit row (`outcome=denied`, reason
+  `demo_refresh_on_non_demo_instance`). Tenant-switch minting refuses the
+  demo principal outright (`POST /admin/tenants/{id}/switch` and
+  `/admin/tenants/exit-switch` → 403 — the credential-free session never
+  mints cross-tenant scoped tokens). `POST /auth/demo-login` on a
+  non-demo instance still 404s but now also writes a denied
+  `auth.demo_login` audit row (reason `demo_mode_off`). The HTTP deps,
+  WebSocket handshake and presigned-preview Bearer path were already
+  gated via `authenticate_session_token` (H1) — H7 adds regression
+  tests for each (§18.11-style), plus env-flip immunity and fail-closed
+  unset-state tests for `demo_mode`.
+- **Demo seeder §13 refusal matrix (plan 16 H7):** `scripts/seed_demo.py`
+  now refuses — loudly, exit code 2, before writing anything — any target
+  that is not a provable demo: a PostgreSQL database not named `*_demo`
+  (deployment.md: `neuro_health_demo`), an instance whose
+  `instance_settings.demo_mode` is not `true` (unreadable/unmigrated
+  facts refuse too, fail-closed §4.1), and `--init-demo` on a non-empty
+  database (the flag may only initialize a fresh, migrated, empty
+  `*_demo` DB). New CLI: `--database-url`, `--init-demo`; `--reset` is
+  deliberately absent (demo resets stay volume-level via the demo tree's
+  `reset-demo.sh`). The boot-time auto-seed in `main.py` runs through the
+  same guards (production aborts on refusal, dev warns). Deterministic
+  UUIDs and the seeding payload are unchanged. **Workflow note:** local
+  UI-capture stacks must now point at a `*_demo`-named database with
+  `HA_DEMO_MODE=true` set on first boot (e.g. a scratch
+  `health_capture_demo`), or reuse the demo compose — seeding a plain
+  dev database is refused by design (docs/SEEDING_AND_DEMOS.md §8).
+- **Cookie sessions for browsers + CSRF + WS Origin gate (family plan 16
+  H3, identity-auth §10):** browsers now authenticate with the §10 cookie
+  triple — `nx_access` (HttpOnly, SameSite=Lax, Secure, Path=/`;
+  `__Host-nx_access` when `HA_COOKIE_SECURE=true`), `nx_refresh`
+  (HttpOnly, Path=/api/v1/auth) and the JS-readable `nx_csrf` — set by
+  login / setup / demo-login / refresh (and the tenant switch /
+  exit-switch endpoints, which mint the browser's active credential);
+  logout / logout-all clear the triple. Non-GET `/api/*` requests that
+  carry session cookies must echo `nx_csrf` in `X-CSRF-Token`
+  (double-submit; 403 on missing/mismatch) via a new pure-ASGI
+  `CsrfMiddleware` (`app/core/cookies.py`, kit-style); requests with an
+  `Authorization` header and the auth bootstrap endpoints
+  (login/refresh/register/setup/demo-login + health/docs) are exempt.
+  `get_token` accepts cookie **or** Bearer (cookie first); refresh +
+  logout accept the refresh token from the `nx_refresh` cookie when the
+  body omits it (§9 clients keep the body); rotation re-stamps the
+  cookies. WebSocket handshakes authenticate from the `nx_access` cookie
+  (the `["bearer", token]` subprotocol channel stays for §9 clients) and
+  verify `Origin` against `HA_WS_ALLOWED_ORIGINS` (default same-origin +
+  APP_URL/FRONTEND_URL + the dev LAN regex), rejecting unauthorized
+  handshakes with 1008. **The JSON bodies still carry the tokens this
+  pass** (the Android app / user clients consume them; browser
+  body-token retirement is a frontend concern) and the §9
+  Android/integrations HMAC bridge is behaviorally frozen — untouched.
+  New knobs: `HA_COOKIE_SECURE` (default false), `HA_COOKIE_SAMESITE`
+  (default lax), `HA_WS_ALLOWED_ORIGINS`.
+- **Frontend off localStorage tokens (plan 16 H3):** the SPA no longer
+  stores `accessToken` / `refreshToken` / tenant-switch originals in
+  localStorage (a boot-time purge sweeps legacy keys) — the axios client
+  rides the cookie session (`withCredentials`), echoes `nx_csrf` on
+  non-GET requests, refreshes via the cookie path on 401 (single-flight)
+  and ignores body tokens; the auth store keeps server-verified claims
+  from `GET /auth/validate` (additively extended with tenant / role /
+  auth_mode / switched since the HttpOnly JWT is no longer decodable);
+  the notification WebSocket connects cookie-authenticated (no
+  subprotocol token); logout now calls `POST /auth/logout` so the
+  HttpOnly cookies are actually revoked; the demo auto-login flow is
+  cookie-based.
+- **Ops hardening (family plan 16 H6, deployment.md):** compose stacks
+  move to `timescale/timescaledb:latest-pg16` (TimescaleDB 2.30.1
+  verified on-image; the extension is optional via init-db.sql) with
+  the naming law (`neuro_health` default DB, `neuro_health_test`
+  dev-db, `neuro_health_demo` demo), the `neuro_health_owner`
+  (migrations) + `neuro_health_app` (runtime, DML-only) role split
+  (live-verified), a `backup` pg_dump sidecar (`--profile backup`) in
+  standalone + prod, Flower basic-auth on every flavor, host-side
+  `scripts/backup.sh`/`restore.sh`, and a live-run restore drill +
+  sizing/exposure guidance in docker/README.md.
+- **Audit stream (family plan 16 H2, identity-auth §17 — the
+  small-institute must be able to answer "who touched what"):** the
+  audit trail now records **record reads** (sensitive clinical GETs —
+  observation/patient/examination/document/medication/allergy/
+  immunization/clinical-event single-record fetches, via a new
+  `audit_read` endpoint decorator with `outcome` derived from the
+  response: 2xx → `ok`, 401/403/404 → `denied`, else `error`),
+  **all clinical writes** (medications, examinations, allergies,
+  vaccines, documents, clinical events, patients — alongside the
+  existing observations), **admin actions** (user create/update/
+  role-change/delete, tenant actions, tenant + auth invite minting,
+  catalog import, notification broadcast), and **auth events**
+  (`auth.login` ok/denied [NULL actor = anonymous],
+  `auth.demo_login`, `auth.logout`, `auth.logout_all`,
+  `auth.refresh_reuse` [rotated-token replay ⇒ family revoked],
+  `auth.setup` bootstrap, `auth.register` invite use).
+  `log_audit_action` stays the single chokepoint — best-effort, never
+  raises, failures logged at WARNING (never silently swallowed). New
+  cross-tenant viewer `GET /admin/audit` (SYSTEM_ADMIN-only; filters
+  `tenant_id`/`action`/`outcome`/`user_id`; NULL-tenant rows included);
+  the tenant-scoped `GET /admin/tenants/{tenant_id}/audit` gains the
+  `outcome` filter and now returns `outcome` + `tenant_id` per entry.
+  Adjacent domain trails (`catalog_audit_log`, `fhir_provenance`,
+  `task_logs`, `integration_sync_logs`) are unchanged.
+
+### Changed
+- **Key separation for health-assistant (family plan 16 H4, identity-auth
+  §8): the per-purpose key ring replaces the single all-purpose
+  `SECRET`.** Three independent per-instance secrets (each 32+ random
+  bytes, none derived from another, no value serving two purposes):
+  `HA_SESSION_KEY` signs session JWTs **and the session-family product
+  kinds** (api/invite/download — §8 names only session/refresh/data;
+  the short-lived first-party kinds ride the session authority, the
+  docstring map in `app/core/keys.py` documents the choice),
+  `HA_REFRESH_KEY` signs refresh JWTs only, and `HA_DATA_KEY` is the
+  Fernet at-rest key that never signs anything. Verification is
+  family-locked: a session token signed by the refresh key (or by the
+  DATA key) fails verification and vice versa
+  (`tests/test_key_separation.py`). **`SECRET_KEY` is retired from all
+  signing** — every pre-H4 JWT dies at deploy and users re-login once
+  (nothing at rest was ever signed by it). Resolution: env first; dev/
+  test fall back to per-process ephemeral keys (the retired
+  `SECRET_KEY` fallback behavior; health is a server product with no
+  desktop data dir, so career's `auth_keys.json` pattern does not
+  apply — pin the env vars for a stable dev stack). Servers MUST pin
+  the keys: new boot guards in `config.py` refuse missing/weak/
+  placeholder signing keys, partial pins (session without refresh or
+  vice versa), and cross-purpose value reuse (session == refresh ==
+  data forbidden) — extending the CFG-H1 guard family. **The at-rest
+  ring is folded, not broken:** `HA_DATA_KEY` accepts the legacy
+  `INTEGRATION_SECRET_KEY` env name (and `settings.INTEGRATION_SECRET_KEY`
+  attribute access keeps working, monkeypatch-friendly), so existing
+  Fernet-sealed bridge pairing secrets, integration `api_secret`s and
+  AI provider keys stay decryptable with zero operator action;
+  `HA_DATA_KEY_PREVIOUS` (alias `INTEGRATION_SECRET_KEY_PREVIOUS`)
+  keeps the decrypt-old/encrypt-new rotation ring, which
+  `app/core/encryption.py` now also honors (MultiFernet — `enc::`
+  values sealed under a prior key keep decrypting), and the SDK
+  `SecretCipher` additionally accepts the kit's unpadded token form
+  (`_kid` tags unchanged for existing keys). New tests cover
+  cross-family rejection, the boot guards, and ring rotation
+  (old-sealed value decrypts + re-seals under the new primary);
+  `test_api_key_encryption.py` and the bridge/HMAC suites are
+  untouched and green. Ops: `.env.example`, `setup_env.py` (generates
+  the three keys), `docker-compose.{prod,standalone,dev}.yml` (prod/
+  standalone `:?`-require the signing keys; legacy data-key name
+  still accepted), `.gitea/workflows/deploy.yml` (new Gitea secrets
+  `HA_SESSION_KEY`/`HA_REFRESH_KEY`/`HA_DATA_KEY`, with
+  `INTEGRATION_SECRET_KEY` fallback), `docs/INSTALL.md` security
+  checklist + key-separation note, `docs/CI_CD_SETUP.md` secret table.
+- **`audit_logs` → `audit_events` (model `AuditLog` → `AuditEvent`) +
+  normative `outcome` column** (identity-auth §5/§17; migration
+  `a1u2d3i4t5e6` on top of `h1c2o3n4t5r6` — destructive-OK per H1
+  policy, existing rows kept). `outcome` is `TEXT(20) NOT NULL
+  DEFAULT 'ok'` (`ok` / `denied` / `error`), indexed; the §5-allowed
+  product columns (`old_value`/`new_value` diffs) are unchanged.
+- **Identity contract alignment (family plan 16 H1, ADR-0013 — token/
+  claim/dependency surface, no behavior change to the Class S
+  extensions):** JWT claims per identity-auth §8 — `sub` is now the
+  **user id** (was the email), `iss` on every kind, a uniform
+  `token_kind` (session/refresh/api/invite/download — the old
+  `type="refresh"` and `sub`-sentinel discriminators are gone),
+  `auth_mode` (the demo boolean became `auth_mode: "demo"`), and `ver` +
+  `users.token_version` (revocation no longer fails open on a Redis
+  outage). `users` gains the §5 columns (`password_hash` rename,
+  `full_name`, lockout counters, `token_version`, `oidc_*`), a
+  normative `auth_sessions` table (device rows with 30-day absolute
+  cap; Redis stays the hot revocation layer), and `instance_settings`
+  (`auth_mode`/`demo_mode` are DB facts — init-only, fail-closed;
+  `HA_AUTH_MODE`/`HA_DEMO_MODE` are consumed on an empty DB only).
+  §7 behaviors: password minimum 10, lockout 5×15 min ⇒ 423, generic
+  `Invalid email or password`, `is_active=false` ⇒ 401 everywhere.
+  Dependency surface per §12 (`get_session_user_ws`, `require_admin`,
+  `GET /auth/me` with `PublicUser`, `/me/sessions`). §16 config names
+  (`HA_AUTH_ACCESS_TTL_MINUTES`, `HA_AUTH_REFRESH_TTL_DAYS`/
+  `_ABSOLUTE_DAYS`, `HA_AUTH_LOCKOUT_*`, `HA_RATELIMIT_*`,
+  `HA_TRUSTED_PROXY_COUNT`, `HA_REGISTRATION_ENABLED`,
+  `HA_SESSION_KEY`/`HA_REFRESH_KEY`/`HA_DATA_KEY`). Migration
+  `h1c2o3n4t5r6` (destructive — dev DBs recreate). Tenants, roles,
+  invites, tenant-switch tokens, setup-token bootstrap, SMART scopes,
+  the HMAC machine bridge, and patient-ownership checks are unchanged
+  (verified 63/63 frozen-surface tests).
+
+### Fixed
+- `catalog_audit_service` stored the user **id** in the denormalized
+  email column after the `sub` rename (caught by the pinned audit
+  test); now reads the `email` claim.
+
+### Changed
+- **frontend(auth): adopt the shared assistant-ui `AuthGate` (plan 16 Phase 5 closeout)** — the
+  `checking → authenticated | anonymous` session machine moves to the library (`@neuronection/assistant-ui/auth-gate`,
+  consumed via the documented tarball flow, no manifest change); health composes `SessionGate` over it and
+  deletes the local `useProtectedRoute` gate and the anonymous route set in the same change. The login node
+  (pages/Auth/Login) now hosts everything that leaves `anonymous`: the H5 MFA challenge/enrollment step, the
+  §13 demo auto-login, and the first-run setup wizard (rendered inside the node for uninitialized instances;
+  an "already initialized" race flips back to the form). Mid-session 401s replay the machine via
+  `nx:unauthenticated` → `resetKey`; sign-in (password, MFA, demo, setup) bumps the gate and re-boots.
+  Backend, bridge, MFA endpoints, demo seeders and setup API untouched. Gates: lint 0 errors · tsc clean ·
+  673 tests (88 files, +5 gate tests) · build green.
+
 ## [v0.8.0] - 2026-09-20
 
 ### Added

@@ -1,63 +1,87 @@
 """Audit 2026-09-11 S-7 — demo-token claim hygiene.
 
-A token minted by ``/auth/demo-login`` carries a ``demo`` claim. It must stop
-authenticating the moment ``DEMO_MODE`` is turned off; turning off an
-instance's demo mode revokes all demo tokens on their next use.
+A session token minted with ``auth_mode="demo"`` (the ``/auth/demo-login``
+stamp, §13) must stop authenticating the moment the instance stops being a
+demo (``instance_settings.demo_mode`` false); password tokens are
+unaffected by the demo flag.
 """
 
 from __future__ import annotations
 
-import uuid
-import jwt
-from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
-from app.core.config import settings
-from app.core.security import create_refresh_token, get_current_user
+from app.core import instance_state, token_store
+from app.core.security import (
+    AUTH_MODE_DEMO,
+    AUTH_MODE_PASSWORD,
+    create_session_access_token,
+    get_current_user,
+)
 
-CLAIMS = {
-    "sub": "demo@healthassistant.local",
-    "user_id": str(uuid.uuid4()),
-    "tenant_id": str(uuid.uuid4()),
-    "role": "USER",
-    "demo": True,
-    "type": "access",
-}
+from ._auth_helpers import create_user
 
-
-def _mint_demo_token() -> str:
-    payload = dict(CLAIMS)
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=10)
-    payload["iat"] = datetime.now(timezone.utc)
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+# Every test here implements identity-auth §18.11 (demo token claim) —
+# the family contract drift gate.
+pytestmark = pytest.mark.contract
 
 
-def _mint_nondemo_token() -> str:
-    payload = {k: v for k, v in CLAIMS.items() if k != "demo"}
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=10)
-    payload["iat"] = datetime.now(timezone.utc)
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+async def _mint_session_token(user, *, auth_mode: str) -> str:
+    """A live session token for ``user`` stamped with ``auth_mode``."""
+    token, jti = create_session_access_token(
+        {
+            "user_id": str(user.id),
+            "tenant_id": str(user.tenant_id),
+            "role": getattr(user.role, "value", user.role),
+            "email": user.email,
+            "ver": int(getattr(user, "token_version", 1) or 1),
+            "auth_mode": auth_mode,
+        }
+    )
+    await token_store.register_session(str(user.id), jti, 600)
+    return token
+
+
+def _state_with(demo_mode: bool) -> AsyncMock:
+    return AsyncMock(
+        return_value=SimpleNamespace(
+            auth_mode=instance_state.AUTH_MODE_AUTHENTICATED, demo_mode=demo_mode
+        )
+    )
 
 
 @pytest.mark.asyncio
-async def test_demo_token_accepted_with_demo_mode(monkeypatch):
-    monkeypatch.setattr(settings, "DEMO_MODE", True)
-    token_data = await get_current_user(_mint_demo_token())
-    assert str(token_data.user_id) == CLAIMS["user_id"]
+async def test_demo_token_accepted_with_demo_mode():
+    user = await create_user()
+    token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
+    with patch.object(
+        instance_state, "get_state", new=_state_with(demo_mode=True)
+    ):
+        token_data = await get_current_user(token)
+    assert str(token_data.user_id) == str(user.id)
 
 
 @pytest.mark.asyncio
-async def test_demo_token_rejected_without_demo_mode(monkeypatch):
-    monkeypatch.setattr(settings, "DEMO_MODE", False)
-    with pytest.raises(HTTPException) as exc:
-        await get_current_user(_mint_demo_token())
+async def test_demo_token_rejected_without_demo_mode():
+    user = await create_user()
+    token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
+    with patch.object(
+        instance_state, "get_state", new=_state_with(demo_mode=False)
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(token)
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_regular_token_unaffected(monkeypatch):
-    monkeypatch.setattr(settings, "DEMO_MODE", False)
-    token_data = await get_current_user(_mint_nondemo_token())
-    assert str(token_data.user_id) == CLAIMS["user_id"]
+async def test_regular_token_unaffected():
+    user = await create_user()
+    token = await _mint_session_token(user, auth_mode=AUTH_MODE_PASSWORD)
+    with patch.object(
+        instance_state, "get_state", new=_state_with(demo_mode=False)
+    ):
+        token_data = await get_current_user(token)
+    assert str(token_data.user_id) == str(user.id)

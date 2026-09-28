@@ -49,7 +49,7 @@ async def _make_tenant_and_user(role: Role = Role.USER):
         )
         await session.execute(
             text(
-                "INSERT INTO users (id, tenant_id, email, role, hashed_password, settings) "
+                "INSERT INTO users (id, tenant_id, email, role, password_hash, settings) "
                 "VALUES (:id, :tid, :email, :role, 'x', '{}'::jsonb)"
             ),
             {"id": user_id, "tid": tenant_id, "email": f"u-{user_id.hex[:6]}@t.local", "role": role.value},
@@ -482,7 +482,7 @@ async def test_user_role_cannot_read_other_users_patient_checklist():
         another_user = uuid.uuid4()
         await session.execute(
             text(
-                "INSERT INTO users (id, tenant_id, email, role, hashed_password, settings) "
+                "INSERT INTO users (id, tenant_id, email, role, password_hash, settings) "
                 "VALUES (:id, :tid, :email, 'USER', 'x', '{}'::jsonb)"
             ),
             {"id": another_user, "tid": tenant_id, "email": f"u-{another_user.hex[:6]}@t.local"},

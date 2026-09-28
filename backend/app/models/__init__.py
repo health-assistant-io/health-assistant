@@ -1,5 +1,7 @@
 from .base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
 from .user_model import UserModel, Role
+from .auth_session_model import AuthSessionModel
+from .instance_setting_model import InstanceSettingModel
 from .tenant_model import TenantModel
 from .document_model import DocumentModel
 from .examination_model import ExaminationModel
@@ -28,7 +30,7 @@ from .notification_rule import (
     NotificationRuleType,
     ComparisonOperator,
 )
-from .audit_model import AuditLog
+from .audit_model import AuditEvent
 from .task_log import TaskLog
 from .patient_layout import PatientLayoutModel
 from .biomarker_model import (
@@ -83,6 +85,8 @@ __all__ = [
     "VersionedMixin",
     "UserModel",
     "Role",
+    "AuthSessionModel",
+    "InstanceSettingModel",
     "TenantModel",
     "DocumentModel",
     "ExaminationModel",
@@ -91,7 +95,7 @@ __all__ = [
     "examination_doctors",
     "organization_doctors",
     "TelemetryDataModel",
-    "AuditLog",
+    "AuditEvent",
     "TaskLog",
     "PatientLayoutModel",
     "Patient",

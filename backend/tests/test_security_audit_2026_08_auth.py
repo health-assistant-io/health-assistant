@@ -13,59 +13,46 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 from app.core.security import (
     create_invite_token,
     create_refresh_token,
-    create_session_access_token,
-    get_password_hash,
+    decode_refresh_token,
+    decode_token,
     verify_access_token,
 )
 from app.core import token_store
 from app.models.enums import Role
-from app.models.user_model import UserModel
+
+from ._auth_helpers import create_user, sign_in
 
 
-@pytest.fixture
-def mock_user():
-    return UserModel(
-        id=uuid.uuid4(),
-        email="test@example.com",
-        hashed_password=get_password_hash("testpassword123"),
-        role=Role.USER,
-        tenant_id=uuid.uuid4(),
-        is_active=True,
-        settings={},
+@pytest_asyncio.fixture
+async def mock_user():
+    return await create_user(
+        email="test@example.com", password="testpassword123", role=Role.USER
     )
 
 
-@pytest.fixture
-def mock_admin():
-    return UserModel(
-        id=uuid.uuid4(),
-        email="admin@example.com",
-        hashed_password=get_password_hash("adminpassword123"),
-        role=Role.ADMIN,
-        tenant_id=uuid.uuid4(),
-        is_active=True,
-        settings={},
+@pytest_asyncio.fixture
+async def mock_admin():
+    return await create_user(
+        email="admin@example.com", password="adminpassword123", role=Role.ADMIN
     )
 
 
 async def _auth_header_for(user):
-    token, jti = create_session_access_token(
-        {
-            "sub": user.email,
-            "user_id": str(user.id),
-            "tenant_id": str(user.tenant_id),
-            "role": getattr(user.role, "value", user.role),
-        }
-    )
-    # Register the session jti — the auth path checks the session store,
-    # so test tokens must be live sessions (mirrors real mint paths).
-    await token_store.register_session(str(user.id), jti, 3600)
-    return token, jti
+    """A live, verified session token for ``user`` (family + Redis jti).
+
+    Goes through the real issuance path — the verifier demands contract
+    claims (``sub``/``ver``/``auth_mode``), a live ``users`` row and a
+    registered session jti, so hand-rolled claims no longer pass.
+    """
+    issued = await sign_in(user)
+    payload = verify_access_token(issued.access_token)
+    return issued.access_token, payload["jti"]
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +84,7 @@ async def test_setup_status_never_leaks_token(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.7 — admin boundary: cannot mint SYSTEM_ADMIN
 async def test_admin_cannot_create_system_admin(async_client: AsyncClient, mock_admin):
     token, _ = await _auth_header_for(mock_admin)
     response = await async_client.post(
@@ -113,13 +101,14 @@ async def test_admin_cannot_create_system_admin(async_client: AsyncClient, mock_
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.7 — role guard: manager cannot grant SYSTEM_ADMIN
 async def test_manager_cannot_set_system_admin_role(
     async_client: AsyncClient, mock_user
 ):
-    mock_user.role = Role.MANAGER
-    token, _ = await _auth_header_for(mock_user)
+    manager = await create_user(role=Role.MANAGER, tenant_id=mock_user.tenant_id)
+    token, _ = await _auth_header_for(manager)
     response = await async_client.put(
-        f"/api/v1/users/{str(mock_user.id)}",
+        f"/api/v1/users/{str(manager.id)}",
         headers={"Authorization": f"Bearer {token}"},
         params={"role": "SYSTEM_ADMIN"},
     )
@@ -141,10 +130,10 @@ async def test_service_update_user_refuses_system_admin():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.contract  # §18.1 — kind mismatch: refresh token ≠ access
 def test_refresh_token_rejected_as_access_token(mock_user):
     refresh, _ = create_refresh_token(
         {
-            "sub": mock_user.email,
             "user_id": str(mock_user.id),
             "tenant_id": str(mock_user.tenant_id),
             "role": "USER",
@@ -162,12 +151,12 @@ async def test_session_token_passes_verify(mock_user):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.1 — kind mismatch on a protected route ⇒ 401
 async def test_refresh_token_rejected_on_protected_route(
     async_client: AsyncClient, mock_user
 ):
     refresh, _ = create_refresh_token(
         {
-            "sub": mock_user.email,
             "user_id": str(mock_user.id),
             "tenant_id": str(mock_user.tenant_id),
             "role": "USER",
@@ -186,17 +175,12 @@ async def test_refresh_token_rejected_on_protected_route(
 
 @pytest.mark.asyncio
 async def test_logout_revokes_access_token(async_client: AsyncClient, mock_user):
-    token, jti = await _auth_header_for(mock_user)
-    await token_store.register_session(str(mock_user.id), jti, 3600)
-    refresh, rjti = create_refresh_token(
-        {
-            "sub": mock_user.email,
-            "user_id": str(mock_user.id),
-            "tenant_id": str(mock_user.tenant_id),
-            "role": "USER",
-        }
-    )
-    await token_store.register_refresh(str(mock_user.id), rjti, 3600)
+    # A real sign-in: family row + rotating refresh jti + live access jti.
+    issued = await sign_in(mock_user)
+    token = issued.access_token
+    jti = verify_access_token(token)["jti"]
+    refresh = issued.refresh_token
+    rjti = decode_refresh_token(refresh)["jti"]
 
     response = await async_client.post(
         "/api/v1/auth/logout",
@@ -241,9 +225,7 @@ def test_invite_token_carries_jti():
 
 def test_invite_expiry_capped():
     token, jti = create_invite_token(tenant_id=str(uuid.uuid4()), expires_days=36500)
-    from app.core.security import decode_access_token
-
-    payload = decode_access_token(token)
+    payload = decode_token(token)
     # exp - iat should be ≤ 30 days even when 36500 requested
     assert payload["exp"] - payload["iat"] <= 30 * 86400 + 60
 

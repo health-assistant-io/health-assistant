@@ -28,7 +28,7 @@ ROLES = ["USER", "ADMIN", "SYSTEM_ADMIN"]
 async def _make_shared_tenant(
     roles=ROLES,
 ) -> Tuple[uuid.UUID, Dict[str, Dict[str, str]]]:
-    from app.core.security import create_access_token
+    from tests._auth_helpers import headers_for_claims
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
@@ -36,15 +36,14 @@ async def _make_shared_tenant(
         await db.commit()
     headers: Dict[str, Dict[str, str]] = {}
     for role in roles:
-        token = create_access_token(
+        tok_headers = await headers_for_claims(
             {
-                "sub": f"{role.lower()}@test.local",
-                "user_id": str(uuid.uuid4()),
+            "sub": f"{role.lower()}@test.local",
                 "tenant_id": str(tenant_id),
                 "role": role,
             }
         )
-        headers[role] = {"Authorization": f"Bearer {token}"}
+        headers[role] = tok_headers
     return tenant_id, headers
 
 

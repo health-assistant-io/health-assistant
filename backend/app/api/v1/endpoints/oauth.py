@@ -262,9 +262,9 @@ async def revoke(
         data = dict(form)
     token_value = data.get("token")
     if token_value:
-        from app.core.security import decode_access_token
+        from app.core.security import decode_token
 
-        payload = decode_access_token(token_value)
+        payload = decode_token(token_value)
         jti = payload.get("jti") if payload else None
         exp = payload.get("exp") if payload else None
         if jti and exp:

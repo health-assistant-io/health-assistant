@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.core.errors import NotFoundError, ValidationError
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.enums import (
     NotificationCategory,
     NotificationSeverity,
@@ -87,16 +87,10 @@ async def _make_patient(tenant_id, user_id=None) -> uuid.UUID:
     return patient.id
 
 
-def _headers(user: UserModel, tenant_id: uuid.UUID) -> dict[str, str]:
-    token = create_access_token(
-        {
-            "sub": user.email,
-            "user_id": str(user.id),
-            "tenant_id": str(tenant_id),
-            "role": Role.USER.value,
-        }
-    )
-    return {"Authorization": f"Bearer {token}"}
+async def _headers(user: UserModel, tenant_id: uuid.UUID) -> dict[str, str]:
+    from tests._auth_helpers import auth_headers
+
+    return await auth_headers(user, extra_claims={"role": Role.USER.value})
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +431,7 @@ async def test_endpoint_get_preferences_returns_list(async_client):
     tenant = await _make_tenant()
     user = await _make_user(tenant)
     resp = await async_client.get(
-        "/api/v1/notifications/preferences", headers=_headers(user, tenant)
+        "/api/v1/notifications/preferences", headers=await _headers(user, tenant)
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -453,14 +447,14 @@ async def test_endpoint_put_preference_disables_source(async_client):
     resp = await async_client.put(
         "/api/v1/notifications/preferences/source:RULE",
         json={"enabled": False},
-        headers=_headers(user, tenant),
+        headers=await _headers(user, tenant),
     )
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
 
     # Verify via GET.
     get = await async_client.get(
-        "/api/v1/notifications/preferences", headers=_headers(user, tenant)
+        "/api/v1/notifications/preferences", headers=await _headers(user, tenant)
     )
     rule = next(
         p for p in get.json()["preferences"] if p["kind_id"] == "source:RULE"
@@ -475,7 +469,7 @@ async def test_endpoint_put_unknown_kind_returns_404(async_client):
     resp = await async_client.put(
         "/api/v1/notifications/preferences/source:NOPE",
         json={"enabled": False},
-        headers=_headers(user, tenant),
+        headers=await _headers(user, tenant),
     )
     assert resp.status_code == 404
 

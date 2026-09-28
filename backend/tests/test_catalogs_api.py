@@ -230,8 +230,8 @@ async def test_medication_search_filters(async_client, system_admin_headers):
 
 def _tenant_id_from_headers(headers):
     """Extract the tenant UUID from the JWT in the auth header (best-effort)."""
-    from app.core.security import decode_access_token
+    from app.core.security import decode_token
 
     token = headers["Authorization"].removeprefix("Bearer ")
-    payload = decode_access_token(token)
+    payload = decode_token(token)
     return uuid.UUID(payload["tenant_id"])

@@ -1,9 +1,15 @@
 """Admin endpoints for system-wide operations.
 
-Currently exposes ontology-catalog import (URL + file upload). Both endpoints
-are SYSTEM_ADMIN-only and run the import in the background via FastAPI's
-``BackgroundTasks``. Progress is recorded to the ``task_logs`` table via
-``TaskLogger`` so admins can follow along in the Task Monitor UI.
+Currently exposes ontology-catalog import (URL + file upload), the
+system-wide notification broadcast, and the cross-tenant audit-stream
+viewer. Catalog imports and broadcasts are SYSTEM_ADMIN-only (broadcast
+allows ADMIN for tenant scope); every admin action here writes an
+``audit_events`` row via ``audit_service.log_audit_action``
+(identity-auth §17 — plan 16 H2).
+
+Imports run in the background via FastAPI's ``BackgroundTasks``.
+Progress is recorded to the ``task_logs`` table via ``TaskLogger`` so
+admins can follow along in the Task Monitor UI.
 
 The previous version of this module was entirely broken (wrong
 ``async_session_maker`` import, wrong ``TaskLogger`` / ``TaskProgressTracker``
@@ -13,10 +19,10 @@ in ``app.workers.task_logger`` and ``app.core.database``.
 
 import json
 import logging
-from typing import Dict
-from uuid import uuid4
+from typing import Dict, Optional
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,8 +30,16 @@ from app.core.database import AsyncSessionLocal, get_db
 from app.core.security import RoleChecker, TokenData
 from app.models.enums import Role
 from app.schemas.biomarker import CatalogImportPayload
+from app.schemas.tenant import AuditEntryResponse, AuditListResponse
+from app.services.audit_service import (
+    OUTCOME_DENIED,
+    OUTCOME_ERROR,
+    OUTCOME_OK,
+    log_audit_action,
+)
 from app.services.catalog_import_service import CatalogImportService
 from app.services.seed_export_service import SeedExportService
+from app.services.tenant_admin_service import TenantAdminService
 from app.workers.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
@@ -91,6 +105,14 @@ async def import_catalog_from_url(
     try:
         payload = await fetch_service.fetch_catalog_from_url(url)
     except ValueError as e:
+        await log_audit_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            action="admin.catalog_import",
+            resource_type="catalog",
+            outcome=OUTCOME_ERROR,
+            new_value={"source_url": url, "error": str(e)[:200]},
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
     background_tasks.add_task(
@@ -99,6 +121,18 @@ async def import_catalog_from_url(
         user_id=str(current_user.user_id),
         tenant_id=str(current_user.tenant_id),
         source_url=url,
+    )
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="admin.catalog_import",
+        resource_type="catalog",
+        outcome=OUTCOME_OK,
+        new_value={
+            "source_url": url,
+            "units": len(payload.units),
+            "biomarkers": len(payload.biomarkers),
+        },
     )
     return {
         "message": "Catalog import started in the background. Check task logs for progress."
@@ -120,9 +154,25 @@ async def import_catalog_from_file(
         data = json.loads(content)
         payload = CatalogImportPayload.model_validate(data)
     except json.JSONDecodeError as e:
+        await log_audit_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            action="admin.catalog_import",
+            resource_type="catalog",
+            outcome=OUTCOME_ERROR,
+            new_value={"source_file": file.filename, "error": f"invalid JSON: {e}"},
+        )
         raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {e}")
     except Exception:
         logger.exception("Catalog payload validation failed")
+        await log_audit_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            action="admin.catalog_import",
+            resource_type="catalog",
+            outcome=OUTCOME_ERROR,
+            new_value={"source_file": file.filename, "error": "invalid payload"},
+        )
         raise HTTPException(
             status_code=400, detail="Invalid catalog payload (see server log)."
         )
@@ -133,6 +183,18 @@ async def import_catalog_from_file(
         user_id=str(current_user.user_id),
         tenant_id=str(current_user.tenant_id),
         source_url=f"upload:{file.filename}",
+    )
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="admin.catalog_import",
+        resource_type="catalog",
+        outcome=OUTCOME_OK,
+        new_value={
+            "source_file": file.filename,
+            "units": len(payload.units),
+            "biomarkers": len(payload.biomarkers),
+        },
     )
     return {
         "message": "Catalog import started in the background. Check task logs for progress."
@@ -169,6 +231,14 @@ async def broadcast_notification(
 
     if scope == "system":
         if not is_system_admin:
+            await log_audit_action(
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.user_id,
+                action="admin.broadcast",
+                resource_type="notification",
+                outcome=OUTCOME_DENIED,
+                new_value={"scope": scope, "reason": "system scope requires SYSTEM_ADMIN"},
+            )
             raise HTTPException(
                 status_code=403, detail="Only SYSTEM_ADMIN can broadcast system-wide."
             )
@@ -199,8 +269,60 @@ async def broadcast_notification(
         sender_user_id=current_user.user_id,
     )
     if notification is None:
+        await log_audit_action(
+            tenant_id=tenant_scope,
+            user_id=current_user.user_id,
+            action="admin.broadcast",
+            resource_type="notification",
+            outcome=OUTCOME_ERROR,
+            new_value={"scope": scope, "title": title},
+        )
         raise HTTPException(status_code=500, detail="Failed to emit notification.")
+    await log_audit_action(
+        tenant_id=tenant_scope,
+        user_id=current_user.user_id,
+        action="admin.broadcast",
+        resource_type="notification",
+        resource_id=notification.id,
+        outcome=OUTCOME_OK,
+        new_value={"scope": scope, "severity": severity, "title": title},
+    )
     return {"status": "success", "notification_id": str(notification.id)}
+
+
+@router.get("/audit", response_model=AuditListResponse)
+async def list_audit_events(
+    tenant_id: Optional[UUID] = Query(
+        default=None,
+        description="Filter to one tenant; omit for the full cross-tenant stream.",
+    ),
+    action: Optional[str] = Query(default=None),
+    outcome: Optional[str] = Query(default=None),
+    user_id: Optional[UUID] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=250),
+    offset: int = Query(default=0, ge=0),
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    db: AsyncSession = Depends(get_db),
+) -> AuditListResponse:
+    """Cross-tenant audit-stream viewer (``audit_events`` — §17, plan 16 H2).
+
+    SYSTEM_ADMIN-only. Without ``tenant_id`` this returns every tenant's
+    stream **plus** system-level rows (NULL tenant — e.g. tenant hard
+    deletes, login denials for unknown principals). Tenant-scoped reads
+    stay on ``GET /admin/tenants/{tenant_id}/audit``.
+    """
+    items, total = await TenantAdminService(db).list_audit_entries_all(
+        tenant_id=tenant_id,
+        action=action,
+        outcome=outcome,
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+    return AuditListResponse(
+        items=[AuditEntryResponse.model_validate(a) for a in items],
+        total=total,
+    )
 
 
 @router.get("/seeds/export.zip")

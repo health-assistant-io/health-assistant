@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.biomarker_model import BiomarkerDefinition
@@ -29,15 +29,14 @@ async def _tenant_and_headers(role: str):
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="T", slug=f"dom-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
+    headers = await headers_for_claims(
         {
             "sub": f"{role.lower()}@test.local",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(tenant_id),
             "role": role,
         }
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    return tenant_id, headers
 
 
 # ---------------------------------------------------------------------------

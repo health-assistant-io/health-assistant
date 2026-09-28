@@ -24,7 +24,7 @@ import pytest
 import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 
@@ -50,15 +50,14 @@ async def admin_headers_and_patient():
             )
         )
         await db.commit()
-    token = create_access_token(
+    headers = await headers_for_claims(
         {
             "sub": "admin@test.local",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(tenant_id),
             "role": "SYSTEM_ADMIN",
         }
     )
-    return {"Authorization": f"Bearer {token}"}, str(patient_id)
+    return headers, str(patient_id)
 
 
 async def _make_concept(

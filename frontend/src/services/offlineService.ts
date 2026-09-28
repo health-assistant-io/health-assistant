@@ -6,20 +6,33 @@ let isSyncingQueue = false;
 // Create a background instance that DOES NOT have the offline-intercepting middleware
 const backgroundApi = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  withCredentials: true, // §10 cookie session
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add 401 retry to background instance to ensure sync works with new tokens
+// §10 (plan 16 H3): cookie session — no Authorization header from storage.
+// Non-safe requests echo the readable nx_csrf cookie (double-submit).
+function csrfToken(): string | null {
+  const prefix = 'nx_csrf=';
+  const match = document.cookie.split('; ').find((part) => part.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
 backgroundApi.interceptors.request.use(async (config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const method = (config.method || 'get').toLowerCase();
+  if (!['get', 'head', 'options'].includes(method)) {
+    const csrf = csrfToken();
+    if (csrf) {
+      config.headers['X-CSRF-Token'] = csrf;
+    }
   }
   return config;
 });
 
+// Add 401 retry to background instance so sync works after the access
+// cookie expires (rotate the refresh cookie once, then replay).
 backgroundApi.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -27,17 +40,16 @@ backgroundApi.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) throw new Error();
-        
-        const response = await axios.post(`${backgroundApi.defaults.baseURL}/auth/refresh`, { 
-          refresh_token: refreshToken 
-        });
-        const newToken = response.data.access_token;
-        localStorage.setItem('accessToken', newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        // §10: cookie-based refresh — the HttpOnly nx_refresh cookie is
+        // the credential (no body, no storage).
+        const response = await axios.post(
+          `${backgroundApi.defaults.baseURL}/auth/refresh`,
+          undefined,
+          { withCredentials: true },
+        );
+        if (response.status >= 400) throw new Error();
         return backgroundApi(originalRequest);
-      } catch (err) {
+      } catch {
         return Promise.reject(error);
       }
     }

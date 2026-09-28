@@ -5,6 +5,15 @@ platform (FastAPI + React + FHIR + a Biomarker Engine). This repo (`core/`) hold
 the **backend, the integrations framework, and the web frontend**. The Android
 companion app lives in a **sibling repo** at `../app/` (see *Mobile* below).
 
+**Identity class S** (family ADR-0013): server-first, always
+authenticated — the family auth contract binds claims, lifetimes, cookie
+storage, and dependency names; health keeps its Class S domain extensions
+(tenants + hard `tenant_id` filtering, roles, invites, SMART scopes,
+ownership cascade, integration credentials). Rollout deltas: per-purpose
+keys (`SESSION`/`REFRESH`/`DATA` — the shared `SECRET_KEY` retires),
+cookie sessions for browsers (bearer stays for Android/integrations),
+and `audit_events` for record access + admin actions.
+
 Before any task, load the matching skill in `.opencode/skills/`:
 `backend`, `frontend`, `ai-pipeline`, `clinical-data`, `integrations`, `mobile`,
 `documentation`, `versioning`, `seeding`, `hitl-task-cards`.

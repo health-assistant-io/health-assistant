@@ -48,8 +48,9 @@ Go to **Settings -> Actions -> Secrets** in your Gitea repository and configure 
 | **`REGISTRY_TOKEN`** | A Gitea Personal Access Token (PAT) with `write:packages` and `read:packages` permissions. | `gtop_xxxxxxxxxxxxxxxxxxxx` |
 | **`VM_HOST`** | IP address or domain of your target deployment server host. | `<DEPLOY_SERVER_IP>` |
 | **`SSH_PRIVATE_KEY`** | The raw SSH private key authorized to connect as user `deploy` on the target server. | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| **`SECRET_KEY`** | Secret key for JWT hashing and session security. | *Any secure random string* |
-| **`INTEGRATION_SECRET_KEY`** | Fernet key for encrypting integration configurations and tokens. | *Base64 32-byte string* |
+| **`HA_SESSION_KEY`** | Signs session JWTs (+ api/invite/download kinds) — identity-auth §8 key separation (plan 16 H4). | `python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))"` |
+| **`HA_REFRESH_KEY`** | Signs refresh JWTs only — must differ from `HA_SESSION_KEY`. | Same command, a different value |
+| **`HA_DATA_KEY`** | Fernet key for secrets at rest (integration configs, bridge secrets, AI provider keys). Falls back to the legacy `INTEGRATION_SECRET_KEY` secret when unset. | *Base64 32-byte string* |
 | **`POSTGRES_PASSWORD`** | Production database password. | *Secure password* |
 | **`FLOWER_PASSWORD`** | Password for the Celery Flower monitoring dashboard. | *Secure password* |
 | **`DEMO_DEPLOY_PATH`** *(Optional)* | Set to enable auto-deploy of the demo stack. The server path where `docker-compose.demo.yml` + `.env` live. Without this secret, the `trigger-demo-deploy` job is skipped. | `/home/deploy/health_assistant_demo` |

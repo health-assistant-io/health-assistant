@@ -66,7 +66,7 @@ resolve_compose_project() {
 # container only applies POSTGRES_PASSWORD when the data dir is empty — once a
 # volume is initialized it keeps the OLD password, so the freshly generated
 # .env's new password makes `alembic upgrade head` (and the backend) fail with
-# "password authentication failed for user admin".
+# "password authentication failed for user neuro_health_owner".
 #
 # Usage: check_leftover_db_volume "$ENV_WAS_FRESH"
 #   ENV_WAS_FRESH=1 → this install just minted new credentials; if the compose
@@ -82,7 +82,7 @@ check_leftover_db_volume() {
         echo -e "${YELLOW}Leftover database volume detected: ${PG_VOL}${NC}"
         echo -e "${YELLOW}It was initialized by a previous install with a DIFFERENT password than the"
         echo -e "${YELLOW}.env just generated. Starting now would fail with \"password authentication"
-        echo -e "${YELLOW}failed for user admin\" in the migrate step.${NC}"
+        echo -e "${YELLOW}failed for user neuro_health_owner\" in the migrate step.${NC}"
         read -r -p "$(echo -e 'Reset this volume for a clean fresh install? (destructive) [y/N]: ')" RESET
         if [[ "$RESET" =~ ^[Yy] ]]; then
             if ! docker volume rm "$PG_VOL" >/dev/null 2>&1; then

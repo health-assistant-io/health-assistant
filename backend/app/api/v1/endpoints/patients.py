@@ -12,6 +12,7 @@ from app.services.fhir_service import (
     update_patient_layout,
 )
 from app.schemas.user import TokenData
+from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -52,10 +53,21 @@ async def create_patient_endpoint(
         patient_data["user_id"] = str(current_user.user_id)
 
     patient = await create_patient(patient_data, current_user.tenant_id)
+    # §17: patient (record) writes are audited alongside the clinical
+    # resources.
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_patient",
+        resource_type="Patient",
+        resource_id=getattr(patient, "id", None),
+        new_value=patient_data,
+    )
     return patient
 
 
 @router.get("/{patient_id}")
+@audit_read("Patient", id_param="patient_id")
 async def get_patient_endpoint(
     patient_id: str,
     current_user: TokenData = Depends(get_current_user),
@@ -79,6 +91,14 @@ async def update_patient_layout_endpoint(
     """
     await check_patient_access(patient_id, current_user, db)
     patient = await update_patient_layout(patient_id, layout)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_patient_layout",
+        resource_type="Patient",
+        resource_id=patient_id,
+        new_value=layout,
+    )
     return patient
 
 
@@ -92,6 +112,14 @@ async def update_patient_endpoint(
     """Update patient information"""
     await check_patient_access(patient_id, current_user, db)
     patient = await update_patient(patient_id, patient_data)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_patient",
+        resource_type="Patient",
+        resource_id=patient_id,
+        new_value=patient_data,
+    )
     return patient
 
 
@@ -108,7 +136,16 @@ async def delete_patient_endpoint(
         if str(patient.user_id) != str(current_user.user_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
+    old_snapshot = patient.to_dict() if hasattr(patient, "to_dict") else None
     success = await delete_patient(patient_id)
     if not success:
         raise HTTPException(status_code=404, detail="Patient not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_patient",
+        resource_type="Patient",
+        resource_id=patient_id,
+        old_value=old_snapshot,
+    )
     return {"message": "Patient deleted successfully"}

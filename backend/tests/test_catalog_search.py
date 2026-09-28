@@ -10,7 +10,7 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.concept_model import Concept
@@ -26,15 +26,14 @@ async def _tenant_and_headers(role="ADMIN"):
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="S", slug=f"s-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
+    tok_headers = await headers_for_claims(
         {
-            "sub": f"{role.lower()}@test.local",
-            "user_id": str(uuid.uuid4()),
+        "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    return tenant_id, tok_headers
 
 
 async def _seed_cross_catalog(token_word: str):

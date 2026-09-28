@@ -1,7 +1,7 @@
 """Authentication schemas"""
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from typing import List, Optional
 
 # Lenient email pattern: one ``@`` with non-blank, whitespace-free text on
 # both sides. We deliberately do NOT use ``EmailStr``/email-validator here
@@ -33,9 +33,19 @@ class TokenResponse(BaseModel):
 
 
 class TokenRefresh(BaseModel):
-    """Token refresh request schema"""
+    """Refresh request schema.
 
-    refresh_token: str = Field(..., description="JWT refresh token")
+    ``refresh_token`` is optional for **browser** clients (§10): the
+    rotating refresh JWT lives in the HttpOnly ``nx_refresh`` cookie
+    (Path=/api/v1/auth), so ``POST /auth/refresh`` and ``POST
+    /auth/logout`` read the cookie when the body omits the token. §9 user
+    clients keep sending it in the body — both paths share the same
+    rotation / revocation machinery.
+    """
+
+    refresh_token: Optional[str] = Field(
+        None, description="Refresh JWT — omitted by browsers (nx_refresh cookie)."
+    )
 
 
 class UserRegister(BaseModel):
@@ -44,15 +54,17 @@ class UserRegister(BaseModel):
     Joins an existing tenant as USER (or another role encoded in the
     invite token). Requires a valid invite token minted by that tenant's
     admin via ``POST /auth/invite``. First-run bootstrap lives in
-    ``SetupRequest`` / ``POST /auth/setup`` instead.
+    ``SetupRequest`` / ``POST /auth/setup`` instead. The route is
+    additionally gated by ``HA_REGISTRATION_ENABLED`` (§12/§16).
     """
 
     email: str = Field(
         ..., pattern=_LENIENT_EMAIL_PATTERN, description="User email address"
     )
     password: str = Field(
-        ..., min_length=8, max_length=100, description="Password (min 8 characters)"
+        ..., min_length=10, max_length=100, description="Password (min 10 characters)"
     )
+    full_name: str = Field(default="", max_length=200)
     tenant_id: Optional[str] = Field(
         None, description="Tenant/Organization ID. If omitted, a new tenant is created."
     )
@@ -80,8 +92,10 @@ class SetupStatus(BaseModel):
     ``/setup?token=<value>`` ready to be handed to the user. The launcher
     uses this when it doesn't already compose the URL itself.
 
-    ``demo_mode`` is true when ``DEMO_MODE`` is enabled: the frontend then
-    skips login entirely and auto-calls ``POST /auth/demo-login``.
+    ``demo_mode`` reflects the **DB instance fact**
+    (``instance_settings.demo_mode`` — identity-auth §4/§13, init-only):
+    the frontend then skips login entirely and auto-calls
+    ``POST /auth/demo-login``.
     """
 
     initialized: bool = Field(
@@ -109,8 +123,9 @@ class SetupStatus(BaseModel):
     demo_mode: bool = Field(
         False,
         description=(
-            "True when DEMO_MODE is enabled. The frontend auto-logs in "
-            "via POST /auth/demo-login and skips the login form."
+            "True when the instance's DB demo_mode fact is set (init-only "
+            "HA_DEMO_MODE). The frontend auto-logs in via POST "
+            "/auth/demo-login and skips the login form."
         ),
     )
 
@@ -122,8 +137,9 @@ class SetupRequest(BaseModel):
         ..., pattern=_LENIENT_EMAIL_PATTERN, description="Admin email address"
     )
     password: str = Field(
-        ..., min_length=8, max_length=100, description="Password (min 8 characters)"
+        ..., min_length=10, max_length=100, description="Password (min 10 characters)"
     )
+    full_name: str = Field(default="", max_length=200)
     tenant_name: str = Field(
         ..., min_length=1, max_length=120, description="Name for the initial tenant"
     )
@@ -136,3 +152,74 @@ class SetupRequest(BaseModel):
     )
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+
+# ---------------------------------------------------------------------------
+# TOTP MFA (plan 16 H5)
+# ---------------------------------------------------------------------------
+
+
+class MFAVerifyRequest(BaseModel):
+    """``POST /auth/mfa/verify`` — answer a login MFA challenge.
+
+    ``mfa_token`` is the short-lived challenge JWT from the login 401;
+    ``code`` is the current 6-digit TOTP code or one of the single-use
+    recovery codes.
+    """
+
+    mfa_token: str = Field(..., min_length=1, description="Login MFA challenge token.")
+    code: str = Field(
+        ...,
+        min_length=4,
+        max_length=16,
+        description="TOTP code or a single-use recovery code.",
+    )
+
+
+class MFAChallengeEnrollRequest(BaseModel):
+    """``POST /auth/mfa/enroll`` — provisioning for forced enrollment.
+
+    Used only when a login challenge carried ``enrollment_needed: true``
+    (admin-forced MFA): returns the secret + otpauth URI + recovery
+    codes so the user can enroll mid-login, then confirms via
+    ``POST /auth/mfa/verify``.
+    """
+
+    mfa_token: str = Field(..., min_length=1, description="Login MFA challenge token.")
+
+
+class MFAConfirmRequest(BaseModel):
+    """``POST /me/mfa/confirm`` — activate a pending enrollment."""
+
+    code: str = Field(
+        ...,
+        min_length=4,
+        max_length=16,
+        description="Current 6-digit TOTP code from the authenticator.",
+    )
+
+
+class MFADisableRequest(BaseModel):
+    """``DELETE /me/mfa`` — password-confirmed MFA removal."""
+
+    password: str = Field(..., min_length=1, description="Account password.")
+
+
+class MFAEnrollResponse(BaseModel):
+    """One-time enrollment payload — the plaintext secret and recovery
+    codes exist only in this response (the server stores the
+    Fernet-encrypted secret + bcrypt hashes)."""
+
+    secret: str = Field(..., description="Base32 TOTP secret (20 random bytes).")
+    uri: str = Field(..., description="otpauth:// provisioning URI.")
+    recovery_codes: List[str] = Field(
+        ..., description="Single-use recovery codes — shown once."
+    )
+
+
+class MFAStatusResponse(BaseModel):
+    """Self-service MFA status (``GET /me/mfa``)."""
+
+    enabled: bool = Field(..., description="A confirmed TOTP secret is active.")
+    enforced: bool = Field(..., description="An admin requires MFA for this account.")
+    pending: bool = Field(..., description="An enrollment awaits confirmation.")

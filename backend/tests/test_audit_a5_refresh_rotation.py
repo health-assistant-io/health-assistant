@@ -2,9 +2,9 @@
 import pytest
 
 from app.core.security import (
-    REFRESH_TOKEN_TYPE,
-    create_access_token,
+    REFRESH_TOKEN_KIND,
     create_refresh_token,
+    create_session_access_token,
     decode_refresh_token,
 )
 from app.core import token_store
@@ -48,27 +48,29 @@ def fake_redis(monkeypatch):
 
 
 CLAIMS = {
-    "sub": "user@example.com",
     "user_id": "user-123",
     "tenant_id": "tenant-1",
     "role": "USER",
+    "ver": 1,
 }
 
 
 class TestRefreshTokenShape:
-    def test_refresh_token_has_type_and_jti(self):
+    def test_refresh_token_has_kind_and_jti(self):
         token, jti = create_refresh_token(CLAIMS)
         assert jti
         payload = decode_refresh_token(token)
         assert payload is not None
-        assert payload["type"] == REFRESH_TOKEN_TYPE
+        assert payload["token_kind"] == REFRESH_TOKEN_KIND
         assert payload["jti"] == jti
 
+    @pytest.mark.contract  # §18.1 — kind mismatch: access token ≠ refresh
     def test_access_token_not_accepted_as_refresh(self):
-        access = create_access_token(CLAIMS)
-        # An access token has no type=refresh claim → rejected.
+        access, _jti = create_session_access_token(CLAIMS)
+        # A session token has token_kind="session" → rejected at /refresh.
         assert decode_refresh_token(access) is None
 
+    @pytest.mark.contract  # §18.1 — garbage token rejected
     def test_garbage_token_rejected(self):
         assert decode_refresh_token("not-a-jwt") is None
 
@@ -112,13 +114,16 @@ class TestRotationAndRevocation:
 class TestEndpointsWired:
     def test_refresh_rotates_and_logout_exists(self):
         import inspect
+
         from app.api.v1.endpoints import auth
+        from app.services import auth_session_service
 
         # /refresh must revoke the old jti + register a new one (rotation).
-        # Registration now happens in the shared _issue_session_tokens
-        # helper (which refresh calls) — assert against the whole module.
+        # Registration happens in the shared issuance path
+        # (auth_session_service.issue_session, which refresh calls with
+        # family_id=… to rotate the family) — assert across both.
         src = inspect.getsource(auth.refresh_token) + inspect.getsource(
-            auth._issue_session_tokens
+            auth_session_service.issue_session
         )
         assert "revoke_refresh" in src
         assert "register_refresh" in src

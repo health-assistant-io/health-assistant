@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.me_mfa import router as me_mfa_router
+from app.api.v1.endpoints.me_sessions import router as me_sessions_router
 from app.api.v1.endpoints.tenants import router as tenants_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.documents import router as documents_router
@@ -61,6 +63,8 @@ api_router.include_router(public_config_router)
 session_gated_router = APIRouter(dependencies=[Depends(require_session_token)])
 
 session_gated_router.include_router(auth_router)
+session_gated_router.include_router(me_sessions_router)
+session_gated_router.include_router(me_mfa_router)
 session_gated_router.include_router(tenants_router)
 session_gated_router.include_router(users_router)
 session_gated_router.include_router(documents_router)

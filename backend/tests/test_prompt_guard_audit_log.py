@@ -1,4 +1,4 @@
-"""Tests for audit items B6 (prompt-injection guard) and B12 (AuditLog).
+"""Tests for audit items B6 (prompt-injection guard) and B12 (AuditEvent).
 
 B6:  No prompt-injection / jailbreak defense anywhere. Added a heuristic
      ``app.utils.prompt_guard`` module that scans user input for known
@@ -6,10 +6,11 @@ B6:  No prompt-injection / jailbreak defense anywhere. Added a heuristic
      that hardens the LLM system prompt. The ``assist`` dispatcher runs
      every input through the guard before the LLM sees it.
 
-B12: The ``AuditLog`` table existed but was never written. Added
-     ``app.services.audit_service.log_audit_action`` and wired it into the
-     FHIR create/delete endpoints so every clinical write has a provenance
-     trail (who/what/when + old/new value diff).
+B12: The audit table (``AuditEvent``/``audit_events`` — renamed from
+     ``AuditLog``/``audit_logs`` in plan 16 H2) existed but was never
+     written. Added ``app.services.audit_service.log_audit_action`` and
+     wired it into the FHIR create/delete endpoints so every clinical
+     write has a provenance trail (who/what/when + old/new value diff).
 """
 import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -161,7 +162,7 @@ def test_b6_chat_system_prompts_include_defense_preamble():
 
 
 # ---------------------------------------------------------------------------
-# B12: AuditLog provenance
+# B12: AuditEvent provenance
 # ---------------------------------------------------------------------------
 
 
@@ -175,7 +176,7 @@ def test_b12_audit_service_module_exists():
 
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_writes_row():
-    """B12: log_audit_action persists an AuditLog entry via its own session."""
+    """B12: log_audit_action persists an AuditEvent entry via its own session."""
     from app.services import audit_service
 
     captured = {}
@@ -203,7 +204,7 @@ async def test_b12_log_audit_action_writes_row():
 
     with patch.object(audit_service, "DATABASE_AVAILABLE", True), \
          patch.object(audit_service, "AsyncSessionLocal", return_value=FakeSession()), \
-         patch.object(audit_service, "AuditLog", FakeEntry):
+         patch.object(audit_service, "AuditEvent", FakeEntry):
         await audit_service.log_audit_action(
             tenant_id=tenant,
             user_id=user,
@@ -218,6 +219,7 @@ async def test_b12_log_audit_action_writes_row():
     assert captured["action"] == "create_observation"
     assert captured["resource_type"] == "Observation"
     assert captured["resource_id"] == resource
+    assert captured["outcome"] == "ok"
     assert captured["new_value"] == {"code": "glucose"}
     assert captured.get("committed") is True
 
@@ -274,7 +276,7 @@ def test_b12_fhir_endpoints_call_log_audit_action():
 
 @pytest.mark.asyncio
 async def test_b12_create_observation_endpoint_writes_audit(async_client):
-    """B12: POST /observations triggers an AuditLog write."""
+    """B12: POST /observations triggers an AuditEvent write."""
     from app.core.database import get_db
     from app.core.security import get_current_user
     from app.main import app

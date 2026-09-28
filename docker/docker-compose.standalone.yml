@@ -1,27 +1,33 @@
-# Health Assistant — production Docker Compose.
+# Health Assistant — standalone self-hosted stack (postgres + redis + app
+# + nginx + backup): the canonical single-host deployment per deployment.md.
 #
-# This file is the canonical production deployment. Docker Compose is the
-# process supervisor here (NOT honcho — honcho is dev-only). Each service
-# runs in its own container with its own restart policy, healthcheck,
-# resource limits, and log rotation. Failure domains are isolated: a
-# crashed worker does NOT bring down the backend or frontend.
+# Docker Compose is the process supervisor here (NOT honcho — honcho is
+# dev-only). Each service runs in its own container with its own restart
+# policy, healthcheck, resource limits, and log rotation. Failure domains
+# are isolated: a crashed worker does NOT bring down the backend or
+# frontend.
 #
 # Required env vars (set in .env or your secret manager):
-#   POSTGRES_PASSWORD, SECRET_KEY, INTEGRATION_SECRET_KEY, OPENAI_API_KEY,
-#   FLOWER_USER, FLOWER_PASSWORD,
+#   POSTGRES_PASSWORD, HA_SESSION_KEY, HA_REFRESH_KEY, HA_DATA_KEY (or the
+#   legacy INTEGRATION_SECRET_KEY), REDIS_PASSWORD, FLOWER_PASSWORD,
 #   REGISTRY, REPOSITORY, IMAGE_TAG (for pre-built images)
 #
 # Optional env vars (have defaults):
-#   POSTGRES_DB, POSTGRES_USER, POSTGRES_PORT, REDIS_PORT,
-#   BACKEND_PORT, FRONTEND_PORT, FLOWER_PORT,
+#   POSTGRES_DB (default neuro_health — deployment.md / ADR-0022 naming),
+#   POSTGRES_PORT, REDIS_PORT, BACKEND_PORT, FRONTEND_PORT, FLOWER_PORT,
 #   CELERY_WORKER_CONCURRENCY, CELERY_MAX_TASKS_PER_CHILD,
 #   BACKEND_MEMORY, WORKER_MEMORY, BACKEND_CPUS, WORKER_CPUS,
+#   BACKUP_INTERVAL_HOURS, BACKUP_KEEP (scheduled backup sidecar),
 #   LOG_MAX_SIZE, LOG_MAX_FILE
 #
-# Bring up:    docker compose -f docker/docker-compose.prod.yml up -d
-# Migrate only: docker compose -f docker/docker-compose.prod.yml run --rm migrate
-# View logs:   docker compose -f docker/docker-compose.prod.yml logs -f backend worker
-# Stop:        docker compose -f docker/docker-compose.prod.yml down
+# Bring up:    docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+# + backups:   docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile backup up -d
+# Migrate only: docker compose --env-file .env -f docker/docker-compose.standalone.yml run --rm migrate
+# View logs:   docker compose --env-file .env -f docker/docker-compose.standalone.yml logs -f backend worker
+# Stop:        docker compose --env-file .env -f docker/docker-compose.standalone.yml down
+#
+# (--env-file .env is required when running from the repo root: compose reads
+#  .env from the compose file's directory by default.)
 
 x-logging: &default-logging
   driver: json-file
@@ -33,15 +39,28 @@ x-backend-env: &backend-env
   APP_ENV: production
   DEBUG: "false"
   POSTGRES_HOST: postgres
-  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+  POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+  # Two-role split (deployment.md / ADR-0022): the runtime connects as the
+  # least-privilege neuro_health_app role (DML only); only the one-shot
+  # `migrate` service uses the owner role. Both roles share POSTGRES_PASSWORD.
+  POSTGRES_USER: neuro_health_app
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+  DATABASE_URL: postgresql+asyncpg://neuro_health_app:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuro_health}
   REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
-  SECRET_KEY: ${SECRET_KEY}
-  INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY:-}
+  # Per-purpose key family (identity-auth §8, plan 16 H4): session/refresh
+  # signing keys are REQUIRED (weak/missing values refuse to boot); the
+  # Fernet at-rest key keeps accepting the legacy INTEGRATION_SECRET_KEY
+  # name so pre-H4 deployments keep their sealed ring — HA_DATA_KEY wins
+  # when both are set. _PREVIOUS is the decrypt-only rotation ring.
+  HA_SESSION_KEY: ${HA_SESSION_KEY:?Set HA_SESSION_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
+  HA_REFRESH_KEY: ${HA_REFRESH_KEY:?Set HA_REFRESH_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
+  HA_DATA_KEY: ${HA_DATA_KEY:-${INTEGRATION_SECRET_KEY:-}}
+  HA_DATA_KEY_PREVIOUS: ${HA_DATA_KEY_PREVIOUS:-${INTEGRATION_SECRET_KEY_PREVIOUS:-}}
   OCR_PROVIDER: ${OCR_PROVIDER:-openai}
-  JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+  HA_AUTH_ACCESS_TTL_MINUTES: ${HA_AUTH_ACCESS_TTL_MINUTES:-60}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
@@ -65,24 +84,37 @@ x-backend-env: &backend-env
 
 services:
   # ───────────────────────────────────────────────────────────────────────
-  # PostgreSQL with TimescaleDB
+  # PostgreSQL 16 with TimescaleDB
+  #
+  # deployment.md datastore rule: web mode runs PostgreSQL 16 — health keeps
+  # its TimescaleDB-optional image (latest-pg16 tag; timescaledb + pgcrypto +
+  # pg_trgm are all available there, and the migrations that use TimescaleDB
+  # features degrade gracefully when the extension is absent). Data
+  # directories are NOT compatible across major versions: existing pg14
+  # volumes must move via backup → fresh volume → restore (docker/README.md
+  # → "Upgrading from pg14").
   # ───────────────────────────────────────────────────────────────────────
   postgres:
-    image: timescale/timescaledb:latest-pg14
+    image: timescale/timescaledb:latest-pg16
     container_name: health-assistant-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-health_assistant}
-      POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+      # The bootstrap superuser IS the migration owner role (deployment.md:
+      # neuro_health_owner runs migrations). init-roles.sh creates the
+      # least-privilege neuro_health_app runtime role on first boot.
+      POSTGRES_USER: neuro_health_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_APP_USER: neuro_health_app
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./init-roles.sh:/docker-entrypoint-initdb.d/02-init-roles.sh:ro
     ports:
       # Bind to localhost only — do not expose the DB to the network.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-health_assistant}"]
+      test: ["CMD-SHELL", "pg_isready -U neuro_health_owner -d ${POSTGRES_DB:-neuro_health}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -123,13 +155,22 @@ services:
   # decouples migration failure from backend boot (Compose surfaces the
   # migrate container's failure clearly).
   #
-  # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
+  # Two-role split (deployment.md / ADR-0022): migrations run as the owner
+  # role (DDL) — this service overrides the shared x-backend-env anchor with
+  # the neuro_health_owner URL, the compose-level equivalent of career/
+  # study's `SA_MIGRATIONS_DATABASE_URL` entrypoint pattern. The backend/
+  # worker/beat services connect as least-privilege neuro_health_app.
+  #
+  # Re-run manually: docker compose -f docker/docker-compose.standalone.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
   migrate:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
     container_name: health-assistant-migrate
     restart: "no"
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      POSTGRES_USER: neuro_health_owner
+      DATABASE_URL: postgresql+asyncpg://neuro_health_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuro_health}
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,7 +275,10 @@ services:
     init: true
     environment:
       POSTGRES_HOST: postgres
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-health_assistant}
+      POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+      POSTGRES_USER: neuro_health_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: postgresql+asyncpg://neuro_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuro_health}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       redis:
@@ -249,8 +293,9 @@ services:
   # ───────────────────────────────────────────────────────────────────────
   # Flower (Celery monitoring UI)
   #
-  # Auth required (FLOWER_USER / FLOWER_PASSWORD).
-  # Isolated inside the Docker network; traffic is routed via Nginx at /flower.
+  # Auth REQUIRED in every flavor (audit H6): Flower exposes task payloads
+  # and arguments — health data. It is protected by Flower's own basic auth
+  # (FLOWER_USER / FLOWER_PASSWORD) and routed via nginx at /flower/.
   # ───────────────────────────────────────────────────────────────────────
   flower:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
@@ -266,9 +311,9 @@ services:
     command: >
       celery -A app.workers.celery_app flower
       --port=5555
-      --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD}
+      --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:?Set FLOWER_PASSWORD in .env}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -u ${FLOWER_USER:-admin}:${FLOWER_PASSWORD} http://localhost:5555/ || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS -u ${FLOWER_USER:-admin}:${FLOWER_PASSWORD} http://localhost:5555/flower/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -306,15 +351,60 @@ services:
     container_name: health-assistant-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      # If you mount SSL certs, uncomment this:
-      # - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      # TLS variant (see nginx-TLS.conf + docker/README.md → TLS): swap the
+      # conf mount below, provide certs, and uncomment:
+      # - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./nginx-TLS.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./certs/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro
+      # - ./certs/privkey.pem:/etc/nginx/certs/privkey.pem:ro
     depends_on:
       - backend
       - frontend
       - flower
+    logging: *default-logging
+    networks:
+      - health-assistant-network
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Backup sidecar (deployment.md: "Backup is a service, not a ritual")
+  #
+  # Scheduled instance backups (pg_dump -Fc of neuro_health + the uploads
+  # volume) written to the ./backups bind mount (= docker/backups/), every
+  # BACKUP_INTERVAL_HOURS, keeping BACKUP_KEEP of each. Enable with
+  # --profile backup. Host-side one-shots incl. manifest + restore:
+  # scripts/backup.sh + scripts/restore.sh (see docker/README.md →
+  # Backup & restore drill).
+  # ───────────────────────────────────────────────────────────────────────
+  backup:
+    image: timescale/timescaledb:latest-pg16 # pg_dump from the same image as the server
+    profiles: ["backup"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGHOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+      POSTGRES_USER: neuro_health_owner
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    volumes:
+      - ./backups:/backups
+      - uploads:/uploads:ro
+    command: >
+      sh -c 'while true; do
+        ts=$$(date -u +%Y%m%d-%H%M%S);
+        pg_dump -h $$PGHOST -U $$POSTGRES_USER -Fc $$POSTGRES_DB > /backups/db-$$ts.dump;
+        tar czf /backups/uploads-$$ts.tar.gz -C /uploads . || true;
+        find /backups -name "db-*.dump" | sort | head -n -$$BACKUP_KEEP | xargs -r rm --;
+        find /backups -name "uploads-*.tar.gz" | sort | head -n -$$BACKUP_KEEP | xargs -r rm --;
+        sleep $$((BACKUP_INTERVAL_HOURS * 3600));
+      done'
+    logging: *default-logging
     networks:
       - health-assistant-network
 

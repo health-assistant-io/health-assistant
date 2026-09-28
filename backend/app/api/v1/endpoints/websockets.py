@@ -2,14 +2,24 @@
 
 Connection hygiene:
 
-1. **Auth token via subprotocol** (``new WebSocket(url, ["bearer", token])``)
-   which is not logged as part of the URL. A query-string ``?token=...``
-   fallback is retained for backward compatibility with existing clients.
+1. **Auth (§10, plan 16 H3):** the browser's access JWT is read from the
+   HttpOnly ``nx_access`` cookie; the ``Sec-WebSocket-Protocol``
+   subprotocol form (``new WebSocket(url, ["bearer", token])``) stays for
+   non-browser clients (§9 — the Android app may use it; both channels
+   are fine). A query-string ``?token=...`` remains forbidden (proxy
+   logs / browser history).
 
-2. **Bounded polling cadence** via ``pubsub.get_message(timeout=1.0)`` with
+2. **Origin gate (§10):** browser handshakes carry ``Origin`` — it is
+   verified against the configured allow-list (``HA_WS_ALLOWED_ORIGINS``
+   or same-origin + APP_URL/FRONTEND_URL + the dev LAN regex); anything
+   else is rejected with 1008 before the socket is accepted.
+   Non-browser clients (no ``Origin`` header) pass — they are not
+   cross-site pages, and §9 freezes their behavior.
+
+3. **Bounded polling cadence** via ``pubsub.get_message(timeout=1.0)`` with
    explicit event-loop yields, keeping Redis round-trips low.
 
-3. **Errors logged before close(1011)** so operators can diagnose drops.
+4. **Errors logged before close(1011)** so operators can diagnose drops.
 
 A lightweight server-side ping (every 30s) keeps intermediaries from
 timing the connection out.
@@ -17,12 +27,16 @@ timing the connection out.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
+from app.core.cookies import access_cookie_candidates, parse_cookies
 from app.core.redis import redis_client
-from app.core.security import get_current_user_ws
+from app.core.security import get_session_user_ws
 from app.schemas.user import TokenData
 
 logger = logging.getLogger(__name__)
@@ -36,18 +50,78 @@ _POLL_TIMEOUT_SECONDS = 1.0
 # typically drop idle connections after 60-120s; a 30s ping stays well inside.
 _PING_INTERVAL_SECONDS = 30
 
+# Compiled once — same pattern the dev CORS middleware allows.
+_DEV_LAN_ORIGIN = re.compile(DEV_LAN_ORIGIN_REGEX)
+
+
+def _ws_allowed_origins() -> set[str]:
+    """The configured WS Origin allow-list (§10).
+
+    ``HA_WS_ALLOWED_ORIGINS`` (comma-separated) wins when set; the default
+    is the CORS list — APP_URL + FRONTEND_URL origins. Same-origin (the
+    request's own Host) and the dev LAN regex are checked separately in
+    :func:`_origin_allowed` so the common SPA-served-by-backend and dev
+    setups work with zero configuration.
+    """
+    raw = settings.HA_WS_ALLOWED_ORIGINS
+    if raw:
+        return {origin.strip() for origin in raw.split(",") if origin.strip()}
+    origins: set[str] = set()
+    for url in (settings.APP_URL, settings.FRONTEND_URL):
+        try:
+            parsed = urlparse(url or "")
+            if parsed.scheme and parsed.netloc:
+                origins.add(f"{parsed.scheme}://{parsed.netloc}")
+        except Exception:
+            continue
+    return origins
+
+
+def _origin_allowed(websocket: WebSocket) -> bool:
+    """§10: verify the handshake ``Origin`` against the allow-list.
+
+    A missing ``Origin`` (non-browser client — Android, integrations,
+    curl) passes: it is not a cross-site page and §9 freezes its
+    behavior. A present-but-unlisted origin (including ``null``) is
+    rejected — that is the cross-site WebSocket hijacking vector the
+    cookie channel would otherwise open.
+    """
+    origin = (websocket.headers.get("origin") or "").strip()
+    if not origin:
+        return True
+    if origin in _ws_allowed_origins():
+        return True
+    # Same-origin: the SPA is served by the backend itself (or proxied),
+    # so the handshake origin equals ws(s)://<request host>.
+    host = (websocket.headers.get("host") or "").strip()
+    if host:
+        scheme = websocket.url.scheme or "ws"
+        http_scheme = "https" if scheme in ("wss", "https") else "http"
+        if origin.lower() == f"{http_scheme}://{host}".lower():
+            return True
+    if settings.APP_ENV == "development" and _DEV_LAN_ORIGIN.match(origin):
+        return True
+    return False
+
 
 async def _extract_token(websocket: WebSocket) -> str | None:
-    """B11: the Sec-WebSocket-Protocol subprotocol is the ONLY accepted auth
-    channel (audit 2026-08 AUTH-L4 removed the ``?token=`` query fallback —
-    query strings land in proxy logs and browser history).
+    """§10: the HttpOnly ``nx_access`` cookie is the browser auth channel;
+    the ``Sec-WebSocket-Protocol`` subprotocol is the non-browser one.
 
-    Clients connect with ``new WebSocket(url, ["bearer", "<token>"])``. We
-    accept the token that follows the ``bearer`` sentinel. Subprotocols are
-    read from the ASGI ``scope["subprotocols"]`` list (the canonical location
-    uvicorn populates) and, as a fallback, from the raw
+    Cookie first (read from the raw ``Cookie`` header); the subprotocol
+    form ``["bearer", "<token>"]`` stays for §9 clients (the Android app
+    may use it). Subprotocols are read from the ASGI
+    ``scope["subprotocols"]`` list (the canonical location uvicorn
+    populates) and, as a fallback, from the raw
     ``Sec-WebSocket-Protocol`` header.
     """
+    # 0. §10 cookie channel (browsers).
+    cookies = parse_cookies(websocket.headers.get("cookie"))
+    for name in access_cookie_candidates():
+        token = cookies.get(name)
+        if token:
+            return token
+
     # 1. ASGI scope subprotocols (canonical; uvicorn/Starlette populate this).
     scope_subs = websocket.scope.get("subprotocols") or []
     # 2. Raw header (comma-joined if multiple values).
@@ -69,8 +143,47 @@ async def _extract_token(websocket: WebSocket) -> str | None:
             return part
     # Audit 2026-08 AUTH-L4: the ?token= query-string fallback is REMOVED —
     # query strings land in reverse-proxy access logs and browser history.
-    # Clients must use the Sec-WebSocket-Protocol subprotocol form
+    # Browsers use the cookie (§10); other clients the subprotocol form
     # (new WebSocket(url, ["bearer", token])).
+    return None
+
+
+async def _authenticate_handshake(websocket: WebSocket) -> TokenData | None:
+    """Origin gate + token verification for a WS handshake (§10).
+
+    Returns the authenticated ``TokenData``, or ``None`` after closing
+    the socket with 1008 (policy violation) — callers return early.
+    """
+    if not _origin_allowed(websocket):
+        logger.info(
+            "WebSocket handshake rejected: Origin %r not allowed",
+            websocket.headers.get("origin"),
+        )
+        await websocket.close(code=1008)
+        return None
+
+    resolved_token = await _extract_token(websocket)
+    if not resolved_token:
+        # No token from any source — reject before accepting the socket.
+        await websocket.close(code=1008)
+        return None
+
+    try:
+        return await get_session_user_ws(resolved_token)
+    except Exception as e:
+        logger.info("WebSocket auth rejected: %s", e)
+        await websocket.close(code=1008)
+        return None
+
+
+def _negotiated_subprotocol(websocket: WebSocket) -> str | None:
+    """Echo the first requested subprotocol so the client knows we
+    honoured it; accept without one when none was requested."""
+    subprotocols = websocket.headers.get("sec-websocket-protocol", "")
+    if subprotocols:
+        parts = [p.strip() for p in subprotocols.split(",") if p.strip()]
+        if parts:
+            return parts[0]
     return None
 
 
@@ -80,30 +193,17 @@ async def websocket_tasks_endpoint(
 ):
     """Live task-progress stream for the caller's tenant.
 
-    Auth: Sec-WebSocket-Protocol subprotocol ONLY (``["bearer", token]``) —
-    the ``?token=`` query fallback was removed (audit 2026-08 AUTH-L4).
+    Auth (§10): the ``nx_access`` cookie (browsers) or the
+    Sec-WebSocket-Protocol subprotocol ``["bearer", token]`` (§9 clients);
+    the ``?token=`` query fallback stays removed (audit 2026-08 AUTH-L4).
+    The handshake ``Origin`` is verified against the configured
+    allow-list — unauthorized origins are rejected with 1008.
     """
-    resolved_token = await _extract_token(websocket)
-    if not resolved_token:
-        # No token from either source — reject before accepting the socket.
-        await websocket.close(code=1008)
+    current_user = await _authenticate_handshake(websocket)
+    if current_user is None:
         return
 
-    try:
-        current_user: TokenData = await get_current_user_ws(resolved_token)
-    except Exception as e:
-        logger.info("WebSocket auth rejected: %s", e)
-        await websocket.close(code=1008)
-        return
-
-    # If a subprotocol was requested, echo it back so the client knows we
-    # honoured it; otherwise accept without one.
-    subprotocols = websocket.headers.get("sec-websocket-protocol", "")
-    negotiated = None
-    if subprotocols:
-        parts = [p.strip() for p in subprotocols.split(",") if p.strip()]
-        if parts:
-            negotiated = parts[0]
+    negotiated = _negotiated_subprotocol(websocket)
     await websocket.accept(subprotocol=negotiated)
 
     tenant_id = current_user.tenant_id
@@ -174,26 +274,14 @@ async def websocket_notifications_endpoint(
     Subscribes to the Redis channel ``user:{user_id}:notifications`` so each
     authenticated user receives their own fan-out (notifications are targeted
     at concrete user ids by ``notification_service.emit``). Auth + connection
-    hygiene mirror ``/ws/tasks`` (subprotocol-preferred token).
+    hygiene mirror ``/ws/tasks`` (cookie-or-subprotocol token, §10 Origin
+    gate, subprotocol-preferred negotiation).
     """
-    resolved_token = await _extract_token(websocket)
-    if not resolved_token:
-        await websocket.close(code=1008)
+    current_user = await _authenticate_handshake(websocket)
+    if current_user is None:
         return
 
-    try:
-        current_user: TokenData = await get_current_user_ws(resolved_token)
-    except Exception as e:
-        logger.info("Notification WebSocket auth rejected: %s", e)
-        await websocket.close(code=1008)
-        return
-
-    subprotocols = websocket.headers.get("sec-websocket-protocol", "")
-    negotiated = None
-    if subprotocols:
-        parts = [p.strip() for p in subprotocols.split(",") if p.strip()]
-        if parts:
-            negotiated = parts[0]
+    negotiated = _negotiated_subprotocol(websocket)
     await websocket.accept(subprotocol=negotiated)
 
     user_id = current_user.user_id

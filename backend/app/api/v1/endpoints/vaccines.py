@@ -29,6 +29,7 @@ from app.schemas.vaccine import (
     VaccineCatalogUpdate,
 )
 from app.services import vaccine_service
+from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/vaccines", tags=["vaccines"])
 
@@ -134,10 +135,21 @@ async def add_patient_immunization(
     current_user: TokenData = Depends(get_current_user),
 ):
     data.patient_id = patient_id
-    return await vaccine_service.add_patient_immunization(db, current_user, data)
+    record = await vaccine_service.add_patient_immunization(db, current_user, data)
+    # §17: clinical writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_immunization",
+        resource_type="Immunization",
+        resource_id=getattr(record, "id", None),
+        new_value=data.model_dump(mode="json"),
+    )
+    return record
 
 
 @router.get("/{immunization_id}", response_model=PatientImmunizationResponse)
+@audit_read("Immunization", id_param="immunization_id")
 async def get_patient_immunization(
     immunization_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -159,6 +171,14 @@ async def update_patient_immunization(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Immunization record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_immunization",
+        resource_type="Immunization",
+        resource_id=immunization_id,
+        new_value=data.model_dump(mode="json", exclude_unset=True),
+    )
     return result
 
 
@@ -174,4 +194,11 @@ async def delete_patient_immunization(
     )
     if not success:
         raise HTTPException(status_code=404, detail="Immunization record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_immunization",
+        resource_type="Immunization",
+        resource_id=immunization_id,
+    )
     return {"message": "Immunization record deleted"}

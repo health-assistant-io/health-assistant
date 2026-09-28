@@ -21,7 +21,7 @@ def test_no_trusted_proxies_ignores_xff(monkeypatch):
     X-Forwarded-For must NOT create fresh rate-limit buckets."""
     monkeypatch.setattr(
         "app.core.rate_limit.get_settings",
-        lambda: MagicMock(TRUSTED_PROXY_COUNT=0),
+        lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=0),
     )
     req = _request(ip="198.51.100.9", xff="1.2.3.4, 5.6.7.8")
     assert _client_ip(req) == "198.51.100.9"
@@ -30,7 +30,7 @@ def test_no_trusted_proxies_ignores_xff(monkeypatch):
 def test_one_trusted_proxy_uses_last_hop(monkeypatch):
     monkeypatch.setattr(
         "app.core.rate_limit.get_settings",
-        lambda: MagicMock(TRUSTED_PROXY_COUNT=1),
+        lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1),
     )
     req = _request(ip="10.0.0.5", xff="6.6.6.6, 198.51.100.9")
     # The proxy appended the real client (rightmost); 6.6.6.6 is spoofed.
@@ -40,7 +40,7 @@ def test_one_trusted_proxy_uses_last_hop(monkeypatch):
 def test_two_trusted_proxies(monkeypatch):
     monkeypatch.setattr(
         "app.core.rate_limit.get_settings",
-        lambda: MagicMock(TRUSTED_PROXY_COUNT=2),
+        lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=2),
     )
     req = _request(ip="10.0.0.5", xff="6.6.6.6, 198.51.100.9, 10.0.0.5")
     assert _client_ip(req) == "198.51.100.9"
@@ -49,7 +49,7 @@ def test_two_trusted_proxies(monkeypatch):
 def test_no_xff_uses_peer(monkeypatch):
     monkeypatch.setattr(
         "app.core.rate_limit.get_settings",
-        lambda: MagicMock(TRUSTED_PROXY_COUNT=1),
+        lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1),
     )
     req = _request(ip="198.51.100.9")
     assert _client_ip(req) == "198.51.100.9"

@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, 
-  UserPlus, 
+import { toast } from 'react-toastify';
+import {
+  Users,
+  UserPlus,
   CheckCircle2,
   Trash2,
   X,
   Save,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  ShieldOff
 } from 'lucide-react';
 import { listUsers, deleteUser, createUser, User as UserType, UserRole } from '../../services/userService';
+import { setUserMfaEnforced } from '../../services/mfaService';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useAuthStore } from '../../store/slices/authSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -102,6 +106,36 @@ function UserManagement() {
     navigate(`${basePath}/${userId}`);
   };
 
+  // H5: only ADMIN / SYSTEM_ADMIN may force MFA (the backend PATCH
+  // /admin/tenants/{tid}/users/{uid}/mfa gate mirrors this).
+  const canManageMfa = currentUser?.role === 'ADMIN' || currentUser?.role === 'SYSTEM_ADMIN';
+
+  const toggleMfa = (user: UserType) => {
+    const target = user.tenant_id || currentUser?.tenant_id;
+    if (!target) return;
+    const enforce = !user.mfa_enforced;
+    showConfirmation({
+      title: enforce
+        ? t('admin.mfa_require_title', 'Require two-factor authentication')
+        : t('admin.mfa_release_title', 'Release MFA requirement'),
+      message: enforce
+        ? t('admin.mfa_require_confirm', { email: user.email, defaultValue: 'Require {{email}} to enroll an authenticator app at their next sign-in?' })
+        : t('admin.mfa_release_confirm', { email: user.email, defaultValue: 'Stop requiring MFA for {{email}}? Any enrolled authenticator keeps working.' }),
+      confirmLabel: enforce ? t('admin.mfa_require', 'Require MFA') : t('common.save', 'Release'),
+      confirmVariant: enforce ? 'primary' : 'danger',
+      onConfirm: async () => {
+        try {
+          await setUserMfaEnforced(target, user.id, enforce);
+          await fetchUsers();
+          toast.success(enforce ? t('admin.mfa_required_toast', 'MFA required at next sign-in') : t('admin.mfa_released_toast', 'MFA requirement released'));
+        } catch (err) {
+          console.error('Failed to update MFA policy:', err);
+          toast.error(t('admin.mfa_policy_failed', 'Could not update the MFA policy.'));
+        }
+      }
+    });
+  };
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-full text-gray-500">{t('admin.loading_users')}</div>;
   }
@@ -134,6 +168,7 @@ function UserManagement() {
                 <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-gray-400">{t('admin.user')}</th>
                 <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-gray-400">{t('admin.role')}</th>
                 <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-gray-400">{t('admin.status')}</th>
+                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-gray-400">{t('admin.mfa_column', 'MFA')}</th>
                 <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-gray-400 text-right">{t('common.actions')}</th>
               </tr>
             </thead>
@@ -172,8 +207,41 @@ function UserManagement() {
                       <span className="text-sm text-gray-500 dark:text-dark-muted font-medium">{t('admin.active')}</span>
                     </div>
                   </td>
+                  <td className="px-6 py-4">
+                    {user.mfa_enforced ? (
+                      <span
+                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                        title={t('admin.mfa_required_hint', 'MFA required at next sign-in')}
+                      >
+                        <ShieldCheck className="w-3 h-3 mr-1" />
+                        {t('admin.mfa_required_badge', 'Required')}
+                      </span>
+                    ) : user.mfa_enabled ? (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                        <ShieldCheck className="w-3 h-3 mr-1" />
+                        {t('admin.mfa_enabled_badge', 'On')}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-black uppercase tracking-wide text-gray-300 dark:text-gray-600">
+                        {t('admin.mfa_off_badge', 'Off')}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {canManageMfa && (
+                        <button
+                          onClick={() => toggleMfa(user)}
+                          className={`p-2 rounded-xl transition-all ${user.mfa_enforced
+                            ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                            : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                          title={user.mfa_enforced
+                            ? t('admin.mfa_release', 'Release MFA requirement')
+                            : t('admin.mfa_require', 'Require MFA')}
+                        >
+                          {user.mfa_enforced ? <ShieldOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteUser(user)}
                         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"

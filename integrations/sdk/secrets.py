@@ -13,9 +13,10 @@ easy to identify, mask on read, and re-encrypt after a key rotation.
 
 Key rotation (Phase 1.2 of the SDK hardening plan):
 
-* The primary key is ``settings.INTEGRATION_SECRET_KEY`` (always used to
-  *encrypt*).
-* ``settings.INTEGRATION_SECRET_KEY_PREVIOUS`` (comma-separated) holds prior
+* The primary key is ``settings.HA_DATA_KEY`` (env alias
+  ``INTEGRATION_SECRET_KEY`` — always used to *encrypt*).
+* ``settings.HA_DATA_KEY_PREVIOUS`` (env alias
+  ``INTEGRATION_SECRET_KEY_PREVIOUS``, comma-separated) holds prior
   keys accepted for *decryption* only, so ciphertext produced before a
   rotation keeps decrypting.
 * A short ``_kid`` tag records which key produced a value, so a rotation
@@ -57,6 +58,27 @@ def _key_tag(key: Union[str, bytes]) -> str:
     return hashlib.sha256(key).hexdigest()[:_KEY_TAG_LEN]
 
 
+def _normalize_fernet_key(key: str) -> bytes:
+    """Canonical padded Fernet encoding of a DATA_KEY family entry.
+
+    The family (H4) accepts both the padded ``Fernet.generate_key()``
+    form and the auth-kit's unpadded token form — the same 32 key bytes
+    either way. Normalizing here keeps the ring usable with either
+    spelling without changing any ciphertext: a Fernet token depends
+    only on the key bytes, and the padded form round-trips to itself.
+    """
+    import base64
+
+    padded = key + "=" * (-len(key) % 4)
+    raw = base64.urlsafe_b64decode(padded.encode("ascii"))
+    if len(raw) != 32:
+        raise ValueError(
+            "DATA_KEY family entry must be 32-byte urlsafe-base64 key "
+            "material (a Fernet key)"
+        )
+    return base64.urlsafe_b64encode(raw)
+
+
 class SecretCipher:
     """Fernet wrapper for encrypting tagged fields inside ``user_config``.
 
@@ -78,10 +100,16 @@ class SecretCipher:
         for prev in previous or []:
             if prev and prev not in keys:
                 keys.append(prev)
-        fernets = [Fernet(k.encode("utf-8") if isinstance(k, str) else k) for k in keys]
-        self._multi = MultiFernet(fernets)
-        self._primary = fernets[0]
-        self._primary_tag = _key_tag(keys[0])
+        # Canonical padded spelling per entry: identical to the input for
+        # the standard ``Fernet.generate_key()`` form (the historical ring
+        # spelling), so ``_kid`` tags stay stable across H4.
+        canonical = [
+            _normalize_fernet_key(k).decode("ascii") if isinstance(k, str) else k
+            for k in keys
+        ]
+        self._multi = MultiFernet([Fernet(k) for k in canonical])
+        self._primary = Fernet(canonical[0])
+        self._primary_tag = _key_tag(canonical[0])
 
     @classmethod
     def from_settings(cls) -> "SecretCipher":

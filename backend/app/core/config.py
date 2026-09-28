@@ -49,14 +49,23 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = False
 
-    # Demo mode — when true, the app auto-seeds a demo tenant + user (via
-    # scripts/seed_demo.py on boot) and exposes POST /auth/demo-login so the
-    # frontend can sign in with NO credentials. Intended for public/screenshot
-    # demos behind a firewall; NEVER enable on an instance that holds real
-    # data — it bypasses authentication entirely. Orthogonal to APP_ENV so it
-    # composes with the production boot-guards (the demo docker compose runs
-    # APP_ENV=production + DEMO_MODE=true). See dev/audits + CHANGELOG.
-    DEMO_MODE: bool = False
+    # --- Identity & auth (identity-auth §16 `HA_*` names) ----------------
+    # Init-only instance facts (§4/§13): HA_AUTH_MODE / HA_DEMO_MODE are
+    # consumed ONLY when initializing an empty database (they seed
+    # `instance_settings.auth_mode` / `demo_mode`); post-init they are
+    # ignored with a loud warning — the DB is authoritative. Reads fail
+    # closed: unknown/missing auth_mode ⇒ `authenticated`, demo_mode ⇒ false.
+    # Never configured? Defaults: authenticated, no demo.
+    HA_AUTH_MODE: str = "authenticated"
+    # HA_DEMO_MODE — when true (at init), the instance is a demo instance:
+    # `instance_settings.demo_mode=true`, the app auto-seeds a demo tenant +
+    # user (scripts/seed_demo.py on boot) and POST /auth/demo-login admits
+    # the credential-free `demo` principal (tokens carry auth_mode="demo").
+    # Intended for public/screenshot demos behind a firewall; NEVER enable on
+    # an instance that holds real data — it bypasses authentication entirely.
+    # Orthogonal to APP_ENV so it composes with the production boot-guards
+    # (the demo docker compose runs APP_ENV=production + HA_DEMO_MODE=true).
+    HA_DEMO_MODE: bool = False
     # The demo user. Aliased to the legacy HA_DEMO_EMAIL / HA_DEMO_PASSWORD
     # env names so the existing demo docker compose + UI capture tooling keep
     # working unchanged (single source of truth for "the demo credentials").
@@ -77,7 +86,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "health_assistant"
+    # deployment.md / ADR-0022 naming: neuro_<product>. Demo/test flavors use
+    # neuro_health_demo / neuro_health_test[_gwN] via env.
+    POSTGRES_DB: str = "neuro_health"
     DATABASE_URL: Optional[str] = None
 
     @model_validator(mode="after")
@@ -147,13 +158,62 @@ class Settings(BaseSettings):
             )
         return self
 
-    # Security
-    # SECRET_KEY signs JWTs. It must be explicitly provided in production.
-    # Read via pydantic (Optional[str] = None) rather than os.getenv at class
-    # definition time — the os.getenv default baked in the value before the
-    # prod-guard validator below could reject it, making it untestable and
-    # inconsistent with how VAPID keys are handled (audit C7).
-    SECRET_KEY: Optional[str] = None
+    # --- Per-purpose key family (identity-auth §8; plan 16 H4) ---------------
+    # Three independent per-instance secrets, each 32+ random bytes:
+    # HA_SESSION_KEY signs session JWTs (and the api/invite/download product
+    # kinds — see app.core.keys for the map), HA_REFRESH_KEY signs refresh
+    # JWTs only, HA_DATA_KEY is the Fernet at-rest key and never signs
+    # anything. No key is derived from another and no two purposes share
+    # key material — the former single all-purpose SECRET_KEY is retired
+    # from all signing (every pre-H4 JWT dies at deploy; users re-login).
+    #
+    # Resolution: env first (the legacy INTEGRATION_SECRET_KEY env name
+    # still feeds HA_DATA_KEY so existing deployments keep their sealed
+    # at-rest ring — bridge pairing secrets, integration api_secrets and
+    # AI provider keys stay decryptable); dev/test fall back to
+    # per-process ephemeral keys (logins do not survive a restart — the
+    # same caveat the retired SECRET_KEY fallback carried). Production
+    # (server) deployments MUST pin the keys via env: the boot guards
+    # below refuse missing/weak/placeholder/cross-purpose values.
+    HA_SESSION_KEY: Optional[str] = None
+    HA_REFRESH_KEY: Optional[str] = None
+    # Fernet key material (base64 32 bytes). The padded ``Fernet.generate_key()``
+    # form is the canonical shape; the kit's unpadded token form is accepted
+    # too (app.core.encryption normalizes the padding).
+    HA_DATA_KEY: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("HA_DATA_KEY", "INTEGRATION_SECRET_KEY"),
+    )
+    # Prior Fernet keys (comma-separated) accepted for DECRYPTION only so
+    # ciphertext sealed before a rotation keeps decrypting; the primary
+    # HA_DATA_KEY always encrypts (the rotation ring — see
+    # integrations/sdk/secrets.py and app/core/encryption.py).
+    HA_DATA_KEY_PREVIOUS: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "HA_DATA_KEY_PREVIOUS", "INTEGRATION_SECRET_KEY_PREVIOUS"
+        ),
+    )
+
+    # Legacy attribute aliases for the at-rest ring. The DATA_KEY family was
+    # read through the INTEGRATION_* names until H4; readers and tests that
+    # touch ``settings.INTEGRATION_SECRET_KEY`` keep working unchanged
+    # (monkeypatch-friendly: the setter writes the canonical field).
+    @property
+    def INTEGRATION_SECRET_KEY(self) -> Optional[str]:
+        return self.HA_DATA_KEY
+
+    @INTEGRATION_SECRET_KEY.setter
+    def INTEGRATION_SECRET_KEY(self, value: Optional[str]) -> None:
+        self.HA_DATA_KEY = value
+
+    @property
+    def INTEGRATION_SECRET_KEY_PREVIOUS(self) -> str:
+        return self.HA_DATA_KEY_PREVIOUS
+
+    @INTEGRATION_SECRET_KEY_PREVIOUS.setter
+    def INTEGRATION_SECRET_KEY_PREVIOUS(self, value: str) -> None:
+        self.HA_DATA_KEY_PREVIOUS = value
 
     # First-run setup-token guard — see dev/audits/setup-token-modes.md.
     # ``log``     (default) — print one-time token to container logs; required
@@ -200,16 +260,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _warn_demo_mode(self) -> "Settings":
-        """Loud warning + explicit opt-in gate when DEMO_MODE is on.
+        """Loud warning + explicit opt-in gate when HA_DEMO_MODE is on.
 
         Demo mode exposes /auth/demo-login (credential-free login as the
-        demo user, ADMIN role) — an authentication bypass by design. In any
-        non-dev APP_ENV it additionally requires
+        demo user) — an authentication bypass by design. In any non-dev
+        APP_ENV it additionally requires
         ``DEMO_MODE_ACCEPT_UNAUTHENTICATED=true`` so a single flipped env
         var (or a baked-in .env) cannot silently open a real instance
-        (audit 2026-08 CFG-H6).
+        (audit 2026-08 CFG-H6). This boot guard is env-level on purpose:
+        the runtime admission of demo tokens is state-derived from the DB
+        fact (identity-auth §4/§13 — see app/core/instance_state.py).
         """
-        if self.DEMO_MODE:
+        if self.HA_DEMO_MODE:
             import logging
 
             if self.APP_ENV not in ("development", "test", "testing"):
@@ -279,50 +341,148 @@ class Settings(BaseSettings):
             return False
         return True
 
-    @model_validator(mode="after")
-    def _validate_secret_key(self) -> "Settings":
-        """Ensure a valid SECRET_KEY is provided, falling back to an ephemeral one in dev only."""
-        if not self.SECRET_KEY:
-            if self.APP_ENV in ("development", "test", "testing"):
-                import logging
+    @staticmethod
+    def _is_valid_fernet_material(value: str) -> bool:
+        """True when ``value`` is 32 bytes of urlsafe-base64 key material.
 
-                logging.warning(
-                    "No SECRET_KEY provided; generating an ephemeral one for development. Logins will not survive restarts."
-                )
-                self.SECRET_KEY = secrets.token_urlsafe(32)
-            else:
-                raise ValueError(
-                    f"A strong SECRET_KEY must be provided via environment variables for APP_ENV={self.APP_ENV!r}. "
-                    "Refusing to boot without one."
-                )
-        if self.APP_ENV not in ("development", "test", "testing") and (
-            self.SECRET_KEY.strip().lower() in self._PLACEHOLDER_SECRETS
-            or not self._is_acceptable_secret(self.SECRET_KEY)
-        ):
+        Accepts both the padded ``Fernet.generate_key()`` form and the
+        auth-kit's unpadded token form — the same two shapes
+        ``app.core.encryption.fernet_from_data_key`` normalizes. Kept here
+        (stdlib-only) so the boot guard never imports the crypto stack.
+        """
+        import base64 as _b64
+
+        v = (value or "").strip()
+        if not v:
+            return False
+        try:
+            raw = _b64.urlsafe_b64decode(v + "=" * (-len(v) % 4))
+        except (ValueError, TypeError):
+            return False
+        return len(raw) == 32
+
+    @model_validator(mode="after")
+    def _validate_signing_keys(self) -> "Settings":
+        """Identity-auth §8 (plan 16 H4): per-purpose signing keys.
+
+        - ``HA_SESSION_KEY`` / ``HA_REFRESH_KEY`` are REQUIRED on servers
+          (non-dev APP_ENV): missing, placeholder or weak (<32 chars /
+          trivial entropy) values refuse to boot.
+        - A partial pin (exactly one of the two set) fails closed in every
+          environment — session and refresh must never be minted from an
+          accidentally half-migrated key ring.
+        - dev/test with neither set: per-process ephemeral keys (logins do
+          not survive a restart), matching the retired SECRET_KEY fallback.
+        """
+        keys = {"HA_SESSION_KEY": self.HA_SESSION_KEY, "HA_REFRESH_KEY": self.HA_REFRESH_KEY}
+        pinned = [name for name, value in keys.items() if value]
+        if len(pinned) == 1:
+            missing = [name for name in keys if name not in pinned]
             raise ValueError(
-                "SECRET_KEY looks like a placeholder or is too weak (need >= 32 "
-                "chars with real entropy). Generate one with: python -c "
-                '"from secrets import token_urlsafe; print(token_urlsafe(48))". '
-                "Refusing to boot with a publicly-known signing key."
+                f"partial signing-key pin: {', '.join(missing)} is missing — "
+                "provide both HA_SESSION_KEY and HA_REFRESH_KEY or neither "
+                "(identity-auth §8: session and refresh sign with separate, "
+                "independently pinned keys)."
             )
+        for name, value in keys.items():
+            if not value:
+                if self.APP_ENV in ("development", "test", "testing"):
+                    import logging
+
+                    logging.warning(
+                        "No %s provided; generating an ephemeral one for "
+                        "development. Logins will not survive restarts.",
+                        name,
+                    )
+                    setattr(self, name, secrets.token_urlsafe(32))
+                else:
+                    raise ValueError(
+                        f"A strong {name} must be provided via environment "
+                        f"variables for APP_ENV={self.APP_ENV!r} (identity-auth "
+                        "§8: signing keys are per-purpose and env-pinned on "
+                        "servers). Refusing to boot without one."
+                    )
+            elif self.APP_ENV not in ("development", "test", "testing") and (
+                value.strip().lower() in self._PLACEHOLDER_SECRETS
+                or not self._is_acceptable_secret(value)
+            ):
+                raise ValueError(
+                    f"{name} looks like a placeholder or is too weak (need >= 32 "
+                    "chars with real entropy). Generate one with: python -c "
+                    '"from secrets import token_urlsafe; print(token_urlsafe(48))". '
+                    "Refusing to boot with a publicly-known signing key."
+                )
         return self
 
     JWT_ALGORITHM: str = "HS256"
-    # Short-lived stateless access tokens (audit 2026-08 M4): a stolen
-    # session token is revocable via the jti store, but defense in depth
-    # keeps the unrevocable window small. 24h was far too long for PHI.
-    JWT_EXPIRATION_HOURS: int = 1
+    # §16 lifetimes (identity-auth §8): 60-min session access tokens
+    # (24h hard cap — a stolen session token is revocable via the jti
+    # store + `ver`, but defense in depth keeps the unrevocable window
+    # small; 24h was far too long for PHI), 7-day rolling refresh with a
+    # 30-day absolute cap enforced via `auth_sessions`.
+    HA_AUTH_ACCESS_TTL_MINUTES: int = 60
+    HA_AUTH_REFRESH_TTL_DAYS: int = 7
+    HA_AUTH_REFRESH_ABSOLUTE_DAYS: int = 30
+    # §7 lockout: 5 consecutive failures ⇒ 423 for 15 minutes.
+    HA_AUTH_LOCKOUT_THRESHOLD: int = 5
+    HA_AUTH_LOCKOUT_MINUTES: int = 15
+    # §12/§16: gates POST /auth/register (health is invite-only by
+    # construction — the flag additionally disables the register route).
+    HA_REGISTRATION_ENABLED: bool = True
+    # §10 cookie sessions (plan 16 H3): browsers authenticate with the
+    # HttpOnly ``nx_access`` / ``nx_refresh`` cookies plus the JS-readable
+    # ``nx_csrf`` double-submit cookie; user clients keep Bearer (§9 —
+    # the Android/integrations HMAC bridge is unchanged). ``HA_COOKIE_SECURE``
+    # also switches the access cookie to the ``__Host-`` prefix (TLS
+    # deployments — the prefix demands Secure + Path=/).
+    HA_COOKIE_SECURE: bool = False
+    # SameSite knob (§10 default Lax). ``none`` requires Secure — browsers
+    # reject SameSite=None without it.
+    HA_COOKIE_SAMESITE: str = "lax"
+    # §10 WS Origin gate: comma-separated origin allow-list for the
+    # WebSocket handshake. Empty/None = same-origin (request Host) +
+    # APP_URL/FRONTEND_URL (the CORS list; the dev LAN regex applies in
+    # development).
+    HA_WS_ALLOWED_ORIGINS: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_auth_lifetimes(self) -> "Settings":
+        """§8 lifetime invariants — fail fast on impossible configurations."""
+        if not 1 <= self.HA_AUTH_ACCESS_TTL_MINUTES <= 24 * 60:
+            raise ValueError(
+                "HA_AUTH_ACCESS_TTL_MINUTES must be 1..1440 (24h hard cap per §8)."
+            )
+        if self.HA_AUTH_REFRESH_TTL_DAYS < 1:
+            raise ValueError("HA_AUTH_REFRESH_TTL_DAYS must be >= 1.")
+        if self.HA_AUTH_REFRESH_ABSOLUTE_DAYS < self.HA_AUTH_REFRESH_TTL_DAYS:
+            raise ValueError(
+                "HA_AUTH_REFRESH_ABSOLUTE_DAYS must be >= HA_AUTH_REFRESH_TTL_DAYS "
+                "(rolling window inside the absolute cap)."
+            )
+        if self.HA_AUTH_LOCKOUT_THRESHOLD < 1 or self.HA_AUTH_LOCKOUT_MINUTES < 1:
+            raise ValueError(
+                "HA_AUTH_LOCKOUT_THRESHOLD / HA_AUTH_LOCKOUT_MINUTES must be >= 1."
+            )
+        if self.HA_COOKIE_SAMESITE.lower() not in ("lax", "strict", "none"):
+            raise ValueError(
+                "HA_COOKIE_SAMESITE must be one of lax|strict|none (§10 default Lax)."
+            )
+        if self.HA_COOKIE_SAMESITE.lower() == "none" and not self.HA_COOKIE_SECURE:
+            raise ValueError(
+                "HA_COOKIE_SAMESITE=none requires HA_COOKIE_SECURE=true "
+                "(browsers reject SameSite=None without Secure)."
+            )
+        return self
 
     # OAuth2 / SMART-on-FHIR — the FHIR R4 facade is the public interop
     # surface; external systems authenticate via the client-credentials grant
     # (RFC 6749 §4.4) with SMART scopes. See docs/API_LAYERS.md.
     OAUTH_ACCESS_TOKEN_TTL_MINUTES: int = 60
-    # Issuer claim stamped on api tokens. Falls back to APP_URL when empty so
-    # a single-instance deploy works without extra config.
-    OAUTH_ISSUER: str = ""
     # Audience api tokens must carry. Session JWTs (frontend) have no ``aud``
     # and are rejected on the facade; api tokens without this audience are
-    # rejected everywhere.
+    # rejected everywhere. (The ``iss`` claim is the product slug "health" on
+    # every token kind per identity-auth §8 — the old OAUTH_ISSUER override
+    # is retired.)
     OAUTH_AUDIENCE: str = "health-assistant-api"
 
     # URLs
@@ -337,11 +497,22 @@ class Settings(BaseSettings):
     # operator explicitly enables them (e.g. behind an authenticated gateway).
     ENABLE_API_DOCS: bool = False
 
-    # Audit 2026-08 AUTH-H1: number of TRUSTED reverse-proxy hops that append
-    # to X-Forwarded-For (nginx/traefix + their LB). 0 = direct exposure (the
-    # header is ignored; the socket peer is the rate-limit identity). Set to
-    # 1 when exactly one trusted proxy fronts the app.
-    TRUSTED_PROXY_COUNT: int = 0
+    # Audit 2026-08 AUTH-H1 + §16: number of TRUSTED reverse-proxy hops that
+    # append to X-Forwarded-For (nginx/traefik + their LB). 0 = direct
+    # exposure (the header is ignored; the socket peer is the rate-limit
+    # identity). Set to 1 when exactly one trusted proxy fronts the app.
+    HA_TRUSTED_PROXY_COUNT: int = 0
+
+    # §16 rate-limit ceilings (career reference): per-bucket, requests per
+    # minute. When set (non-null) a bucket ceiling overrides the per-route
+    # code defaults; ``0`` disables the bucket. Unset ⇒ route defaults only
+    # (the pre-§16 behavior — see app/core/rate_limit.py).
+    HA_RATELIMIT_ENABLED: bool = True
+    HA_RATELIMIT_AUTH: Optional[int] = None
+    HA_RATELIMIT_AUTH_EMAIL: Optional[int] = None
+    HA_RATELIMIT_AI: Optional[int] = None
+    HA_RATELIMIT_MCP: Optional[int] = None
+    HA_RATELIMIT_DEFAULT: Optional[int] = None
 
     # AI/OCR - OpenAI Compatible API (used as fallback if no database configuration exists)
     OCR_PROVIDER: str = "openai"
@@ -372,32 +543,69 @@ class Settings(BaseSettings):
     # Default STT model when no DB assignment exists (OpenAI-compatible API).
     OPENAI_STT_MODEL: str = "whisper-1"
 
-    # MCP Client integration (see integrations/mcp_client/)
-    # Pydantic-read (audit C7) — same rationale as SECRET_KEY above.
-    INTEGRATION_SECRET_KEY: Optional[str] = None
-    # Previous keys accepted for decryption during rotation (comma-separated
-    # Fernet keys). The primary ``INTEGRATION_SECRET_KEY`` is always used to
-    # *encrypt*; these are only tried on decrypt so existing ciphertext keeps
-    # working after a key rotation. See integrations/sdk/secrets.py.
-    INTEGRATION_SECRET_KEY_PREVIOUS: str = ""
-
     @model_validator(mode="after")
-    def _validate_integration_secret_key(self) -> "Settings":
-        """Ensure INTEGRATION_SECRET_KEY is provided in production."""
-        if not self.INTEGRATION_SECRET_KEY:
+    def _validate_data_key(self) -> "Settings":
+        """Identity-auth §8 (plan 16 H4): the DATA_KEY family (Fernet at rest).
+
+        ``HA_DATA_KEY`` (env alias ``INTEGRATION_SECRET_KEY`` — the legacy
+        name keeps existing sealed data decryptable) is required on servers
+        and must be valid 32-byte key material in every environment; dev/test
+        fall back to an ephemeral key. It never signs anything (see
+        ``_validate_key_separation``) and ``HA_DATA_KEY_PREVIOUS`` carries
+        prior keys for decrypt-only rotation.
+        """
+        if not self.HA_DATA_KEY:
             if self.APP_ENV in ("development", "test", "testing"):
                 from cryptography.fernet import Fernet
                 import logging
 
                 logging.warning(
-                    "No INTEGRATION_SECRET_KEY provided; generating an ephemeral one for development. Connected integrations will break on restart."
+                    "No HA_DATA_KEY provided; generating an ephemeral one for "
+                    "development. Connected integrations will break on restart."
                 )
-                self.INTEGRATION_SECRET_KEY = Fernet.generate_key().decode()
+                self.HA_DATA_KEY = Fernet.generate_key().decode()
             else:
                 raise ValueError(
-                    f"A valid INTEGRATION_SECRET_KEY must be provided via environment variables for APP_ENV={self.APP_ENV!r}. "
-                    "Refusing to boot without one."
+                    f"A valid HA_DATA_KEY (Fernet key, env alias "
+                    f"INTEGRATION_SECRET_KEY) must be provided via environment "
+                    f"variables for APP_ENV={self.APP_ENV!r}. Refusing to boot "
+                    "without one."
                 )
+        elif not self._is_valid_fernet_material(self.HA_DATA_KEY):
+            raise ValueError(
+                "HA_DATA_KEY must be 32 bytes of urlsafe-base64 key material "
+                "(a Fernet key). Generate with: python -c \"from "
+                "cryptography.fernet import Fernet; "
+                "print(Fernet.generate_key().decode())\""
+            )
+        for prev in filter(None, (k.strip() for k in self.HA_DATA_KEY_PREVIOUS.split(","))):
+            if not self._is_valid_fernet_material(prev):
+                raise ValueError(
+                    "HA_DATA_KEY_PREVIOUS (env alias "
+                    "INTEGRATION_SECRET_KEY_PREVIOUS) contains invalid Fernet "
+                    "key material — every entry must be 32-byte urlsafe base64."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_key_separation(self) -> "Settings":
+        """Identity-auth §8: no key material is shared across purposes.
+
+        Runs after the dev fallbacks above, so it sees the effective ring:
+        session, refresh and data keys must be pairwise distinct — a value
+        reused across purposes would couple the compromise of one to all
+        (the single-SECRET_KEY status quo H4 retires).
+        """
+        keys = (self.HA_SESSION_KEY, self.HA_REFRESH_KEY, self.HA_DATA_KEY)
+        names = ("HA_SESSION_KEY", "HA_REFRESH_KEY", "HA_DATA_KEY")
+        for i in range(len(keys)):
+            for j in range(i + 1, len(keys)):
+                if keys[i] and keys[j] and keys[i] == keys[j]:
+                    raise ValueError(
+                        f"{names[i]} and {names[j]} must be distinct values "
+                        "(identity-auth §8: keys are separated per purpose — "
+                        "no value may serve two purposes)."
+                    )
         return self
 
     # Audit 2026-08 C-4: STDIO spawn = local code execution. Disabled by
@@ -476,3 +684,13 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+
+# Dev-only CORS / WS-Origin pattern: any local or LAN origin (localhost,
+# 127.0.0.1, RFC1918 ranges). Shared by the CORS middleware and the §10
+# WebSocket Origin gate (app.api.v1.endpoints.websockets) so the two
+# surfaces never drift.
+DEV_LAN_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+"
+    r"|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$"
+)

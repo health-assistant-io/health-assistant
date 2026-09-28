@@ -15,6 +15,7 @@ from app.schemas.medication import (
     MedicationRecordResponse,
 )
 from app.services import medication_service
+from app.services.audit_service import audit_read, log_audit_action
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
 router = APIRouter(prefix="/medications", tags=["medications"])
@@ -118,7 +119,17 @@ async def add_patient_medication(
     current_user: TokenData = Depends(get_current_user),
 ):
     data.patient_id = patient_id
-    return await medication_service.add_patient_medication(db, current_user, data)
+    record = await medication_service.add_patient_medication(db, current_user, data)
+    # §17: clinical writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_medication",
+        resource_type="Medication",
+        resource_id=getattr(record, "id", None),
+        new_value=data.model_dump(mode="json"),
+    )
+    return record
 
 
 @router.put("/{medication_id}", response_model=MedicationRecordResponse)
@@ -134,10 +145,19 @@ async def update_patient_medication(
     )
     if not result:
         raise HTTPException(status_code=404, detail="Medication record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_medication",
+        resource_type="Medication",
+        resource_id=medication_id,
+        new_value=data.model_dump(mode="json", exclude_unset=True),
+    )
     return result
 
 
 @router.get("/{medication_id}", response_model=MedicationRecordResponse)
+@audit_read("Medication", id_param="medication_id")
 async def get_patient_medication(
     medication_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -158,6 +178,13 @@ async def delete_patient_medication(
     )
     if not success:
         raise HTTPException(status_code=404, detail="Medication record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_medication",
+        resource_type="Medication",
+        resource_id=medication_id,
+    )
     return {"message": "Medication record deleted"}
 
 

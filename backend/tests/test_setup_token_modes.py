@@ -328,7 +328,7 @@ def test_config_rejects_unknown_mode():
     from pydantic import ValidationError
     from app.core.config import Settings
 
-    # Settings has its own顾_ validators (DB creds, secret key, VAPID).
+    # Settings has its own validators (DB creds, secret key, VAPID).
     # Build with bare-minimum env to satisfy the prod guards, then flip mode.
     with patch.dict(
         "os.environ",

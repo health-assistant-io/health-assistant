@@ -20,7 +20,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.clinical_event import (
     ClinicalEvent,
     ClinicalEventType,
@@ -44,15 +44,14 @@ async def _tenant_and_headers():
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tid, name="CE Conf", slug=f"ce-conf-{tid}"))
         await db.commit()
-    token = create_access_token(
+    tok_headers = await headers_for_claims(
         {
-            "sub": "ceconf@test.local",
-            "user_id": str(uuid.uuid4()),
+        "sub": "ceconf@test.local",
             "tenant_id": str(tid),
             "role": "SYSTEM_ADMIN",
         }
     )
-    return tid, {"Authorization": f"Bearer {token}"}
+    return tid, tok_headers
 
 
 async def _facade_headers(tenant_id):

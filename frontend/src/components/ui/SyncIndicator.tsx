@@ -3,10 +3,12 @@ import { db } from '../../services/db';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-export function SyncIndicator({ className = '' }: { className?: string }) {
+/** Live outbox state behind the sync pill — online flag plus the Dexie
+ * pending/syncing queue sizes. Shared by the standalone `SyncIndicator`
+ * and the header's UserMenu status. */
+export function useSyncStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  
-  // Use Dexie live query to observe the pending queue size
+
   const pendingCount = useLiveQuery(() => db.pendingSync.where('status').equals('pending').count()) || 0;
   const syncingCount = useLiveQuery(() => db.pendingSync.where('status').equals('syncing').count()) || 0;
 
@@ -19,6 +21,12 @@ export function SyncIndicator({ className = '' }: { className?: string }) {
       window.removeEventListener('offline', handleStatusChange);
     };
   }, []);
+
+  return { isOnline, pendingCount, syncingCount };
+}
+
+export function SyncIndicator({ className = '' }: { className?: string }) {
+  const { isOnline, pendingCount, syncingCount } = useSyncStatus();
 
   if (!isOnline) {
     return (

@@ -20,6 +20,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import settings
+from app.core.keys import key_for
+from app.core.security import API_TOKEN_KIND
 from app.main import app as real_app
 
 # pytest.ini sets asyncio_mode = auto, so async fixtures use @pytest.fixture.
@@ -41,7 +43,8 @@ async def client():
 async def admin_headers():
     """SYSTEM_ADMIN session headers backed by real tenant + user rows."""
     from app.core.database import AsyncSessionLocal
-    from app.core.security import create_access_token, get_password_hash
+    from app.core.security import get_password_hash
+    from tests._auth_helpers import auth_headers
     from app.models.enums import Role
     from app.models.tenant_model import TenantModel
     from app.models.user_model import UserModel
@@ -56,22 +59,17 @@ async def admin_headers():
             UserModel(
                 id=user_id,
                 email=f"admin-{user_id}@oauth.test",
-                hashed_password=get_password_hash("irrelevant"),
+                password_hash=get_password_hash("irrelevant"),
                 tenant_id=tenant_id,
                 role=Role.SYSTEM_ADMIN,
             )
         )
         await session.commit()
 
-    token = create_access_token(
-        {
-            "sub": f"admin-{user_id}@oauth.test",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": "SYSTEM_ADMIN",
-        }
-    )
-    yield {"Authorization": f"Bearer {token}"}, tenant_id
+    from app.services.user_service import get_user_by_id
+
+    headers = await auth_headers(await get_user_by_id(user_id))
+    yield headers, tenant_id
 
 
 async def _create_client(client, headers, *, scopes, display_name="Test Client", bound_patient_id=None):
@@ -115,7 +113,7 @@ async def test_token_valid_returns_jwt_with_correct_claims(client, admin_headers
     # Decode (without verifying exp drift / aud presence) to assert the claims.
     payload = jwt.decode(
         body["access_token"],
-        settings.SECRET_KEY,
+        key_for(API_TOKEN_KIND),
         algorithms=[settings.JWT_ALGORITHM],
         options={"verify_exp": False, "verify_aud": False},
     )
@@ -261,12 +259,12 @@ async def test_register_patient_scope_requires_bound_patient(client, admin_heade
 
 async def test_non_admin_cannot_list_clients(client):
     """A USER session token cannot manage OAuth clients."""
-    from app.core.security import create_access_token
+    from tests._auth_helpers import headers_for_claims
 
-    token = create_access_token(
-        {"sub": "user@oauth.test", "user_id": str(uuid4()), "tenant_id": str(uuid4()), "role": "USER"}
-    )
-    r = await client.get("/api/v1/oauth/clients", headers={"Authorization": f"Bearer {token}"})
+    # No tenant_id in the claims — the helper provisions a real tenant +
+    # user row for the live verifier (§8).
+    headers = await headers_for_claims({"sub": "user@oauth.test", "role": "USER"})
+    r = await client.get("/api/v1/oauth/clients", headers=headers)
     assert r.status_code == 403
 
 
@@ -336,6 +334,8 @@ async def test_audience_mismatch_rejected_on_facade(client):
     """A token signed by us but with the wrong audience → 401."""
     from datetime import datetime, timedelta, timezone
 
+    from app.core.security import PRODUCT_SLUG
+
     bad = jwt.encode(
         {
             "sub": "ci_evil",
@@ -344,11 +344,14 @@ async def test_audience_mismatch_rejected_on_facade(client):
             "scope": "system/*.read",
             "token_kind": "api",
             "aud": "wrong-audience",
-            "iss": "evil",
+            # Signed with our key + our iss — only the audience is wrong,
+            # so the rejection is specifically the audience check.
+            "iss": PRODUCT_SLUG,
+            "jti": uuid4().hex,
             "iat": datetime.now(timezone.utc),
             "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
         },
-        settings.SECRET_KEY,
+        key_for(API_TOKEN_KIND),
         algorithm=settings.JWT_ALGORITHM,
     )
     r = await client.get(

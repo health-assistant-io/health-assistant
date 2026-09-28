@@ -1,23 +1,68 @@
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { offlineService } from '../services/offlineService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true, // §10 cookie sessions — the browser rides nx_access
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// ---------------------------------------------------------------------------
+// §10 cookie sessions (plan 16 H3): tokens NO LONGER live in localStorage —
+// the HttpOnly `nx_access` / `nx_refresh` cookies are the browser credential
+// and the JS-readable `nx_csrf` cookie fuels the double-submit echo. The
+// JSON bodies from /auth/* still carry tokens for §9 user clients (Android,
+// scripts); this client deliberately ignores them.
+// ---------------------------------------------------------------------------
+
+/** Fired when a request cannot be authenticated even after a refresh
+ * attempt — listeners drop back to the login screen. */
+export const UNAUTHENTICATED_EVENT = 'nx:unauthenticated';
+
+/** Read the JS-readable CSRF cookie (double-submit — identity-auth §10). */
+export function csrfToken(): string | null {
+  const prefix = 'nx_csrf=';
+  const match = document.cookie.split('; ').find((part) => part.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+/** True for methods the CSRF middleware gates (non-safe, §10). */
+function isUnsafeMethod(method: string | undefined): boolean {
+  return !['get', 'head', 'options'].includes((method || 'get').toLowerCase());
+}
+
+// One-time migration hygiene: upgraded browsers may still carry the pre-H3
+// token keys. Purge them — THE LAW forbids token storage in Web Storage.
+const LEGACY_TOKEN_KEYS = [
+  'accessToken',
+  'refreshToken',
+  'originalAccessToken',
+  'originalRefreshToken',
+];
+try {
+  LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key));
+} catch {
+  // storage unavailable (private mode) — nothing to purge
+}
+
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    } else if (!['auth/login', 'auth/register', 'auth/refresh', 'auth/setup-status', 'auth/setup', 'auth/demo-login'].some(u => config.url?.includes(u))) {
-      console.warn('No access token found for request:', config.url);
+    // §10: cookie session — no Authorization header from storage. The
+    // browser attaches the HttpOnly cookies (withCredentials above).
+
+    // Double-submit CSRF (§10): echo the readable nx_csrf cookie on every
+    // non-safe request. Always (re)set from the live cookie so a replayed
+    // request after a refresh echoes the *rotated* value, not a stale one.
+    if (isUnsafeMethod(config.method)) {
+      const csrf = csrfToken();
+      if (csrf) {
+        config.headers['X-CSRF-Token'] = csrf;
+      }
     }
 
     // Let the browser set the correct multipart Content-Type (with boundary)
@@ -57,7 +102,7 @@ api.interceptors.response.use(
     }
 
     const originalRequest = error.config;
-    
+
     // Check if it's a network error (potentially offline during request)
     if (!error.response && isNetworkError(error)) {
        const isModification = ['post', 'put', 'patch', 'delete'].includes(originalRequest.method?.toLowerCase() || '');
@@ -72,30 +117,31 @@ api.interceptors.response.use(
       // Don't intercept 401s for auth endpoints to prevent infinite refresh
       // loops and let components handle the error. MUST include auth/refresh
       // — a failing refresh that retriggers the interceptor recursed forever
-      // (audit 2026-08 FE-H4).
-      const authUrls = ['auth/login', 'auth/register', 'auth/refresh', 'auth/demo-login'];
+      // (audit 2026-08 FE-H4). auth/mfa covers the H5 login challenge: its
+      // 401 means "second factor owed", not "session expired" — refreshing
+      // would be wrong (there is no session yet) and would swallow the
+      // challenge body the login page needs.
+      const authUrls = ['auth/login', 'auth/register', 'auth/refresh', 'auth/demo-login', 'auth/setup', 'auth/mfa'];
       if (originalRequest.url && authUrls.some((u) => originalRequest.url!.includes(u))) {
         return Promise.reject(error);
       }
 
       originalRequest._retry = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
-
-      // If no refresh token, immediately redirect to login
-      if (!refreshToken) {
-        clearAuthData();
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-
+      // §10: rotate the refresh cookie once (single-flight). No body — the
+      // HttpOnly nx_refresh cookie (Path=/api/v1/auth) IS the credential.
       try {
-        const newToken = await refreshAccessToken();
-        api.defaults.headers.Authorization = `Bearer ${newToken}`;
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        const refreshed = await refreshSession();
+        if (!refreshed) {
+          clearAuthData();
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
+        // The request interceptor re-runs on the replay and re-echoes the
+        // (rotated) CSRF cookie.
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - token is expired or invalid
+        // Refresh failed - the session is gone (expired family / revocation)
         clearAuthData();
         window.location.href = '/login';
         return Promise.reject(refreshError);
@@ -113,47 +159,45 @@ function isNetworkError(error: any) {
 // Single-flight refresh (audit 2026-08 FE-H4): N concurrent 401s share one
 // /auth/refresh call. Without the lock, parallel refreshes raced the token
 // rotation server-side and cascaded into forced logouts.
-let refreshInFlight: Promise<string> | null = null;
+//
+// §10 (plan 16 H3): cookie-based — no refresh token in the body or storage;
+// the server rotates the whole cookie triple. Returns true when a new
+// session was established.
+let refreshInFlight: Promise<boolean> | null = null;
 
-function refreshAccessToken(): Promise<string> {
+export function refreshSession(): Promise<boolean> {
   if (refreshInFlight) {
     return refreshInFlight;
   }
   refreshInFlight = (async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+    try {
+      // Bare axios (NOT the intercepted `api` instance) — going through the
+      // interceptor would re-enter the 401 handler on refresh failure.
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/refresh`,
+        undefined,
+        { withCredentials: true },
+      );
+      // Body tokens are for §9 clients; the browser ignores them.
+      return response.status < 400;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
     }
-
-    // Bare axios (NOT the intercepted `api` instance) — going through the
-    // interceptor would re-enter the 401 handler on refresh failure.
-    const response = await axios.post(
-      `${API_BASE_URL}/auth/refresh`,
-      { refresh_token: refreshToken },
-      { headers: { 'Content-Type': 'application/json' } },
-    );
-    localStorage.setItem('accessToken', response.data.access_token);
-    // The backend rotates the refresh token on every use — persist the new
-    // one or the next refresh replays the (now revoked) old token.
-    if (response.data.refresh_token) {
-      localStorage.setItem('refreshToken', response.data.refresh_token);
-    }
-    return response.data.access_token as string;
   })();
-  const clear = () => { refreshInFlight = null; };
-  refreshInFlight.then(clear, clear);
   return refreshInFlight;
 }
 
 /**
- * Clears all authentication data from localStorage
- * This is called when JWT expires and refresh fails
+ * Clears local authentication/session data (§10: the tokens themselves are
+ * HttpOnly cookies — only the backend can clear those, via POST /auth/logout;
+ * this sweeps the local leftovers). Called when the session is gone.
  */
 function clearAuthData(): void {
-  // Remove auth tokens
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-  
+  // Legacy pre-H3 token keys — defensive: nothing writes them anymore.
+  LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key));
+
   // Remove user data and session
   const authStore = localStorage.getItem('authStore');
   if (authStore) {
@@ -161,7 +205,7 @@ function clearAuthData(): void {
     const { user } = parsed;
     localStorage.setItem('authStore', JSON.stringify({ user }));
   }
-  
+
   // Clear patient-related localStorage data
   const keysToRemove = [
     'selectedPatientId',
@@ -184,10 +228,13 @@ function clearAuthData(): void {
     'doctorData',
     'wearableData'
   ];
-  
+
   keysToRemove.forEach(key => {
     localStorage.removeItem(key);
   });
+
+  window.dispatchEvent(new Event(UNAUTHENTICATED_EVENT));
 }
 
+export type { AxiosRequestConfig };
 export default api;

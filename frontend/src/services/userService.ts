@@ -37,6 +37,8 @@ export interface User {
   email: string;
   role: UserRole;
   tenant_id: string;
+  mfa_enabled?: boolean;
+  mfa_enforced?: boolean;
   settings: {
     preferred_units?: {
       weight: string;

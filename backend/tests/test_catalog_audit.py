@@ -27,23 +27,17 @@ from app.models.tenant_model import TenantModel
 
 async def _tenant_and_headers(
     role: str = "ADMIN",
-) -> Tuple[uuid.UUID, Dict[str, str], uuid.UUID]:
-    from app.core.security import create_access_token
+) -> Tuple[uuid.UUID, Dict[str, str], uuid.UUID, str]:
+    from tests._auth_helpers import auth_headers, create_user
 
     tenant_id = uuid.uuid4()
-    user_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="Audit", slug=f"audit-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
-        {
-            "sub": f"{role.lower()}@audit.test",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": role,
-        }
+    user = await create_user(
+        role=role, tenant_id=tenant_id, email=f"{role.lower()}@audit.test"
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}, user_id
+    return tenant_id, await auth_headers(user), user.id, user.email
 
 
 async def _audit_rows(catalog_type: str, item_id: str) -> list[CatalogAuditLog]:
@@ -66,7 +60,7 @@ async def _audit_rows(catalog_type: str, item_id: str) -> list[CatalogAuditLog]:
 
 @pytest.mark.asyncio
 async def test_create_appends_audit_row(async_client):
-    _, headers, user_id = await _tenant_and_headers("ADMIN")
+    _, headers, user_id, user_email = await _tenant_and_headers("ADMIN")
     resp = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Audited Drug"},
@@ -83,7 +77,7 @@ async def test_create_appends_audit_row(async_client):
     assert row.to_scope == "tenant"
     assert row.from_scope is None
     assert str(row.user_id) == str(user_id)
-    assert row.user_email == "admin@audit.test"
+    assert row.user_email == user_email
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +87,7 @@ async def test_create_appends_audit_row(async_client):
 
 @pytest.mark.asyncio
 async def test_update_appends_audit_row(async_client):
-    _, headers, _ = await _tenant_and_headers("ADMIN")
+    _, headers, _, _ = await _tenant_and_headers("ADMIN")
     create = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Pre Update"},
@@ -122,7 +116,7 @@ async def test_update_appends_audit_row(async_client):
 
 @pytest.mark.asyncio
 async def test_delete_appends_audit_row_with_snapshot(async_client):
-    _, headers, _ = await _tenant_and_headers("ADMIN")
+    _, headers, _, _ = await _tenant_and_headers("ADMIN")
     create = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Doomed Drug"},
@@ -150,7 +144,7 @@ async def test_delete_appends_audit_row_with_snapshot(async_client):
 
 @pytest.mark.asyncio
 async def test_promote_appends_audit_row_with_scope_change(async_client):
-    _, headers, _ = await _tenant_and_headers("SYSTEM_ADMIN")
+    _, headers, _, _ = await _tenant_and_headers("SYSTEM_ADMIN")
     create = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Promote Me"},
@@ -183,7 +177,7 @@ async def test_promote_appends_audit_row_with_scope_change(async_client):
 
 @pytest.mark.asyncio
 async def test_history_endpoint_returns_trail_newest_first(async_client):
-    _, headers, _ = await _tenant_and_headers("ADMIN")
+    _, headers, _, _ = await _tenant_and_headers("ADMIN")
     create = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "History Drug"},
@@ -211,8 +205,8 @@ async def test_history_endpoint_returns_trail_newest_first(async_client):
 @pytest.mark.asyncio
 async def test_history_is_tenant_scoped(async_client):
     """A cross-tenant caller must not see another tenant's audit trail."""
-    _, owner_headers, _ = await _tenant_and_headers("ADMIN")
-    _, other_headers, _ = await _tenant_and_headers("ADMIN")
+    _, owner_headers, _, _ = await _tenant_and_headers("ADMIN")
+    _, other_headers, _, _ = await _tenant_and_headers("ADMIN")
     create = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Private Drug"},
@@ -241,7 +235,7 @@ async def test_audit_failure_does_not_abort_create(async_client, monkeypatch):
         "app.services.catalog_audit_service.record_from_obj", _boom
     )
 
-    _, headers, _ = await _tenant_and_headers("ADMIN")
+    _, headers, _, _ = await _tenant_and_headers("ADMIN")
     resp = await async_client.post(
         "/api/v1/catalogs/medication",
         json={"name": "Audit-Resistant Drug"},

@@ -18,7 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.api.v1.endpoints import auth as auth_endpoint
-from app.core.security import create_invite_token, verify_invite_token
+from app.core.keys import key_for
+from app.core.security import (
+    INVITE_TOKEN_KIND,
+    create_invite_token,
+    verify_invite_token,
+)
 from app.models.enums import Role
 from app.schemas.auth import UserRegister
 from app.schemas.user import TokenData
@@ -274,21 +279,28 @@ def test_verify_invite_token_downgrades_system_admin_to_user():
     downgraded to USER on verify."""
     import jwt
     from app.core.config import settings
+    from app.core.security import INVITE_TOKEN_KIND, PRODUCT_SLUG
 
     tenant_id = str(uuid.uuid4())
-    # Hand-craft a SYSTEM_ADMIN token bypassing the issuer's check.
+    # Hand-craft a SYSTEM_ADMIN token bypassing the issuer's check —
+    # contract claims (iss/token_kind/jti) so it reaches the role check.
     rogue_token = jwt.encode(
         {
-            "sub": "invite",
+            "iss": PRODUCT_SLUG,
+            "token_kind": INVITE_TOKEN_KIND,
+            "jti": uuid.uuid4().hex,
+            "sub": "specific@family.com",
             "tenant_id": tenant_id,
             "role": Role.SYSTEM_ADMIN.value,
             "exp": 9999999999,
             "iat": 0,
         },
-        settings.SECRET_KEY,
+        key_for(INVITE_TOKEN_KIND),
         algorithm=settings.JWT_ALGORITHM,
     )
-    ok, role = verify_invite_token(rogue_token, expected_tenant_id=tenant_id)
+    ok, role = verify_invite_token(
+        rogue_token, expected_tenant_id=tenant_id, expected_email="specific@family.com"
+    )
     assert ok is True
     assert role == Role.USER.value, "SYSTEM_ADMIN must be downgraded to USER on verify"
 

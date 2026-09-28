@@ -11,6 +11,7 @@ Verifies:
 """
 import glob
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,13 @@ POST_BASELINE_TABLES: dict[str, str] = {
     # rather than ``op.create_table``.
     # (plan: dev/plans/bridge-sdk-integrations-enhancement-2026-08-12.md).
     "mobile_push_targets": "m1o2b3i4l5e6_add_mobile_push_targets",
+    # Family identity contract alignment (identity-auth §5; plan 16 H1).
+    "auth_sessions": "h1c2o3n4t5r6_identity_contract_alignment",
+    "instance_settings": "h1c2o3n4t5r6_identity_contract_alignment",
+    # Audit-stream rename to the family contract name (identity-auth
+    # §5/§17; plan 16 H2) — created by the baseline as ``audit_logs``,
+    # renamed (plus the ``outcome`` column) by this follow-up.
+    "audit_events": "a1u2d3i4t5e6_rename_audit_logs_to_audit_events",
 }
 
 
@@ -104,10 +112,22 @@ def test_every_model_table_is_created_by_the_baseline(table):
         )
         migration_src = migration_path.read_text()
         # Most follow-up migrations use ``op.create_table``; a few create the
-        # table via raw SQL (``CREATE TABLE IF NOT EXISTS``). Accept either.
-        created = (
-            f"op.create_table('{table}'" in migration_src
-            or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src
+        # table via raw SQL (``CREATE TABLE IF NOT EXISTS``); a rename
+        # migration brings the table under its current name via
+        # ``op.rename_table`` (e.g. audit_logs → audit_events, H2). Accept
+        # any of the three. The table name may be single- or double-quoted
+        # and may sit on the line after the opening paren
+        # (black-formatted migrations).
+        created = bool(
+            re.search(
+                rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]",
+                migration_src,
+            )
+        ) or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src or bool(
+            re.search(
+                rf"op\.rename_table\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]{re.escape(table)}['\"]",
+                migration_src,
+            )
         )
         assert created, (
             f"POST_BASELINE_TABLES lists {table!r} as added by "

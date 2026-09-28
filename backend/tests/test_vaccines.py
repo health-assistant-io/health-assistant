@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.fhir.patient import Patient
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
 from app.models.tenant_model import TenantModel
@@ -25,15 +25,14 @@ async def _tenant_and_headers(role="ADMIN"):
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="V", slug=f"v-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
+    tok_headers = await headers_for_claims(
         {
-            "sub": f"{role.lower()}@test.local",
-            "user_id": str(uuid.uuid4()),
+        "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    return tenant_id, tok_headers
 
 
 async def _make_patient(tenant_id):

@@ -11,7 +11,7 @@ These pin the contract for ``/api/v1/admin/tenants`` and the
     restores the original session; both states are audit-logged.
   * User management: list, role change (SYSTEM_ADMIN cannot be granted),
     invite minting.
-  * Audit: every mutation writes an AuditLog entry, and the audit viewer
+  * Audit: every mutation writes an AuditEvent entry, and the audit viewer
     returns entries scoped to the tenant.
 
 The tests follow the mock-heavy style used by the rest of the suite
@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.core.security import create_access_token, get_current_user
+from app.core.security import get_current_user
 from app.main import app
 from app.models.enums import Role
 from app.schemas.tenant import (
@@ -44,8 +44,11 @@ def _admin_token_data(
     switched: bool = False,
     original_tenant_id=None,
     original_user_id=None,
+    user_id=None,
 ):
-    """A SYSTEM_ADMIN TokenData (optionally switched)."""
+    """A SYSTEM_ADMIN TokenData (optionally switched). ``user_id`` must be a
+    real user row's id — the switch minters read ``ver``/role/email from
+    the live row (identity-auth §8)."""
     return MagicMock(
         spec=[
             "user_id",
@@ -56,7 +59,7 @@ def _admin_token_data(
             "original_tenant_id",
             "original_user_id",
         ],
-        user_id=original_user_id or uuid.uuid4(),
+        user_id=user_id or original_user_id or uuid.uuid4(),
         tenant_id=original_tenant_id or uuid.uuid4(),
         role=Role.SYSTEM_ADMIN.value,
         sub="admin@example.com",
@@ -288,7 +291,10 @@ async def test_switch_into_inactive_tenant_rejected():
 @pytest.mark.asyncio
 async def test_switch_into_tenant_mints_scoped_jwt():
     """The minted token must carry the right claims (decoded)."""
-    admin = _admin_token_data()
+    from tests._auth_helpers import create_user
+
+    user = await create_user(role=Role.SYSTEM_ADMIN)
+    admin = _admin_token_data(user_id=user.id)
     tenant = _tenant_row(is_active=True)
     db = _mock_db_with_results(_scalars_result([tenant]))
     with patch(
@@ -296,14 +302,14 @@ async def test_switch_into_tenant_mints_scoped_jwt():
     ):
         result = await TenantAdminService(db).switch_into_tenant(tenant.id, actor=admin)
     # Decode the access token and verify claims.
-    from app.core.security import decode_access_token
+    from app.core.security import decode_token
 
-    payload = decode_access_token(result.access_token)
+    payload = decode_token(result.access_token)
     assert payload is not None
     assert payload["tenant_id"] == str(tenant.id)
     assert payload["role"] == Role.SYSTEM_ADMIN.value
     assert payload["original_tenant_id"] == str(admin.tenant_id)
-    assert payload["original_user_id"] == str(admin.user_id)
+    assert payload["original_user_id"] == str(user.id)
     assert payload["switched"] is True
 
 
@@ -319,12 +325,17 @@ async def test_switch_back_requires_switched_session():
 
 @pytest.mark.asyncio
 async def test_switch_back_restores_original_tenant():
-    original_tid = uuid.uuid4()
-    original_uid = uuid.uuid4()
+    from tests._auth_helpers import create_tenant, create_user
+
+    # Issue-time claims come from the live user row (§8), so the admin
+    # must actually live in the original tenant.
+    original_tid = await create_tenant()
+    user = await create_user(role=Role.SYSTEM_ADMIN, tenant_id=original_tid)
     admin = _admin_token_data(
         switched=True,
         original_tenant_id=original_tid,
-        original_user_id=original_uid,
+        original_user_id=user.id,
+        user_id=user.id,
     )
     tenant = _tenant_row(id=original_tid)
     db = _mock_db_with_results(_scalars_result([tenant]))
@@ -332,11 +343,11 @@ async def test_switch_back_restores_original_tenant():
         "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
     ):
         result = await TenantAdminService(db).switch_back(actor=admin)
-    from app.core.security import decode_access_token
+    from app.core.security import decode_token
 
-    payload = decode_access_token(result.access_token)
+    payload = decode_token(result.access_token)
     assert payload["tenant_id"] == str(original_tid)
-    assert payload["user_id"] == str(original_uid)
+    assert payload["user_id"] == str(user.id)
     assert "original_tenant_id" not in payload
     assert payload.get("switched") in (False, None)
 
@@ -519,21 +530,22 @@ async def test_endpoint_invite_mints_token(async_client):
 
 def test_switched_token_decodes_into_tokendata_with_claims():
     """A minted switch token must populate TokenData's switch fields."""
+    from app.core.security import create_session_access_token, verify_access_token
+
     original_tenant = uuid.uuid4()
     target_tenant = uuid.uuid4()
     original_user = uuid.uuid4()
-    token = create_access_token(
+    token, _jti = create_session_access_token(
         {
-            "sub": "admin@example.com",
             "user_id": str(original_user),
             "tenant_id": str(target_tenant),
             "role": Role.SYSTEM_ADMIN.value,
+            "ver": 1,
             "original_tenant_id": str(original_tenant),
             "original_user_id": str(original_user),
             "switched": True,
         }
     )
-    from app.core.security import verify_access_token
 
     payload = verify_access_token(token)
     assert payload is not None

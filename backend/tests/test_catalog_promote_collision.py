@@ -14,9 +14,9 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
 from app.models.anatomy_model import AnatomyStructure
 from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 
 async def _make_tenant():
@@ -25,15 +25,14 @@ async def _make_tenant():
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="Collide", slug=f"col-{tenant_id.hex[:8]}"))
         await db.commit()
-    token = create_access_token(
+    headers = await headers_for_claims(
         {
             "sub": "sysadmin@collide.test",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(tenant_id),
             "role": "SYSTEM_ADMIN",
         }
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    return tenant_id, headers
 
 
 @pytest.mark.asyncio

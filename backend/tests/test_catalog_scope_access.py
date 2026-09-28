@@ -41,7 +41,7 @@ async def _make_shared_tenant(
     roles=ROLES,
 ) -> Tuple[uuid.UUID, Dict[str, Dict[str, str]], Dict[str, uuid.UUID]]:
     """Create one tenant + one JWT header per role + a stable user_id per role."""
-    from app.core.security import create_access_token
+    from tests._auth_helpers import auth_headers, create_user
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
@@ -52,15 +52,10 @@ async def _make_shared_tenant(
     for role in roles:
         uid = uuid.uuid4()
         user_ids[role] = uid
-        token = create_access_token(
-            {
-                "sub": f"{role.lower()}@test.local",
-                "user_id": str(uid),
-                "tenant_id": str(tenant_id),
-                "role": role,
-            }
+        user = await create_user(
+            role=role, tenant_id=tenant_id, user_id=uid, email=f"{role.lower()}@test.local"
         )
-        headers[role] = {"Authorization": f"Bearer {token}"}
+        headers[role] = await auth_headers(user)
     return tenant_id, headers, user_ids
 
 

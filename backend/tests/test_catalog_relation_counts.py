@@ -17,21 +17,20 @@ from app.models.tenant_model import TenantModel
 
 
 async def _tenant_and_headers(role: str = "ADMIN") -> Tuple[uuid.UUID, Dict[str, str]]:
-    from app.core.security import create_access_token
+    from tests._auth_helpers import headers_for_claims
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="RC", slug=f"rc-{tenant_id}"))
         await db.commit()
-    token = create_access_token(
+    headers = await headers_for_claims(
         {
             "sub": f"{role.lower()}@rc.test",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(tenant_id),
             "role": role,
         }
     )
-    return tenant_id, {"Authorization": f"Bearer {token}"}
+    return tenant_id, headers
 
 
 async def _create_medication(name: str) -> str:

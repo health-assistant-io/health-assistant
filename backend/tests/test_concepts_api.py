@@ -14,7 +14,7 @@ import pytest_asyncio
 async def user_headers(async_client):
     """JWT headers for a regular USER role (read-only on concepts)."""
     from app.core.database import AsyncSessionLocal
-    from app.core.security import create_access_token
+    from tests._auth_helpers import headers_for_claims
     from app.models.tenant_model import TenantModel
 
     tenant_id = uuid.uuid4()
@@ -24,15 +24,14 @@ async def user_headers(async_client):
         )
         await session.commit()
 
-    token = create_access_token(
+    tok_headers = await headers_for_claims(
         {
-            "sub": "user@test.local",
-            "user_id": str(uuid.uuid4()),
+        "sub": "user@test.local",
             "tenant_id": str(tenant_id),
             "role": "USER",
         }
     )
-    return {"Authorization": f"Bearer {token}"}
+    return tok_headers
 
 
 @pytest.mark.asyncio

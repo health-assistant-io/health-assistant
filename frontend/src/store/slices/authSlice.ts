@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { clearAuthData } from '../../utils/auth';
+import api from '../../api/axios';
+import { clearAuthData, validateSession, type SessionClaims } from '../../utils/auth';
 
 export type UserRole = 'SYSTEM_ADMIN' | 'ADMIN' | 'MANAGER' | 'USER';
 
@@ -33,144 +34,106 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
-  refreshToken: string | null;
+  /** §10 (plan 16 H3): server-verified session claims — the frontend can
+   * no longer decode the HttpOnly JWT, so tenant/role/auth_mode/switched
+   * state comes from GET /auth/validate via `initialize`. */
+  claims: SessionClaims | null;
   isAuthenticated: boolean;
   isDemoMode: boolean;
   isLoading: boolean;
-  login: (token: string, refreshToken: string) => void;
+  login: () => void;
   setDemoMode: (demo: boolean) => void;
+  /** Local-only state reset (no server call, no redirect) — for a session
+   * discovered dead during boot checks. */
+  resetSession: () => void;
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
-  initialize: () => void;
+  initialize: () => Promise<void>;
 }
 
-// Check if token exists in localStorage
-const getInitialAuth = () => {
-  if (typeof window === 'undefined') return { token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false };
-  
-  const token = localStorage.getItem('accessToken');
-  const refreshToken = localStorage.getItem('refreshToken');
-  
-  // If no tokens, user is not authenticated
-  if (!token) {
-    return {
-      token: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      isDemoMode: false
-    };
-  }
-  
-  // Validate token expiration
-  const payload = validateToken(token);
-  if (!payload || payload.exp < Date.now() / 1000) {
-    // Token is expired, clear all auth data
-    clearAuthData();
-    return {
-      token: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      isDemoMode: false
-    };
-  }
-  
-  return {
-    token,
-    refreshToken,
-    isAuthenticated: true,
-    isDemoMode: payload.demo === true
-  };
-};
-
-/**
- * Validates JWT token payload
- */
-/**
- * Validates JWT token payload
- */
-function validateToken(token: string): any {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    
-    const payload = JSON.parse(atob(parts[1]));
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
+// §10: NO token storage. The browser credential is the HttpOnly cookie
+// triple set by the backend (nx_access / nx_refresh / nx_csrf); this store
+// only tracks server-verified booleans + claims. localStorage/sessionStorage
+// tokens are forbidden for browser clients (identity-auth §10).
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: getInitialAuth().token,
-  refreshToken: getInitialAuth().refreshToken,
-  isAuthenticated: getInitialAuth().isAuthenticated,
-  isDemoMode: getInitialAuth().isDemoMode,
+  claims: null,
+  isAuthenticated: false,
+  isDemoMode: false,
   isLoading: true,
-  
+
   initialize: async () => {
-    const { token, refreshToken, isAuthenticated, isDemoMode } = getInitialAuth();
-    
-    // If we have a token but it might be expired, check with server
-    if (token && isAuthenticated) {
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/validate`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!response.ok) {
-          // Token is invalid or expired
-          await clearAuthData();
-          set({ token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
-          return;
-        }
-      } catch (error) {
-        // Network error or other issue, assume token is invalid
-        await clearAuthData();
-        set({ token: null, refreshToken: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
-        return;
-      }
+    // Ask the server whether the cookie session is alive (one refresh
+    // attempt is included). Claims ride along for the tenant-switch UI.
+    const claims = await validateSession();
+    if (!claims) {
+      set({ claims: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
+      return;
     }
-    
-    set({ token, refreshToken, isAuthenticated, isDemoMode, isLoading: false });
-  },
-  
-  login: (token: string, refreshToken: string) => {
-    localStorage.setItem('accessToken', token);
-    localStorage.setItem('refreshToken', refreshToken);
-    const payload = validateToken(token);
     set({
-      token,
-      refreshToken,
+      claims,
       isAuthenticated: true,
-      isDemoMode: payload?.demo === true,
-      isLoading: false
+      isDemoMode: claims.auth_mode === 'demo',
+      isLoading: false,
+    });
+  },
+
+  login: () => {
+    // §10: the login/setup/demo-login responses set the cookie triple;
+    // the body tokens are for §9 user clients and are ignored here.
+    set({
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    // Re-sync claim-derived state (demo flag, switched session) from the
+    // freshly-minted cookie session.
+    validateSession().then((claims) => {
+      if (claims) {
+        set({ claims, isDemoMode: claims.auth_mode === 'demo' });
+      }
     });
   },
 
   setDemoMode: (demo: boolean) => set({ isDemoMode: demo }),
-  
+
+  resetSession: () => {
+    // Local-only reset (§10): for boot checks that find the cookie session
+    // dead — no server call, no redirect (calling `logout` here would
+    // bounce to /login, remount, re-check and redirect forever).
+    set({
+      user: null,
+      claims: null,
+      isAuthenticated: false,
+      isDemoMode: false,
+      isLoading: false,
+    });
+  },
+
   logout: async () => {
+    // §10: the cookies are HttpOnly — only the backend can clear them.
+    // Best-effort revocation (CSRF header auto-attached by the interceptor;
+    // an expired access cookie is refreshed-and-retried transparently).
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Session already gone / network down — local cleanup still runs.
+    }
     await clearAuthData();
     // Use dynamic import to avoid circular dependency
     const { usePatientStore } = await import('./patientSlice');
     usePatientStore.getState().clearPatientContext();
-    
+
     set({
       user: null,
-      token: null,
-      refreshToken: null,
+      claims: null,
       isAuthenticated: false,
       isDemoMode: false,
-      isLoading: false
+      isLoading: false,
     });
     // Redirect to login page to ensure clean state
     window.location.href = '/login';
   },
-  
+
   updateUser: (user: User) => set((state) => ({
     user: state.user ? { ...state.user, ...user } : user
   }))

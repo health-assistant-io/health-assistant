@@ -13,7 +13,6 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
 from app.models.document_model import DocumentModel
 from app.models.enums import Gender
 from app.models.fhir.medication import Medication
@@ -41,23 +40,29 @@ async def _seed_user(tenant_id, role="USER"):
                 tenant_id=tenant_id,
                 email=f"user-{uid.hex[:8]}@test.local",
                 role=role,
-                hashed_password="x",
+                password_hash="x",
             )
         )
         await db.commit()
     return uid
 
 
-def _headers(tenant_id: uuid.UUID, role: str, user_id: uuid.UUID | None = None):
-    token = create_access_token(
-        {
-            "sub": f"{role.lower()}@test.local",
-            "user_id": str(user_id or uuid.uuid4()),
-            "tenant_id": str(tenant_id),
-            "role": role,
-        }
-    )
-    return {"Authorization": f"Bearer {token}"}
+async def _headers(tenant_id: uuid.UUID, role: str, user_id: uuid.UUID | None = None):
+    """Headers for a principal in ``tenant_id``.
+
+    When ``user_id`` names an already-seeded row (``_seed_user``), load it
+    instead of re-inserting it (create_user always INSERTs — same id twice
+    violates users_pkey).
+    """
+    from app.services.user_service import get_user_by_id
+    from tests._auth_helpers import auth_headers, create_user
+
+    if user_id is not None:
+        existing = await get_user_by_id(user_id)
+        if existing is not None:
+            return await auth_headers(existing)
+    user = await create_user(role=role, tenant_id=tenant_id, user_id=user_id)
+    return await auth_headers(user)
 
 
 async def _seed_patient(tenant_id, user_id=None):
@@ -206,7 +211,7 @@ async def test_endpoint_admin_with_patient_scope_200(async_client):
     await _seed_medication(tenant_id, patient_id, f"{token} Med")
     resp = await async_client.get(
         f"/api/v1/instances/search?q={token}&patient_id={patient_id}",
-        headers=_headers(tenant_id, "ADMIN"),
+        headers=await _headers(tenant_id, "ADMIN"),
     )
     assert resp.status_code == 200, resp.text
     types_hit = {h["type"] for h in resp.json()["results"]}
@@ -222,7 +227,7 @@ async def test_endpoint_admin_tenant_wide_200(async_client):
     await _seed_medication(tenant_id, patient_id, f"{token} Med")
     resp = await async_client.get(
         f"/api/v1/instances/search?q={token}",
-        headers=_headers(tenant_id, "ADMIN"),
+        headers=await _headers(tenant_id, "ADMIN"),
     )
     assert resp.status_code == 200, resp.text
 
@@ -233,7 +238,7 @@ async def test_endpoint_user_tenant_wide_403(async_client):
     tenant_id = await _tenant()
     resp = await async_client.get(
         "/api/v1/instances/search?q=something",
-        headers=_headers(tenant_id, "USER"),
+        headers=await _headers(tenant_id, "USER"),
     )
     assert resp.status_code == 403, resp.text
 
@@ -248,7 +253,7 @@ async def test_endpoint_user_own_patient_200(async_client):
     await _seed_medication(tenant_id, patient_id, f"{token} Med")
     resp = await async_client.get(
         f"/api/v1/instances/search?q={token}&patient_id={patient_id}",
-        headers=_headers(tenant_id, "USER", user_id=user_id),
+        headers=await _headers(tenant_id, "USER", user_id=user_id),
     )
     assert resp.status_code == 200, resp.text
     assert any(h["type"] == "medication" for h in resp.json()["results"])
@@ -263,7 +268,7 @@ async def test_endpoint_user_other_patient_403(async_client):
     patient_id = await _seed_patient(tenant_id, user_id=patient_owner)
     resp = await async_client.get(
         f"/api/v1/instances/search?q=test&patient_id={patient_id}",
-        headers=_headers(tenant_id, "USER", user_id=requester),
+        headers=await _headers(tenant_id, "USER", user_id=requester),
     )
     assert resp.status_code == 403, resp.text
 
@@ -276,7 +281,7 @@ async def test_endpoint_cross_tenant_patient_404(async_client):
     patient_b = await _seed_patient(tenant_b)
     resp = await async_client.get(
         f"/api/v1/instances/search?q=test&patient_id={patient_b}",
-        headers=_headers(tenant_a, "ADMIN"),
+        headers=await _headers(tenant_a, "ADMIN"),
     )
     assert resp.status_code == 404, resp.text
 
@@ -287,7 +292,7 @@ async def test_endpoint_short_query_422(async_client):
     patient_id = await _seed_patient(tenant_id)
     resp = await async_client.get(
         f"/api/v1/instances/search?q=a&patient_id={patient_id}",
-        headers=_headers(tenant_id, "ADMIN"),
+        headers=await _headers(tenant_id, "ADMIN"),
     )
     assert resp.status_code == 422, resp.text
 
@@ -302,7 +307,7 @@ async def test_endpoint_types_filter_restricts(async_client):
     await _seed_document(tenant_id, patient_id, f"{token}.pdf", owner)
     resp = await async_client.get(
         f"/api/v1/instances/search?q={token}&patient_id={patient_id}&types=medication",
-        headers=_headers(tenant_id, "ADMIN"),
+        headers=await _headers(tenant_id, "ADMIN"),
     )
     assert resp.status_code == 200, resp.text
     types_hit = {h["type"] for h in resp.json()["results"]}

@@ -165,6 +165,52 @@ async def consume_invite(jti: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# MFA challenge-token single-use consumption (plan 16 H5)
+# ---------------------------------------------------------------------------
+# The login MFA challenge mints a short-lived ``mfa_challenge`` JWT whose
+# jti is registered here. The FIRST SUCCESSFUL /auth/mfa/verify consumes it
+# (GETDEL semantics — a replayed challenge cannot mint a second session);
+# failed code attempts deliberately leave it alive (the user may retype
+# within the 5-minute TTL) while §7 lockout counting bounds the retries.
+# Fails closed on Redis failure, like invites: an outage must not turn a
+# single-use challenge into an unlimited-use one.
+
+_MFA_PREFIX = "mfa"
+
+
+def _mfa_key(user_id: str, jti: str) -> str:
+    return f"{_MFA_PREFIX}:{user_id}:{jti}"
+
+
+async def register_mfa_challenge(user_id: str, jti: str, ttl_seconds: int) -> None:
+    try:
+        await redis_client.set(_mfa_key(user_id, jti), "1", ex=max(int(ttl_seconds), 1))
+    except Exception as e:
+        logger.warning("token_store: could not register mfa challenge jti: %s", e)
+
+
+async def is_mfa_challenge_active(user_id: str, jti: str) -> bool:
+    try:
+        return bool(await redis_client.exists(_mfa_key(user_id, jti)))
+    except Exception as e:
+        logger.warning(
+            "token_store unavailable, refusing mfa challenge (fail-closed): %s", e
+        )
+        return False
+
+
+async def consume_mfa_challenge(user_id: str, jti: str) -> bool:
+    """Atomically consume a challenge jti. True iff it was still valid."""
+    try:
+        return bool(await redis_client.delete(_mfa_key(user_id, jti)))
+    except Exception as e:
+        logger.warning(
+            "token_store unavailable, refusing mfa challenge (fail-closed): %s", e
+        )
+        return False
+
+
+# ---------------------------------------------------------------------------
 # OAuth2 api-token revocation (best-effort jti blocklist)
 # ---------------------------------------------------------------------------
 # Access tokens are stateless JWTs, so revocation works by recording the token's

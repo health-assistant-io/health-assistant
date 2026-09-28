@@ -16,32 +16,22 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
 from app.models.anatomy_model import AnatomyStructure
-from app.models.tenant_model import TenantModel
+from tests._auth_helpers import auth_headers, create_tenant, create_user
 
 ROLES = ["USER", "ADMIN", "SYSTEM_ADMIN"]
 
 
 async def _make_tenant(roles=ROLES):
-    tenant_id = uuid.uuid4()
-    async with AsyncSessionLocal() as db:
-        db.add(TenantModel(id=tenant_id, name="Anat Dom", slug=f"anatdom-{tenant_id.hex[:8]}"))
-        await db.commit()
+    tenant_id = await create_tenant("Anat Dom")
     headers = {}
     user_ids = {}
     for role in roles:
-        uid = uuid.uuid4()
-        user_ids[role] = uid
-        token = create_access_token(
-            {
-                "sub": f"{role.lower()}@anatdom.test",
-                "user_id": str(uid),
-                "tenant_id": str(tenant_id),
-                "role": role,
-            }
+        user = await create_user(
+            role=role, tenant_id=tenant_id, email=f"{role.lower()}@anatdom.test"
         )
-        headers[role] = {"Authorization": f"Bearer {token}"}
+        user_ids[role] = user.id
+        headers[role] = await auth_headers(user)
     return tenant_id, headers, user_ids
 
 

@@ -30,6 +30,7 @@ from app.services.access import (
     check_allergy_access,
     check_patient_access,
 )
+from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/allergies", tags=["allergies"])
 
@@ -209,10 +210,21 @@ async def add_patient_allergy(
     current_user: TokenData = Depends(get_current_user),
 ):
     data.patient_id = patient_id
-    return await allergy_service.add_patient_allergy(db, current_user, data)
+    record = await allergy_service.add_patient_allergy(db, current_user, data)
+    # §17: clinical writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_allergy",
+        resource_type="AllergyIntolerance",
+        resource_id=getattr(record, "id", None),
+        new_value=data.model_dump(mode="json"),
+    )
+    return record
 
 
 @router.get("/{allergy_id}", response_model=AllergyIntoleranceResponse)
+@audit_read("AllergyIntolerance", id_param="allergy_id")
 async def get_allergy(
     allergy_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -235,6 +247,14 @@ async def update_allergy(
     )
     if item is None:
         raise HTTPException(status_code=404, detail="Allergy record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_allergy",
+        resource_type="AllergyIntolerance",
+        resource_id=allergy_id,
+        new_value=data.model_dump(mode="json", exclude_unset=True),
+    )
     return item
 
 
@@ -250,4 +270,11 @@ async def delete_allergy(
     )
     if not success:
         raise HTTPException(status_code=404, detail="Allergy record not found")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_allergy",
+        resource_type="AllergyIntolerance",
+        resource_id=allergy_id,
+    )
     return {"message": "Allergy record deleted"}

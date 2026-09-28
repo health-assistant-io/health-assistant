@@ -74,7 +74,7 @@ async def prune_setup() -> AsyncIterator[dict]:
             UserModel(
                 id=user_id,
                 email=f"u-{user_id}@test.local",
-                hashed_password="x",
+                password_hash="x",
                 tenant_id=tenant_id,
                 role="USER",
             )

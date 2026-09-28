@@ -1,4 +1,3 @@
-import axios from 'axios';
 import api from '../api/axios';
 
 export async function uploadDocument(
@@ -148,16 +147,12 @@ export async function getDocumentPreviewUrl(documentId: string, page: number = 0
 export async function getTempPreviewUrl(file: File, page: number = 0): Promise<{ url: string; totalPages: number }> {
   const formData = new FormData();
   formData.append('file', file);
-  
-  const token = localStorage.getItem('accessToken');
-  const baseUrl = import.meta.env.VITE_API_URL || '/api/v1';
 
-  // Use a fresh axios call to bypass the default JSON content-type that interferes with FormData
-  const response = await axios.post(`${baseUrl}/documents/preview-temp?page=${page}`, formData, {
+  // §10 (plan 16 H3): the shared `api` instance carries the cookie session
+  // (withCredentials) and the CSRF echo; its interceptor also drops the
+  // JSON content-type for FormData so the multipart boundary is set.
+  const response = await api.post(`/documents/preview-temp?page=${page}`, formData, {
     responseType: 'blob',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
   });
   
   const totalPages = parseInt(response.headers['x-total-pages'] || '1');

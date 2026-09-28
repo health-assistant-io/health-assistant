@@ -82,37 +82,22 @@ async def async_client():
 async def system_admin_headers() -> Dict[str, str]:
     """Authorization headers carrying a real JWT for a SYSTEM_ADMIN user.
 
-    Creates a real tenant row first (so tenant-scoped FK constraints — e.g.
+    Creates a real tenant row (so tenant-scoped FK constraints — e.g.
     ``anatomy_structures.tenant_id -> tenants.id`` — are satisfied for
-    integration tests that persist rows) and then mints a genuine JWT
-    referencing it. The full auth path (``get_token`` -> ``get_current_user``
-    -> ``RoleChecker``) is exercised end-to-end. Each test gets its own
-    isolated tenant via a UUID-derived slug.
+    integration tests that persist rows) and a **real user row** (the live
+    verifier checks ``is_active`` + the ``ver`` claim against
+    ``users.token_version`` — identity-auth §8/§18.9), then signs in
+    through the real issuance path (contract claims + registered session
+    jti + ``auth_sessions`` family). The full auth path
+    (``get_token`` -> ``get_current_user`` -> ``RoleChecker``) is
+    exercised end-to-end. Each test gets its own isolated tenant + user
+    via a UUID-derived slug.
     """
-    from app.core.database import AsyncSessionLocal
-    from app.core.security import create_access_token
-    from app.models.tenant_model import TenantModel
+    from app.models.enums import Role
+    from tests._auth_helpers import create_user, auth_headers
 
-    tenant_id = uuid.uuid4()
-    async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(
-                id=tenant_id,
-                name="Test Tenant",
-                slug=f"test-tenant-{tenant_id}",
-            )
-        )
-        await session.commit()
-
-    token = create_access_token(
-        {
-            "sub": "sysadmin@test.local",
-            "user_id": str(uuid.uuid4()),
-            "tenant_id": str(tenant_id),
-            "role": "SYSTEM_ADMIN",
-        }
-    )
-    return {"Authorization": f"Bearer {token}"}
+    user = await create_user(role=Role.SYSTEM_ADMIN, full_name="Test Sysadmin")
+    return await auth_headers(user)
 
 
 @pytest_asyncio.fixture(autouse=True)

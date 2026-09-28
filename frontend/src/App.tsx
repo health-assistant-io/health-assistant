@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { lazy, Suspense } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 // Register the unified instance adapters once at app entry (side-effect import).
@@ -20,8 +20,7 @@ const RouteFallback = () => (
   </div>
 );
 
-import Login from './pages/Auth/Login';
-import Setup from './pages/Auth/Setup';
+import { SessionGate } from './components/auth/SessionGate';
 const RoleSetupWizard = lazy(() => import('./pages/Setup/RoleSetupWizard'));
 const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
 const AllergyList = lazy(() => import('./pages/Allergies/AllergyList'));
@@ -83,21 +82,22 @@ const SystemIntegrations = lazy(() => import('./pages/Admin/SystemIntegrations')
 const AtlasManager = lazy(() => import('./pages/Admin/AtlasManager'));
 const OAuthClients = lazy(() => import('./pages/Admin/OAuthClients'));
 
-const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));import { useProtectedRoute } from './hooks/useProtectedRoute';
+const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));
 import { useAuthStore } from './store/slices/authSlice';
 import { useSettingsStore } from './store/slices/settingsSlice';
 import { getCurrentUser } from './services/userService';
 import { nativeNotificationService } from './services/nativeNotificationService';
 import { offlineService } from './services/offlineService';
-import { validateToken, clearAuthData } from './utils/auth';
 import { useTenantSwitchStore } from './store/slices/tenantSwitchSlice';
 
 function App() {
-  const { isAuthenticated, isLoading } = useProtectedRoute();
+  // Session gating (checking → authenticated | anonymous) lives in the
+  // shared AuthGate via `SessionGate` below; the store flag only drives
+  // the claim-sync / profile-load effects.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { user, updateUser, logout } = useAuthStore();
   const theme = useSettingsStore(state => state.theme);
   const loadSettings = useSettingsStore(state => state.loadSettings);
-  const [checkingToken, setCheckingToken] = useState(false);
 
   // Sync effect
   useEffect(() => {
@@ -138,29 +138,6 @@ function App() {
     setNeedRefresh(false);
   };
 
-  // Check token validity on mount
-  useEffect(() => {
-    const checkToken = async () => {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        try {
-          const isValid = await validateToken(token);
-          if (!isValid) {
-            await clearAuthData();
-            await logout();
-          }
-        } catch (error) {
-          console.error('Token validation failed:', error);
-          await clearAuthData();
-          await logout();
-        }
-      }
-      setCheckingToken(false);
-    };
-    
-    checkToken();
-  }, []);
-
   // Request Notification Permission on login
   useEffect(() => {
     if (isAuthenticated && !nativeNotificationService.isPermissionGranted()) {
@@ -181,23 +158,17 @@ function App() {
     }
   }, [theme]);
 
-  // Sync tenant-switch state from the JWT on boot / token change.
-  // The JWT's `switched` claim is the source of truth — the persisted
-  // store can get out of sync if localStorage was partially cleared.
+  // Sync tenant-switch state from the session claims on boot.
+  // §10 (plan 16 H3): the JWT is HttpOnly — /auth/validate (via the auth
+  // store's `claims`) is the source of truth; the persisted store can get
+  // out of sync if localStorage was partially cleared.
   const syncTenantSwitch = useTenantSwitchStore((s) => s.syncFromToken);
+  const sessionClaims = useAuthStore((s) => s.claims);
   useEffect(() => {
-    if (isAuthenticated) {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          syncTenantSwitch(payload);
-        } catch (e) {
-          console.error('Failed to sync tenant switch state from JWT', e);
-        }
-      }
+    if (isAuthenticated && sessionClaims) {
+      syncTenantSwitch(sessionClaims);
     }
-  }, [isAuthenticated, syncTenantSwitch]);
+  }, [isAuthenticated, sessionClaims, syncTenantSwitch]);
 
   useEffect(() => {
     if (isAuthenticated && !user) {
@@ -207,36 +178,36 @@ function App() {
         })
         .catch((error) => {
           console.error('Failed to load user profile', error);
-          const token = localStorage.getItem('accessToken');
-          if (token) {
-            try {
-              const payload = JSON.parse(atob(token.split('.')[1]));
-              // Demo mode: a /users/me 404 means the session is stale — the
-              // daily reset wiped the DB volume + re-seeded, so the user_id
-              // in this JWT no longer exists. Don't mask it with the JWT
-              // fallback; logout so /login auto-calls /auth/demo-login and
-              // mints a fresh token against the re-seeded data.
-              if (payload.demo === true) {
-                logout();
-                return;
-              }
-              // Non-demo fallback: decode the JWT to populate a minimal user
-              // object so the app remains usable (e.g. during a tenant switch
-              // where /users/me may transiently 404).
+          // §10: the JWT is HttpOnly — the server-verified session claims
+          // (from /auth/validate via the auth store) drive the fallback.
+          if (sessionClaims) {
+            // Demo mode: a /users/me 404 means the session is stale — the
+            // daily reset wiped the DB volume + re-seeded, so the user_id
+            // in this session no longer exists. Don't mask it with a
+            // claims fallback; logout so /login auto-calls
+            // /auth/demo-login and mints a fresh session against the
+            // re-seeded data. Demo sessions carry `auth_mode: "demo"`
+            // (family identity-auth §8/§13).
+            if (sessionClaims.auth_mode === 'demo') {
+              logout();
+              return;
+            }
+            // Non-demo fallback: populate a minimal user object from the
+            // session claims so the app remains usable (e.g. during a
+            // tenant switch where /users/me may transiently 404).
+            if (sessionClaims.user_id) {
               updateUser({
-                id: payload.user_id,
-                email: payload.sub || '',
-                role: payload.role,
-                tenant_id: payload.tenant_id,
+                id: sessionClaims.user_id,
+                email: sessionClaims.email || '',
+                role: (sessionClaims.role as any) || 'USER',
+                tenant_id: sessionClaims.tenant_id || undefined,
                 settings: {},
               });
-            } catch (e) {
-              console.error('JWT fallback also failed', e);
             }
           }
         });
     }
-  }, [isAuthenticated, user, updateUser, logout]);
+  }, [isAuthenticated, user, updateUser, logout, sessionClaims]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -244,24 +215,13 @@ function App() {
     }
   }, [isAuthenticated, loadSettings]);
 
-  if (isLoading || checkingToken) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/setup" element={<Setup />} />
-        <Route path="*" element={<Login />} />
-      </Routes>
-      </Suspense>
-    );
-  }
-
+  // The shared gate owns the machine: while boot runs it renders the
+  // checking splash; while anonymous it renders health's login node (the
+  // `Login` page — which also hosts the first-run setup wizard and the MFA
+  // step). The authenticated route tree below renders only after `boot`
+  // resolved a live cookie session.
   return (
-    <>
+    <SessionGate>
       <ToastContainer position="bottom-right" />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -400,7 +360,7 @@ function App() {
           )}
         </div>
       )}
-    </>
+    </SessionGate>
   );
 }
 

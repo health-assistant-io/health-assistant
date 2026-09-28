@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useTenantSwitchStore } from '../../store/slices/tenantSwitchSlice';
-import { useAuthStore } from '../../store/slices/authSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
 /**
@@ -16,20 +15,19 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 function TenantSwitchBanner() {
   const navigate = useNavigate();
   const { switched, scopedTenant, exitTenant } = useTenantSwitchStore();
-  const login = useAuthStore((s) => s.login);
   const clearPatientContext = usePatientStore((s) => s.clearPatientContext);
 
   if (!switched) return null;
 
   const handleExit = async () => {
-    // Snapshot the originals before exitTenant swaps the tokens.
-    const originalAccess = localStorage.getItem('originalAccessToken');
-    const originalRefresh = localStorage.getItem('originalRefreshToken');
-    await exitTenant();
-    if (originalAccess && originalRefresh) {
-      // Refresh the auth store with the restored tokens (the user object
-      // will be re-fetched on the next /auth/validate call).
-      login(originalAccess, originalRefresh);
+    // §10: the backend's exit-switch endpoint mints the restored session
+    // from the switched cookie's claims and re-stamps the cookie triple —
+    // no local token juggling.
+    try {
+      await exitTenant();
+    } catch {
+      window.location.href = '/login';
+      return;
     }
     clearPatientContext();
     navigate('/admin/system/tenants', { replace: true });

@@ -39,7 +39,21 @@ function normalizeDetail(detail: unknown): string {
   return 'Setup failed. Check your details and try again.';
 }
 
-function Setup() {
+/**
+ * Props for embedding inside the login node (plan 16 closeout): the gate
+ * has no anonymous routes, so the first-run wizard renders inside the
+ * `Login` node. `embedded` skips the mount-time bounce to /login (the
+ * caller just probed setup-status); `onSignedIn` fires after /auth/setup
+ * mints the admin session; `onAlreadyInitialized` flips the login node
+ * back to its form when the instance turned out initialized under us.
+ */
+interface SetupProps {
+  onSignedIn?: () => void;
+  onAlreadyInitialized?: () => void;
+  embedded?: boolean;
+}
+
+function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProps) {
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const theme = useSettingsStore(state => state.theme);
@@ -73,7 +87,13 @@ function Setup() {
         const res = await api.get('/auth/setup-status');
         const status = res.data as SetupStatus;
         if (status.initialized) {
-          navigate('/login', { replace: true });
+          // Embedded in the login node: the caller decides (it flips back
+          // to the login form). Standalone (legacy /setup bookmark): bounce.
+          if (embedded) {
+            onAlreadyInitialized?.();
+          } else {
+            navigate('/login', { replace: true });
+          }
           return;
         }
         setTokenRequired(!!status.setup_token_required);
@@ -87,7 +107,7 @@ function Setup() {
       setChecking(false);
     };
     checkStatus();
-  }, [navigate]);
+  }, [navigate, embedded, onAlreadyInitialized]);
 
   const passwordsMatch = password === confirmPassword;
   const passwordLongEnough = password.length >= 8;
@@ -115,9 +135,12 @@ function Setup() {
         setup_token: tokenRequired ? setupToken : undefined,
       });
 
-      if (response.data && response.data.access_token) {
-        login(response.data.access_token, response.data.refresh_token);
+      if (response.status < 400) {
+        // §10: setup set the cookie triple; body tokens ignored (§9 clients
+        // only).
+        login();
         navigate('/dashboard', { replace: true });
+        onSignedIn?.();
       } else {
         setError('Setup did not return a session. Please try again.');
       }
@@ -125,8 +148,13 @@ function Setup() {
       const errorObj = err as Record<string, any>;
       const detail = errorObj?.response?.data?.detail;
       if (errorObj?.response?.status === 410) {
-        // Already initialized — send to login.
-        navigate('/login', { replace: true });
+        // Already initialized — embedded: flip back to the login form;
+        // standalone: send to login.
+        if (embedded) {
+          onAlreadyInitialized?.();
+        } else {
+          navigate('/login', { replace: true });
+        }
         return;
       }
       setError(normalizeDetail(detail));

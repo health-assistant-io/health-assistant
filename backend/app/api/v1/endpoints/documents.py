@@ -34,6 +34,7 @@ from uuid import UUID
 from app.models.enums import Role
 from app.schemas.user import TokenData
 from app.schemas.document import DocumentUpdate, DocumentResponse, DocumentEdit
+from app.services.audit_service import audit_read, log_audit_action
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,21 @@ async def upload_document_endpoint(
         f"Document created: {document.id}, include_in_extraction: {include_in_extraction} (type: {type(include_in_extraction)})"
     )
 
+    # §17: document (record) writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=str(tenant_uuid) if tenant_uuid else None,
+        user_id=user_uuid,
+        action="create_document",
+        resource_type="Document",
+        resource_id=getattr(document, "id", None),
+        new_value={
+            "filename": file.filename,
+            "patient_id": patient_id,
+            "examination_id": examination_id,
+            "include_in_extraction": bool(include_in_extraction),
+        },
+    )
+
     return document.to_dict()
 
 
@@ -139,6 +155,7 @@ async def list_documents(
 
 
 @router.get("/{document_id}")
+@audit_read("Document", id_param="document_id")
 async def get_document_endpoint(
     document_id: str,
     current_user: TokenData = Depends(get_current_user),
@@ -227,6 +244,14 @@ async def update_document_endpoint(
                 str(updated_document.examination_id), db
             )
 
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_document",
+        resource_type="Document",
+        resource_id=document_id,
+        new_value=document_update.model_dump(mode="json", exclude_unset=True),
+    )
     return updated_document.to_dict()
 
 
@@ -265,6 +290,15 @@ async def edit_document_endpoint(
         document_id, edit_params.model_dump(), db
     )
 
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="edit_document",
+        resource_type="Document",
+        resource_id=document_id,
+        new_value=edit_params.model_dump(mode="json"),
+    )
+
     return new_document.to_dict()
 
 
@@ -301,7 +335,7 @@ async def get_presigned_url_endpoint(
 
     from app.core.security import create_presigned_token
 
-    token = create_presigned_token(document_id)
+    token = create_presigned_token(document_id, user_id=str(user_id))
     return {"url": f"/api/v1/documents/{document_id}/download?token={token}"}
 
 
@@ -615,15 +649,16 @@ async def get_document_preview_endpoint(
     credential that doesn't match the document's tenant → 404 (no
     information leak that the row exists in another tenant).
     """
-    from app.core.security import decode_access_token, verify_presigned_token
+    from app.core.security import authenticate_session_token, verify_presigned_token
 
     authenticated_tenant_id = None
 
     if token:
         # Presigned-token path. ``verify_presigned_token`` checks the JWT
-        # signature, the ``sub == "download"`` claim, the ``doc_id`` match,
-        # and the ``exp`` window. Tenant enforcement happened at mint time
-        # (the authenticated caller asked for a doc they could already read).
+        # signature, the ``token_kind == "download"`` claim, the ``doc_id``
+        # match, and the ``exp`` window. Tenant enforcement happened at
+        # mint time (the authenticated caller asked for a doc they could
+        # already read).
         if not verify_presigned_token(token, document_id):
             raise HTTPException(
                 status_code=401, detail="Invalid or expired preview token"
@@ -638,21 +673,9 @@ async def get_document_preview_endpoint(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         bearer = authorization[len("Bearer ") :]
-        payload = decode_access_token(bearer)
-        if not payload:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid or expired token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        try:
-            token_data = TokenData(**payload)
-        except Exception:
-            raise HTTPException(
-                status_code=401,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        # Session tokens only, verified against the live user row
+        # (is_active + ver — identity-auth §8/§18.9).
+        token_data = await authenticate_session_token(bearer)
         # SYSTEM_ADMIN can preview any document (operator role); other
         # roles are constrained to their own tenant below.
         if token_data.role != Role.SYSTEM_ADMIN.value:
@@ -757,6 +780,14 @@ async def delete_document_endpoint(
     success = await delete_document(document_id, db)
 
     if success:
+        await log_audit_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            action="delete_document",
+            resource_type="Document",
+            resource_id=document_id,
+            old_value={"filename": str(document.filename)},
+        )
         return {"message": "Document deleted successfully"}
     else:
         raise HTTPException(status_code=500, detail="Failed to delete document")

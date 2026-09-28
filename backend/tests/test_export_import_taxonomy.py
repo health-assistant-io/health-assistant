@@ -86,7 +86,7 @@ async def _new_user(session, tenant_id: UUID) -> UUID:
             id=uid,
             tenant_id=tenant_id,
             email=f"user-{uid}@test.local",
-            hashed_password="x",
+            password_hash="x",
             role=Role.USER,
         )
     )

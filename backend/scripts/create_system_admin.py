@@ -35,9 +35,17 @@ async def create_system_admin(email: str, password: str, tenant_name: str = "Sys
     try:
         async with AsyncSessionLocal() as session:
             try:
-                # 1. Check if user already exists
+                # 0. Init-only instance facts (identity-auth §4): an empty DB
+                # consumes HA_AUTH_MODE / HA_DEMO_MODE here (same rule as app
+                # boot / the setup wizard); post-init it is a no-op.
+                from app.core import instance_state
+
+                await instance_state.initialize()
+
+                # 1. Check if user already exists (§5: emails are lowercased
+                # on write — match the normalized form).
                 result = await session.execute(
-                    select(UserModel).where(UserModel.email == email)
+                    select(UserModel).where(UserModel.email == email.strip().lower())
                 )
                 existing_user = result.scalar_one_or_none()
 
@@ -71,7 +79,7 @@ async def create_system_admin(email: str, password: str, tenant_name: str = "Sys
 
                 admin_user = UserModel(
                     email=email,
-                    hashed_password=hashed_password,
+                    password_hash=hashed_password,
                     role=Role.SYSTEM_ADMIN,
                     tenant_id=tenant.id,
                     settings={"is_initial_admin": True},
@@ -118,10 +126,10 @@ async def main():
     
     args = parser.parse_args()
 
-    if not args.password or len(args.password) < 8:
+    if not args.password or len(args.password) < 10:
         parser.error(
-            "--password is required and must be at least 8 characters "
-            "(the insecure admin123 default was removed for safety)."
+            "--password is required and must be at least 10 characters "
+            "(family password policy — identity-auth §7)."
         )
 
     print("Health Assistant - Creating System Admin")

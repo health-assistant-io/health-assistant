@@ -36,7 +36,7 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import create_access_token
+from tests._auth_helpers import headers_for_claims
 from app.models.tenant_model import TenantModel
 from app.ai.providers import setup as byok_setup
 from app.ai.providers.errors import classify_provider_error, extract_error_status
@@ -78,6 +78,8 @@ def allow_local_preset_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest_asyncio.fixture
 async def user_ctx():
     """A real tenant + USER-role JWT + a raw id pair for direct assertions."""
+    from tests._auth_helpers import auth_headers, create_user
+
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
     async with AsyncSessionLocal() as session:
@@ -88,18 +90,13 @@ async def user_ctx():
         )
         await session.commit()
 
-    token = create_access_token(
-        {
-            "sub": "byok@test.local",
-            "user_id": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": "USER",
-        }
+    user = await create_user(
+        role="USER", tenant_id=tenant_id, user_id=user_id, email="byok@test.local"
     )
     ctx = {
         "tenant_id": tenant_id,
         "user_id": user_id,
-        "headers": {"Authorization": f"Bearer {token}"},
+        "headers": await auth_headers(user),
     }
     yield ctx
 
@@ -910,24 +907,20 @@ async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
         monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"])
     )
 
-    sysadmin_token = create_access_token(
+    sysadmin_headers = await headers_for_claims(
         {
             "sub": "sysadmin2@test.local",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(user_ctx["tenant_id"]),
             "role": "SYSTEM_ADMIN",
         }
     )
-    sysadmin_headers = {"Authorization": f"Bearer {sysadmin_token}"}
-    admin_token = create_access_token(
+    admin_headers = await headers_for_claims(
         {
             "sub": "tenantadmin@test.local",
-            "user_id": str(uuid.uuid4()),
             "tenant_id": str(user_ctx["tenant_id"]),
             "role": "ADMIN",
         }
     )
-    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # SYSTEM scope
     setup_system = await async_client.post(

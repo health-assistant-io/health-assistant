@@ -49,7 +49,14 @@ async def record(
         entry = CatalogAuditLog(
             tenant_id=getattr(actor, "tenant_id", None),
             user_id=getattr(actor, "user_id", None),
-            user_email=getattr(actor, "sub", None) or "",
+            # §8 rename: ``sub`` is the user id now — the denormalized
+            # email column must read the ``email`` claim (fallbacks keep
+            # odd principals recording *something* human-readable).
+            user_email=(
+                getattr(actor, "email", None)
+                or getattr(actor, "sub", None)
+                or ""
+            ),
             catalog_type=catalog_type,
             item_id=item_id,
             item_name=item_name,

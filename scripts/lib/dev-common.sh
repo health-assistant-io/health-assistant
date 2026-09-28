@@ -78,7 +78,12 @@ dc_load_env() {
 # ---------------------------------------------------------------------------
 dc_port_in_use() {
   local port="$1"
-  lsof -Pi ":$port" -sTCP:LISTEN -t >/dev/null 2>&1
+  # lsof misses some docker-proxy listeners (permissions/namespace quirks);
+  # fall back to ss before declaring the port free.
+  if lsof -Pi ":$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    return 0
+  fi
+  ss -tln 2>/dev/null | grep -q ":${port}[[:space:]]"
 }
 
 # dc_port_holders PORT — print PIDs listening on PORT (fuser, ss fallback).

@@ -98,6 +98,8 @@ class TenantUserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    mfa_enabled: bool = False
+    mfa_enforced: bool = False
     tenant_id: UUID
     created_at: Optional[datetime] = None
 
@@ -117,6 +119,17 @@ class UpdateTenantUser(BaseModel):
 
     role: Optional[Literal["USER", "MANAGER", "ADMIN"]] = None
     is_active: Optional[bool] = None
+
+
+class SetTenantUserMFA(BaseModel):
+    """Admin-force MFA for ``PATCH /admin/tenants/{id}/users/{uid}/mfa``.
+
+    ``enforced=true`` (plan 16 H5, "promoted for institute use"): the
+    user's next password login requires TOTP enrollment before the
+    challenge passes. Clearing it never disables an enrolled secret.
+    """
+
+    enforced: bool
 
 
 class CreateInvitePayload(BaseModel):
@@ -143,11 +156,16 @@ class SwitchTenantResponse(BaseModel):
 
 
 class AuditEntryResponse(BaseModel):
+    """One ``audit_events`` row (identity-auth §17 shape + the product
+    diff columns). ``outcome`` is ``ok``/``denied``/``error``."""
+
     id: UUID
+    tenant_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
     action: str
     resource_type: str
     resource_id: Optional[UUID] = None
+    outcome: str = "ok"
     old_value: Optional[Dict[str, Any]] = None
     new_value: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None

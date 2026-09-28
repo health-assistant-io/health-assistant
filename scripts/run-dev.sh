@@ -9,6 +9,8 @@
 #
 # Usage:
 #   ./scripts/run-dev.sh                  # bootstrap + start the honcho group
+#                                         # (dev admin: admin@healthassistant.local
+#                                         #  / devadmin12345)
 #   ./scripts/run-dev.sh --force          # free the dev ports, then start
 #   ./scripts/run-dev.sh --force-stop     # kill every HA dev process and exit
 #   ./scripts/run-dev.sh --no-bootstrap   # skip venv/deps bootstrap, just start
@@ -136,7 +138,7 @@ if [[ "$NO_BOOTSTRAP" = false ]]; then
     dc_warn "    psql \"\$DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'"
   else
     dc_step "setting up admin user"
-    python3 scripts/create_system_admin.py --email admin@healthassistant.local --password admin123 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
+    python3 scripts/create_system_admin.py --email admin@healthassistant.local --password devadmin12345 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true
   fi
   cd ..
 
@@ -151,7 +153,7 @@ fi
 # Pre-flight: warn if Redis is not running (celery worker + beat + flower all need it).
 if ! dc_port_in_use "$REDIS_PORT"; then
   dc_warn "Redis (port $REDIS_PORT) is not running. Worker/beat/flower will fail to connect."
-  dc_warn "Start it via: docker compose -f docker/docker-compose.dev-db.yml up -d redis"
+  dc_warn "Start it via: docker compose --env-file .env -f docker/docker-compose.dev-db.yml up -d redis"
 fi
 
 # Clean up any stale celery beat lock from a previous run.

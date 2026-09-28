@@ -1,23 +1,21 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from unittest.mock import patch, AsyncMock
-from app.core.security import get_password_hash
 from app.models.enums import Role
-from app.models.user_model import UserModel
-import uuid
+
+from ._auth_helpers import create_user
 
 
-# A test user fixture (real model, transient instance — never flushed)
-@pytest.fixture
-def mock_user():
-    return UserModel(
-        id=uuid.uuid4(),
+# A test user fixture — a real, committed row. The login path now records
+# an auth_sessions family (§5) whose user_id FKs onto users.id, so a
+# transient UserModel would blow up on issue_session.
+@pytest_asyncio.fixture
+async def mock_user():
+    return await create_user(
         email="test@example.com",
-        hashed_password=get_password_hash("testpassword123"),
+        password="testpassword123",
         role=Role.USER,
-        tenant_id=uuid.uuid4(),
-        is_active=True,
-        settings={},
     )
 
 
@@ -30,7 +28,7 @@ async def test_login_success(
 
     response = await async_client.post(
         "/api/v1/auth/login",
-        data={"username": "test@example.com", "password": "testpassword123"},
+        data={"username": mock_user.email, "password": "testpassword123"},
     )
 
     assert response.status_code == 200
@@ -39,11 +37,12 @@ async def test_login_success(
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
     assert "expires_in" in data
-    mock_get_user_by_email.assert_called_once_with("test@example.com")
+    mock_get_user_by_email.assert_called_once_with(mock_user.email)
 
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.10 — generic login error (wrong password)
 async def test_login_wrong_password(
     mock_get_user_by_email, async_client: AsyncClient, mock_user
 ):
@@ -51,16 +50,17 @@ async def test_login_wrong_password(
 
     response = await async_client.post(
         "/api/v1/auth/login",
-        data={"username": "test@example.com", "password": "wrongpassword"},
+        data={"username": mock_user.email, "password": "wrongpassword"},
     )
 
     assert response.status_code == 401
     data = response.json()
-    assert data["detail"] == "Incorrect email or password"
+    assert data["detail"] == "Invalid email or password"
 
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.10 — generic login error (unknown user, identical body)
 async def test_login_user_not_found(mock_get_user_by_email, async_client: AsyncClient):
     mock_get_user_by_email.return_value = None
 
@@ -71,7 +71,7 @@ async def test_login_user_not_found(mock_get_user_by_email, async_client: AsyncC
 
     assert response.status_code == 401
     data = response.json()
-    assert data["detail"] == "Incorrect email or password"
+    assert data["detail"] == "Invalid email or password"
 
 
 @pytest.mark.asyncio
@@ -179,6 +179,7 @@ async def test_validate_token_missing(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.1 — invalid/garbage token rejected
 async def test_validate_token_invalid(async_client: AsyncClient):
     response = await async_client.get(
         "/api/v1/auth/validate", headers={"Authorization": "Bearer invalid_token"}
@@ -193,6 +194,7 @@ async def test_validate_token_invalid(async_client: AsyncClient):
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_id")
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.2 — the refresh path recovers/mints a fresh pair
 async def test_refresh_token(
     mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
 ):
@@ -202,7 +204,7 @@ async def test_refresh_token(
     # First login to get a refresh token
     login_response = await async_client.post(
         "/api/v1/auth/login",
-        data={"username": "test@example.com", "password": "testpassword123"},
+        data={"username": mock_user.email, "password": "testpassword123"},
     )
     refresh_token = login_response.json()["refresh_token"]
 
@@ -224,12 +226,13 @@ async def test_refresh_token(
 
     new_payload = decode_refresh_token(data["refresh_token"])
     assert new_payload is not None
-    assert new_payload.get("type") == "refresh"
+    assert new_payload.get("token_kind") == "refresh"
 
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_id")
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.9 — deleted user ⇒ 401 everywhere
 async def test_refresh_deleted_user_rejected(
     mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
 ):
@@ -240,7 +243,7 @@ async def test_refresh_deleted_user_rejected(
 
     login_response = await async_client.post(
         "/api/v1/auth/login",
-        data={"username": "test@example.com", "password": "testpassword123"},
+        data={"username": mock_user.email, "password": "testpassword123"},
     )
     refresh_token = login_response.json()["refresh_token"]
 
@@ -253,6 +256,7 @@ async def test_refresh_deleted_user_rejected(
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_id")
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.9 — is_active=false ⇒ 401 everywhere
 async def test_refresh_inactive_user_rejected(
     mock_get_user_by_email, mock_get_user_by_id, async_client: AsyncClient, mock_user
 ):
@@ -270,15 +274,18 @@ async def test_refresh_inactive_user_rejected(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
+@pytest.mark.contract  # §18.9 — is_active=false ⇒ 401 everywhere
 async def test_login_inactive_user_rejected(
     mock_get_user_by_email, async_client: AsyncClient, mock_user
 ):
-    """Audit 2026-08 H4: disabled accounts cannot log in."""
+    """Audit 2026-08 H4: disabled accounts cannot log in. §5/§18.9: the
+    rejection is the generic 401 (no account enumeration)."""
     mock_user.is_active = False
     mock_get_user_by_email.return_value = mock_user
 
     response = await async_client.post(
         "/api/v1/auth/login",
-        data={"username": "test@example.com", "password": "testpassword123"},
+        data={"username": mock_user.email, "password": "testpassword123"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"

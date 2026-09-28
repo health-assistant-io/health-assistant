@@ -62,6 +62,18 @@ jobs:
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
           pytest
+      - name: Contract drift gate (identity-auth §18)
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: health_assistant_test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          cd backend
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
+          pytest -m contract
 
   test-frontend:
     name: Run Frontend Lint & Build Test

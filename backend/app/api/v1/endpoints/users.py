@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional, Dict, Any, List
 from app.core.security import get_current_user, RoleChecker, get_password_hash
+from app.services.audit_service import log_audit_action
 from app.services.user_service import (
     get_user_by_id,
     update_user,
@@ -36,6 +37,19 @@ async def list_tenant_users(
     return result.scalars().all()
 
 
+def _user_snapshot(user) -> Dict[str, Any] | None:
+    """The audit-relevant fields of a user row (§17 admin-action diffs)."""
+    if user is None:
+        return None
+    role = getattr(user, "role", None)
+    return {
+        "email": getattr(user, "email", None),
+        "role": getattr(role, "value", role),
+        "is_active": bool(getattr(user, "is_active", True)),
+        "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+    }
+
+
 @router.post("", response_model=UserResponse)
 async def create_user_endpoint(
     user_in: UserCreate,
@@ -69,9 +83,20 @@ async def create_user_endpoint(
 
     new_user = await create_user(
         email=user_in.email,
-        hashed_password=hashed_password,
+        password_hash=hashed_password,
         tenant_id=tenant_id,
         role=user_in.role,
+        full_name=user_in.full_name,
+    )
+
+    # §17: user creation is an admin action — audit it.
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="user.create",
+        resource_type="user",
+        resource_id=getattr(new_user, "id", None),
+        new_value=_user_snapshot(new_user),
     )
 
     return new_user
@@ -178,6 +203,12 @@ async def update_user_endpoint(
                 detail="SYSTEM_ADMIN can only be granted by a SYSTEM_ADMIN.",
             )
 
+    # Snapshot the pre-update state for the §17 audit diff (also gives
+    # the 404 for a missing row before any mutation is attempted).
+    before = await get_user_by_id(user_id, tenant_id=tenant_id)
+    if not before:
+        raise HTTPException(status_code=404, detail="User not found")
+
     user = await update_user(
         user_id,
         email,
@@ -189,10 +220,29 @@ async def update_user_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # A role change must take effect immediately: kill every live session
-    # and refresh token so stale privileged claims cannot outlive the
-    # change (audit 2026-08 H2). The demoted user simply re-logs-in.
+    # §17: user updates are admin actions (role changes get their own
+    # action so the trail answers "who changed privileges?" directly).
+    old_snapshot = _user_snapshot(before)
+    new_snapshot = _user_snapshot(user)
+    role_changed = old_snapshot.get("role") != new_snapshot.get("role")
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="user.role_change" if role_changed else "user.update",
+        resource_type="user",
+        resource_id=user.id,
+        old_value=old_snapshot,
+        new_value=new_snapshot,
+    )
+
+    # A role change must take effect immediately: bump ``token_version``
+    # (every outstanding token fails its ``ver`` check — §8) and kill the
+    # Redis hot layer so stale privileged claims cannot outlive the change
+    # (audit 2026-08 H2). The demoted user simply re-logs-in.
     if role and str(user.id) != str(current_user.user_id):
+        from app.services.user_service import bump_token_version
+
+        await bump_token_version(str(user.id))
         await token_store.revoke_everything(str(user.id))
 
     return user
@@ -211,9 +261,21 @@ async def delete_user_endpoint(
         None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
     )
 
+    # Snapshot for the §17 audit trail before the row disappears.
+    before = await get_user_by_id(user_id, tenant_id=tenant_id)
+
     success = await delete_user(user_id, tenant_id=tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
+
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="user.delete",
+        resource_type="user",
+        resource_id=user_id,
+        old_value=_user_snapshot(before),
+    )
 
     # Deleted users must lose access at once — not when their tokens
     # happen to expire (audit 2026-08 H2).

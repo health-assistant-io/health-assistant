@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Seed a deterministic demo tenant + user + clinical data for UI screenshot capture.
+"""Seed a deterministic demo tenant + user + clinical data for UI screenshot capture.
 
 Creates (idempotently):
   - Tenant "Demo Clinic" (slug: demo-clinic)
@@ -21,8 +20,39 @@ Creates (idempotently):
 The captured screenshots in docs/images/ are meant to be reproducible, so this
 seed is the single source of truth for what the demo pages should contain.
 Re-run safely — existing rows are updated or left untouched.
+
+§13 guard rails (plan 16 H7) — the seeder refuses anything that is not a
+demo target, loudly and non-zero (exit 2), **before any demo data is
+written**:
+
+* target guard: the database must be PostgreSQL and literally named
+  ``*_demo`` (deployment.md: ``neuro_health_demo``). Anything else —
+  including a dev/production database — is refused before it is touched.
+* instance guard: ``instance_settings.demo_mode`` must be ``true``.
+  ``--init-demo`` may initialize it — but only on an EMPTY demo database
+  (no instance facts, no users/tenants/patients); anything else is
+  refused. Unreadable facts (unmigrated schema) refuse too — a target
+  that cannot prove it is a demo is not a demo (fail-closed, §4.1).
+
+Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
+
+    # The demo stack's database (docker-compose.demo.yml runs this):
+    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuro_health_demo \\
+        python scripts/seed_demo.py
+
+    # First run against a fresh, migrated, still-empty *_demo database:
+    python scripts/seed_demo.py --database-url <url ending in _demo> --init-demo
+
+There is deliberately no ``--reset`` here: demo resets are volume-level —
+the demo tree's ``reset-demo.sh`` wipes the DB volume and the stack
+re-seeds on boot. The seeder itself is idempotent, so re-running never
+duplicates rows.
+
+Exit codes: 0 seeded (or already seeded), 2 refused by a §13 guard rail,
+1 unexpected error.
 """
 
+import argparse
 import asyncio
 import os
 import sys
@@ -36,8 +66,12 @@ if backend_dir not in sys.path:
 
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.core.database import AsyncSessionLocal  # noqa: E402
+from app.core.instance_state import AUTH_MODE_KEY, DEMO_MODE_KEY  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
 from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem, Gender, Role  # noqa: E402
 from app.models.biomarker_model import (  # noqa: E402
@@ -53,6 +87,10 @@ from app.models.enums import AIScope  # noqa: E402
 from app.models.tenant_model import TenantModel  # noqa: E402
 from app.models.user_model import UserModel  # noqa: E402
 from app.services.import_service import ImportService  # noqa: E402
+
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_REFUSED = 2
 
 # Default credentials — overridable via the root .env
 DEMO_EMAIL = os.getenv("HA_DEMO_EMAIL", "demo@healthassistant.local")
@@ -84,6 +122,107 @@ DEMO_PATIENT_IDS = [
 # A tenant/user-scope provider configured later via the UI outranks it.
 SEED_MOCK_AI = os.getenv("HA_AI_MOCK", "1") not in ("0", "false", "False")
 MOCK_AI_PROVIDER_NAME = "Mock Medical LLM (demo)"
+
+
+# ---------------------------------------------------------------------------
+# §13 guard rails — refuse anything that is not a demo target/instance
+# (plan 16 H7; mirrors the family's scripts/seed-demo.py pattern).
+# ---------------------------------------------------------------------------
+
+
+class Refusal(Exception):
+    """A §13 guard rail refused the run — print loud, exit non-zero."""
+
+
+def ensure_demo_target(url: str) -> str:
+    """Target guard (§13): a PostgreSQL database literally named ``*_demo``.
+
+    Health is a Class S server product — there is no SQLite/demo-dir
+    flavor to allow, so any non-PostgreSQL backend and any non-``*_demo``
+    name is refused **before the database is touched**.
+    """
+    parsed = make_url(url)
+    backend = parsed.get_backend_name()
+    if not backend.startswith("postgresql"):
+        raise Refusal(
+            f"unsupported database backend {backend!r} — health demo data may "
+            "only be seeded into a PostgreSQL *_demo database "
+            "(identity-auth §13)."
+        )
+    name = parsed.database or ""
+    if not name.endswith("_demo"):
+        raise Refusal(
+            f"target database {name!r} is not a demo database — expected a "
+            "name ending '_demo' (deployment.md: neuro_health_demo); "
+            "refusing to seed (identity-auth §13)."
+        )
+    return url
+
+
+async def ensure_demo_instance(session: AsyncSession, *, init_demo: bool) -> str:
+    """Instance guard (§13): ``instance_settings.demo_mode`` must be ``true``.
+
+    ``--init-demo`` may write it — but only on an **empty** demo database;
+    anything else is refused (never re-flag an existing instance as demo).
+    Unreadable facts (unmigrated schema) refuse too: a target that cannot
+    prove it is a demo is not a demo (fail-closed, §4.1).
+    """
+    from app.models.instance_setting_model import InstanceSettingModel
+
+    try:
+        row = await session.get(InstanceSettingModel, DEMO_MODE_KEY)
+    except Exception as e:  # unreadable ⇒ unprovable ⇒ refuse
+        raise Refusal(
+            f"cannot read instance_settings on the target ({type(e).__name__}: "
+            f"{e}) — a demo target must be a migrated *_demo database; "
+            "refusing (identity-auth §13)."
+        ) from e
+    if row is not None and str(row.value).strip().lower() == "true":
+        return "demo_mode=true (instance_settings)"
+    if not init_demo:
+        raise Refusal(
+            "instance_settings.demo_mode is not 'true' — refusing to seed a "
+            "non-demo instance (identity-auth §13). Use --init-demo to "
+            "initialize an EMPTY demo database."
+        )
+    if not await _instance_is_empty(session):
+        raise Refusal(
+            "--init-demo requires an EMPTY demo database (found existing "
+            "instance data) — refusing to re-flag an existing instance as "
+            "demo (identity-auth §13)."
+        )
+    session.add(InstanceSettingModel(key=DEMO_MODE_KEY, value="true"))
+    await session.commit()
+    return "demo_mode=true (--init-demo)"
+
+
+async def _instance_is_empty(session: AsyncSession) -> bool:
+    """True only when the demo database holds no instance data at all."""
+    from app.models.instance_setting_model import InstanceSettingModel
+
+    for key in (DEMO_MODE_KEY, AUTH_MODE_KEY):
+        try:
+            if await session.get(InstanceSettingModel, key) is not None:
+                return False
+        except Exception as e:
+            raise Refusal(
+                f"cannot read instance_settings on the target "
+                f"({type(e).__name__}: {e}) — refusing (identity-auth §13)."
+            ) from e
+    for model in (UserModel, TenantModel, Patient):
+        try:
+            if (
+                await session.execute(select(model.id).limit(1))
+            ).first() is not None:
+                return False
+        except Exception as e:
+            raise Refusal(
+                f"cannot inspect {model.__tablename__!r} on the target "
+                f"({type(e).__name__}: {e}) — the demo target must be fully "
+                "migrated; refusing (identity-auth §13)."
+            ) from e
+    return True
+
 
 RICH_OCR_TEXT = """PATIENT & LABORATORY INFORMATION
 Patient Name: Maria Papadopoulou
@@ -721,12 +860,33 @@ async def seed_state_biomarkers(session, tenant_id: UUID, patient_id: UUID, user
         print(f"✅ Seeded {created_obs} STATE observations for SARS-CoV-2 PCR")
 
 
-async def seed() -> None:
-    if not DATABASE_AVAILABLE:
-        print("❌ Database is not available. Check DATABASE_URL in backend/.env")
-        sys.exit(1)
+async def seed(
+    *,
+    database_url: str | None = None,
+    init_demo: bool = False,
+    session_factory=None,
+) -> None:
+    """Seed the demo dataset — after the §13 guard rails have their say.
 
-    async with AsyncSessionLocal() as session:
+    ``database_url`` defaults to the configured instance URL (the backend
+    boot path calls this with no arguments); ``session_factory`` lets the
+    CLI bind a dedicated engine for an explicit ``--database-url`` target.
+    Raises :class:`Refusal` (exit 2 from the CLI; abort/warn via the boot
+    path's ``_abort_or_warn``) when the target is not a provable demo.
+    """
+    url = database_url or settings.DATABASE_URL
+    ensure_demo_target(url)
+
+    factory = session_factory or AsyncSessionLocal
+    if factory is None:
+        print("❌ Database is not available. Check DATABASE_URL in backend/.env")
+        sys.exit(EXIT_ERROR)
+
+    async with factory() as session:
+        # §13 instance guard — demo data only ever lands on a demo instance.
+        demo_reason = await ensure_demo_instance(session, init_demo=init_demo)
+        print(f"✅ Demo target verified: {demo_reason}")
+
         # 1. Tenant
         tenant = (
             await session.execute(
@@ -758,7 +918,7 @@ async def seed() -> None:
             user = UserModel(
                 id=DEMO_USER_ID,
                 email=DEMO_EMAIL,
-                hashed_password=get_password_hash(DEMO_PASSWORD),
+                password_hash=get_password_hash(DEMO_PASSWORD),
                 role=Role.ADMIN,
                 tenant_id=tenant.id,
                 is_active=True,
@@ -841,5 +1001,81 @@ async def seed() -> None:
     print("──────────────────────────────────────────────────")
     print()
 
+# ---------------------------------------------------------------------------
+# CLI — argparse + §13 refusal matrix (exit 2 on a guard rail).
+# ---------------------------------------------------------------------------
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="seed_demo.py",
+        description=(
+            "Seed the deterministic Health Assistant demo dataset "
+            "(identity-auth §13 — refuses any non-demo target)."
+        ),
+    )
+    parser.add_argument(
+        "--database-url",
+        default=None,
+        help=(
+            "Target database URL (else DATABASE_URL / POSTGRES_* env). "
+            "Must be PostgreSQL named *_demo (deployment.md: "
+            "neuro_health_demo)."
+        ),
+    )
+    parser.add_argument(
+        "--init-demo",
+        action="store_true",
+        help=(
+            "On an EMPTY *_demo database only: write "
+            "instance_settings.demo_mode=true before seeding. Refused on a "
+            "non-empty database."
+        ),
+    )
+    parser.epilog = (
+        "No --reset flag by design: demo resets are volume-level — the "
+        "demo tree's reset-demo.sh wipes the DB volume and the stack "
+        "re-seeds on boot. This seeder is idempotent."
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    url = args.database_url or settings.DATABASE_URL
+
+    factory = None
+    try:
+        if args.database_url and args.database_url != settings.DATABASE_URL:
+            # §13 target guard first: a non-PostgreSQL/non-*_demo URL must
+            # REFUSE (exit 2), not crash on async-engine construction below.
+            ensure_demo_target(url)
+            # Explicit target: bind a dedicated engine so the guards and the
+            # seeding hit exactly the URL the operator named.
+            engine = create_async_engine(args.database_url)
+            factory = async_sessionmaker(
+                bind=engine, class_=AsyncSession, expire_on_commit=False
+            )
+
+        asyncio.run(
+            seed(database_url=url, init_demo=args.init_demo, session_factory=factory)
+        )
+    except Refusal as refusal:
+        print(f"⛔ REFUSED: {refusal}", file=sys.stderr)
+        print(
+            "   Demo data may only be seeded into a *_demo PostgreSQL "
+            "database with instance_settings.demo_mode=true "
+            "(identity-auth §13).",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"❌ Demo seed failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    return EXIT_OK
+
+
 if __name__ == "__main__":
-    asyncio.run(seed())
+    sys.exit(main())

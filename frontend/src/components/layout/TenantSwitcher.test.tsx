@@ -34,8 +34,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({
     user: { id: 'u1', email: 'admin@test.com', role: 'SYSTEM_ADMIN', tenant_id: 't1', settings: {} },
-    token: 'fake-token',
-    refreshToken: 'fake-refresh',
+    claims: {
+      valid: true,
+      user_id: 'u1',
+      email: 'admin@test.com',
+      role: 'SYSTEM_ADMIN',
+      tenant_id: 't1',
+      auth_mode: 'password',
+      switched: false,
+      original_tenant_id: null,
+    },
     isAuthenticated: true,
     isLoading: false,
     login: vi.fn(),

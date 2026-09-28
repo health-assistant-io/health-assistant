@@ -39,10 +39,15 @@ This guide covers local development for Health Assistant — a self-hosted, open
    others so you see the error immediately in the foreground. To start just
    one process (e.g. the worker): `honcho start worker -f Procfile.dev`.
 
-   **Testing the first-run setup wizard:** by default the script creates an
-   admin (`admin@healthassistant.local` / `admin123`) so you can skip
-   login. To exercise the browser setup wizard instead, pass `--no-admin`
-   and start from a clean DB:
+   **Dev admin credentials:** the script provisions
+   `admin@healthassistant.local` / `devadmin12345` (SYSTEM_ADMIN) so you
+   can skip login — the password satisfies the family min-10 policy
+   (identity-auth §7; the old `admin123` no longer validates).
+   The dev DB connects as `POSTGRES_USER=neuro_health_owner` (H6 role
+   rename) — if an older checkout's `.env` still says `admin`, update it.
+
+   **Testing the first-run setup wizard:** pass `--no-admin` and start
+   from a clean DB:
 
    ```bash
    ./scripts/reset-dev-db.sh -y --migrate

@@ -22,25 +22,34 @@ Endpoint surface:
   POST   /admin/tenants/exit-switch           Restore original session
   GET    /admin/tenants/{tenant_id}/users     List tenant users
   PATCH  /admin/tenants/{tenant_id}/users/{user_id}  Role + active toggle
+  PATCH  /admin/tenants/{tenant_id}/users/{user_id}/mfa  Force/release MFA
   POST   /admin/tenants/{tenant_id}/invite    Mint tenant-scoped invite token
-  GET    /admin/tenants/{tenant_id}/audit     Audit-log viewer
+  GET    /admin/tenants/{tenant_id}/audit     Audit-log viewer (tenant stream,
+                                              filterable by action/outcome)
+
+The cross-tenant stream (SYSTEM_ADMIN sees every tenant + system-level
+rows) lives at ``GET /admin/audit`` in ``admin.py``.
 """
 
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cookies import set_session_cookies
 from app.core.database import get_db
 from app.core.security import RoleChecker, TokenData
 from app.models.enums import Role
+from app.models.user_model import UserModel
 from app.schemas.tenant import (
     AuditEntryResponse,
     AuditListResponse,
     CreateInvitePayload,
     HardDeleteConfirm,
     InviteResponse,
+    SetTenantUserMFA,
     SwitchTenantResponse,
     TenantCreate,
     TenantDetailResponse,
@@ -51,11 +60,19 @@ from app.schemas.tenant import (
     TenantUserResponse,
     UpdateTenantUser,
 )
+from app.services.audit_service import (
+    OUTCOME_DENIED,
+    OUTCOME_OK,
+    log_audit_action,
+)
 from app.services.tenant_admin_service import TenantAdminService
 
 router = APIRouter(prefix="/admin/tenants", tags=["admin-tenants"])
 
 _admin_only = RoleChecker([Role.SYSTEM_ADMIN])
+# MFA policy (plan 16 H5) is institute-facing: tenant ADMINs may enforce it
+# inside their own tenant; SYSTEM_ADMIN passes every RoleChecker gate.
+_tenant_user_admin_only = RoleChecker([Role.ADMIN])
 
 
 def _svc(db: AsyncSession) -> TenantAdminService:
@@ -176,6 +193,7 @@ async def hard_delete_tenant(
 @router.post("/{tenant_id}/switch", response_model=SwitchTenantResponse)
 async def switch_into_tenant(
     tenant_id: str,
+    response: Response,
     current_user: TokenData = Depends(_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> SwitchTenantResponse:
@@ -183,6 +201,10 @@ async def switch_into_tenant(
 
     The new token keeps ``role = SYSTEM_ADMIN`` but ``tenant_id`` is the
     target; the admin's real tenant is preserved in ``original_tenant_id``.
+
+    §10 (plan 16 H3): the browser's active credential is the cookie
+    triple, so switching re-stamps it with the scoped tokens (the JSON
+    body still carries them for §9 clients this pass).
     """
     if getattr(current_user, "switched", False):
         raise HTTPException(
@@ -190,16 +212,36 @@ async def switch_into_tenant(
             detail="Cannot switch tenants while already in a switched session. Exit first.",
         )
     tid = _coerce_uuid(tenant_id)
-    return await _svc(db).switch_into_tenant(tid, actor=current_user)
+    result = await _svc(db).switch_into_tenant(tid, actor=current_user)
+    set_session_cookies(
+        response,
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+    )
+    return result
 
 
 @router.post("/exit-switch", response_model=SwitchTenantResponse)
 async def exit_tenant_switch(
+    response: Response,
     current_user: TokenData = Depends(_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> SwitchTenantResponse:
-    """Restore the original SYSTEM_ADMIN session after a switch."""
-    return await _svc(db).switch_back(actor=current_user)
+    """Restore the original SYSTEM_ADMIN session after a switch.
+
+    The restored session is minted from the switched token's
+    ``original_user_id`` / ``original_tenant_id`` claims — the frontend no
+    longer needs to keep the pre-switch tokens around (they were in
+    localStorage pre-H3; cookies make that impossible and unnecessary).
+    The cookie triple is re-stamped with the restored tokens.
+    """
+    result = await _svc(db).switch_back(actor=current_user)
+    set_session_cookies(
+        response,
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+    )
+    return result
 
 
 # ----------------------------------------------------------------------
@@ -245,6 +287,81 @@ async def update_tenant_user(
     return TenantUserResponse.model_validate(user)
 
 
+@router.patch(
+    "/{tenant_id}/users/{user_id}/mfa",
+    response_model=TenantUserResponse,
+)
+async def set_tenant_user_mfa(
+    tenant_id: str,
+    user_id: str,
+    payload: SetTenantUserMFA,
+    current_user: TokenData = Depends(_tenant_user_admin_only),
+    db: AsyncSession = Depends(get_db),
+) -> TenantUserResponse:
+    """Admin-force (or release) TOTP MFA for one member (plan 16 H5).
+
+    ``enforced=true`` — "promoted for institute use": the member's next
+    password login returns the ``mfa_required`` challenge with
+    ``enrollment_needed: true`` and only completes once they enroll an
+    authenticator (the login-time provisioning + confirm flow). Clearing
+    the flag never removes an already-active secret; it only stops
+    *requiring* one. Existing sessions stay valid — MFA gates login,
+    not live sessions (§9 Bearer clients unaffected).
+
+    ADMIN may act inside their own tenant; SYSTEM_ADMIN anywhere (the
+    same scoping rule as the role/is_active PATCH next door). Audited
+    via ``log_audit_action`` with outcome (H2 chokepoint).
+    """
+    tid = _coerce_uuid(tenant_id)
+    uid = _coerce_uuid(user_id, field="user_id")
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(
+        current_user.tenant_id
+    ) != str(tid):
+        await log_audit_action(
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            action="user.mfa_enforce",
+            resource_type="user",
+            resource_id=uid,
+            outcome=OUTCOME_DENIED,
+            new_value={"reason": "cross_tenant", "enforced": payload.enforced},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage MFA policy for a different tenant.",
+        )
+
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == uid, UserModel.tenant_id == tid)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in this tenant.",
+        )
+    old_enforced = bool(user.mfa_enforced)
+    if old_enforced != payload.enforced:
+        from app.services import mfa_service
+
+        user = await mfa_service.set_enforced(uid, payload.enforced)
+
+    await log_audit_action(
+        tenant_id=tid,
+        user_id=current_user.user_id,
+        action="user.mfa_enforce",
+        resource_type="user",
+        resource_id=uid,
+        outcome=OUTCOME_OK,
+        old_value={"mfa_enforced": old_enforced},
+        new_value={
+            "mfa_enforced": payload.enforced,
+            "mfa_enabled": bool(getattr(user, "mfa_secret_enc", None)),
+        },
+    )
+    return TenantUserResponse.model_validate(user)
+
+
 @router.post("/{tenant_id}/invite", response_model=InviteResponse)
 async def create_tenant_invite(
     tenant_id: str,
@@ -258,6 +375,7 @@ async def create_tenant_invite(
         email=payload.email,
         role=payload.role,
         expires_days=payload.expires_days,
+        actor_id=current_user.user_id,
     )
     return InviteResponse(**result)
 
@@ -271,14 +389,19 @@ async def create_tenant_invite(
 async def list_tenant_audit(
     tenant_id: str,
     action: Optional[str] = Query(default=None),
+    outcome: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
     current_user: TokenData = Depends(_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> AuditListResponse:
+    """Tenant-scoped audit stream (``audit_events``, §17).
+
+    SYSTEM_ADMIN-only; the cross-tenant viewer is ``GET /admin/audit``.
+    """
     tid = _coerce_uuid(tenant_id)
     items, total = await _svc(db).list_audit_entries(
-        tid, action=action, limit=limit, offset=offset
+        tid, action=action, outcome=outcome, limit=limit, offset=offset
     )
     return AuditListResponse(
         items=[AuditEntryResponse.model_validate(a) for a in items],

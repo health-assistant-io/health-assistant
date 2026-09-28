@@ -320,11 +320,11 @@ async def test_create_concept_sets_scope_consistent_with_tenant(
     """``create_concept`` derives ``scope`` from ``tenant_id`` so tenant-scoped
     concepts don't land with ``scope=SYSTEM`` (the pre-existing inconsistency
     the catalog read path would mis-filter on)."""
-    from app.core.security import decode_access_token
+    from app.core.security import decode_token
 
     p = clean_concept_namespace
     token = system_admin_headers["Authorization"].removeprefix("Bearer ")
-    tenant_id = uuid.UUID(decode_access_token(token)["tenant_id"])
+    tenant_id = uuid.UUID(decode_token(token)["tenant_id"])
 
     # Tenant-scoped concept → scope=TENANT
     tid_tenant = await _make_concept(

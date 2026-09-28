@@ -12,7 +12,7 @@ from app.services.fhir_service import (
     delete_observation,
 )
 from app.schemas.user import TokenData
-from app.services.audit_service import log_audit_action
+from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/observations", tags=["observations"])
 
@@ -117,6 +117,7 @@ async def update_observation_endpoint(
 
 
 @router.get("/{observation_id}")
+@audit_read("Observation", id_param="observation_id")
 async def get_observation_endpoint(
     observation_id: str,
     current_user: TokenData = Depends(get_current_user),

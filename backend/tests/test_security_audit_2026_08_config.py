@@ -23,7 +23,8 @@ def _prod_kwargs(**extra):
     base = dict(
         APP_ENV="production",
         DEBUG=False,
-        SECRET_KEY="x" * 48 + "Kq9!",
+        HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
+        HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
         POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
         INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
@@ -33,19 +34,28 @@ def _prod_kwargs(**extra):
     return base
 
 
-def test_placeholder_secret_key_refused_in_production():
+# H4 (plan 16, identity-auth §8): the per-purpose signing keys replaced the
+# single SECRET_KEY. Weak/short/placeholder pins refuse to boot in production.
+def test_placeholder_signing_key_refused_in_production():
     with pytest.raises(ValidationError):
-        Settings(**_prod_kwargs(SECRET_KEY="change_this_to_a_secure_random_string"))
+        Settings(**_prod_kwargs(HA_SESSION_KEY="change_this_to_a_secure_random_string"))
 
 
-def test_short_secret_key_refused_in_production():
+def test_short_signing_key_refused_in_production():
     with pytest.raises(ValidationError):
-        Settings(**_prod_kwargs(SECRET_KEY="short-but-real-key"))
+        Settings(**_prod_kwargs(HA_REFRESH_KEY="short-but-real-key"))
 
 
-def test_strong_secret_key_accepted_in_production():
+def test_missing_signing_keys_refused_in_production():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(**_prod_kwargs(HA_SESSION_KEY=None, HA_REFRESH_KEY=None))
+    assert "HA_SESSION_KEY" in str(exc_info.value)
+
+
+def test_strong_signing_keys_accepted_in_production():
     s = Settings(**_prod_kwargs())
-    assert s.SECRET_KEY.startswith("x" * 4)
+    assert s.HA_SESSION_KEY.startswith("s")
+    assert s.HA_REFRESH_KEY.startswith("r")
 
 
 def test_placeholder_db_password_refused_in_production():
@@ -56,13 +66,13 @@ def test_placeholder_db_password_refused_in_production():
 def test_demo_mode_refused_in_production_without_opt_in(monkeypatch):
     monkeypatch.delenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", raising=False)
     with pytest.raises(ValidationError):
-        Settings(**_prod_kwargs(DEMO_MODE=True))
+        Settings(**_prod_kwargs(HA_DEMO_MODE=True))
 
 
 def test_demo_mode_allowed_in_production_with_explicit_opt_in(monkeypatch):
     monkeypatch.setenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", "true")
-    s = Settings(**_prod_kwargs(DEMO_MODE=True))
-    assert s.DEMO_MODE is True
+    s = Settings(**_prod_kwargs(HA_DEMO_MODE=True))
+    assert s.HA_DEMO_MODE is True
 
 
 def test_debug_refused_in_production():

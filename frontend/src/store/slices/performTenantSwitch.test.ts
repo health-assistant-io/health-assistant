@@ -18,7 +18,7 @@ describe('performTenantSwitch', () => {
     useTenantSwitchStore.getState().clear();
   });
 
-  it('persists scoped tokens, records the switch, and calls onTokensUpdated exactly once', async () => {
+  it('records the switch without persisting any tokens (§10)', async () => {
     const scopedTenant = { id: 't1', name: 'Acme', slug: 'acme', is_active: true, settings: {} };
     vi.mocked(switchIntoTenant).mockResolvedValue({
       access_token: 'scoped-access',
@@ -30,22 +30,17 @@ describe('performTenantSwitch', () => {
       tenant: scopedTenant as any,
     });
 
-    const onTokensUpdated = vi.fn();
-
-    const tenant = await performTenantSwitch('t1', onTokensUpdated);
+    const tenant = await performTenantSwitch('t1');
 
     // Returns the scoped tenant.
     expect(tenant).toEqual(scopedTenant);
 
-    // Scoped tokens persisted to localStorage.
-    expect(localStorage.getItem('accessToken')).toBe('scoped-access');
-    expect(localStorage.getItem('refreshToken')).toBe('scoped-refresh');
-
-    // Audit D5: the token callback must fire exactly once. A previous version
-    // duplicated the call (harmless today, but a real defect — any side-effect
-    // in the callback would double-apply).
-    expect(onTokensUpdated).toHaveBeenCalledTimes(1);
-    expect(onTokensUpdated).toHaveBeenCalledWith('scoped-access', 'scoped-refresh');
+    // §10 (plan 16 H3): the browser credential is the HttpOnly cookie
+    // triple the backend re-stamped — localStorage stays token-free.
+    expect(localStorage.getItem('accessToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(localStorage.getItem('originalAccessToken')).toBeNull();
+    expect(localStorage.getItem('originalRefreshToken')).toBeNull();
 
     // Switch state recorded for the banner / exit button.
     const state = useTenantSwitchStore.getState();

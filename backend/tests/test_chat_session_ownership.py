@@ -25,6 +25,10 @@ from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
 from app.services.chat_session_service import ChatSessionService
 
+# §18.8 (health mapping): the profile layer is the care/subject context —
+# ownership isolation through health's own access layer (guideline §6/§17).
+pytestmark = pytest.mark.contract
+
 
 @pytest_asyncio.fixture
 async def chat_ownership_setup() -> AsyncIterator[dict]:
@@ -42,7 +46,7 @@ async def chat_ownership_setup() -> AsyncIterator[dict]:
             UserModel(
                 id=owner_id,
                 email=f"owner-{owner_id}@test.local",
-                hashed_password="x",
+                password_hash="x",
                 tenant_id=tenant_id,
                 role="USER",
             )
@@ -51,7 +55,7 @@ async def chat_ownership_setup() -> AsyncIterator[dict]:
             UserModel(
                 id=victim_id,
                 email=f"victim-{victim_id}@test.local",
-                hashed_password="x",
+                password_hash="x",
                 tenant_id=tenant_id,
                 role="USER",
             )

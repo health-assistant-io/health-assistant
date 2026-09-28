@@ -41,7 +41,7 @@ async def _setup_tenant():
             UserModel(
                 id=uid,
                 email=f"admin-{uid}@smart.test",
-                hashed_password=get_password_hash("x"),
+                password_hash=get_password_hash("x"),
                 tenant_id=tid,
                 role=Role.SYSTEM_ADMIN,
             )

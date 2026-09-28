@@ -18,12 +18,14 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from app.api.v1.endpoints import auth as auth_endpoint
 from app.core import setup_token
 from app.models.enums import Role
 from app.schemas.auth import SetupRequest, UserRegister
+
+from ._auth_helpers import create_user
 
 
 def _local_request() -> MagicMock:
@@ -104,6 +106,10 @@ async def test_setup_creates_system_admin_and_returns_tokens():
     """Uninitialized + localhost → SYSTEM_ADMIN created + tokens returned."""
     tenant_id = uuid.uuid4()
     fake_tenant = MagicMock(id=tenant_id)
+    # A real, committed user row: setup issues an auth_sessions family
+    # (§5) whose user_id FKs onto users.id, so the persisted bootstrap
+    # user must reference an existing row.
+    real_user = await create_user()
 
     db = _mock_db()
     lock_result = MagicMock()
@@ -113,7 +119,7 @@ async def test_setup_creates_system_admin_and_returns_tokens():
     db.add.side_effect = lambda obj: added.setdefault("obj", obj)
 
     def _refresh(obj):
-        obj.id = uuid.uuid4()
+        obj.id = real_user.id
 
     db.refresh.side_effect = _refresh
 
@@ -128,11 +134,8 @@ async def test_setup_creates_system_admin_and_returns_tokens():
             auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
         ),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
-        patch.object(auth_endpoint, "token_store") as ts_mod,
     ):
         tok_mod.is_setup_token_required.return_value = False
-        ts_mod.register_refresh = AsyncMock()
-        ts_mod.register_session = AsyncMock()
 
         result = await auth_endpoint.setup(
             payload=SetupRequest(
@@ -141,6 +144,7 @@ async def test_setup_creates_system_admin_and_returns_tokens():
                 tenant_name="My Organization",
             ),
             request=_local_request(),
+            response=Response(),
             db=db,
         )
 
@@ -150,9 +154,9 @@ async def test_setup_creates_system_admin_and_returns_tokens():
     assert result.access_token
     assert result.refresh_token
     assert result.token_type == "bearer"
-    # Token cleared after success.
+    # Token cleared after success. (The refresh jti is registered by the
+    # real issuance path — ``issue_session`` owns the token store now.)
     tok_mod.clear.assert_called_once()
-    ts_mod.register_refresh.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +165,7 @@ async def test_setup_creates_system_admin_and_returns_tokens():
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.6 — server init is one-shot; no unauthenticated re-init
 async def test_setup_when_already_initialized_returns_410():
     with patch.object(
         auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
@@ -173,6 +178,7 @@ async def test_setup_when_already_initialized_returns_410():
                     tenant_name="My Organization",
                 ),
                 request=_local_request(),
+                response=Response(),
                 db=MagicMock(),
             )
     assert exc.value.status_code == 410
@@ -196,6 +202,7 @@ async def test_setup_remote_without_token_returns_403():
                     tenant_name="My Organization",
                 ),
                 request=_remote_request(),
+                response=Response(),
                 db=MagicMock(),
             )
     assert exc.value.status_code == 403
@@ -207,11 +214,13 @@ async def test_setup_remote_with_valid_token_proceeds():
     """Remote + correct token → setup proceeds."""
     tenant_id = uuid.uuid4()
     fake_tenant = MagicMock(id=tenant_id)
+    # Real row — the auth_sessions insert FKs onto it (§5).
+    real_user = await create_user()
     db = _mock_db()
     db.execute.side_effect = [MagicMock()]
     added = {}
     db.add.side_effect = lambda obj: added.setdefault("obj", obj)
-    db.refresh.side_effect = lambda obj: setattr(obj, "id", uuid.uuid4())
+    db.refresh.side_effect = lambda obj: setattr(obj, "id", real_user.id)
 
     with (
         patch.object(
@@ -240,6 +249,7 @@ async def test_setup_remote_with_valid_token_proceeds():
                 setup_token="anything-validated-by-mock",
             ),
             request=_remote_request(),
+            response=Response(),
             db=db,
         )
 
@@ -270,6 +280,7 @@ async def test_setup_duplicate_email_returns_409():
                     tenant_name="My Organization",
                 ),
                 request=_local_request(),
+                response=Response(),
                 db=MagicMock(),
             )
     assert exc.value.status_code == 409
@@ -280,10 +291,12 @@ async def test_setup_acquires_advisory_lock():
     """Bootstrap path must call pg_advisory_xact_lock before the write."""
     tenant_id = uuid.uuid4()
     fake_tenant = MagicMock(id=tenant_id)
+    # Real row — the auth_sessions insert FKs onto it (§5).
+    real_user = await create_user()
     db = _mock_db()
     db.execute.side_effect = [MagicMock()]  # the advisory-lock call
     db.add.side_effect = lambda obj: None
-    db.refresh.side_effect = lambda obj: setattr(obj, "id", uuid.uuid4())
+    db.refresh.side_effect = lambda obj: setattr(obj, "id", real_user.id)
 
     with (
         patch.object(
@@ -309,6 +322,7 @@ async def test_setup_acquires_advisory_lock():
                 tenant_name="My Organization",
             ),
             request=_local_request(),
+            response=Response(),
             db=db,
         )
 
@@ -373,9 +387,13 @@ def test_setup_request_rejects_malformed_email():
 
 @pytest.mark.asyncio
 async def test_setup_status_reports_demo_mode_when_enabled():
-    """When settings.DEMO_MODE is on, setup-status surfaces demo_mode=True."""
+    """With the instance fact demo_mode on, setup-status surfaces it."""
     with (
-        patch.object(auth_endpoint.settings, "DEMO_MODE", True),
+        patch.object(
+            auth_endpoint.instance_state,
+            "demo_mode_enabled",
+            new=AsyncMock(return_value=True),
+        ),
         patch.object(
             auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
         ),
@@ -390,7 +408,11 @@ async def test_setup_status_reports_demo_mode_when_enabled():
 async def test_setup_status_demo_mode_off_by_default():
     """demo_mode defaults to False so the frontend shows the normal login."""
     with (
-        patch.object(auth_endpoint.settings, "DEMO_MODE", False),
+        patch.object(
+            auth_endpoint.instance_state,
+            "demo_mode_enabled",
+            new=AsyncMock(return_value=False),
+        ),
         patch.object(
             auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
         ),
@@ -416,12 +438,20 @@ def _demo_user():
     return u
 
 
+def _demo_mode_on(enabled: bool = True):
+    return patch.object(
+        auth_endpoint.instance_state,
+        "demo_mode_enabled",
+        new=AsyncMock(return_value=enabled),
+    )
+
+
 @pytest.mark.asyncio
 async def test_demo_login_requires_demo_mode():
-    """demo-login 404s when DEMO_MODE is off (the route must be inert)."""
-    with patch.object(auth_endpoint.settings, "DEMO_MODE", False):
+    """demo-login 404s when demo mode is off (the route must be inert)."""
+    with _demo_mode_on(False):
         with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.demo_login()
+            await auth_endpoint.demo_login(request=_local_request(), response=Response())
     assert exc.value.status_code == 404
 
 
@@ -429,43 +459,44 @@ async def test_demo_login_requires_demo_mode():
 async def test_demo_login_503_when_demo_user_missing():
     """If seeding hasn't completed (no demo user), return 503 not a crash."""
     with (
-        patch.object(auth_endpoint.settings, "DEMO_MODE", True),
+        _demo_mode_on(True),
         patch.object(
             auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
         ),
-        patch.object(auth_endpoint, "rate_limit", return_value=lambda: None),
     ):
         with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.demo_login()
+            await auth_endpoint.demo_login(request=_local_request(), response=Response())
     assert exc.value.status_code == 503
 
 
 @pytest.mark.asyncio
 async def test_demo_login_stamps_demo_claim_and_issues_tokens():
-    """Happy path: returns tokens whose access JWT carries demo=True."""
-    user = _demo_user()
+    """Happy path: the access JWT is a session token stamped demo (§13).
+
+    The demo stamp is the contract claim ``auth_mode="demo"`` (it used to
+    be a boolean ``demo`` claim); ``sub`` is the user id per §8.
+    """
+    user = await create_user(role=Role.ADMIN)
     with (
-        patch.object(auth_endpoint.settings, "DEMO_MODE", True),
+        _demo_mode_on(True),
         patch.object(
             auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=user)
         ),
-        patch.object(
-            auth_endpoint.token_store,
-            "register_refresh",
-            new=AsyncMock(),
-        ),
     ):
-        result = await auth_endpoint.demo_login()
+        result = await auth_endpoint.demo_login(request=_local_request(), response=Response())
 
     import jwt as _jwt
     from app.core.config import settings
+    from app.core.keys import key_for
+    from app.core.security import SESSION_TOKEN_KIND
 
     payload = _jwt.decode(
         result.access_token,
-        settings.SECRET_KEY,
+        key_for(SESSION_TOKEN_KIND),
         algorithms=[settings.JWT_ALGORITHM],
         options={"verify_aud": False},
     )
-    assert payload["demo"] is True
-    assert payload["sub"] == user.email
+    assert payload["auth_mode"] == "demo"
+    assert payload["token_kind"] == "session"
+    assert payload["sub"] == str(user.id)
     assert payload["role"] == Role.ADMIN.value

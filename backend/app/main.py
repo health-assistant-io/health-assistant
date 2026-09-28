@@ -9,7 +9,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import ClientDisconnect
 from app.core.logging_setup import setup_logging
 from app.api.v1 import api_router
-from app.core.config import settings
+from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
+from app.core.cookies import CsrfMiddleware
 from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
 from app.services.fhir_helpers import FhirSerializationError
 from app.services.observation_value_validator import InvalidObservationValue
@@ -114,6 +115,16 @@ async def lifespan(app: FastAPI):
     from app.core.database import DATABASE_AVAILABLE
 
     if DATABASE_AVAILABLE:
+        # Instance facts (identity-auth §4): init-only — the empty DB
+        # consumes HA_AUTH_MODE / HA_DEMO_MODE exactly once (here and at
+        # /auth/setup); post-init env flips are ignored with a loud warning.
+        try:
+            from app.core import instance_state
+
+            await instance_state.initialize()
+        except Exception as e:
+            _abort_or_warn(e, "Instance settings initialization")
+
         try:
             logger.info("Running seed stages in dependency order...")
             all_stats = await seed_service.seed_all()
@@ -132,10 +143,17 @@ async def lifespan(app: FastAPI):
         # Demo mode — auto-seed the demo tenant + user + clinical data so the
         # frontend can sign in with no credentials via POST /auth/demo-login.
         # seed_demo.py is idempotent, so re-running on every boot is cheap
-        # (a few existence checks). See app/core/config.py DEMO_MODE + docs.
-        if settings.DEMO_MODE:
+        # (a few existence checks). Gated on the **DB fact** (§4/§13): the
+        # env is init-only, so a post-init env flip can never seed demo data
+        # into a non-demo instance. The seeder itself re-checks both §13
+        # guards (target database named *_demo + instance demo_mode=true)
+        # and raises Refusal otherwise — production aborts, dev warns. See
+        # app/core/config.py + docs.
+        from app.core import instance_state
+
+        if await instance_state.demo_mode_enabled():
             try:
-                logger.info("DEMO_MODE is on — seeding demo data...")
+                logger.info("demo_mode is on — seeding demo data...")
                 from scripts.seed_demo import seed as _seed_demo
 
                 await _seed_demo()
@@ -427,6 +445,14 @@ async def catalog_conflict_handler(request: Request, exc: CatalogConflict):
 # CORS middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# §10 double-submit CSRF (plan 16 H3): non-safe /api/* requests that carry
+# session/CSRF cookies must echo nx_csrf in X-CSRF-Token (403 otherwise).
+# Mounted innermost (first-added) so its 403s flow back out through the
+# security-headers + CORS layers and stay readable by the browser.
+# Bearer-authenticated requests (§9 user clients) and the auth bootstrap
+# endpoints are exempt — see app/core/cookies.py.
+app.add_middleware(CsrfMiddleware)
+
 
 # Security: baseline response headers (audit A7). Applied to every response.
 # HSTS only makes sense over HTTPS and is most effective when set by the
@@ -452,10 +478,10 @@ async def security_headers_middleware(request: Request, call_next):
 # Security: CORS configuration
 if settings.APP_ENV == "development":
     # In development, allow any local network origin (LAN) via regex
-    # Matches localhost, 127.0.0.1, and private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    # (shared with the §10 WS Origin gate — app.core.config).
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
+        allow_origin_regex=DEV_LAN_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -472,7 +498,9 @@ else:
         allow_origins=[settings.FRONTEND_URL],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["Content-Type", "Authorization"],
+        # §10: X-CSRF-Token is the double-submit echo (browsers); the §9
+        # Bearer clients use Authorization as before.
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
         expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
     )
 

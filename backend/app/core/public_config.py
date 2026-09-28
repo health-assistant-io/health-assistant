@@ -48,9 +48,16 @@ async def resolve_public_config(db: Optional[AsyncSession]) -> dict:
         or resolved_client
         or settings.APP_URL
     )
+
+    # §4/§13: demo admission is a DB instance fact (init-only HA_DEMO_MODE),
+    # never the raw env — post-init env flips must not re-badge an instance.
+    from app.core import instance_state
+
+    demo_mode = await instance_state.demo_mode_enabled()
+
     return {
         "app_url": settings.APP_URL,
         "client_base_url": resolved_client,
         "frontend_base_url": resolved_frontend,
-        "demo_mode": getattr(settings, "DEMO_MODE", False),
+        "demo_mode": demo_mode,
     }

@@ -1,22 +1,34 @@
-"""Platform secret encryption (Fernet).
+"""Platform secret encryption at rest (Fernet) — the DATA_KEY family.
 
-Single source of truth for encrypting secrets that live inside the app's own
-tables (e.g. ``AIProviderModel.api_key``). Integrations continue to use
-``integrations.sdk.secrets`` which wraps the same Fernet key inside
+Single source of truth for encrypting secrets that live inside the app's
+own tables (e.g. ``AIProviderModel.api_key``). Integrations continue to
+use ``integrations.sdk.secrets`` which wraps the same key family inside
 ``user_config`` JSONB blobs.
 
-Secrets are encrypted at rest with a Fernet token prefixed by ``enc::`` so
-storage and transport layers can distinguish them from any legacy plaintext.
-Response schemas mask the key on read so it is never returned to clients.
+Identity-auth §8 (plan 16 H4): the cipher key is the per-purpose
+``HA_DATA_KEY`` (env alias ``INTEGRATION_SECRET_KEY``) — it encrypts at
+rest and **never signs anything**, and no key is derived from any other
+value. Rotation ring (preserved from the pre-H4 integration key):
+``HA_DATA_KEY`` is the primary and the only key that *encrypts*;
+``HA_DATA_KEY_PREVIOUS`` (env alias
+``INTEGRATION_SECRET_KEY_PREVIOUS``, comma-separated) is tried on
+*decrypt* only, so ciphertext sealed before a rotation keeps working —
+no stored value becomes undecryptable across a key change.
+
+Secrets are encrypted at rest with a Fernet token prefixed by ``enc::``
+so storage and transport layers can distinguish them from any legacy
+plaintext. Response schemas mask the key on read so it is never returned
+to clients.
 """
 
 from __future__ import annotations
 
+import base64
 import logging
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Union
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 logger = logging.getLogger(__name__)
 
@@ -29,29 +41,70 @@ ENCRYPTED_PREFIX = "enc::"
 # Anything matching this pattern is treated as "no change" by update paths.
 MASK_MARKER = "***"
 
+DATA_KEY_HINT = (
+    "HA_DATA_KEY (env alias INTEGRATION_SECRET_KEY) must be 32-byte "
+    "urlsafe-base64 key material — a Fernet key. Generate with: python3 -c "
+    '"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+)
 
-def _resolve_fernet() -> Optional[Fernet]:
-    """Build a Fernet from the configured key, or None if no key is set.
 
-    Reuses ``INTEGRATION_SECRET_KEY`` (a Fernet-format base64 key) so there
-    is a single platform secret for both integrations and AI keys. If the
-    key is unset, returns None — callers must handle that case (either by
-    raising or by falling back to plaintext storage with a loud warning).
+class DataKeyError(RuntimeError):
+    """The DATA_KEY cannot be used as Fernet key material."""
+
+
+def fernet_from_data_key(data_key: str) -> Fernet:
+    """Fernet view of a DATA_KEY family entry (identity-auth §8).
+
+    The DATA_KEY *is* the Fernet key. Both the standard padded form
+    (``Fernet.generate_key()``, 44 chars) and the auth-kit's unpadded
+    token form (43 chars) carry the same 32 key bytes; normalizing the
+    base64 padding yields the standard Fernet encoding — no key material
+    is derived from anything else.
     """
-    from app.core.config import get_settings
-
-    key = get_settings().INTEGRATION_SECRET_KEY
-    if not key:
-        return None
+    padded = data_key + "=" * (-len(data_key) % 4)
     try:
-        return Fernet(key.encode() if isinstance(key, str) else key)
-    except (ValueError, TypeError) as e:
-        logger.error("INTEGRATION_SECRET_KEY is set but invalid: %s", e)
+        raw = base64.urlsafe_b64decode(padded)
+    except (ValueError, TypeError) as exc:  # binascii.Error ⊂ ValueError
+        raise DataKeyError(
+            f"DATA_KEY is not urlsafe-base64 key material: {exc}. {DATA_KEY_HINT}"
+        ) from exc
+    if len(raw) != 32:
+        raise DataKeyError(
+            f"DATA_KEY must carry exactly 32 key bytes (got {len(raw)}). {DATA_KEY_HINT}"
+        )
+    return Fernet(base64.urlsafe_b64encode(raw))
+
+
+def _resolve_fernet() -> Optional[MultiFernet]:
+    """Build the rotation-ring cipher from the configured key family.
+
+    Primary first (encrypts), then the ``HA_DATA_KEY_PREVIOUS`` priors
+    (decrypt-only). Returns None if the primary key is unset or invalid —
+    callers must handle that case (either by raising or by falling back
+    to plaintext storage with a loud warning).
+    """
+    from app.core.keys import data_key_family
+
+    family = data_key_family()
+    if not family:
         return None
+    fernets: list[Fernet] = []
+    for index, key in enumerate(family):
+        try:
+            fernets.append(fernet_from_data_key(key))
+        except DataKeyError as e:
+            if index == 0:
+                logger.error("HA_DATA_KEY is set but invalid: %s", e)
+                return None
+            # A bad *previous* entry only narrows the decrypt ring.
+            logger.warning("ignoring invalid HA_DATA_KEY_PREVIOUS entry: %s", e)
+    if not fernets:  # pragma: no cover — primary handled above
+        return None
+    return MultiFernet(fernets)
 
 
 @lru_cache(maxsize=1)
-def _fernet_singleton() -> Optional[Fernet]:
+def _fernet_singleton() -> Optional[MultiFernet]:
     return _resolve_fernet()
 
 
@@ -63,11 +116,13 @@ def is_encrypted(value: Optional[str]) -> bool:
 def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
     """Encrypt a plaintext string for storage.
 
-    Returns None if the input is None. If no Fernet key is configured, raises
+    Returns None if the input is None. If no DATA_KEY is configured, raises
     ``RuntimeError`` in production (fail-closed — never silently store secrets
     in cleartext) and only falls back to plaintext in dev/test with a loud
     warning. The production boot guard in ``config.py`` already requires the
     key; this is defence-in-depth for a misconfigured instance.
+
+    Always encrypts under the primary key (MultiFernet order).
     """
     if plaintext is None:
         return None
@@ -82,12 +137,12 @@ def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
         env = (get_settings().APP_ENV or "").lower()
         if env in ("development", "dev", "test", "testing"):
             logger.warning(
-                "INTEGRATION_SECRET_KEY not set — storing secret in PLAINTEXT "
+                "HA_DATA_KEY not set — storing secret in PLAINTEXT "
                 "(dev/test only). Set the key (Fernet, base64 32 bytes) for prod."
             )
             return plaintext
         raise RuntimeError(
-            "Refusing to store a secret in plaintext: INTEGRATION_SECRET_KEY "
+            "Refusing to store a secret in plaintext: HA_DATA_KEY "
             "is not configured (APP_ENV=%s)." % (env or "unset")
         )
     token = fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
@@ -99,7 +154,9 @@ def decrypt_secret(stored: Optional[str]) -> Optional[str]:
 
     Returns the plaintext. If the input is None, returns None. If the input
     is not in the encrypted form (legacy plaintext), returns it verbatim.
-    Raises ``ValueError`` if the value is encrypted but cannot be decrypted
+    Tries the full rotation ring (primary, then ``HA_DATA_KEY_PREVIOUS``)
+    so pre-rotation ciphertext keeps decrypting. Raises ``ValueError`` if
+    the value is encrypted but cannot be decrypted with any family key
     (wrong key, corrupted token) — callers should surface this as a config
     error rather than silently masking.
     """
@@ -113,7 +170,7 @@ def decrypt_secret(stored: Optional[str]) -> Optional[str]:
     fernet = _fernet_singleton()
     if fernet is None:
         raise ValueError(
-            "Secret is encrypted but INTEGRATION_SECRET_KEY is not configured"
+            "Secret is encrypted but HA_DATA_KEY is not configured"
         )
     try:
         return fernet.decrypt(token).decode("utf-8")

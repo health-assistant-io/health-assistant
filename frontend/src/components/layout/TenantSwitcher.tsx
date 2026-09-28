@@ -16,7 +16,7 @@ interface Props {
 export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, login } = useAuthStore();
+  const { user } = useAuthStore();
   const { currentTenant, tenants, loadTenants, setCurrentTenant, isLoadingList } = useTenantStore();
   const { switched, scopedTenant, exitTenant } = useTenantSwitchStore();
   const clearPatientContext = usePatientStore((s) => s.clearPatientContext);
@@ -73,20 +73,14 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
     setSwitching(tenant.id);
     try {
       // If already in a switched session, exit first (the backend rejects
-      // a second switch without exiting). Restore original tokens so the
-      // next switch call is made with the original (non-switched) JWT.
+      // a second switch without exiting). §10: the exit endpoint restores
+      // the original cookie session server-side — nothing to re-apply
+      // locally.
       if (switched) {
         await exitTenant();
-        const originalAccess = localStorage.getItem('originalAccessToken');
-        const originalRefresh = localStorage.getItem('originalRefreshToken');
-        if (originalAccess && originalRefresh) {
-          login(originalAccess, originalRefresh);
-        }
       }
 
-      await performTenantSwitch(tenant.id, (access, refresh) => {
-        login(access, refresh);
-      });
+      await performTenantSwitch(tenant.id);
       setCurrentTenant(tenant);
       clearPatientContext();
       toast.success(
@@ -104,11 +98,13 @@ export const TenantSwitcher: React.FC<Props> = ({ className = '' }) => {
   };
 
   const handleExitSwitch = async () => {
-    const originalAccess = localStorage.getItem('originalAccessToken');
-    const originalRefresh = localStorage.getItem('originalRefreshToken');
-    await exitTenant();
-    if (originalAccess && originalRefresh) {
-      login(originalAccess, originalRefresh);
+    try {
+      await exitTenant();
+    } catch {
+      // Exit failed (revoked/expired family) — the interceptor already
+      // attempted a refresh+retry; offer a clean re-login.
+      window.location.href = '/login';
+      return;
     }
     clearPatientContext();
     setIsOpen(false);

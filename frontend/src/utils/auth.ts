@@ -1,23 +1,53 @@
 /**
- * Validates JWT token by checking with the backend
- * Returns true if valid, false if expired/invalid
+ * Session validation against the backend (§10 cookie mode, plan 16 H3).
+ *
+ * The browser credential is the HttpOnly `nx_access` cookie — there is no
+ * token to inspect locally. This asks the server (cookie rides along via
+ * credentials: 'include') and, on a 401, tries one cookie-based refresh
+ * before giving up. Body tokens from /auth/* are ignored on purpose.
  */
 import { OFFLINE_DB_NAME } from '../services/db';
 
-export async function validateToken(token: string): Promise<boolean> {
+const API_BASE_URL = () => import.meta.env.VITE_API_URL || '/api/v1';
+
+export interface SessionClaims {
+  valid: boolean;
+  user_id: string;
+  email?: string | null;
+  role?: string | null;
+  tenant_id?: string | null;
+  auth_mode?: string | null;
+  switched?: boolean;
+  original_tenant_id?: string | null;
+}
+
+/**
+ * Validates the cookie session with the backend; one refresh attempt on 401.
+ * Returns the session claims (tenant/role/auth_mode/switched) — the frontend
+ * cannot decode the HttpOnly JWT, so this is the source for claim-derived
+ * UI state (e.g. the tenant-switch banner).
+ */
+export async function validateSession(): Promise<SessionClaims | null> {
+  const base = API_BASE_URL();
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_URL || '/api/v1'}/auth/validate`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
+    let response = await fetch(`${base}/auth/validate`, { credentials: 'include' });
+    if (response.status === 401) {
+      // Expired access cookie with a live refresh cookie: rotate once.
+      const refreshed = await fetch(`${base}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (refreshed.ok) {
+        response = await fetch(`${base}/auth/validate`, { credentials: 'include' });
       }
-    });
-    if (!response.ok) {
-      return false;
     }
-    const data = await response.json();
-    return data.valid === true;
-  } catch (error) {
-    return false;
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json()) as SessionClaims;
+    return data.valid === true ? data : null;
+  } catch {
+    return null;
   }
 }
 
@@ -27,6 +57,8 @@ export async function validateToken(token: string): Promise<boolean> {
 export async function clearAuthData(): Promise<void> {
   // 1. Clear LocalStorage related to session
   const keysToRemove = [
+    // Legacy pre-H3 token keys (§10 forbids token storage — nothing writes
+    // these anymore; the sweep is defensive for upgraded browsers).
     'accessToken',
     'refreshToken',
     // Tenant-switch originals (audit 2026-08 FE-M2): the old case-sensitive

@@ -43,24 +43,69 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 ## Authentication & authorization
 
+> Per-surface security posture (which endpoints are public, cookie/CSRF
+> semantics, the §9 client classes incl. the integrations HMAC
+> machine/device credential, and known gaps) is codified in
+> [SECURITY.md](../SECURITY.md).
+
 ### JWT
 
-Include a JWT in the `Authorization` header:
+**Browser clients (SPA) — cookie mode (identity-auth §10):** the web client
+authenticates with HttpOnly cookies set by the auth endpoints; **tokens are
+never stored in `localStorage`/`sessionStorage`** for browser clients.
+
+| Cookie | Value | Flags |
+|---|---|---|
+| `nx_access` (`__Host-nx_access` when `HA_COOKIE_SECURE=true`) | session access JWT | `HttpOnly; SameSite=Lax; Secure` (with the flag); `Path=/` |
+| `nx_refresh` | refresh JWT | `HttpOnly; SameSite=Lax; Secure`; `Path=/api/v1/auth` |
+| `nx_csrf` | random CSRF secret | **JS-readable** (not HttpOnly); `SameSite=Lax`; `Path=/` |
+
+`POST /auth/login`, `/auth/setup`, `/auth/demo-login`, `/auth/refresh`
+(plus the tenant-switch endpoints) set the triple; `POST /auth/logout` and
+`/auth/logout-all` clear it. This pass **also keeps returning the tokens in
+the JSON body** — §9 user clients (the Android app, CLI scripts) consume
+them; the browser client ignores the body and rides the cookies.
+
+**CSRF (double submit, §10):** any non-GET `/api/*` request that carries the
+session cookies must echo the `nx_csrf` cookie value in an `X-CSRF-Token`
+header — mismatch or absence is a `403`. Requests with an `Authorization`
+header (Bearer user clients, §9) are exempt, as are the auth bootstrap
+endpoints (`login` / `refresh` / `register` / `setup` / `demo-login`) and
+health/docs.
+
+**User clients (§9) — Bearer:** keep sending the header:
 
 ```
 Authorization: Bearer <your-jwt-token>
 ```
 
+Cookie and Bearer are both accepted everywhere (`get_token` checks the
+cookie first); the Android/integrations HMAC bridge is unchanged.
+
 Session JWTs are HS256, carry `user_id`, `tenant_id`, `role`, `sub`, a
 `token_kind="session"` claim and a `jti` registered in the server-side session
 store — so `logout`, user deletion and role changes take effect immediately (not
-at token expiry). Default lifetime is **1 hour** (`JWT_EXPIRATION_HOURS`); refresh
-tokens are typed (`type=refresh`), jti-tracked, rotated on every use, and are
-**never** accepted as bearer credentials. Refresh tokens re-validate the user row
+at token expiry). Default lifetime is **1 hour** (`HA_AUTH_ACCESS_TTL_MINUTES`);
+refresh tokens are typed (`token_kind=refresh`), jti-tracked, rotated on every
+use (rotation also re-stamps the cookies), and are **never** accepted as bearer
+credentials. Refresh tokens re-validate the user row
 from the DB (existence + `is_active` + current role/tenant) on every use.
-`get_current_user_ws` is the WebSocket variant and reads the token **only** from
-the `["bearer", <jwt>]` `Sec-WebSocket-Protocol` subprotocol (the `?token=`
-query-string fallback was removed — query strings land in proxy logs).
+Browsers present the refresh token via the `nx_refresh` cookie (body optional);
+`get_session_user_ws` is the WebSocket variant and reads the token from the
+`nx_access` cookie **or** the `["bearer", <jwt>]` `Sec-WebSocket-Protocol`
+subprotocol (the `?token=` query-string fallback was removed — query strings
+land in proxy logs). WS handshakes additionally verify the browser `Origin`
+against the configured allow-list (`HA_WS_ALLOWED_ORIGINS`, default
+same-origin + the CORS list) and reject anything else with `1008`.
+
+**Signing keys (identity-auth §8, plan 16 H4):** JWTs are signed with
+per-purpose keys — `HA_SESSION_KEY` signs session-family tokens
+(session/api/invite/download) and `HA_REFRESH_KEY` signs refresh tokens
+only; verification is family-locked, so a token signed by the "wrong"
+key always fails. The Fernet `HA_DATA_KEY` encrypts secrets at rest and
+never signs anything. Servers must pin all three via env (weak/missing/
+shared values refuse to boot) — see the key-separation note in
+[INSTALL.md](INSTALL.md#security-checklist).
 
 ### Tenant & patient scoping
 
@@ -91,6 +136,8 @@ can't mint fresh buckets.
 | `POST /auth/register` | 5 / minute |
 | `POST /auth/refresh` | 30 / minute |
 | `POST /auth/invite` | 10 / minute |
+| `POST /auth/mfa/verify` | 20 / minute |
+| `POST /auth/mfa/enroll` | 10 / minute |
 
 ### `auth` — login, register, invite, tokens
 
@@ -101,9 +148,58 @@ can't mint fresh buckets.
 | `POST` | `/auth/register` | `UserRegister` | `UserResponse` | **Join** an existing tenant — requires `tenant_id` + a valid **single-use** `invite_token` JWT (consumed atomically on first use; TTL capped at 30 days). The invite is validated *before* the email-exists check so unauthenticated callers can't enumerate emails. Bootstrap lives at `/auth/setup`. |
 | `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`, capped at 30) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. Tokens are single-use; `SYSTEM_ADMIN` cannot be granted via invite. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
-| `POST` | `/auth/refresh` | `{refresh_token}` | `TokenResponse` | **Rotates** the refresh token (audit A5) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
-| `POST` | `/auth/logout` | `{refresh_token}` | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the bearer credential itself stops working immediately. |
+| `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `nx_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (audit A5; rotation also re-stamps the §10 cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
+| `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the §10 cookies. CSRF-gated for cookie sessions (double submit). |
 | `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user. |
+
+#### TOTP MFA (plan 16 H5)
+
+Optional per-account two-factor authentication (RFC 6238 TOTP — SHA1, 6 digits,
+30 s step, ±1 step drift; any authenticator app works via the standard
+`otpauth://` provisioning URI). The shared secret is stored **encrypted at rest
+under the `HA_DATA_KEY` family** (Fernet, `enc::` prefix — never plaintext);
+8 single-use recovery codes are bcrypt-hashed like passwords and shown exactly
+once at enrollment. MFA gates **login only** — live sessions and the §9 Bearer
+clients (Android app, OAuth facade clients) are unaffected.
+
+Login flow when MFA is active: `POST /auth/login` with correct credentials
+answers **401** with a machine-readable challenge instead of tokens —
+`{"detail": "mfa_required", "mfa_token": "<JWT>", "enrollment_needed": false}`.
+The `mfa_token` is a dedicated `mfa_challenge` JWT kind (session key family,
+5-minute TTL, single-use — consumed by the first successful verify; it is
+mutually exclusive with session tokens and never authenticates the API).
+`POST /auth/mfa/verify` with `{mfa_token, code}` (TOTP or a recovery code)
+issues the normal session (§10 cookie triple + body tokens). **Wrong codes
+count toward the §7 lockout** (same counter as wrong passwords — 5 strikes ⇒
+423 for 15 min); the counter resets when the password succeeds and again when
+the challenge passes.
+
+Admin-forced MFA (`mfa_enforced`, "promoted for institute use"): the member's
+next login challenge carries `enrollment_needed: true`; `POST /auth/mfa/enroll`
+(with the challenge token) returns the one-time provisioning payload, and the
+verify call confirms the enrollment and signs in in one step.
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `POST` | `/auth/mfa/verify` | none (challenge token) | `MFAVerifyRequest` (`mfa_token`, `code`) | `TokenResponse` | Answers a login challenge. Consumes the challenge (single-use); 401 on wrong code, 423 when the §7 lockout trips. Rate-limited (20/min per IP, per-account window). |
+| `POST` | `/auth/mfa/enroll` | none (challenge token) | `{mfa_token}` | `MFAEnrollResponse` | Forced-enrollment provisioning — only when the login challenge carried `enrollment_needed: true` (400 otherwise). |
+
+Self-service surface (settings → Security), mounted under `/me` to match the
+`/me/sessions` identity neighbor:
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/me/mfa` | any | — | `MFAStatusResponse` | `{enabled, enforced, pending}` — drives the settings card. |
+| `POST` | `/me/mfa/enroll` | any | — | `MFAEnrollResponse` | One-time provisioning payload (secret + otpauth URI + recovery codes); pending until confirmed. 409 when already active. Audit-logged as `mfa.enroll`. |
+| `POST` | `/me/mfa/confirm` | any | `{code}` | `MFAStatusResponse` | Code check against the pending secret ⇒ active. 400 on a wrong code. Audit-logged as `mfa.confirm`. |
+| `DELETE` | `/me/mfa` | any | `{password}` | `MFAStatusResponse` | Password-confirmed removal. **403 while `mfa_enforced`** — an admin requirement is not self-cancellable. Audit-logged as `mfa.disable`. |
+
+Admin force — `PATCH /admin/tenants/{tenant_id}/users/{user_id}/mfa` with
+`{"enforced": true|false}` (`ADMIN` inside their own tenant, `SYSTEM_ADMIN`
+anywhere; `MANAGER`/`USER` get 403). Audit-logged as `user.mfa_enforce` with
+old/new values. Clearing the requirement never removes an enrolled secret.
+`GET /users` and the tenant user list expose `mfa_enabled` / `mfa_enforced`
+booleans for the admin UI.
 
 #### Register examples
 
@@ -428,9 +524,10 @@ Settings resolve `USER > TENANT > SYSTEM > default`. Reads are role-gated;
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/admin/notifications/broadcast` | `ADMIN` / `SYSTEM_ADMIN` | query: `title` *, `body?`, `severity=info\|warning\|critical`, `scope=tenant\|system`, `tenant_id?` | `{status, notification_id}` | Emits `SYSTEM`/`SYSTEM_BROADCAST` to every user in scope (`TENANT` target for tenant, `SYSTEM` target = every `SYSTEM_ADMIN` for system). |
-| `POST` | `/admin/catalogs/import/url` | `SYSTEM_ADMIN` | query: `url` * | `{message}` | Fetches a clinical-ontology catalog JSON and runs the import in the background. |
-| `POST` | `/admin/catalogs/import/file` | `SYSTEM_ADMIN` | multipart: `file` | `{message}` | Validates + imports an uploaded catalog JSON. |
+| `POST` | `/admin/notifications/broadcast` | `ADMIN` / `SYSTEM_ADMIN` | query: `title` *, `body?`, `severity=info\|warning\|critical`, `scope=tenant\|system`, `tenant_id?` | `{status, notification_id}` | Emits `SYSTEM`/`SYSTEM_BROADCAST` to every user in scope (`TENANT` target for tenant, `SYSTEM` target = every `SYSTEM_ADMIN` for system). Audit-logged as `admin.broadcast`. |
+| `POST` | `/admin/catalogs/import/url` | `SYSTEM_ADMIN` | query: `url` * | `{message}` | Fetches a clinical-ontology catalog JSON and runs the import in the background. Audit-logged as `admin.catalog_import`. |
+| `POST` | `/admin/catalogs/import/file` | `SYSTEM_ADMIN` | multipart: `file` | `{message}` | Validates + imports an uploaded catalog JSON. Audit-logged as `admin.catalog_import`. |
+| `GET` | `/admin/audit` | `SYSTEM_ADMIN` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | Cross-tenant `audit_events` stream — every tenant plus system-level (NULL-tenant) rows when `tenant_id` is omitted. |
 | `GET` | `/admin/seeds/export.zip` | `SYSTEM_ADMIN` | — | `application/zip` (attachment) | Streams the running instance's global taxonomy / anatomy / catalog data as flat seed-format JSON (read-only; never touches server's `data/seeds/`). |
 
 ### `admin/tenants` — tenant operator console
@@ -450,8 +547,10 @@ All routes `SYSTEM_ADMIN`-only. Audit-logged.
 | `POST` | `/admin/tenants/exit-switch` | — | `SwitchTenantResponse` | Restore the original `SYSTEM_ADMIN` session after a switch. |
 | `GET` | `/admin/tenants/{tenant_id}/users` | query: `search?`, `limit=50`, `offset=0` | `TenantUserListResponse` | Paginated user list for a tenant. |
 | `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}` | `UpdateTenantUser` | `TenantUserResponse` | Update a tenant user (role / active toggle). |
-| `POST` | `/admin/tenants/{tenant_id}/invite` | `CreateInvitePayload` | `InviteResponse` | Mint a tenant-scoped invite token. |
-| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `limit=50`, `offset=0` | `AuditListResponse` | Paginated audit-log viewer. |
+| `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA (plan 16 H5). `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
+| `POST` | `/admin/tenants/{tenant_id}/invite` | `CreateInvitePayload` | `InviteResponse` | Mint a tenant-scoped invite token (audit-logged as `tenant.invite`). |
+| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer (§17). |
+| `GET` | `/admin/audit` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | **Cross-tenant** audit stream (`SYSTEM_ADMIN`-only; omit `tenant_id` for every tenant + system-level rows). |
 
 ### `admin/integrations` — global integration enablement
 

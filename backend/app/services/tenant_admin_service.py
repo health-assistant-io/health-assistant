@@ -12,9 +12,9 @@ Encapsulates every operation the ``/admin/tenants`` surface performs:
 
 The class is instantiated per-request with the request's ``AsyncSession``
 (the preferred style for new complex services — see the backend service
-conventions). Mutating methods persist an ``AuditLog`` entry via
+conventions). Mutating methods persist an ``AuditEvent`` entry via
 ``audit_service.log_audit_action`` so every administrative action is
-traceable.
+traceable (identity-auth §17).
 """
 
 from __future__ import annotations
@@ -33,13 +33,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core import token_store
-from app.core.config import settings
 from app.core.security import (
+    AUTH_MODE_DEMO,
     create_invite_token,
-    create_refresh_token,
-    create_session_access_token,
 )
-from app.models.audit_model import AuditLog
+from app.models.audit_model import AuditEvent
 from app.models.document_model import DocumentModel
 from app.models.enums import Role
 from app.models.examination_model import ExaminationModel
@@ -58,9 +56,25 @@ from app.schemas.tenant import (
     UserSummary,
 )
 from app.services.audit_service import log_audit_action
+from app.services.auth_session_service import issue_session
 from app.utils.slug import slugify
 
 logger = logging.getLogger(__name__)
+
+
+def _refuse_demo_principal(actor: Any) -> None:
+    """§13 (plan 16 H7): the ``demo`` principal never mints tenant-scoped
+    tokens. Tenant switching is an operator surface; even where the demo
+    user holds an admin role, its credential-free session must not carry a
+    ``switched`` token into another tenant (the demo stamp itself would
+    survive the switch — ``auth_mode`` is preserved on the minted pair —
+    so the surface itself stays closed to the demo principal).
+    """
+    if getattr(actor, "auth_mode", None) == AUTH_MODE_DEMO:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The demo principal cannot switch tenants.",
+        )
 
 
 class TenantAdminService:
@@ -102,6 +116,25 @@ class TenantAdminService:
                 detail="Tenant not found.",
             )
         return tenant
+
+    async def _get_actor_user(self, actor: Any) -> UserModel:
+        """The live user row behind a (possibly switched) principal.
+
+        Issue-time claims (ver, role, email, user_id) always come from the
+        DB row — never from the old token (identity-auth §8). Uses the
+        shared user service (own session) so the row is read even when the
+        request session is a narrow unit-test double.
+        """
+        from app.services.user_service import get_user_by_id
+
+        user = await get_user_by_id(actor.user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User no longer exists.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
 
     async def _ensure_unique_slug(
         self, slug: str, *, exclude_id: UUID | None = None
@@ -361,7 +394,11 @@ class TenantAdminService:
         use admin features) but carries ``tenant_id`` of the target and a
         ``original_tenant_id`` / ``original_user_id`` / ``switched = True``
         claim set used by ``switch_back``.
+
+        §13 (plan 16 H7): a ``demo``-stamped principal is refused — the
+        demo session never mints cross-tenant scoped tokens.
         """
+        _refuse_demo_principal(actor)
         tenant = await self._get_tenant_or_404(tenant_id)
         if not tenant.is_active:
             raise HTTPException(
@@ -369,35 +406,22 @@ class TenantAdminService:
                 detail="Cannot switch into an inactive tenant.",
             )
 
-        access_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
-        refresh_expires = timedelta(days=7)
-        base_claims = {
-            "sub": actor.sub,
-            "user_id": str(actor.user_id),
-            "role": actor.role,
-            "original_tenant_id": str(actor.tenant_id),
-            "original_user_id": str(actor.user_id),
-            "switched": True,
-            "scoped_tenant_id": str(tenant.id),
-        }
-        access_claims = {**base_claims, "tenant_id": str(tenant.id)}
-        refresh_claims = {**base_claims, "tenant_id": str(tenant.id)}
-
+        user = await self._get_actor_user(actor)
         # Typed + registered tokens (audit 2026-08 H5): the refresh token
-        # is a real refresh token (jti-tracked, revocable, rejected as a
-        # bearer credential) and the access token carries a session jti so
-        # logout-all kills the switched session too.
-        access_token, access_jti = create_session_access_token(
-            access_claims, expires_delta=access_expires
-        )
-        await token_store.register_session(
-            str(actor.user_id), access_jti, int(access_expires.total_seconds())
-        )
-        refresh_token, refresh_jti = create_refresh_token(
-            refresh_claims, expires_delta=refresh_expires
-        )
-        await token_store.register_refresh(
-            str(actor.user_id), refresh_jti, int(refresh_expires.total_seconds())
+        # is a real refresh token (family-tracked, rotatable, revocable,
+        # rejected as a bearer credential) and the access token carries a
+        # session jti so logout-all kills the switched session too.
+        issued = await issue_session(
+            user,
+            auth_mode=getattr(actor, "auth_mode", None) or "password",
+            client_label="tenant-switch",
+            extra_claims={
+                "tenant_id": str(tenant.id),
+                "original_tenant_id": str(actor.tenant_id),
+                "original_user_id": str(user.id),
+                "switched": True,
+                "scoped_tenant_id": str(tenant.id),
+            },
         )
 
         await log_audit_action(
@@ -408,16 +432,23 @@ class TenantAdminService:
             resource_id=tenant.id,
         )
         return SwitchTenantResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=int(access_expires.total_seconds()),
+            access_token=issued.access_token,
+            refresh_token=issued.refresh_token,
+            expires_in=issued.access_expires_in,
             scoped_tenant_id=tenant.id,
             original_tenant_id=actor.tenant_id,
             tenant=TenantResponse.model_validate(tenant),
         )
 
     async def switch_back(self, actor: Any) -> SwitchTenantResponse:
-        """Restore the original SYSTEM_ADMIN session after a switch."""
+        """Restore the original SYSTEM_ADMIN session after a switch.
+
+        §13 (plan 16 H7): demo-stamped principals are refused here too —
+        symmetric with ``switch_into_tenant`` (they can never enter a
+        switch, so this only fires on hand-minted claims; it keeps the
+        surface closed either way).
+        """
+        _refuse_demo_principal(actor)
         if not getattr(actor, "switched", False):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -428,25 +459,11 @@ class TenantAdminService:
         original_user_id = actor.original_user_id
         tenant = await self._get_tenant_or_404(original_tenant_id)
 
-        access_expires = timedelta(hours=settings.JWT_EXPIRATION_HOURS)
-        refresh_expires = timedelta(days=7)
-        restored_claims = {
-            "sub": actor.sub,
-            "user_id": str(original_user_id),
-            "tenant_id": str(original_tenant_id),
-            "role": actor.role,
-        }
-        access_token, access_jti = create_session_access_token(
-            restored_claims, expires_delta=access_expires
-        )
-        await token_store.register_session(
-            str(original_user_id), access_jti, int(access_expires.total_seconds())
-        )
-        refresh_token, refresh_jti = create_refresh_token(
-            restored_claims, expires_delta=refresh_expires
-        )
-        await token_store.register_refresh(
-            str(original_user_id), refresh_jti, int(refresh_expires.total_seconds())
+        user = await self._get_actor_user(actor)
+        issued = await issue_session(
+            user,
+            auth_mode=getattr(actor, "auth_mode", None) or "password",
+            client_label="tenant-switch-back",
         )
 
         await log_audit_action(
@@ -457,9 +474,9 @@ class TenantAdminService:
             resource_id=original_tenant_id,
         )
         return SwitchTenantResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=int(access_expires.total_seconds()),
+            access_token=issued.access_token,
+            refresh_token=issued.refresh_token,
+            expires_in=issued.access_expires_in,
             scoped_tenant_id=original_tenant_id,
             original_tenant_id=original_tenant_id,
             tenant=TenantResponse.model_validate(tenant),
@@ -568,6 +585,7 @@ class TenantAdminService:
         email: str | None,
         role: str,
         expires_days: int,
+        actor_id: UUID | None = None,
     ) -> dict[str, Any]:
         if role == Role.SYSTEM_ADMIN.value:
             raise HTTPException(
@@ -585,6 +603,20 @@ class TenantAdminService:
         await token_store.register_invite(
             invite_jti_value, int(timedelta(days=expires_days).total_seconds())
         )
+        # §17: invite minting is an admin action — audit it.
+        await log_audit_action(
+            tenant_id=tenant.id,
+            user_id=actor_id,
+            action="tenant.invite",
+            resource_type="invite",
+            resource_id=None,
+            new_value={
+                "role": role,
+                "email": email,
+                "expires_in_days": expires_days,
+                "jti": invite_jti_value,
+            },
+        )
         return {
             "invite_token": token,
             "tenant_id": tenant.id,
@@ -601,21 +633,66 @@ class TenantAdminService:
         tenant_id: UUID,
         *,
         action: str | None = None,
+        outcome: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[AuditLog], int]:
+    ) -> tuple[list[AuditEvent], int]:
         limit = max(1, min(limit, 250))
         offset = max(0, offset)
-        query = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
+        query = select(AuditEvent).where(AuditEvent.tenant_id == tenant_id)
         count_query = (
             select(func.count())
-            .select_from(AuditLog)
-            .where(AuditLog.tenant_id == tenant_id)
+            .select_from(AuditEvent)
+            .where(AuditEvent.tenant_id == tenant_id)
         )
         if action:
-            query = query.where(AuditLog.action == action)
-            count_query = count_query.where(AuditLog.action == action)
+            query = query.where(AuditEvent.action == action)
+            count_query = count_query.where(AuditEvent.action == action)
+        if outcome:
+            query = query.where(AuditEvent.outcome == outcome)
+            count_query = count_query.where(AuditEvent.outcome == outcome)
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+        query = (
+            query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
+        )
+        items = (await self.db.execute(query)).scalars().all()
+        return list(items), int(total)
+
+    async def list_audit_entries_all(
+        self,
+        *,
+        tenant_id: UUID | None = None,
+        action: str | None = None,
+        outcome: str | None = None,
+        user_id: UUID | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[AuditEvent], int]:
+        """Cross-tenant audit viewer (identity-auth §17, plan 16 H2).
+
+        SYSTEM_ADMIN-only at the endpoint layer. ``tenant_id=None`` returns
+        every tenant's stream **plus** the system-level rows (NULL tenant —
+        tenant deletes, auth denials for unknown principals).
+        """
+        limit = max(1, min(limit, 250))
+        offset = max(0, offset)
+        query = select(AuditEvent)
+        count_query = select(func.count()).select_from(AuditEvent)
+        if tenant_id is not None:
+            query = query.where(AuditEvent.tenant_id == tenant_id)
+            count_query = count_query.where(AuditEvent.tenant_id == tenant_id)
+        if action:
+            query = query.where(AuditEvent.action == action)
+            count_query = count_query.where(AuditEvent.action == action)
+        if outcome:
+            query = query.where(AuditEvent.outcome == outcome)
+            count_query = count_query.where(AuditEvent.outcome == outcome)
+        if user_id is not None:
+            query = query.where(AuditEvent.user_id == user_id)
+            count_query = count_query.where(AuditEvent.user_id == user_id)
+        total = (await self.db.execute(count_query)).scalar() or 0
+        query = (
+            query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
+        )
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)

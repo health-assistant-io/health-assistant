@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import delete, select, update
@@ -9,15 +10,21 @@ from app.models.user_model import Role, UserModel
 logger = logging.getLogger(__name__)
 
 
+def normalize_email(email: str) -> str:
+    """§5: emails are lowercased on write — the login identifier is
+    case-insensitive everywhere (register, invite bind, admin create)."""
+    return str(email or "").strip().lower()
+
+
 async def get_user_by_email(email: str) -> UserModel | None:
-    """Get user by email"""
+    """Get user by email (case-insensitive — §5 lowercased on write)"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_email")
         return None
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(UserModel).where(UserModel.email == email)
+            select(UserModel).where(UserModel.email == normalize_email(email))
         )
         return result.scalar_one_or_none()
 
@@ -47,7 +54,11 @@ async def get_user_by_id(
 
 
 async def create_user(
-    email: str, hashed_password: str, tenant_id: str | UUID, role: str = "user"
+    email: str,
+    password_hash: str | None,
+    tenant_id: str | UUID,
+    role: str = "user",
+    full_name: str = "",
 ) -> UserModel:
     """Create a new user"""
     if not DATABASE_AVAILABLE:
@@ -55,9 +66,10 @@ async def create_user(
         # Return a mock object if DB not available (to avoid breaking things completely)
         return UserModel(
             email=email,
-            hashed_password=hashed_password,
+            password_hash=password_hash,
             tenant_id=str(tenant_id),
             role=Role(role) if role in [r.value for r in Role] else Role.USER,
+            full_name=full_name,
         )
 
     # Map string role to Enum
@@ -68,9 +80,10 @@ async def create_user(
 
     new_user = UserModel(
         email=email,
-        hashed_password=hashed_password,
+        password_hash=password_hash,
         tenant_id=str(tenant_id),
         role=user_role,
+        full_name=full_name,
         settings={},
     )
 
@@ -109,7 +122,7 @@ async def update_user(
 
     update_data = {}
     if email:
-        update_data["email"] = email
+        update_data["email"] = normalize_email(email)
     if role:
         if role == Role.SYSTEM_ADMIN.value and not allow_system_admin:
             logger.warning(
@@ -135,6 +148,60 @@ async def update_user(
         await session.commit()
 
     return await get_user_by_id(user_id, tenant_id=tenant_id)
+
+
+# ---------------------------------------------------------------------------
+# §7 lockout + §8 token_version helpers
+# ---------------------------------------------------------------------------
+
+async def set_login_failures(
+    user_id: str | UUID,
+    failed_login_attempts: int,
+    locked_until: datetime | None,
+) -> None:
+    """Persist a failed-login count (+ lock expiry) — §7 lockout."""
+    if not DATABASE_AVAILABLE:
+        return
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserModel)
+            .where(UserModel.id == UUID(str(user_id)))
+            .values(failed_login_attempts=failed_login_attempts, locked_until=locked_until)
+        )
+        await session.commit()
+
+
+async def reset_login_failures(user_id: str | UUID) -> None:
+    """Counters reset on successful login (§7)."""
+    if not DATABASE_AVAILABLE:
+        return
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserModel)
+            .where(UserModel.id == UUID(str(user_id)))
+            .values(failed_login_attempts=0, locked_until=None)
+        )
+        await session.commit()
+
+
+async def bump_token_version(user_id: str | UUID) -> int | None:
+    """Global sign-out (§8): every token minted under the old ``ver`` dies.
+
+    Returns the new token_version (or None when the row is gone).
+    """
+    if not DATABASE_AVAILABLE:
+        return None
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserModel).where(UserModel.id == UUID(str(user_id)))
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None
+        user.token_version = int(user.token_version or 1) + 1
+        new_version = user.token_version
+        await session.commit()
+        return new_version
 
 
 async def delete_user(user_id: str | UUID, tenant_id: UUID | None = None) -> bool:

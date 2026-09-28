@@ -22,6 +22,7 @@ from app.schemas.examination import (
 )
 from app.models.enums import Role
 from app.services.access import check_patient_access, check_examination_access
+from app.services.audit_service import audit_read, log_audit_action
 import logging
 
 from app.schemas.user import TokenData
@@ -64,9 +65,19 @@ async def create_examination(
     from app.services.examination_service import create_examination as _create
 
     try:
-        return await _create(db, current_user, examination_in)
+        examination = await _create(db, current_user, examination_in)
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    # §17: clinical writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_examination",
+        resource_type="Examination",
+        resource_id=getattr(examination, "id", None),
+        new_value=examination_in.model_dump(mode="json"),
+    )
+    return examination
 
 
 @router.put("/{examination_id}", response_model=ExaminationResponse)
@@ -170,7 +181,16 @@ async def update_examination(
         )
         .execution_options(populate_existing=True)
     )
-    return result.scalar_one()
+    updated = result.scalar_one()
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_examination",
+        resource_type="Examination",
+        resource_id=examination.id,
+        new_value=examination_in.model_dump(mode="json", exclude_unset=True),
+    )
+    return updated
 
 
 @router.get("/categories", response_model=List[str])
@@ -283,6 +303,7 @@ async def list_examinations(
 
 
 @router.get("/{examination_id}", response_model=ExaminationResponse)
+@audit_read("Examination", id_param="examination_id")
 async def get_examination(
     examination_id: str,
     current_user: TokenData = Depends(get_current_user),
@@ -525,6 +546,16 @@ async def bulk_delete_examinations(
 
     await db.commit()
 
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="bulk_delete_examinations",
+        resource_type="Examination",
+        new_value={
+            "requested_ids": [str(i) for i in request.examination_ids],
+            "deleted_count": len(actual_ids),
+        },
+    )
     return {
         "message": f"Successfully deleted {len(actual_ids)} examinations and related data",
         "deleted_count": len(actual_ids),
@@ -566,6 +597,13 @@ async def delete_examination(
     # 3. Delete the examination itself
     await db.delete(examination)
     await db.commit()
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_examination",
+        resource_type="Examination",
+        resource_id=examination.id,
+    )
     return {
         "message": "Examination and all related clinical data and documents deleted successfully"
     }

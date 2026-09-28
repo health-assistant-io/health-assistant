@@ -135,11 +135,9 @@ export const PatientFormWizard: React.FC<PatientFormWizardProps> = ({
     setSaving(true);
     setError(null);
     try {
-      let tenantId = user?.tenant_id;
-      if (!tenantId) {
-        const token = localStorage.getItem('accessToken');
-        if (token) tenantId = JSON.parse(atob(token.split('.')[1])).tenant_id;
-      }
+      // §10: no local JWT to decode — when the user object lacks a
+      // tenant_id the backend fills it from the session cookie's claims.
+      const tenantId = user?.tenant_id || undefined;
 
       if (isCreate) {
         // Create with basic fields first, then update with the rest.

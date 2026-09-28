@@ -6,11 +6,14 @@ import type { NotificationEvent } from '../services/notificationService';
 /**
  * Real-time notification stream.
  *
- * Opens a WebSocket to ``/ws/notifications`` (per-user channel), authenticated
- * via the ``["bearer", <jwt>]`` Sec-WebSocket-Protocol subprotocol (B11 — the
- * token stays out of URL logs). Incoming ``notification`` messages are pushed
- * into the notification store; the bell re-renders instantly. Falls back to a
- * 30s unread-count poll if the socket cannot be opened (e.g. Redis down).
+ * Opens a WebSocket to ``/ws/notifications`` (per-user channel).
+ * Authentication is the §10 cookie session: the HttpOnly ``nx_access``
+ * cookie rides the handshake (no token in JS — localStorage is forbidden
+ * for browser clients), and the backend verifies the handshake ``Origin``
+ * against its allow-list. Incoming ``notification`` messages are pushed
+ * into the notification store; the bell re-renders instantly. Falls back
+ * to a 30s unread-count poll if the socket cannot be opened (e.g. Redis
+ * down).
  *
  * Mount once for the whole authenticated session (Layout does this) — it is
  * intentionally NOT patient-scoped, so system/tenant notifications surface
@@ -20,7 +23,6 @@ const RECONNECT_BACKOFF_MS = 5000;
 const FALLBACK_POLL_MS = 30000;
 
 export function useNotificationStream() {
-  const token = useAuthStore((s) => s.token);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onLiveNotification = useNotificationStore((s) => s.onLiveNotification);
   const setConnected = useNotificationStore((s) => s.setConnected);
@@ -38,7 +40,7 @@ export function useNotificationStream() {
   const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (!isAuthenticated) return;
     stoppedRef.current = false;
 
     const buildUrl = () => {
@@ -50,7 +52,10 @@ export function useNotificationStream() {
       if (stoppedRef.current) return;
       let socket: WebSocket;
       try {
-        socket = new WebSocket(buildUrl(), ['bearer', token]);
+        // §10 cookie session: no subprotocol token — the nx_access cookie
+        // authenticates the handshake and the browser sends Origin (which
+        // the backend verifies against its allow-list).
+        socket = new WebSocket(buildUrl());
       } catch {
         scheduleReconnect();
         return;
@@ -150,5 +155,5 @@ export function useNotificationStream() {
       setConnected(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated]);
 }

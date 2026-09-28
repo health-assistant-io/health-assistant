@@ -37,6 +37,7 @@ from app.schemas.clinical_event import (
 )
 from app.schemas.user import TokenData
 from app.services import clinical_event_service as ce_service
+from app.services.audit_service import audit_read, log_audit_action
 
 logger = logging.getLogger(__name__)
 
@@ -223,10 +224,21 @@ async def create_event(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await ce_service.create_event(db, current_user, event_in)
+    event = await ce_service.create_event(db, current_user, event_in)
+    # §17: clinical-event writes are audited (plan 16 H2).
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="create_clinical_event",
+        resource_type="ClinicalEvent",
+        resource_id=getattr(event, "id", None),
+        new_value=event_in.model_dump(mode="json"),
+    )
+    return event
 
 
 @router.get("/{event_id}", response_model=ClinicalEventResponse)
+@audit_read("ClinicalEvent", id_param="event_id")
 async def get_event(
     event_id: UUID,
     current_user: TokenData = Depends(get_current_user),
@@ -242,7 +254,16 @@ async def update_event(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await ce_service.update_event(db, event_id, current_user, event_in)
+    event = await ce_service.update_event(db, event_id, current_user, event_in)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="update_clinical_event",
+        resource_type="ClinicalEvent",
+        resource_id=event_id,
+        new_value=event_in.model_dump(mode="json", exclude_unset=True),
+    )
+    return event
 
 
 @router.delete("/{event_id}")
@@ -253,6 +274,13 @@ async def delete_event(
 ):
     """Soft-delete (tombstone) the event and emit the deletion notification."""
     await ce_service.soft_delete_event(db, event_id, current_user)
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="delete_clinical_event",
+        resource_type="ClinicalEvent",
+        resource_id=event_id,
+    )
     return {"message": "Clinical event deleted successfully"}
 
 

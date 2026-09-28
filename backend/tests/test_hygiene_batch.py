@@ -49,7 +49,8 @@ def test_b11_vapid_keys_required_in_production(monkeypatch):
             _env_file=None,  # ignore .env / .env.test files
             APP_ENV="production",
             DEBUG=False,
-            SECRET_KEY="strong-secret-key-for-jwt-signing-1234567890",
+            HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
+            HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
             INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
             DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
             # VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY intentionally unset
@@ -69,7 +70,6 @@ def test_b11_vapid_keys_optional_in_development(monkeypatch):
     s = Settings(
         _env_file=None,
         APP_ENV="development",
-        SECRET_KEY="dev-secret",
         INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
     )
@@ -85,7 +85,8 @@ def test_b11_vapid_keys_present_in_production_ok():
         _env_file=None,
         APP_ENV="production",
         DEBUG=False,
-        SECRET_KEY="strong-secret-key-for-jwt-signing-1234567890",
+        HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
+        HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
         INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
         VAPID_PUBLIC_KEY="BPkx...",

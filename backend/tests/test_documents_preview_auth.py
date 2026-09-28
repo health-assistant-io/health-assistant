@@ -103,7 +103,10 @@ async def test_preview_with_bad_bearer_returns_401():
     request = _request_with({"Authorization": "Bearer not.a.real.token"})
     db = MagicMock()
 
-    with patch("app.core.security.decode_access_token", return_value=None):
+    with patch(
+        "app.core.security.authenticate_session_token",
+        new=AsyncMock(side_effect=HTTPException(status_code=401, detail="Invalid or expired token")),
+    ):
         with pytest.raises(HTTPException) as exc:
             await docs_endpoint.get_document_preview_endpoint(
                 request=request,
@@ -195,7 +198,10 @@ async def test_preview_bearer_same_tenant_succeeds():
         return m
 
     with (
-        patch("app.core.security.decode_access_token", return_value=payload),
+        patch(
+            "app.core.security.authenticate_session_token",
+            new=AsyncMock(return_value=TokenData(**payload)),
+        ),
         patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
         patch("pathlib.Path.exists", lambda self: True),
         patch("builtins.open", _patched_open()),
@@ -211,6 +217,7 @@ async def test_preview_bearer_same_tenant_succeeds():
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract  # §18.8 — hidden-404: cross-tenant document invisible
 async def test_preview_bearer_cross_tenant_returns_404():
     """A USER Bearer JWT for a different tenant → 404 (no info leak)."""
     from fastapi import HTTPException
@@ -230,7 +237,10 @@ async def test_preview_bearer_cross_tenant_returns_404():
         "role": Role.USER.value,
     }
     with (
-        patch("app.core.security.decode_access_token", return_value=payload),
+        patch(
+            "app.core.security.authenticate_session_token",
+            new=AsyncMock(return_value=TokenData(**payload)),
+        ),
         patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -272,7 +282,10 @@ async def test_preview_bearer_system_admin_cross_tenant_succeeds():
         return m
 
     with (
-        patch("app.core.security.decode_access_token", return_value=payload),
+        patch(
+            "app.core.security.authenticate_session_token",
+            new=AsyncMock(return_value=TokenData(**payload)),
+        ),
         patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
         patch("pathlib.Path.exists", lambda self: True),
         patch("builtins.open", _patched_open()),
