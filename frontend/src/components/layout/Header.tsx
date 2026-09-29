@@ -16,6 +16,7 @@ import { TenantSwitcher } from './TenantSwitcher';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { useTenantSwitchStore } from '../../store/slices/tenantSwitchSlice';
+import { UI_LANGUAGES } from '../../lib/uiLanguages';
 
 function Header() {
   const { t } = useTranslation();
@@ -293,10 +294,10 @@ function Header() {
             status={menuStatus}
             language={language}
             onLanguageChange={setLanguage}
-            languages={[
-              { id: 'en', label: t('common.english') },
-              { id: 'el', label: t('common.greek') },
-            ]}
+            languages={UI_LANGUAGES.map((language) => ({
+              id: language.code,
+              label: language.nativeName,
+            }))}
             theme={theme === 'dark' ? 'dark' : 'light'}
             onThemeChange={(next) => setTheme(next === 'dark' ? 'dark' : 'light')}
             themeLabels={{ dark: t('common.dark_mode') }}

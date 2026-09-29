@@ -155,6 +155,7 @@ vi.mock('react-i18next', () => ({
         raw,
       );
     },
+    i18n: { resolvedLanguage: 'en' },
   }),
 }));
 

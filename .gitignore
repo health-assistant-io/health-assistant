@@ -23,6 +23,8 @@ lib/
 lib64/
 !scripts/lib/
 !scripts/lib/**
+!frontend/src/lib/
+!frontend/src/lib/**
 parts/
 sdist/
 var/
