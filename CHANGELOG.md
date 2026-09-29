@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Demo tour manifest + AI-video storyboard hooks (ui-capture template v1.2.0):** every capture run now emits `docs/images/tour.manifest.json` — a deterministic machine-readable tour inventory (ordered scenes, captions, per-scene `narration` lines, viewports, files) consumed by the Neuronection website and the future AI-generated video tours. Scene catalog gained the optional `narration` field (all 10 scenes annotated).
+- **Tour re-captured on a real demo instance (template v1.2.5):** the
+  frames now show each page's actual demo content (previously every
+  frame captured the dashboard — the auth boot hijacked deep links).
+  Login scene dropped: demo mode auto-logins (§13), so `/login` bounces
+  to the dashboard — there is no login screen to capture on a demo
+  instance.
 
 ### Changed
 - **Shared country/language catalogs adopted (family ADR-0024):** the

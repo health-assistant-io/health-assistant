@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "templateVersion": "1.2.0",
+  "templateVersion": "1.2.5",
   "project": "Health Assistant",
   "generatedBy": "scripts/ui-capture (Neuronection family template)",
   "gallery": {
@@ -9,18 +9,6 @@
   },
   "gif": "docs/images/visual-tour.gif",
   "scenes": [
-    {
-      "name": "login",
-      "group": "Authentication",
-      "caption": "Sign-in screen — OAuth2 password grant against the FastAPI backend.",
-      "narration": "Sign in to your self-hosted health records — your data stays on your machine.",
-      "viewports": [
-        "desktop"
-      ],
-      "files": {
-        "desktop": "login-desktop.png"
-      }
-    },
     {
       "name": "dashboard",
       "group": "Overview",
@@ -58,30 +46,6 @@
       }
     },
     {
-      "name": "biomarkers",
-      "group": "Clinical data",
-      "caption": "Biomarker catalog — definitions, units, and reference ranges.",
-      "narration": "The biomarker catalog keeps units and reference ranges consistent across every measurement.",
-      "viewports": [
-        "desktop"
-      ],
-      "files": {
-        "desktop": "biomarkers-desktop.png"
-      }
-    },
-    {
-      "name": "documents",
-      "group": "Clinical data",
-      "caption": "Document list — uploaded exams/reports routed through the OCR pipeline.",
-      "narration": "Upload an exam report and the OCR pipeline turns it into structured, searchable data.",
-      "viewports": [
-        "desktop"
-      ],
-      "files": {
-        "desktop": "documents-desktop.png"
-      }
-    },
-    {
       "name": "examinations",
       "group": "Clinical data",
       "caption": "Examination list — tracking patient visits, consults, and related diagnoses.",
@@ -103,6 +67,30 @@
       ],
       "files": {
         "desktop": "examination-detail-desktop.png"
+      }
+    },
+    {
+      "name": "documents",
+      "group": "Clinical data",
+      "caption": "Document list — uploaded exams/reports routed through the OCR pipeline.",
+      "narration": "Upload an exam report and the OCR pipeline turns it into structured, searchable data.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "documents-desktop.png"
+      }
+    },
+    {
+      "name": "biomarkers",
+      "group": "Clinical data",
+      "caption": "Biomarker catalog — definitions, units, and reference ranges.",
+      "narration": "The biomarker catalog keeps units and reference ranges consistent across every measurement.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "biomarkers-desktop.png"
       }
     },
     {

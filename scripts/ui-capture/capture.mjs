@@ -51,7 +51,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateGallery } from "./gallery.mjs";
 
-export const TEMPLATE_VERSION = "1.2.4";
+export const TEMPLATE_VERSION = "1.2.5";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..", ".."); // scripts/ui-capture → repo root
@@ -542,6 +542,19 @@ async function captureOnPage(page, scene, vpName, opts, tokens, issues) {
   });
   if (gotoErr && opts.strict) {
     throw new Error(`navigation to ${url} failed: ${gotoErr.message}`);
+  }
+
+  // SPA auth boot can hijack the first deep-link navigation (bootstrap
+  // bounces to the landing route — e.g. demo auto-login → dashboard). Once
+  // the session is bootstrapped, a second navigation lands on the requested
+  // route. Path comparison ignores trailing slashes.
+  const norm = (u) => { try { const p = new URL(u); return p.pathname.replace(/\/+$/, "") + p.search; } catch { return u; } };
+  if (norm(page.url()) !== norm(url)) {
+    await page.waitForTimeout(400);
+    const second = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 }).then(() => null).catch((e) => e);
+    if (second && opts.strict) {
+      throw new Error(`re-navigation to ${url} failed: ${second.message}`);
+    }
   }
 
   if (tokens && page.url().includes("/login")) {

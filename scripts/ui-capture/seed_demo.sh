@@ -22,4 +22,16 @@ if [[ -z "$PY_BIN" ]]; then
 fi
 
 echo "→ Seeding demo data (using $PY_BIN)…"
+
+# Explicit demo-database override (family demo-tour standard): points the
+# seeder at a *_demo database outside the backend/.env default — used when
+# the capture targets a dedicated demo instance (e.g. a neuro_health_demo
+# database on the dev PostgreSQL container). The §13 guards still apply.
+if [[ -n "${HA_DEMO_DATABASE_URL:-}" ]]; then
+  INIT_FLAG=""
+  if [[ "${HA_DEMO_INIT:-}" == "true" || "${HA_DEMO_INIT:-}" == "1" ]]; then INIT_FLAG="--init-demo"; fi
+  ( cd "$BACKEND" && PYTHONPATH="$(pwd):$(pwd)/.." "$PY_BIN" scripts/seed_demo.py --database-url "$HA_DEMO_DATABASE_URL" $INIT_FLAG )
+  exit 0
+fi
+
 ( cd "$BACKEND" && PYTHONPATH="$(pwd):$(pwd)/.." "$PY_BIN" scripts/seed_demo.py )

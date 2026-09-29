@@ -32,16 +32,20 @@
  *   { action: "navigate", path: "/documents" }
  */
 export const scenes = [
-  {
-    name: "login",
-    group: "Authentication",
-    caption: "Sign-in screen — OAuth2 password grant against the FastAPI backend.",
-    narration: "Sign in to your self-hosted health records — your data stays on your machine.",
-    path: "/login",
-    auth: false,
-    fullPage: false,
-    viewports: ["desktop"],
-  },
+  /* Demo mode auto-logins (credential-free §13) — /login immediately
+     bounces to the dashboard, so there is no login screen to capture.
+     Restore this scene only for non-demo captures:
+      {
+        name: "login",
+        group: "Authentication",
+        caption: "Sign-in screen — OAuth2 password grant against the FastAPI backend.",
+        narration: "Sign in to your self-hosted health records — your data stays on your machine.",
+        path: "/login",
+        auth: false,
+        fullPage: false,
+        viewports: ["desktop"],
+      },
+  */
   {
     name: "dashboard",
     group: "Overview",
@@ -127,7 +131,8 @@ export const scenes = [
     narration: "Ask the AI assistant about your results — it answers with your data, with human-in-the-loop control.",
     path: "/ai-assistant",
     interactions: [
-      { action: "fill", selector: "textarea", value: "Provide me with the results of my latest examination" },
+      { action: "waitFor", selector: "textarea", timeout: 20000 },
+      { action: "fill", selector: "textarea", value: "Provide me with the results of my latest examination", timeout: 20000 },
       { action: "press", key: "Enter" },
       { action: "wait", ms: 15000 }
     ],

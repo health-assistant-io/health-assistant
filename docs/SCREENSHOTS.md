@@ -10,14 +10,6 @@ Welcome to the visual tour of Health Assistant. These reproducible screenshots s
 
 > Mobile views: not captured this run — pass `--viewport mobile` to `npm run capture:ui` to generate.
 
-## Authentication
-
-### login
-
-_Sign-in screen — OAuth2 password grant against the FastAPI backend._
-
-![login desktop](images/login-desktop.png)
-
 ## Overview
 
 ### dashboard

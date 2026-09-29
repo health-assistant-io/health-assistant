@@ -8,7 +8,9 @@
     "base": "http://localhost:3000",
     "api": "http://localhost:8000/api/v1",
     "apiPath": "/api/v1",
-    "healthUrls": ["{base}", "{apiRoot}/health"],
+    "healthUrls": [
+      "{base}"
+    ],
     "env": {
       "base": "HA_FRONTEND_URL",
       "basePort": "FRONTEND_PORT",
@@ -36,16 +38,30 @@
         "path": "/patients?limit=1",
         "pick": "items[0]",
         "wrap": {
-          "state": { "patients": ["{item}"], "currentPatient": "{item}" },
+          "state": {
+            "patients": [
+              "{item}"
+            ],
+            "currentPatient": "{item}"
+          },
           "version": 0
         }
       }
     ]
   },
   "pathTokens": {
-    "patientId": { "path": "/patients?limit=1", "pick": "items[0].id" },
-    "examinationId": { "path": "/examinations?patient_id={patientId}&limit=1", "pick": "items[0].id" },
-    "biomarkerId": { "path": "/biomarkers/slug/cholesterol-total", "pick": "id" }
+    "patientId": {
+      "path": "/patients?limit=1",
+      "pick": "items[0].id"
+    },
+    "examinationId": {
+      "path": "/examinations?patient_id={patientId}&limit=1",
+      "pick": "items[0].id"
+    },
+    "biomarkerId": {
+      "path": "/biomarkers/slug/cholesterol-total",
+      "pick": "id"
+    }
   },
   "capture": {
     "outDir": "docs/images",
@@ -54,8 +70,16 @@
     "settleMs": 800,
     "headless": false,
     "viewports": {
-      "desktop": { "width": 1440, "height": 1200, "deviceScaleFactor": 1 },
-      "mobile": { "width": 390, "height": 844, "deviceScaleFactor": 2 }
+      "desktop": {
+        "width": 1440,
+        "height": 1200,
+        "deviceScaleFactor": 1
+      },
+      "mobile": {
+        "width": 390,
+        "height": 844,
+        "deviceScaleFactor": 2
+      }
     }
   },
   "gallery": {
@@ -65,7 +89,18 @@
   },
   "gif": {
     "output": "docs/images/visual-tour.gif",
-    "order": ["login", "dashboard", "patients", "patient-detail", "examinations", "examination-detail", "documents", "biomarkers", "biomarker-detail", "ai-chat"],
+    "order": [
+      "login",
+      "dashboard",
+      "patients",
+      "patient-detail",
+      "examinations",
+      "examination-detail",
+      "documents",
+      "biomarkers",
+      "biomarker-detail",
+      "ai-chat"
+    ],
     "width": 800,
     "frameSeconds": 2,
     "holdLast": 3
