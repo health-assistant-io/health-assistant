@@ -26,6 +26,7 @@ import {
 import { useAIConfigStore } from '../../../store/slices/aiConfigSlice';
 import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
+import { SearchableDropdown } from '../../ui/SearchableDropdown';
 
 import { ProviderLogo } from './ProviderLogo';
 import { SetupErrorPanel } from './setupErrors';
@@ -83,23 +84,24 @@ function HostingToggle({
 
 function CountrySelect({ country, onChange }: { country: string; onChange: (c: string) => void }) {
   const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? 'en';
+  const options = COUNTRIES.map((entry) => ({
+    value: entry.code,
+    label: `${entry.flag} ${countryDisplayName(entry.code, locale)}`,
+  }));
   return (
-    <label className="block space-y-1 text-sm">
-      <span className="text-gray-500 dark:text-dark-muted">{t('settings.ai.country_label')}</span>
-      <select
-        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-        aria-label={t('settings.ai.country_label')}
-        value={country}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">{t('settings.ai.country_placeholder')}</option>
-        {COUNTRIES.map((entry) => (
-          <option key={entry.code} value={entry.code}>
-            {entry.flag} {countryDisplayName(entry.code, i18n.resolvedLanguage ?? 'en')}
-          </option>
-        ))}
-      </select>
-    </label>
+    <SearchableDropdown
+      options={options}
+      value={country}
+      onChange={onChange}
+      label={t('settings.ai.country_label')}
+      placeholder={t('settings.ai.country_placeholder')}
+      searchPlaceholder={t('settings.ai.country_search')}
+      searchLabel={t('settings.ai.country_search')}
+      emptyLabel={t('settings.ai.country_empty')}
+      clearable
+      clearLabel={t('settings.ai.country_clear')}
+    />
   );
 }
 
