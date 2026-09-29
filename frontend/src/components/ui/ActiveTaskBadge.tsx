@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Activity, Info, ShieldAlert, Globe, Server } from 'lucide-react';
 import { useActiveAIWorkflow, ActiveAITask } from '../../hooks/useActiveAIWorkflow';
 import { useTranslation } from 'react-i18next';
-import { getCountryFlag } from '../../utils/countryUtils';
+import { getCountryFlag } from '@neuronection/assistant-ui/countries';
 
 interface Props {
   className?: string;
@@ -132,7 +132,7 @@ export const ActiveTaskBadge: React.FC<Props> = ({
                 )}
               </div>
               <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
-                {task.provider.company_name || task.provider.name} {getCountryFlag(task.provider.company_country)}
+                {task.provider.company_name || task.provider.name} {getCountryFlag(task.provider.company_country ?? undefined)}
               </div>
               {task.provider.company_website && (
                 <a href={task.provider.company_website} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline truncate block">

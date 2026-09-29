@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Globe, Ruler, SlidersHorizontal } from 'lucide-react';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { UI_LANGUAGES } from '../../lib/uiLanguages';
 
 function Preferences() {
   const { t } = useTranslation();
@@ -22,7 +23,7 @@ function Preferences() {
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-dark-text">{t('settings.language', 'Language')}</p>
               <p className="text-sm text-gray-500 dark:text-dark-muted">
-                {language === 'en' ? t('settings.language_en', 'English') : t('settings.language_el', 'Greek')}
+                {UI_LANGUAGES.find((l) => l.code === language)?.nativeName ?? language}
               </p>
             </div>
           </div>
@@ -31,8 +32,11 @@ function Preferences() {
             onChange={(e) => setLanguage(e.target.value)}
             className="px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg dark:bg-dark-border dark:text-dark-text"
           >
-            <option value="en">{t('settings.language_en', 'English')}</option>
-            <option value="el">{t('settings.language_el', 'Greek')}</option>
+            {UI_LANGUAGES.map((language) => (
+              <option key={language.code} value={language.code}>
+                {language.nativeName}
+              </option>
+            ))}
           </select>
         </div>
 

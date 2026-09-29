@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Shared country/language catalogs adopted (family ADR-0024):** the
+  112-entry local `frontend/src/utils/countryUtils.ts` copy is deleted —
+  provider country pickers (`ProviderManager`, `ProviderSetupModal`) and
+  the AI-provider flag badge now import the full ISO 3166-1 alpha-2
+  catalog (249 entries, `GB` not `UK`) from
+  `@neuronection/assistant-ui/countries`, with picker labels localized
+  via `countryDisplayName(code, i18n.resolvedLanguage)`. The en/el UI
+  language lists in the Header user menu and Settings → Preferences are
+  unified into `frontend/src/lib/uiLanguages.ts`
+  (`pickLanguages(['en','el'])` from the `languages` subpath, labels via
+  `nativeName`); the now-orphaned `common.english`/`common.greek` and
+  `settings.language_en`/`settings.language_el` i18n keys are removed.
+  Backend: `company_country` on the AI provider schemas is now validated
+  as `^[A-Z]{2}$` (create/update/responses) — free-text country names
+  are rejected at the API boundary.
+- **OMB seed language membership test (ADR-0024 §3.4):** the family
+  language catalog ships as `backend/data/catalogs/languages.json`
+  (synced-data channel); a new test asserts every seed language code in
+  `data/seeds/omb_race_ethnicity.json` (the curated
+  `preferred_language` picklist) resolves in that catalog.
+
 ### Added
 - **SECURITY.md — §20 threat model filled (plan 16 H8):** all
   nine surfaces answered concretely (auth surface with rate-limit

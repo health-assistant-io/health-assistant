@@ -50,7 +50,7 @@ class AIProviderCreate(BaseModel):
         None, max_length=500, description="Company Website"
     )
     company_country: Optional[str] = Field(
-        None, max_length=100, description="Company Country"
+        None, pattern=r"^[A-Z]{2}$", description="Company Country (ISO 3166-1 alpha-2)"
     )
     tenant_id: Optional[UUID] = Field(
         None, description="Tenant ID (nullable for global providers)"
@@ -74,7 +74,7 @@ class AIProviderUpdate(BaseModel):
     is_local: Optional[bool] = Field(None)
     company_name: Optional[str] = Field(None, max_length=200)
     company_website: Optional[str] = Field(None, max_length=500)
-    company_country: Optional[str] = Field(None, max_length=100)
+    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,7 +100,7 @@ class AIProviderResponse(BaseModel):
     is_local: bool = False
     company_name: Optional[str] = None
     company_website: Optional[str] = None
-    company_country: Optional[str] = None
+    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
     preset_key: Optional[str] = None
     tenant_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
@@ -263,7 +263,7 @@ class AIProviderWithModelsResponse(BaseModel):
     is_local: bool = False
     company_name: Optional[str] = None
     company_website: Optional[str] = None
-    company_country: Optional[str] = None
+    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
     preset_key: Optional[str] = None
     tenant_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
@@ -345,7 +345,9 @@ class ProviderSetupRequest(BaseModel):
     """
 
     api_key: Optional[str] = Field(
-        None, max_length=500, description="Vendor API key (not needed for local presets)"
+        None,
+        max_length=500,
+        description="Vendor API key (not needed for local presets)",
     )
     name: Optional[str] = Field(None, max_length=100, description="Connection name")
     scope: AIScope = Field(AIScope.USER, description="Config layer to create/adopt in")

@@ -6,23 +6,19 @@ import {
   ProviderForm,
   type ConnectionTestStatus,
 } from '@neuronection/assistant-ui';
+import {
+  COUNTRIES,
+  countryDisplayName,
+  getCountryFlag,
+} from '@neuronection/assistant-ui/countries';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AIProvider } from '../../api/aiConfig';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { Button } from '../ui/Button';
 import { Card, CardContent } from '../ui/Card';
 import { Modal } from '../ui/Modal';
-import { COUNTRIES } from '../../utils/countryUtils';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 import { ReRunSetupDialog } from './byok/ReRunSetupDialog';
-
-const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({
-  value: c.code,
-  label: `${c.flag} ${c.name}`,
-}));
-
-const countryFlag = (code: string): string =>
-  COUNTRIES.find((c) => c.code === code)?.flag ?? '';
 
 interface ProviderManagerProps {
   scope?: 'global' | 'tenant' | 'user';
@@ -145,7 +141,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
                   {provider.has_api_key ? provider.api_key : t('settings.ai.no_key')}
                   {provider.company_country ? (
                     <span className="ml-2" title={provider.company_country}>
-                      {countryFlag(provider.company_country)}
+                      {getCountryFlag(provider.company_country)}
                     </span>
                   ) : null}
                 </p>
@@ -294,7 +290,7 @@ const ProviderFormDialog: React.FC<{
   tenantId?: string;
   onClose: () => void;
 }> = ({ provider, scope, userId, tenantId, onClose }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { createProvider, updateProvider } = useAIConfigStore();
   const editing = provider !== null;
 
@@ -443,7 +439,10 @@ const ProviderFormDialog: React.FC<{
           onCountryChange={setCountry}
           countryLabel={t('settings.ai.country_label')}
           countryPlaceholder={t('settings.ai.country_placeholder')}
-          countryOptions={COUNTRY_OPTIONS}
+          countryOptions={COUNTRIES.map((entry) => ({
+            value: entry.code,
+            label: `${entry.flag} ${countryDisplayName(entry.code, i18n.resolvedLanguage ?? 'en')}`,
+          }))}
         >
           <div className={PROVIDER_FORM_FIELDS}>
             <ComplianceFields

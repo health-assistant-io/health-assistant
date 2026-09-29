@@ -12,6 +12,10 @@ import {
 } from 'lucide-react';
 import { ModelPicker, type ModelPickerProvider } from '@neuronection/assistant-ui';
 import {
+  COUNTRIES,
+  countryDisplayName,
+} from '@neuronection/assistant-ui/countries';
+import {
   aiConfigApi,
   setupErrorDetail,
   type AIModel,
@@ -22,7 +26,6 @@ import {
 import { useAIConfigStore } from '../../../store/slices/aiConfigSlice';
 import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
-import { COUNTRIES } from '../../../utils/countryUtils';
 
 import { ProviderLogo } from './ProviderLogo';
 import { SetupErrorPanel } from './setupErrors';
@@ -79,7 +82,7 @@ function HostingToggle({
 }
 
 function CountrySelect({ country, onChange }: { country: string; onChange: (c: string) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <label className="block space-y-1 text-sm">
       <span className="text-gray-500 dark:text-dark-muted">{t('settings.ai.country_label')}</span>
@@ -92,7 +95,7 @@ function CountrySelect({ country, onChange }: { country: string; onChange: (c: s
         <option value="">{t('settings.ai.country_placeholder')}</option>
         {COUNTRIES.map((entry) => (
           <option key={entry.code} value={entry.code}>
-            {entry.flag} {entry.name}
+            {entry.flag} {countryDisplayName(entry.code, i18n.resolvedLanguage ?? 'en')}
           </option>
         ))}
       </select>
