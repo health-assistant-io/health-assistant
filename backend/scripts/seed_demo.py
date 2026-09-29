@@ -375,7 +375,7 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
         
         # 2. Total Cholesterol (LOINC 2093-3) - 170 to 195
         val_chol = 180 + (i * 2) % 15 - (i % 3)
-        bundle["entry"].append(create_observation(date_str, "2093-3", "Total Cholesterol", val_chol, "mg/dL", [{"low": {"value": 120}, "high": {"value": 200}}]))
+        bundle["entry"].append(create_observation(date_str, "2093-3", "Total Cholesterol", val_chol, "mg/dL", [{"low": {"value": 120}, "high": {"value": 200}, "text": "< 200 mg/dL"}]))
         
         # 3. Heart Rate (LOINC 8867-4) - 65 to 85
         val_hr = 70 + (i * 4) % 15 - (i % 2)

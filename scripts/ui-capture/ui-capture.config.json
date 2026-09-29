@@ -59,7 +59,7 @@
       "pick": "items[0].id"
     },
     "biomarkerId": {
-      "path": "/biomarkers/slug/cholesterol-total",
+      "path": "/biomarkers/slug/total-cholesterol",
       "pick": "id"
     }
   },
