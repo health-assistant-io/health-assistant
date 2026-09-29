@@ -12,9 +12,16 @@
  * `ui-capture.config.json` (`gallery.title`, `gallery.intro`,
  * `gallery.regenCommand`). Invoked by capture.mjs after every run; also
  * runnable via `node capture.mjs --gallery-only`.
+ *
+ * Additionally writes `<outDir>/tour.manifest.json` — the machine-readable
+ * inventory of the tour (ordered scenes, captions, narrations, viewports,
+ * GIF path). Consumed by the website tour sync (sync-tours.mjs) and the
+ * future AI-video storyboard. Deliberately deterministic: no timestamps,
+ * stable key order — regenerating without new captures must be a no-op diff.
  */
 import { writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { relative } from "node:path";
 
 const GENERATED_BANNER = [
   "<!--",
@@ -118,6 +125,52 @@ async function writeViewportGallery(cfg, scenes, groups, { out, galleryPath, vie
   return galleryPath;
 }
 
+/**
+ * Machine-readable tour inventory next to the PNGs. Only scenes with at
+ * least one PNG on disk are listed — the manifest describes what exists,
+ * never what is planned.
+ */
+function buildManifest(scenes, cfg, { out, gallery, mobileGallery, writtenDesktop, writtenMobile, root, templateVersion }) {
+  const relFromRoot = (absPath) => relative(root, absPath).replaceAll("\\", "/");
+  // Story order: the GIF's scene order first (that is the tour narrative),
+  // then any remaining scenes in catalog order — consumers like the website
+  // grid show the head of the list, so the tour's headline frames lead.
+  const order = cfg.gif?.order ?? [];
+  const rank = (name) => {
+    const i = order.indexOf(name);
+    return i === -1 ? order.length : i;
+  };
+  const ordered = [...scenes].sort((a, b) => rank(a.name) - rank(b.name));
+  const manifestScenes = [];
+  for (const scene of ordered) {
+    const files = {};
+    for (const vp of scene.viewports) {
+      if (existsSync(`${out}/${scene.name}-${vp}.png`)) files[vp] = `${scene.name}-${vp}.png`;
+    }
+    if (Object.keys(files).length === 0) continue;
+    manifestScenes.push({
+      name: scene.name,
+      group: scene.group ?? null,
+      caption: scene.caption ?? null,
+      ...(scene.narration ? { narration: scene.narration } : {}),
+      viewports: Object.keys(files),
+      files,
+    });
+  }
+  return {
+    version: 1,
+    templateVersion: templateVersion ?? null,
+    project: cfg.project?.name ?? null,
+    generatedBy: "scripts/ui-capture (Neuronection family template)",
+    gallery: {
+      desktop: writtenDesktop ? relFromRoot(gallery) : null,
+      mobile: writtenMobile ? relFromRoot(mobileGallery) : null,
+    },
+    gif: cfg.gif?.output ?? null,
+    scenes: manifestScenes,
+  };
+}
+
 export async function generateGallery(scenes, groups, opts) {
   const { cfg, out, gallery } = opts;
   const mobileGallery = mobileGalleryPath(gallery);
@@ -155,5 +208,18 @@ export async function generateGallery(scenes, groups, opts) {
         return null;
       })();
 
-  return { desktop: writtenDesktop, mobile: writtenMobile };
+  const manifest = buildManifest(scenes, cfg, {
+    out,
+    gallery,
+    mobileGallery,
+    writtenDesktop,
+    writtenMobile,
+    root: opts.root,
+    templateVersion: opts.templateVersion,
+  });
+  const manifestPath = opts.manifest ?? `${out}/tour.manifest.json`;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  console.log(`Manifest: ${manifestPath}`);
+
+  return { desktop: writtenDesktop, mobile: writtenMobile, manifest: manifestPath };
 }

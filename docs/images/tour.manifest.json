@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "templateVersion": "1.2.0",
+  "project": "Health Assistant",
+  "generatedBy": "scripts/ui-capture (Neuronection family template)",
+  "gallery": {
+    "desktop": "docs/SCREENSHOTS.md",
+    "mobile": null
+  },
+  "gif": "docs/images/visual-tour.gif",
+  "scenes": [
+    {
+      "name": "login",
+      "group": "Authentication",
+      "caption": "Sign-in screen — OAuth2 password grant against the FastAPI backend.",
+      "narration": "Sign in to your self-hosted health records — your data stays on your machine.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "login-desktop.png"
+      }
+    },
+    {
+      "name": "dashboard",
+      "group": "Overview",
+      "caption": "Patient dashboard with the draggable react-grid-layout widgets.",
+      "narration": "The dashboard gives every patient an at-a-glance overview — arrange the widgets however you work.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "dashboard-desktop.png"
+      }
+    },
+    {
+      "name": "patients",
+      "group": "Clinical data",
+      "caption": "Patient list — tenant-scoped, paginated, with search.",
+      "narration": "All patients in one tenant-scoped list — search, filter, and open a record.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "patients-desktop.png"
+      }
+    },
+    {
+      "name": "patient-detail",
+      "group": "Clinical data",
+      "caption": "Patient detail view — demographics, timeline, and linked resources.",
+      "narration": "Each patient record ties together demographics, timeline, and every linked clinical resource.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "patient-detail-desktop.png"
+      }
+    },
+    {
+      "name": "biomarkers",
+      "group": "Clinical data",
+      "caption": "Biomarker catalog — definitions, units, and reference ranges.",
+      "narration": "The biomarker catalog keeps units and reference ranges consistent across every measurement.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "biomarkers-desktop.png"
+      }
+    },
+    {
+      "name": "documents",
+      "group": "Clinical data",
+      "caption": "Document list — uploaded exams/reports routed through the OCR pipeline.",
+      "narration": "Upload an exam report and the OCR pipeline turns it into structured, searchable data.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "documents-desktop.png"
+      }
+    },
+    {
+      "name": "examinations",
+      "group": "Clinical data",
+      "caption": "Examination list — tracking patient visits, consults, and related diagnoses.",
+      "narration": "Examinations track every visit and consult with their related diagnoses.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "examinations-desktop.png"
+      }
+    },
+    {
+      "name": "examination-detail",
+      "group": "Clinical data",
+      "caption": "Examination detail view — structured clinical notes and linked entities.",
+      "narration": "Clinical notes stay structured and linked to the entities they mention.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "examination-detail-desktop.png"
+      }
+    },
+    {
+      "name": "biomarker-detail",
+      "group": "Clinical data",
+      "caption": "Biomarker detail view — longitudinal trends and clinical significance.",
+      "narration": "Biomarker values become longitudinal trends you can actually read.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "biomarker-detail-desktop.png"
+      }
+    },
+    {
+      "name": "ai-chat",
+      "group": "AI assistant",
+      "caption": "Agentic AI chat — tools, SSE streaming, and HITL task cards.",
+      "narration": "Ask the AI assistant about your results — it answers with your data, with human-in-the-loop control.",
+      "viewports": [
+        "desktop"
+      ],
+      "files": {
+        "desktop": "ai-chat-desktop.png"
+      }
+    }
+  ]
+}

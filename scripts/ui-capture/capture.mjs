@@ -16,20 +16,34 @@
  *   node capture.mjs --gallery-only           # rebuild gallery from PNGs on disk
  *   node capture.mjs --base http://localhost:3000 --api http://localhost:8000/api/v1
  *   node capture.mjs --login demo@example.local:Demo1234!
+ *   node capture.mjs --cdp http://localhost:9222   # Electron apps: attach to
+ *                                                  # the real app over CDP
  *   node capture.mjs --strict                 # fail the run on any capture error
  *   node capture.mjs --print base             # machine-readable resolved values
  *                                             # (used by capture_ui.sh)
  *   node capture.mjs --version                # family template version
  *
+ * Capture modes (config `app.mode`, default "url"):
+ *   url  — Playwright launches its own Chromium against app.base (web SPAs).
+ *   cdp  — Playwright attaches over the Chrome DevTools protocol to an
+ *          already-running app (config `app.cdp`, e.g. Electron started with
+ *          --remote-debugging-port). The app's real windows are navigated and
+ *          captured; no separate browser is launched.
+ *
+ * Every run also writes `<outDir>/tour.manifest.json` (machine-readable
+ * scene/caption/GIF inventory — consumed by the website tour sync and the
+ * future AI-video storyboard; deterministic, no timestamps).
+ *
  * Configuration precedence (highest → lowest):
- *   1. CLI flags (--base/--api/--login/...)
+ *   1. CLI flags (--base/--api/--login/--cdp/...)
  *   2. Environment variables named in config `app.env` (root .env is loaded)
  *   3. Values from `ui-capture.config.json`
  *
  * Prerequisites:
  *   - app running (the wrapper checks liveness URLs from config)
  *   - demo data seeded (wrapper runs `seed.command` from config)
- *   - Playwright + chromium in the `project.frontendDir` package
+ *   - Playwright in the `project.frontendDir` package (+ its chromium, url
+ *     mode only — cdp mode uses the app's own browser)
  */
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
@@ -37,7 +51,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { generateGallery } from "./gallery.mjs";
 
-export const TEMPLATE_VERSION = "1.1.2";
+export const TEMPLATE_VERSION = "1.2.4";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..", ".."); // scripts/ui-capture → repo root
@@ -84,7 +98,7 @@ function parseArgs(argv) {
   const opts = {
     config: null, scene: null, viewport: null, galleryOnly: false,
     headless: null, strict: false, print: null, version: false,
-    base: null, api: null, login: null, out: null, gallery: null,
+    base: null, api: null, login: null, out: null, gallery: null, cdp: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -94,6 +108,7 @@ function parseArgs(argv) {
       case "--viewport": opts.viewport = argv[++i]; break;
       case "--base": opts.base = argv[++i]; break;
       case "--api": opts.api = argv[++i]; break;
+      case "--cdp": opts.cdp = argv[++i]; break;
       case "--login": opts.login = argv[++i]; break;
       case "--out": opts.out = argv[++i]; break;
       case "--gallery": opts.gallery = argv[++i]; break;
@@ -120,6 +135,7 @@ function printHelp() {
   --viewport <v>        desktop | mobile
   --base <url>          frontend base (overrides config app.base / app.env.base)
   --api <url>           backend API base (overrides config app.api / app.env.api)
+  --cdp <url>           CDP endpoint, cdp mode (overrides config app.cdp / app.env.cdp)
   --login <e:p>         demo credentials (overrides config auth.demoEmail/Password)
   --out <dir>           screenshot output dir (default config capture.outDir)
   --gallery <file>      gallery markdown path (default config capture.gallery)
@@ -129,7 +145,7 @@ function printHelp() {
   --print <key>         print one resolved value for scripting:
                           base | api | login | outDir | gallery | healthUrls |
                           seed | frontendDir | gifOrder | gifOut | gifWidth |
-                          frameSeconds | holdLast
+                          frameSeconds | holdLast | mode | cdp | manifest
   --version             print family template version`);
 }
 
@@ -167,12 +183,17 @@ function resolveOptions(cli) {
   const demoPassword = cli.login ? null : (envName(appCfg.env?.password) ?? auth.demoPassword ?? null);
   const login = cli.login ?? (demoEmail && demoPassword ? `${demoEmail}:${demoPassword}` : null);
 
+  const out = cli.out ? resolve(ROOT, cli.out) : resolve(ROOT, cfg.capture?.outDir ?? "docs/images");
+
   const opts = {
     cfg,
     base,
     api,
     login,
-    out: cli.out ? resolve(ROOT, cli.out) : resolve(ROOT, cfg.capture?.outDir ?? "docs/images"),
+    mode: appCfg.mode ?? "url",
+    cdp: cli.cdp ?? envName(appCfg.env?.cdp) ?? appCfg.cdp ?? "http://localhost:9222",
+    out,
+    manifest: cfg.capture?.manifest ? resolve(ROOT, cfg.capture.manifest) : join(out, "tour.manifest.json"),
     gallery: cli.gallery ? resolve(ROOT, cli.gallery) : resolve(ROOT, cfg.capture?.gallery ?? "docs/SCREENSHOTS.md"),
     scene: cli.scene,
     viewport: cli.viewport,
@@ -200,6 +221,7 @@ function printResolved(opts, key) {
     login: opts.login ?? "",
     outDir: opts.out,
     gallery: opts.gallery,
+    manifest: opts.manifest,
     healthUrls: (cfg.app?.healthUrls ?? []).map(subst).join("\n"),
     seed: cfg.seed?.command ?? "",
     frontendDir: abs(cfg.project?.frontendDir ?? "frontend"),
@@ -208,6 +230,25 @@ function printResolved(opts, key) {
     gifWidth: String(cfg.gif?.width ?? 800),
     frameSeconds: String(cfg.gif?.frameSeconds ?? 2),
     holdLast: String(cfg.gif?.holdLast ?? 3),
+    mode: opts.mode,
+    cdp: opts.mode === "cdp" ? opts.cdp : "",
+    // Story-ordered "scene<TAB>file" pairs from the manifest on disk —
+    // the GIF assembler's single source of truth for which PNG is which
+    // scene (no filename guessing; viewport names vary per repo).
+    gifFiles: (() => {
+      try {
+        const manifest = JSON.parse(readFileSync(opts.manifest, "utf8"));
+        return manifest.scenes
+          .map((s) => {
+            const file = s.files.desktop ?? Object.values(s.files)[0] ?? "";
+            return file ? `${s.name}\t${file}` : "";
+          })
+          .filter(Boolean)
+          .join("\n");
+      } catch {
+        return "";
+      }
+    })(),
   };
   if (!(key in values)) {
     console.error(`Unknown --print key: ${key}. Valid: ${Object.keys(values).join(", ")}`);
@@ -218,12 +259,45 @@ function printResolved(opts, key) {
 
 /* ---------------- auth ---------------- */
 
+/** Parse one `Set-Cookie` header line into a Playwright cookie object. */
+function parseSetCookie(line, base) {
+  const [pair, ...attrs] = line.split(";");
+  const eq = pair.indexOf("=");
+  const name = pair.slice(0, eq).trim();
+  const value = pair.slice(eq + 1).trim();
+  const cookie = {
+    name,
+    value,
+    domain: new URL(base).hostname,
+    path: "/",
+  };
+  for (const attr of attrs) {
+    const [k, v] = attr.split("=");
+    const key = k.trim().toLowerCase();
+    switch (key) {
+      case "path": cookie.path = v.trim(); break;
+      case "domain": cookie.domain = v.trim().replace(/^\./, ""); break;
+      case "httponly": cookie.httpOnly = true; break;
+      case "samesite": {
+        const s = (v ?? "").trim();
+        cookie.sameSite = s === "None" || s === "Strict" ? s : "Lax";
+        break;
+      }
+      // expires/max-age dropped (session cookies are enough for capture) and
+      // `secure` dropped unless the target is https — Chromium accepts secure
+      // cookies on http://localhost but other hosts refuse them.
+      case "secure": if (base.startsWith("https")) cookie.secure = true; break;
+    }
+  }
+  return cookie;
+}
+
 async function login(opts, email, password) {
   const type = opts.cfg.auth?.type ?? "oauth2-password";
   const endpoint = opts.cfg.auth?.endpoint ?? "/auth/login";
   const url = `${opts.api}${endpoint}`;
   let res;
-  if (type === "bearer-json") {
+  if (type === "bearer-json" || type === "cookie-session") {
     res = await fetch(url, {
       method: "POST",
       body: JSON.stringify({ email, password }),
@@ -235,6 +309,19 @@ async function login(opts, email, password) {
   }
   if (!res.ok) {
     throw new Error(`Login failed (${res.status}): ${await res.text().catch(() => "")}`);
+  }
+  if (type === "cookie-session") {
+    // auth-kit style session cookies (nx_access/nx_refresh/nx_csrf…). The
+    // SPA does its own CSRF double-submit from the JS-readable cookie; the
+    // runner just carries the jar.
+    const setCookies = res.headers.getSetCookie?.() ?? [];
+    const cookies = setCookies
+      .map((line) => parseSetCookie(line, opts.base))
+      .filter((c) => c.name && c.value);
+    if (cookies.length === 0) {
+      throw new Error("Login succeeded but no session cookies were set — is this really a cookie-session app?");
+    }
+    return { __cookies: cookies };
   }
   return res.json();
 }
@@ -251,10 +338,28 @@ function pickValue(obj, pick) {
     .reduce((acc, k) => (acc == null ? undefined : acc[k]), obj);
 }
 
-async function apiGet(opts, path, tokens) {
-  const res = await fetch(`${opts.api}${path}`, {
-    headers: tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {},
-  });
+/**
+ * Select an item from an API payload: `match` finds the first array element
+ * whose fields equal the given values (e.g. a profile by name), then `pick`
+ * extracts from that element; without `match`, `pick` applies to the payload.
+ */
+function selectItem(data, spec) {
+  if (spec?.match && Array.isArray(data)) {
+    const item = data.find((it) =>
+      it != null && Object.entries(spec.match).every(([k, v]) => it[k] === v),
+    );
+    return pickValue(item, spec?.pick);
+  }
+  return pickValue(data, spec?.pick);
+}
+
+async function apiGet(opts, path, tokens, extraHeaders = {}) {
+  const headers = { ...extraHeaders };
+  if (tokens?.access_token) headers.Authorization = `Bearer ${tokens.access_token}`;
+  else if (tokens?.__cookies) {
+    headers.Cookie = tokens.__cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  }
+  const res = await fetch(`${opts.api}${path}`, { headers });
   if (!res.ok) return null;
   try {
     return await res.json();
@@ -288,14 +393,29 @@ async function resolvePath(opts, path, tokens) {
       const spec = opts.cfg.pathTokens?.[name];
       if (!spec) return null;
       const specPath = await substitute(spec.path, stack);
-      const data = await apiGet(opts, specPath, tokens);
-      const value = pickValue(data, spec.pick);
+      const data = await apiGet(opts, specPath, tokens, await buildApiHeaders(stack));
+      const value = selectItem(data, spec);
       if (value == null) return null;
       resolved[name] = String(value);
       return resolved[name];
     } finally {
       stack.delete(name);
     }
+  }
+
+  /**
+   * session.apiHeaders — extra headers for runner-side API lookups, values
+   * may reference {token} placeholders (resolved on demand, cycle-guarded).
+   * Entries that cannot be resolved yet (e.g. a token's own bootstrap lookup
+   * referencing itself) are omitted rather than sent as literals.
+   */
+  async function buildApiHeaders(stack) {
+    const out = {};
+    for (const [k, v] of Object.entries(opts.cfg.session?.apiHeaders ?? {})) {
+      const hv = await substitute(v, stack);
+      if (!/\{/.test(hv)) out[k] = hv;
+    }
+    return out;
   }
 
   return substitute(path, new Set());
@@ -315,8 +435,15 @@ async function buildSessionStore(opts, tokens) {
     if (tokens?.[tokenField] != null) store[lsKey] = String(tokens[tokenField]);
   }
   for (const entry of session.apiEntries ?? []) {
-    const data = await apiGet(opts, entry.path, tokens);
-    const item = pickValue(data, entry.pick);
+    // Resolve session.apiHeaders against the token machinery (on demand);
+    // entries whose placeholders cannot resolve are omitted, not sent raw.
+    const extraHeaders = {};
+    for (const [k, v] of Object.entries(session.apiHeaders ?? {})) {
+      const hv = await resolvePath(opts, v, tokens);
+      if (!/\{/.test(hv)) extraHeaders[k] = hv;
+    }
+    const data = await apiGet(opts, entry.path, tokens, extraHeaders);
+    const item = selectItem(data, entry);
     if (item == null) continue;
     if (entry.wrap != null) {
       store[entry.key] = JSON.stringify(entry.wrap).split('"{item}"').join(JSON.stringify(item));
@@ -331,13 +458,14 @@ async function buildSessionStore(opts, tokens) {
 
 /* ---------------- capture ---------------- */
 
-async function runStep(page, step, base, strict) {
+async function runStep(page, step, base, strict, issues = null) {
   const tryRun = async (fn, label) => {
     try {
       await fn();
       return true;
     } catch (e) {
       console.warn(`    ${label}: ${e.message}`);
+      issues?.warnings?.push?.(`${label}: ${e.message}`);
       if (strict) throw new Error(`step "${label}" failed: ${e.message}`);
       return false;
     }
@@ -363,16 +491,163 @@ async function runStep(page, step, base, strict) {
       break;
     default:
       console.warn(`    unknown interaction: ${step.action}`);
+      issues?.warnings?.push?.(`unknown interaction: ${step.action}`);
       if (strict) throw new Error(`unknown interaction: ${step.action}`);
   }
 }
 
-async function captureScene(browser, scene, opts, tokens) {
+/**
+ * Verify the injected session actually survived navigation — the DOM can
+ * render a perfectly good-looking *logged-out* page (in-place login overlays
+ * render at the same URL), which the URL-based /login check cannot catch.
+ * `auth.sessionCheck` names a standard API probe (e.g. "/auth/me") fetched
+ * same-origin from the page; 401/403/network-error = the capture would show
+ * the logged-out UI, which is never a valid tour frame.
+ */
+async function probeSession(page, scene, vpName, opts, tokens, issues) {
+  const check = opts.cfg.auth?.sessionCheck;
+  if (!check) return;
+  const meUrl = `${opts.base}${opts.cfg.app?.apiPath ?? ""}${check}`;
+  const status = await page.evaluate(async ({ u, bearer }) => {
+    try {
+      const r = await fetch(u, {
+        credentials: "include",
+        headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+      });
+      return r.status;
+    } catch {
+      return 0;
+    }
+  }, { u: meUrl, bearer: tokens?.access_token ?? null }).catch(() => 0);
+  if (status !== 200) {
+    const msg = `${scene.name} [${vpName}] session probe failed (HTTP ${status} from ${meUrl}) — page shows the logged-out UI`;
+    console.warn(`  ✗ ${msg}`);
+    issues.errors.push(msg);
+  }
+}
+
+/**
+ * Drive one scene on one prepared page: navigate, guard-check, run
+ * interactions, settle, screenshot. Shared by url mode (fresh context per
+ * viewport) and cdp mode (the app's real window, reused).
+ * Returns the captured filename, or null when nothing was written.
+ */
+async function captureOnPage(page, scene, vpName, opts, tokens, issues) {
+  const path = await resolvePath(opts, scene.path, tokens);
+  const url = `${opts.base}${path}`;
+  const gotoErr = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 }).then(() => null).catch((e) => {
+    console.warn(`  ⚠ goto ${url}: ${e.message}`);
+    issues.warnings.push(`goto ${url}: ${e.message}`);
+    return e;
+  });
+  if (gotoErr && opts.strict) {
+    throw new Error(`navigation to ${url} failed: ${gotoErr.message}`);
+  }
+
+  if (tokens && page.url().includes("/login")) {
+    const redirErr = `${scene.name} [${vpName}] ended on /login — token may be invalid or route guarded.`;
+    console.warn(`  ⚠ ${redirErr}`);
+    issues.errors.push(redirErr);
+    if (opts.strict) throw new Error(redirErr);
+  }
+
+  if (tokens && scene.auth !== false) {
+    await probeSession(page, scene, vpName, opts, tokens, issues);
+  }
+
+  if (scene.interactions) {
+    for (const step of scene.interactions) await runStep(page, step, opts.base, opts.strict, issues);
+  }
+
+  if (scene.waitForSelector) {
+    const found = await page.waitForSelector(scene.waitForSelector, { timeout: 15000 }).then(() => true).catch(() => false);
+    if (!found) {
+      const msg = `waitForSelector "${scene.waitForSelector}" not found before capture.`;
+      if (opts.strict) throw new Error(msg);
+      console.warn(`  ⚠ ${scene.name} [${vpName}] ${msg}`);
+      issues.warnings.push(`${scene.name} [${vpName}] ${msg}`);
+    }
+  }
+  await page.waitForTimeout(scene.settleMs ?? opts.cfg.capture?.settleMs ?? 800);
+
+  const filename = `${scene.name}-${vpName}.png`;
+  const filepath = join(opts.out, filename);
+  const fullPage = scene.fullPage ?? true;
+
+  if (scene.capture === "element" && scene.selector) {
+    const el = await page.$(scene.selector);
+    if (el) await el.screenshot({ path: filepath });
+    else {
+      console.warn(`  ⚠ ${scene.name} [${vpName}] selector "${scene.selector}" not found; fullPage fallback.`);
+      if (opts.strict) throw new Error(`element selector not found: ${scene.selector}`);
+      await shootFullPage(page, filepath, fullPage);
+    }
+  } else {
+    await shootFullPage(page, filepath, fullPage);
+  }
+  console.log(`  ✓ ${scene.name} [${vpName}] → ${filename}`);
+  return filename;
+}
+
+/**
+ * Screenshot helper — full-page shots are taken by RESIZING the viewport
+ * to the content height, never via Playwright's `fullPage: true`.
+ *
+ * Chromium's capture-beyond-viewport (what fullPage uses) rasterizes
+ * composited/transitioned layers from stale paint state: tab strips and
+ * similar components come out washed-out or ghost earlier pages, while a
+ * DOM-level readiness check passes happily. Resizing routes the render
+ * through the normal paint path, so what readiness verified is what the
+ * pixels show. Verified A/B on career's CV builder (2026-09).
+ */
+async function shootFullPage(page, filepath, fullPage) {
+  if (!fullPage) {
+    await page.screenshot({ path: filepath });
+    return;
+  }
+  const vp = page.viewportSize();
+  const height = await page.evaluate(
+    () => Math.min(document.documentElement.scrollHeight, 30000),
+  );
+  if (vp && height > vp.height) {
+    await page.setViewportSize({ width: vp.width, height });
+    await page.waitForTimeout(250); // settle re-layout before the pixels
+  }
+  await page.screenshot({ path: filepath });
+  if (vp && height > vp.height) await page.setViewportSize(vp);
+}
+
+/** Install the session store + capture flag (context- or page-level init script). */
+async function installCaptureInitScript(target, windowFlag, store) {
+  // Runs before any page script on every navigation: the SPA finds its
+  // session in localStorage and skips any auth redirect; the window flag
+  // lets the app suppress dev-only UI (toasts, update banners) during capture.
+  await target.addInitScript(
+    ([flag, entries]) => {
+      try {
+        window[flag] = true;
+        for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
+      } catch {}
+    },
+    [windowFlag, store],
+  );
+}
+
+/** Fixed clock so dates/charts/relative times are identical across runs —
+ *  this is what makes screenshots diffable for visual regression. */
+async function installFixedClock(page, opts) {
+  const fixedNow = opts.cfg.capture?.fixedNow ? Date.parse(opts.cfg.capture.fixedNow) : null;
+  if (fixedNow != null && !Number.isNaN(fixedNow)) {
+    try { await page.clock.install({ now: fixedNow }); } catch {}
+  }
+}
+
+/** url mode — Playwright's own Chromium, fresh context per viewport. */
+async function captureScene(browser, scene, opts, tokens, issues) {
   const captured = [];
   const store = await buildSessionStore(opts, tokens);
   const viewports = { ...DEFAULT_VIEWPORTS, ...(opts.cfg.capture?.viewports ?? {}) };
   const windowFlag = opts.cfg.session?.windowFlag ?? "__UI_CAPTURE__";
-  const fixedNow = opts.cfg.capture?.fixedNow ? Date.parse(opts.cfg.capture.fixedNow) : null;
 
   for (const vpName of scene.viewports) {
     if (opts.viewport && opts.viewport !== vpName) continue;
@@ -384,76 +659,77 @@ async function captureScene(browser, scene, opts, tokens) {
     const context = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: vp.deviceScaleFactor ?? 1,
+      // Suppress entrance animations for deterministic captures (apps that
+      // honor prefers-reduced-motion, e.g. framer-motion based UIs).
+      ...(opts.cfg.capture?.reducedMotion ? { reducedMotion: "reduce" } : {}),
     });
 
-    // Runs before any page script on every navigation: the SPA finds its
-    // session in localStorage and skips any auth redirect; the window flag
-    // lets the app suppress dev-only UI (toasts, update banners) during capture.
-    await context.addInitScript(
-      ([flag, entries]) => {
-        try {
-          window[flag] = true;
-          for (const [k, v] of Object.entries(entries)) localStorage.setItem(k, v);
-        } catch {}
-      },
-      [windowFlag, store],
-    );
+    // cookie-session apps: carry the login jar into the fresh context.
+    if (tokens?.__cookies) await context.addCookies(tokens.__cookies);
+
+    await installCaptureInitScript(context, windowFlag, store);
 
     const page = await context.newPage();
+    await installFixedClock(page, opts);
 
-    // Fixed clock so dates/charts/relative times are identical across runs —
-    // this is what makes screenshots diffable for visual regression.
-    if (fixedNow != null && !Number.isNaN(fixedNow)) {
-      try { await page.clock.install({ now: fixedNow }); } catch {}
-    }
-
-    const path = await resolvePath(opts, scene.path, tokens);
-    const url = `${opts.base}${path}`;
-    const gotoErr = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 }).then(() => null).catch((e) => {
-      console.warn(`  ⚠ goto ${url}: ${e.message}`);
-      return e;
-    });
-    if (gotoErr && opts.strict) {
-      throw new Error(`navigation to ${url} failed: ${gotoErr.message}`);
-    }
-
-    if (tokens && page.url().includes("/login")) {
-      const redirErr = `${scene.name} [${vpName}] ended on /login — token may be invalid or route guarded.`;
-      console.warn(`  ⚠ ${redirErr}`);
-      if (opts.strict) throw new Error(redirErr);
-    }
-
-    if (scene.interactions) {
-      for (const step of scene.interactions) await runStep(page, step, opts.base, opts.strict);
-    }
-
-    if (scene.waitForSelector) {
-      const found = await page.waitForSelector(scene.waitForSelector, { timeout: 15000 }).then(() => true).catch(() => false);
-      if (!found && opts.strict) {
-        throw new Error(`waitForSelector "${scene.waitForSelector}" not found before capture.`);
-      }
-    }
-    await page.waitForTimeout(scene.settleMs ?? opts.cfg.capture?.settleMs ?? 800);
-
-    const filename = `${scene.name}-${vpName}.png`;
-    const filepath = join(opts.out, filename);
-    const fullPage = scene.fullPage ?? true;
-
-    if (scene.capture === "element" && scene.selector) {
-      const el = await page.$(scene.selector);
-      if (el) await el.screenshot({ path: filepath });
-      else {
-        console.warn(`  ⚠ ${scene.name} [${vpName}] selector "${scene.selector}" not found; fullPage fallback.`);
-        if (opts.strict) throw new Error(`element selector not found: ${scene.selector}`);
-        await page.screenshot({ path: filepath, fullPage });
-      }
-    } else {
-      await page.screenshot({ path: filepath, fullPage });
-    }
-
-    captured.push({ viewport: vpName, file: filename });
-    console.log(`  ✓ ${scene.name} [${vpName}] → ${filename}`);
+    const filename = await captureOnPage(page, scene, vpName, opts, tokens, issues);
+    if (filename) captured.push({ viewport: vpName, file: filename });
     await context.close();
+  }
+  return captured;
+}
+
+/**
+ * cdp mode — capture a scene in the app's real window (Electron etc.):
+ * attach over the DevTools protocol, pick the window to drive (config
+ * `app.cdpPage`, a URL substring; default = first page), apply the session
+ * store as a page-level init script, resize via viewport emulation, then
+ * reuse the shared per-scene logic. The window is never closed.
+ *
+ * Init scripts accumulate on a reused page — each scene adds one; they run
+ * in install order on every navigation and the latest scene's entries are
+ * written last, so stale keys are always overwritten with current values.
+ */
+async function captureSceneCdp(browser, scene, opts, tokens, issues) {
+  const captured = [];
+  const context = browser.contexts()[0];
+  if (!context) throw new Error("cdp mode: no browser context — is the remote-debugging endpoint reachable?");
+  const pages = context.pages();
+  if (pages.length === 0) throw new Error("cdp mode: no open pages — is the app window open?");
+  // Window selection: explicit config matcher first, then any page already on
+  // the app base URL (the window the scene navigates), else the first page.
+  const matcher = opts.cfg.app?.cdpPage;
+  const matched = matcher ? pages.find((p) => p.url().includes(matcher)) : undefined;
+  const page = matched ?? pages.find((p) => opts.base && p.url().startsWith(opts.base)) ?? pages[0];
+  if (matcher && !matched) {
+    console.warn(`  ⚠ no CDP page matches "${matcher}" — using ${page.url()}`);
+  }
+
+  const store = await buildSessionStore(opts, tokens);
+  const windowFlag = opts.cfg.session?.windowFlag ?? "__UI_CAPTURE__";
+  const viewports = { ...DEFAULT_VIEWPORTS, ...(opts.cfg.capture?.viewports ?? {}) };
+
+  // cookie-session apps: push the login jar into the app's own context.
+  if (tokens?.__cookies) await context.addCookies(tokens.__cookies);
+  await installCaptureInitScript(page, windowFlag, store);
+  await installFixedClock(page, opts);
+
+  for (const vpName of scene.viewports) {
+    if (opts.viewport && opts.viewport !== vpName) continue;
+    const vp = viewports[vpName];
+    if (!vp) {
+      console.warn(`  ⚠ unknown viewport "${vpName}" — skipping`);
+      continue;
+    }
+    // Viewport emulation resizes the captured content; the OS window keeps
+    // its own size (Electron) — screenshots still reflect the emulated size.
+    try {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+    } catch {
+      console.warn("  ⚠ setViewportSize failed — capturing at the window's own size");
+    }
+    const filename = await captureOnPage(page, scene, vpName, opts, tokens, issues);
+    if (filename) captured.push({ viewport: vpName, file: filename });
   }
   return captured;
 }
@@ -473,13 +749,18 @@ async function loadScenes() {
  * Uses createRequire on purpose: the frontend package's `require.resolve`
  * anchor finds its node_modules, and Playwright's CJS entry exposes the
  * browser launchers directly (importing the CJS file by path would bury
- * them under the interop `default` key).
+ * them under the interop `default` key). Falls back to `@playwright/test`
+ * (same exports) for pnpm repos where only the test runner is a direct dep.
  */
 async function loadPlaywright(opts) {
   const { createRequire } = await import("node:module");
   const frontendDir = resolve(ROOT, opts.cfg.project?.frontendDir ?? "frontend");
   const req = createRequire(join(frontendDir, "package.json"));
-  return req("playwright");
+  try {
+    return req("playwright");
+  } catch {
+    return req("@playwright/test");
+  }
 }
 
 async function main() {
@@ -500,7 +781,10 @@ async function main() {
 
   if (opts.galleryOnly) {
     const files = await readdir(opts.out);
-    const { desktop, mobile } = await generateGallery(scenes, groups, { cfg: opts.cfg, out: opts.out, gallery: opts.gallery, files });
+    const { desktop, mobile } = await generateGallery(scenes, groups, {
+      cfg: opts.cfg, out: opts.out, gallery: opts.gallery, files,
+      root: ROOT, templateVersion: TEMPLATE_VERSION, manifest: opts.manifest,
+    });
     console.log(`Gallery: ${desktop ?? "(no desktop screenshots)"}${mobile ? ` + ${mobile}` : ""}`);
     return;
   }
@@ -511,9 +795,9 @@ async function main() {
     process.exit(2);
   }
 
-  // One login shared by all authed scenes.
+  // One login shared by all authed scenes (auth.type "none" never logs in).
   let tokens = null;
-  const needsAuth = selected.some((s) => s.auth !== false);
+  const needsAuth = opts.cfg.auth?.type !== "none" && selected.some((s) => s.auth !== false);
   if (needsAuth) {
     if (!opts.api || !opts.login) {
       console.error("Auth needed but api/login unresolved — set config app.api + auth credentials (or pass --api/--login).");
@@ -526,28 +810,46 @@ async function main() {
 
   console.log(`Capturing ${selected.length} scene(s)…`);
   const { chromium } = await loadPlaywright(opts);
-  const browser = await chromium.launch({ headless: opts.headless });
+  const captureFn = opts.mode === "cdp" ? captureSceneCdp : captureScene;
+  const browser =
+    opts.mode === "cdp"
+      ? await chromium.connectOverCDP(opts.cdp, { timeout: 15000 })
+      : await chromium.launch({ headless: opts.headless });
   const results = [];
+  const issues = { errors: [], warnings: [] };
   for (const scene of selected) {
     console.log(`\n▸ ${scene.name}: ${scene.caption}`);
     try {
-      const captured = await captureScene(browser, scene, opts, scene.auth === false ? null : tokens);
+      const captured = await captureFn(browser, scene, opts, scene.auth === false ? null : tokens, issues);
       results.push({ scene, captured });
     } catch (e) {
       console.error(`  ✗ ${scene.name} failed: ${e.message}`);
+      issues.errors.push(`${scene.name}: ${e.message}`);
       results.push({ scene, captured: [], error: e.message });
     }
   }
-  await browser.close();
+  await browser.close(); // cdp: disconnects only — the app keeps running
 
   // Always rebuild the galleries so the docs reflect what's on disk.
   const files = await readdir(opts.out);
-  const { desktop, mobile } = await generateGallery(scenes, groups, { cfg: opts.cfg, out: opts.out, gallery: opts.gallery, files });
+  const { desktop, mobile } = await generateGallery(scenes, groups, {
+    cfg: opts.cfg, out: opts.out, gallery: opts.gallery, files,
+    root: ROOT, templateVersion: TEMPLATE_VERSION, manifest: opts.manifest,
+  });
   console.log(`\nDone. ${results.reduce((n, r) => n + r.captured.length, 0)} screenshot(s) in ${opts.out}`);
   console.log(`Gallery: ${desktop ?? "(no desktop screenshots)"}${mobile ? ` + ${mobile}` : ""}`);
+  console.log(`Manifest: ${opts.manifest}`);
+
+  // Loud report: a tour with hidden failures is worse than no tour.
+  if (issues.errors.length || issues.warnings.length) {
+    console.log(`\nCapture report:`);
+    for (const e of issues.errors) console.log(`  ✗ ${e}`);
+    for (const w of issues.warnings) console.log(`  ⚠ ${w}`);
+    console.log(`${issues.errors.length} error(s), ${issues.warnings.length} warning(s)`);
+  }
 
   const errored = results.filter((r) => r.error);
-  if (errored.length) process.exit(1);
+  if (errored.length || issues.errors.length) process.exit(1);
 }
 
 main().catch((e) => {
