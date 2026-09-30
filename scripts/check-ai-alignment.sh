@@ -78,7 +78,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
       --exclude-dir='node_modules' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
     SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@google/genai['\"])"
-    CLASS_RE="(from ['\"]@langchain/(openai|anthropic|google-genai)['\"]|require\(['\"]@langchain/(openai|anthropic|google-genai)['\"]\)|from ['\"]@langchain/langgraph|from ['\"]@langchain/mcp-adapters['\"]|from ['\"]langchain(/agents)?['\"])";
+    CLASS_RE="(from ['\"]@langchain/(openai|anthropic|google-genai|google)['\"]|require\(['\"]@langchain/(openai|anthropic|google-genai|google)['\"]\)|from ['\"]@langchain/langgraph|from ['\"]@langchain/mcp-adapters['\"]|from ['\"]langchain(/agents)?['\"])";
     DEPS_FILES=("$dir/package.json")
   else
     backend="$dir/backend"
