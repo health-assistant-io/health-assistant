@@ -83,6 +83,11 @@ if [ -n "$ENV_ONLY" ]; then
     exit 0
 fi
 
+# Adopt volumes from before the compose files pinned their project name
+# (docker_* → <project>_*), so the reset/guard/down below reason about the
+# current volume names instead of leaving real data behind a stale prefix.
+adopt_legacy_volumes
+
 # --reset: force-refresh the data before starting. Wipes the stack's data
 # volumes (postgres + redis; uploads with --reset-all) even when .env already
 # exists — covers stale/corrupt volumes from a previous install. After a reset

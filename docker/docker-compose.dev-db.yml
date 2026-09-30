@@ -14,6 +14,13 @@
 # (`POSTGRES_DB=neuro_health`, `POSTGRES_USER=neuro_health_owner`) and run
 # `./scripts/reset-dev-db.sh` to recreate the volume — see docker/README.md
 # → "Databases & roles".
+#
+# Explicit project name (distinct from the all-in-one dev stack): the
+# `health-assistant-dev_*` volume prefix no longer depends on the directory
+# `docker compose` is invoked from — see docker/README.md → "Compose project
+# name & volumes" for adopting legacy `docker_*` volumes.
+name: health-assistant-dev
+
 services:
   # PostgreSQL 16 with TimescaleDB (deployment.md datastore rule; health
   # keeps its TimescaleDB-optional image).

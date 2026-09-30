@@ -8,6 +8,12 @@
 # needed yet. It builds images from source (no registry needed). Flower
 # requires basic auth here too (audit H6): set FLOWER_USER / FLOWER_PASSWORD.
 
+# Explicit project name: volumes/networks get a deterministic
+# `health-assistant_*` prefix regardless of where `docker compose` runs
+# (was the compose file's dir — `docker_*`; see docker/README.md →
+# "Compose project name & volumes").
+name: health-assistant
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -124,7 +130,6 @@ services:
       # Key family (identity-auth §8, plan 16 H4): unset in dev ⇒ the app
       # generates per-process ephemeral keys (logins die on restart — pin
       # them in .env for a stable dev stack).
-      # still feeds the Fernet at-rest ring.
       - HA_SESSION_KEY=${HA_SESSION_KEY:-}
       - HA_REFRESH_KEY=${HA_REFRESH_KEY:-}
       - HA_DATA_KEY=${HA_DATA_KEY:-}

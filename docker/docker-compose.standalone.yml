@@ -29,6 +29,13 @@
 # (--env-file .env is required when running from the repo root: compose reads
 #  .env from the compose file's directory by default.)
 
+# Explicit project name: volumes/networks get a deterministic
+# `health-assistant_*` prefix regardless of where `docker compose` runs.
+# scripts/install.sh + scripts/update-docker.sh adopt legacy dir-derived
+# volumes automatically (one-time copy — see docker/README.md → "Compose
+# project name & volumes").
+name: health-assistant
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -51,9 +58,9 @@ x-backend-env: &backend-env
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
   # Per-purpose key family (identity-auth §8, plan 16 H4): session/refresh
-  # signing keys are REQUIRED (weak/missing values refuse to boot); the
-    # name so pre-H4 deployments keep their sealed ring — HA_DATA_KEY wins
-  # when both are set. _PREVIOUS is the decrypt-only rotation ring.
+  # signing keys are REQUIRED (weak/missing values refuse to boot). The
+  # pre-H4 INTEGRATION_SECRET_KEY alias is retired (no fallback) — set
+  # HA_DATA_KEY directly; _PREVIOUS is the decrypt-only rotation ring.
   HA_SESSION_KEY: ${HA_SESSION_KEY:?Set HA_SESSION_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
   HA_REFRESH_KEY: ${HA_REFRESH_KEY:?Set HA_REFRESH_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
   HA_DATA_KEY: ${HA_DATA_KEY:-}

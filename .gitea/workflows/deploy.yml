@@ -361,6 +361,45 @@ jobs:
             
             # 2. Stop old containers and start new ones
             echo "Restarting application stack..."
+            # One-time migration: before docker-compose.prod.yml pinned the
+            # top-level `name:` (= STACK_NAME), the compose project was the
+            # deploy-dir basename (health_assistant / health_assistant_test).
+            # Stop that legacy project first and copy its volumes under the
+            # STACK_NAME project name, or `up` below would collide on
+            # container names / start on empty volumes. Docker has no
+            # `volume rename`, so the copy runs in the stack's own Postgres
+            # image with the compose labels pre-applied. Idempotent: after
+            # the first migration there is nothing legacy to find, and when
+            # the basename already equals STACK_NAME the block is skipped.
+            LEGACY_PROJECT="$(basename "$PWD")"
+            NEW_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
+            NEW_PROJECT="${NEW_PROJECT:-health-assistant}"
+            if [ "$LEGACY_PROJECT" != "$NEW_PROJECT" ]; then
+                docker compose -p "$LEGACY_PROJECT" -f docker-compose.prod.yml down --remove-orphans
+                for VOL in postgres_data redis_data uploads; do
+                    docker volume inspect "${LEGACY_PROJECT}_${VOL}" >/dev/null 2>&1 || continue
+                    docker volume inspect "${NEW_PROJECT}_${VOL}" >/dev/null 2>&1 && continue
+                    if [ -n "$(docker ps -q --filter "volume=${LEGACY_PROJECT}_${VOL}")" ]; then
+                        echo "Legacy volume ${LEGACY_PROJECT}_${VOL} still in use — aborting deploy."
+                        exit 1
+                    fi
+                    docker volume create \
+                        --label "com.docker.compose.project=${NEW_PROJECT}" \
+                        --label "com.docker.compose.volume=${VOL}" \
+                        "${NEW_PROJECT}_${VOL}" >/dev/null
+                    if ! docker run --rm --entrypoint sh \
+                            -v "${LEGACY_PROJECT}_${VOL}":/from:ro \
+                            -v "${NEW_PROJECT}_${VOL}":/to \
+                            timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/' >/dev/null 2>&1; then
+                        docker volume rm "${NEW_PROJECT}_${VOL}" >/dev/null 2>&1 || true
+                        echo "Failed to copy ${LEGACY_PROJECT}_${VOL} — aborting (legacy data untouched)."
+                        exit 1
+                    fi
+                    docker volume rm "${LEGACY_PROJECT}_${VOL}" >/dev/null 2>&1 \
+                        || echo "Copied, but could not remove legacy volume ${LEGACY_PROJECT}_${VOL} (left in place)."
+                    echo "Adopted legacy volume ${LEGACY_PROJECT}_${VOL} -> ${NEW_PROJECT}_${VOL}"
+                done
+            fi
             docker compose -f docker-compose.prod.yml down --remove-orphans
             docker compose -f docker-compose.prod.yml up -d
             

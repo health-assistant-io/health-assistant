@@ -19,17 +19,27 @@
 #   BACKEND_MEMORY, WORKER_MEMORY, BACKEND_CPUS, WORKER_CPUS,
 #   BACKUP_INTERVAL_HOURS, BACKUP_KEEP (scheduled backup sidecar),
 #   LOG_MAX_SIZE, LOG_MAX_FILE,
-#   STACK_NAME (container-name prefix; defaults to "health-assistant". Set to
-#               a distinct value, e.g. "health-assistant-test", to run a second
-#               stack side-by-side on the same host without container-name
-#               collisions. Named volumes + the bridge network are already
-#               isolated by the compose project name = deploy-dir basename, so
-#               only the container_name needs a prefix.)
+#   STACK_NAME (compose project + container-name prefix; defaults to
+#               "health-assistant". Set to a distinct value, e.g.
+#               "health-assistant-test", to run a second stack side-by-side
+#               on the same host: it pins the top-level `name:` too, so
+#               containers, named volumes AND the bridge network are all
+#               isolated by this one knob — independent of the directory
+#               the command runs from. The deploy workflow migrates volumes
+#               from the old dir-derived project name automatically.)
 #
 # Bring up:    docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 # Migrate only: docker compose --env-file .env -f docker/docker-compose.prod.yml run --rm migrate
 # View logs:   docker compose --env-file .env -f docker/docker-compose.prod.yml logs -f backend worker
 # Stop:        docker compose --env-file .env -f docker/docker-compose.prod.yml down
+
+# Explicit project name: STACK_NAME pins the WHOLE compose project —
+# containers, named volumes and the bridge network — independent of the
+# invocation directory. Volumes left under the old dir-derived project name
+# (deploy-dir basename) are adopted by .gitea/workflows/deploy.yml on the
+# next deploy (one-time rename; see docker/README.md → "Compose project
+# name & volumes").
+name: ${STACK_NAME:-health-assistant}
 
 x-logging: &default-logging
   driver: json-file
@@ -53,9 +63,9 @@ x-backend-env: &backend-env
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
   OPENAI_MODEL: ${OPENAI_MODEL:-}
   # Per-purpose key family (identity-auth §8, plan 16 H4): session/refresh
-  # signing keys are REQUIRED (weak/missing values refuse to boot); the
-    # name so pre-H4 deployments keep their sealed ring — HA_DATA_KEY wins
-  # when both are set. _PREVIOUS is the decrypt-only rotation ring.
+  # signing keys are REQUIRED (weak/missing values refuse to boot). The
+  # pre-H4 INTEGRATION_SECRET_KEY alias is retired (no fallback) — set
+  # HA_DATA_KEY directly; _PREVIOUS is the decrypt-only rotation ring.
   HA_SESSION_KEY: ${HA_SESSION_KEY:?Set HA_SESSION_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
   HA_REFRESH_KEY: ${HA_REFRESH_KEY:?Set HA_REFRESH_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
   HA_DATA_KEY: ${HA_DATA_KEY:-}

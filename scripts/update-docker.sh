@@ -58,6 +58,11 @@ if [ ! -f ".env" ]; then
     ENV_WAS_FRESH=1
 fi
 
+# Adopt volumes from before the compose files pinned their project name
+# (docker_* → <project>_*), so an update attaches to the existing data
+# instead of starting on empty volumes.
+adopt_legacy_volumes
+
 echo -e "${GREEN}Pulling latest images...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull
 

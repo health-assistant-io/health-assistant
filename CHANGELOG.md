@@ -22,6 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 
 ### Changed
+- **Compose stacks pin an explicit project name (`name:`) — deterministic
+  volume/network prefixes:** every compose file now declares its Compose
+  project — `health-assistant` (dev, standalone), `health-assistant-dev`
+  (dev-db), `${STACK_NAME:-health-assistant}` (prod),
+  `health-assistant-fhir-test` (local FHIR test server), and
+  `${STACK_NAME:-ha-demo}` in the demo repo. Previously the project
+  defaulted to the compose file's directory, so volume prefixes depended on
+  wherever the command happened to run — the stray `docker_*` class
+  (`docker_postgres_data-dev1`, `docker_uploads`). `STACK_NAME` now
+  isolates a whole second prod/test stack (containers **and** named
+  volumes/network), not just container names. Migration is automatic
+  wherever data matters: `install.sh`/`update-docker.sh` stop the legacy
+  project once and copy legacy volumes into correctly-labeled ones (Docker
+  has no `volume rename`; a failed copy aborts loudly and rolls the empty
+  target back so data is never silently stranded); the prod/test deploy
+  workflow does the same on its next deploy (legacy project = deploy-dir
+  basename); the demo workflow removes its legacy volumes (synthetic,
+  re-seeded). Dev workstations migrate once by hand or reset — commands in
+  `docker/README.md` → "Compose project name & volumes". Container names,
+  services and ports are unchanged; running stacks stay untouched until
+  their next `up`.
 - **Shared country/language catalogs adopted (family ADR-0024):** the
   112-entry local `frontend/src/utils/countryUtils.ts` copy is deleted —
   provider country pickers (`ProviderManager`, `ProviderSetupModal`) and

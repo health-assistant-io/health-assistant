@@ -160,10 +160,13 @@ else
   remove_volumes_by_name "Redis"    "redis_data-dev1"
 fi
 
-# Optional: clean any stale docker_* volumes from prior compose layouts.
+# Optional: clean stale volumes from prior compose layouts — the current
+# project's leftovers plus the dev-db volumes that lived under the pre-pname
+# `docker_` prefix (scoped to our -dev1 keys, so another stack that happens
+# to share the `docker` project name is never touched).
 if [[ "$PURGE_DANGLING" = true ]]; then
   info "Purging dangling ${PROJECT}_* volumes (--purge-dangling)…"
-  mapfile -t dangling < <(docker volume ls -q 2>/dev/null | grep -E "^${PROJECT}_" || true)
+  mapfile -t dangling < <(docker volume ls -q 2>/dev/null | grep -E "^${PROJECT}_|^docker_(postgres_data-dev1|redis_data-dev1)$" || true)
   [[ ${#dangling[@]} -gt 0 ]] && docker volume rm "${dangling[@]}" >/dev/null && ok "Removed ${#dangling[@]} dangling: ${dangling[*]}"
 fi
 

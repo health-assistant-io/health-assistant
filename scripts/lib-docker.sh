@@ -59,6 +59,46 @@ resolve_compose_project() {
     printf '%s' "$PROJECT"
 }
 
+# Adopt volumes created before the compose files pinned an explicit top-level
+# `name:` — those defaulted to the compose file's directory ("docker"), so
+# real data can sit in docker_postgres_data / docker_uploads. Docker has no
+# `volume rename`, so adoption stops the legacy project when it still holds
+# the volume and COPIES the data into a correctly-labeled new volume (the
+# stack's own Postgres image runs the copy — no extra image dependency).
+# The target is only ever left behind by a successful copy (rollback on
+# failure), so a retry can never mistake an empty volume for migrated data.
+# No-op once adopted.
+adopt_legacy_volumes() {
+    local PROJECT VOL SRC DST
+    PROJECT="$(resolve_compose_project)"
+    [ "$PROJECT" = "docker" ] && return 0
+    for VOL in postgres_data redis_data uploads; do
+        SRC="docker_${VOL}"
+        DST="${PROJECT}_${VOL}"
+        docker volume inspect "$SRC" >/dev/null 2>&1 || continue
+        docker volume inspect "$DST" >/dev/null 2>&1 && continue
+        # Stop the legacy project first (volumes are preserved by `down`) so
+        # the copy is consistent and nothing holds the source volume.
+        $DOCKER_COMPOSE_CMD -p docker $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+        if [ -n "$(docker ps -q --filter "volume=$SRC")" ]; then
+            die "Legacy volume ${SRC} is still in use — stop that stack manually and re-run."
+        fi
+        docker volume create \
+            --label "com.docker.compose.project=${PROJECT}" \
+            --label "com.docker.compose.volume=${VOL}" \
+            "$DST" >/dev/null
+        if docker run --rm --entrypoint sh -v "${SRC}":/from:ro -v "${DST}":/to \
+                timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/' >/dev/null 2>&1; then
+            echo -e "${GREEN}Adopted legacy volume ${SRC} → ${DST}${NC}"
+            docker volume rm "$SRC" >/dev/null 2>&1 \
+                || echo -e "${YELLOW}Copied ${SRC} → ${DST} but could not remove the legacy volume (still attached?) — remove it manually.${NC}"
+        else
+            docker volume rm "$DST" >/dev/null 2>&1 || true
+            die "Failed to copy ${SRC} → ${DST} (target removed; legacy data untouched). Pull timescale/timescaledb:latest-pg16 or migrate manually — see docker/README.md → \"Compose project name & volumes\"."
+        fi
+    done
+}
+
 # Leftover-volume guard — call after freshly (re)generating .env.
 #
 # On a fresh clone, a leftover Postgres volume from a *previous* install on

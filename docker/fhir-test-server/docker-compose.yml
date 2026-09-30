@@ -14,6 +14,11 @@
 #     no SMART module configured. For the full connect round-trip (discover → DCR
 #     → authorize → callback), use the hosted SMART Health IT sandbox:
 #     https://r4.smarthealthit.org  (see integrations/fhir_server/README.md).
+#
+# Explicit project name — throwaway HAPI data lives in a deterministic
+# `health-assistant-fhir-test_*` volume instead of a dir-derived prefix.
+name: health-assistant-fhir-test
+
 services:
   hapi-fhir:
     image: hapiproject/hapi:latest

@@ -32,6 +32,62 @@ Ops scripts (repo `scripts/`): `run-docker.sh` (dev stack),
 `backup.sh` / `restore.sh` (instance backup + restore — see the
 [restore drill](#backup--restore-drill) below).
 
+## Compose project name & volumes
+
+Every compose file pins an explicit top-level `name:` — the Compose project
+name — so volume and network prefixes are deterministic no matter which
+directory `docker compose` runs from. Before the pin, the project defaulted
+to the compose file's directory, which scattered volumes across the
+accidental `docker_*` prefix (e.g. `docker_postgres_data-dev1`).
+
+| Compose file | Project (`name:`) | Volume prefix |
+|---|---|---|
+| `docker-compose.dev.yml` | `health-assistant` | `health-assistant_*` |
+| `docker-compose.dev-db.yml` | `health-assistant-dev` | `health-assistant-dev_*` |
+| `docker-compose.standalone.yml` | `health-assistant` | `health-assistant_*` |
+| `docker-compose.prod.yml` | `${STACK_NAME:-health-assistant}` | `<stack name>_*` |
+| `fhir-test-server/docker-compose.yml` | `health-assistant-fhir-test` | `health-assistant-fhir-test_*` |
+| `../demo/docker-compose.demo.yml` | `${STACK_NAME:-ha-demo}` | `ha-demo_*` |
+
+`STACK_NAME` therefore isolates a whole second prod/test stack — containers,
+named volumes and the network — not just container names.
+
+**One-time migration of legacy `docker_*` volumes:** Docker has no
+`docker volume rename`, so adoption stops the legacy project (volumes are
+preserved by `down`) and **copies** each volume into a correctly-labeled one
+under the new prefix, using the stack's own Postgres image; the legacy copy
+is removed only after a successful copy (a failed copy aborts loudly and
+rolls the empty target back, so data is never silently stranded).
+
+- **Standalone** (`install.sh` / `update-docker.sh`): automatic on the next
+  run — stops the legacy stack once (only when legacy volumes exist), copies
+  `docker_postgres_data` / `docker_redis_data` / `docker_uploads`, continues.
+- **Prod / test CI**: automatic in `.gitea/workflows/deploy.yml` on the next
+  deploy (legacy project = deploy-dir basename, e.g. `health_assistant`).
+- **Demo CI**: automatic in `demo/.gitea/workflows/deploy.yml` — legacy
+  volumes are *removed* instead (demo data is synthetic and re-seeded).
+- **Dev workstations**: nothing runs automatically. Either wipe
+  (`./scripts/reset-dev-db.sh` — dev DBs are disposable) or copy manually
+  with the stack down (leave the final `docker volume rm` until you have
+  verified the copy):
+
+```bash
+# dev-db volumes (docker_* → health-assistant-dev_*)
+for v in postgres_data-dev1 redis_data-dev1; do
+  docker volume create --label com.docker.compose.project=health-assistant-dev \
+    --label com.docker.compose.volume="$v" "health-assistant-dev_$v"
+  docker run --rm --entrypoint sh -v "docker_$v":/from:ro -v "health-assistant-dev_$v":/to \
+    timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/'
+  docker volume rm "docker_$v"
+done
+# all-in-one dev stack uploads (docker_uploads → health-assistant_uploads)
+docker volume create --label com.docker.compose.project=health-assistant \
+  --label com.docker.compose.volume=uploads health-assistant_uploads
+docker run --rm --entrypoint sh -v docker_uploads:/from:ro -v health-assistant_uploads:/to \
+  timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/'
+docker volume rm docker_uploads
+```
+
 ## Databases & roles (ADR-0022)
 
 Web mode runs **PostgreSQL 16** — health keeps its TimescaleDB-optional
@@ -138,7 +194,8 @@ Verify it's up: `curl http://localhost:${HAPI_PORT:-8080}/fhir/metadata | head`
 
 ```bash
 # 1. Secrets: generate .env (see .env.example) — at minimum
-#    POSTGRES_PASSWORD, SECRET_KEY, REDIS_PASSWORD, FLOWER_PASSWORD.
+#    POSTGRES_PASSWORD, REDIS_PASSWORD, FLOWER_PASSWORD,
+#    HA_SESSION_KEY, HA_REFRESH_KEY, HA_DATA_KEY.
 python3 scripts/setup_env.py          # or copy .env.example → .env and edit
 # 2. Images: standalone deploys pre-built images from REGISTRY/REPOSITORY/
 #    IMAGE_TAG (defaults follow the release workflow's publish target).
@@ -151,12 +208,14 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile
 - Migrations run automatically: the one-shot `migrate` service (owner role)
   gates every app service via `service_completed_successfully` — never a
   manual step for a normal upgrade.
-- Required secrets are `:?`-guarded (`POSTGRES_PASSWORD`, `SECRET_KEY`,
-  `REDIS_PASSWORD`, `FLOWER_PASSWORD`) so `up` fails loud and early.
+- Required secrets are `:?`-guarded (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
+  `HA_SESSION_KEY`, `HA_REFRESH_KEY`, `FLOWER_PASSWORD`) so `up` fails loud
+  and early.
 - Refresh an existing install: `scripts/update-docker.sh`
   (`--no-pull`, `--no-wait`, `-h`); first deploy helper: `scripts/install.sh`.
-- Second stack on the same host (prod flavor): set `STACK_NAME` to avoid
-  container-name collisions.
+- Second stack on the same host (prod flavor): set `STACK_NAME` — it
+  isolates the whole compose project (container names, named volumes, the
+  bridge network), not just container names.
 
 ### Production flavor (`docker-compose.prod.yml`)
 
