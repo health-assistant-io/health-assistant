@@ -14,13 +14,13 @@ development use `../scripts/run-dev.sh` with the dev-db stack below.
 
 | File | Purpose |
 |---|---|
-| `docker-compose.dev-db.yml` | Dev infrastructure only (Postgres + Redis) for host-based `scripts/run-dev.sh`. Creates `neuro_health` + `neuro_health_test` + the family roles. |
+| `docker-compose.dev-db.yml` | Dev infrastructure only (Postgres + Redis) for host-based `scripts/run-dev.sh`. Creates `neuronection_health` + `neuronection_health_test` + the family roles. |
 | `docker-compose.dev.yml` | Full stack built from source (hot reload, debug logging) — local testing and small staging. |
 | `docker-compose.standalone.yml` | Canonical single-host self-host stack: postgres + redis + app services + **bundled nginx**, TLS-ready, `backup` sidecar behind `--profile backup`. |
 | `docker-compose.prod.yml` | Production services; proxy handled externally; app ports bound to `127.0.0.1`; honors `REGISTRY`/`REPOSITORY`/`IMAGE_TAG` (and `STACK_NAME` to run a second stack side-by-side). |
 | `Dockerfile` / `Dockerfile.worker` / `Dockerfile.frontend` | Backend (API + migrate + flower), worker, and SPA images. |
 | `init-db.sql` | First-boot extensions bootstrap (timescaledb, pgcrypto, pg_trgm). |
-| `init-roles.sh` | First-boot role bootstrap: `neuro_health_app` runtime role + grants (+ optional `POSTGRES_TEST_DB`). |
+| `init-roles.sh` | First-boot role bootstrap: `neuronection_health_app` runtime role + grants (+ optional `POSTGRES_TEST_DB`). |
 | `nginx.conf` | HTTP-only reverse proxy (loopback / VPN use). |
 | `nginx-TLS.conf` | TLS-terminating variant (certbot webroot ACME, HSTS, TLSv1.2/1.3). |
 | `fhir-test-server/` | Local HAPI FHIR R4 server for offline FHIR-path testing. |
@@ -97,8 +97,8 @@ deployment.md:
 
 | Item | Value |
 |---|---|
-| Database | `neuro_health` (test: `neuro_health_test`, demo: `neuro_health_demo` in `../demo/`) |
-| Roles | `neuro_health_owner` (owns schema, runs migrations/DDL) + `neuro_health_app` (runtime: CONNECT + DML only — never DDL) |
+| Database | `neuronection_health` (test: `neuronection_health_test`, demo: `neuronection_health_demo` in `../demo/`) |
+| Roles | `neuronection_health_owner` (owns schema, runs migrations/DDL) + `neuronection_health_app` (runtime: CONNECT + DML only — never DDL) |
 | Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL` (URL wins when set). Health historically uses the unprefixed `POSTGRES_*` names rather than an `HA_DB_*` family — same contract, kept for compatibility. |
 
 **Two-role split — what exactly happens here:** `docker/init-roles.sh`
@@ -106,9 +106,9 @@ runs once, on first boot of an empty data volume, and grants the app role
 DML-only privileges (plus `ALTER DEFAULT PRIVILEGES` so tables the owner
 creates during migrations are covered automatically). The compose stacks
 then wire **two URLs**: the shared `x-backend-env` anchor connects
-backend/worker/beat as `neuro_health_app` (least privilege), while the
+backend/worker/beat as `neuronection_health_app` (least privilege), while the
 one-shot `migrate` service overrides `DATABASE_URL` to run
-`alembic upgrade head` as `neuro_health_owner` — the compose-level
+`alembic upgrade head` as `neuronection_health_owner` — the compose-level
 equivalent of career/study's `SA_MIGRATIONS_DATABASE_URL` entrypoint
 pattern (health runs migrations as a separate gated service instead of an
 image entrypoint). Both roles share the single `POSTGRES_PASSWORD`, so the
@@ -124,15 +124,49 @@ instance:
 
 1. Take a backup: `scripts/backup.sh` (works against the old stack — point
    `HA_COMPOSE_FILE` at the previous compose file if it moved).
-2. Update `.env`: `POSTGRES_DB=neuro_health` (drop any `POSTGRES_USER`
+2. Update `.env`: `POSTGRES_DB=neuronection_health` (drop any `POSTGRES_USER`
    override so the new owner role is used).
 3. Recreate the volume: `docker compose --env-file .env -f docker/docker-compose.standalone.yml down -v`
    (dev: `./scripts/reset-dev-db.sh`, which also wants
-   `POSTGRES_USER=neuro_health_owner` in the root `.env`).
+   `POSTGRES_USER=neuronection_health_owner` in the root `.env`).
 4. Bring the stack back up and restore: `scripts/restore.sh
    backups/health-assistant-<stamp>.tar.gz --yes`. The restore re-applies
    the runtime-role grants, so an `admin`-era dump comes back owned by
-   `neuro_health_owner` with `neuro_health_app` DML intact.
+   `neuronection_health_owner` with `neuronection_health_app` DML intact.
+
+### Renaming `neuro_*` → `neuronection_*` (ADR-0022 amendment, 2026-09-30)
+
+The family datastore prefix was spelled out (ADR-0022 revision history):
+databases `neuronection_health` (+ `neuronection_health_test` /
+`neuronection_health_demo`), roles `neuronection_health_owner` /
+`neuronection_health_app`. **Existing installations migrate automatically**
+(guarded, one-time, no-op when the names already match):
+
+- `scripts/install.sh` / `scripts/update-docker.sh` run
+  `migrate_legacy_db_names()` before the stack boots: start postgres,
+  rename a `neuro_health` (or pre-ADR `health_assistant`) database and the
+  `neuro_health_*` roles.
+- The prod/test and demo deploy workflows do the same mid-deploy.
+- PostgreSQL refuses to rename the session's own user, so the owner role is
+  renamed through a throwaway `ha_db_migrator` superuser (dropped in the
+  same step) — you'll see it in the log.
+- **Dev databases** are disposable: `./scripts/reset-dev-db.sh` recreates
+  `neuronection_health` + `neuronection_health_test` fresh.
+- An `admin`-era volume (pre role-split) has no `neuro_health_*` roles to
+  rename — use the "Migrating an existing checkout" steps above.
+
+Manual equivalent:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d postgres
+C="docker compose --env-file .env -f docker/docker-compose.standalone.yml exec -T postgres psql -d postgres -v ON_ERROR_STOP=1"
+$C -U neuro_health_owner -c 'ALTER DATABASE neuro_health RENAME TO neuronection_health;'
+$C -U neuro_health_owner -c 'ALTER DATABASE neuro_health_test RENAME TO neuronection_health_test;'   # if present
+$C -U neuro_health_owner -c 'ALTER ROLE neuro_health_app RENAME TO neuronection_health_app;'
+$C -U neuro_health_owner -c 'CREATE ROLE ha_db_migrator LOGIN SUPERUSER;'
+$C -U ha_db_migrator -c 'ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;'
+$C -U neuronection_health_owner -c 'DROP ROLE ha_db_migrator;'
+```
 
 ### Upgrading from pg14
 
@@ -155,13 +189,13 @@ docker compose --env-file .env -f docker/docker-compose.dev-db.yml up -d
 - Ports come from the root `.env` (`POSTGRES_PORT` / `REDIS_PORT`; this
   machine's family slot is 5435/6382 — see `dev/guidelines/dev-ports.md`).
   Both bind **loopback only** (audit 2026-08 CFG-M2).
-- The init scripts create the `neuro_health` database, the family roles,
-  and the companion `neuro_health_test` database (pytest refuses any DB
+- The init scripts create the `neuronection_health` database, the family roles,
+  and the companion `neuronection_health_test` database (pytest refuses any DB
   not ending in `_test`; per-xdist-worker DBs follow
-  `neuro_health_test_gwN`).
+  `neuronection_health_test_gwN`).
 - Host-based dev connects as the owner role: set
-  `POSTGRES_USER=neuro_health_owner` in the root `.env` (the runtime app
-  role `neuro_health_app` exists for the containerized flavors and for
+  `POSTGRES_USER=neuronection_health_owner` in the root `.env` (the runtime app
+  role `neuronection_health_app` exists for the containerized flavors and for
   DML-only tooling).
 - Existing volume from the `admin`/`health_assistant` era? Run
   `./scripts/reset-dev-db.sh` after updating `.env` — the old volume keeps
@@ -172,9 +206,9 @@ docker compose --env-file .env -f docker/docker-compose.dev-db.yml up -d
 
   ```bash
   docker compose --env-file .env -f docker/docker-compose.dev-db.yml exec -T postgres-dev1 \
-    psql -U neuro_health_owner -d neuro_health <<'SQL'
-  SELECT 'CREATE DATABASE neuro_health_test OWNER neuro_health_owner'
-  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'neuro_health_test')\gexec
+    psql -U neuronection_health_owner -d neuronection_health <<'SQL'
+  SELECT 'CREATE DATABASE neuronection_health_test OWNER neuronection_health_owner'
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'neuronection_health_test')\gexec
   SQL
   ```
 
@@ -241,7 +275,7 @@ deployments:
 
 **Backup is a service, not a ritual** (deployment.md): the `backup`
 sidecar (standalone + prod, `--profile backup`) writes timestamped
-`db-*.dump` (`pg_dump -Fc` as `neuro_health_owner`) + `uploads-*.tar.gz`
+`db-*.dump` (`pg_dump -Fc` as `neuronection_health_owner`) + `uploads-*.tar.gz`
 archives into `docker/backups/` every `BACKUP_INTERVAL_HOURS`, keeping
 `BACKUP_KEEP` of each. Host-side one-shots (used by the drill and for
 off-machine copies) are `scripts/backup.sh` →
@@ -257,7 +291,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml run --rm 
   python scripts/create_system_admin.py \
   --email drill@healthassistant.local --password 'correct-horse-battery'
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec -T postgres \
-  psql -U neuro_health_owner -d neuro_health -c 'SELECT count(*) FROM users;'
+  psql -U neuronection_health_owner -d neuronection_health -c 'SELECT count(*) FROM users;'
 
 # 2. Back up.
 scripts/backup.sh                       # → backups/health-assistant-<stamp>.tar.gz
@@ -279,15 +313,15 @@ curl -s -X POST http://localhost/api/v1/auth/login \
   -d 'username=drill@healthassistant.local&password=correct-horse-battery'   # → 200 + access_token
 ```
 
-`scripts/restore.sh` prints exactly what it destroys (the `neuro_health`
+`scripts/restore.sh` prints exactly what it destroys (the `neuronection_health`
 database + the `uploads` volume) and refuses to run without `--yes` (or
 `FORCE=1`). It uses `pg_restore --clean --if-exists --no-owner` and then
-re-applies the `neuro_health_app` runtime grants, so restoring over a
+re-applies the `neuronection_health_app` runtime grants, so restoring over a
 running instance works, and so pre-split (`admin`-era) dumps come back
 usable. Point `HA_COMPOSE_FILE` / `HA_COMPOSE_PROJECT` at another flavor
 (prod, or a differently-named project) when needed. The demo stack
 (`../demo/`) is disposable — no backup service; the scripts work against
-any running stack (`POSTGRES_DB=neuro_health_demo` there).
+any running stack (`POSTGRES_DB=neuronection_health_demo` there).
 
 **Sizing the backup window:** `pg_dump -Fc` of a small-institute database
 (single-digit GB with documents in the uploads volume rather than the DB)
@@ -322,7 +356,7 @@ Exposure rules (already wired, keep them when editing):
   the standalone nginx routes `/flower/` to it. Flower shows task payloads
   and arguments — treat it as staff-only surface; on internet-facing
   deployments consider dropping the `/flower/` location entirely.
-- The demo stack (`../demo/`) runs `neuro_health_demo` on an internal,
+- The demo stack (`../demo/`) runs `neuronection_health_demo` on an internal,
   zero-egress network — never restore demo data into a production
   instance and vice versa.
 
@@ -334,9 +368,9 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml logs -f b
 docker compose --env-file .env -f docker/docker-compose.standalone.yml logs -f worker
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend bash  # app shell
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec -T postgres \
-    psql -U neuro_health_owner -d neuro_health                            # DB shell
+    psql -U neuronection_health_owner -d neuronection_health                            # DB shell
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec -T postgres \
-    pg_isready -U neuro_health_owner -d neuro_health                      # DB health
+    pg_isready -U neuronection_health_owner -d neuronection_health                      # DB health
 docker compose --env-file .env -f docker/docker-compose.standalone.yml run --rm migrate   # manual migration (owner role)
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d --profile backup   # enable scheduled backups
 docker compose --env-file .env -f docker/docker-compose.dev-db.yml up -d                  # dev infra only

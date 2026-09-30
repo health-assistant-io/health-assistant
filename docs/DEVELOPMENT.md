@@ -43,7 +43,7 @@ This guide covers local development for Health Assistant — a self-hosted, open
    `admin@healthassistant.local` / `devadmin12345` (SYSTEM_ADMIN) so you
    can skip login — the password satisfies the family min-10 policy
    (identity-auth §7; the old `admin123` no longer validates).
-   The dev DB connects as `POSTGRES_USER=neuro_health_owner` (H6 role
+   The dev DB connects as `POSTGRES_USER=neuronection_health_owner` (H6 role
    rename) — if an older checkout's `.env` still says `admin`, update it.
 
    **Testing the first-run setup wizard:** pass `--no-admin` and start

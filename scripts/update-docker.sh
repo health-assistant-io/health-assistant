@@ -70,6 +70,10 @@ $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull
 # can't match a leftover postgres_data volume from a previous install.
 check_leftover_db_volume "$ENV_WAS_FRESH"
 
+# One-time ADR-0022 DB/role rename (neuro_* → neuronection_*), before the
+# stack boots against the new names. No-op on fresh installs.
+migrate_legacy_db_names
+
 echo -e "${GREEN}Restarting the stack...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d
 

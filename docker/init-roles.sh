@@ -4,8 +4,8 @@
 # extensions are handled by init-db.sql which sorts first).
 #
 # Creates the family roles from deployment.md / ADR-0022:
-#   neuro_health_owner — POSTGRES_USER: owns the schema and runs migrations (DDL).
-#   neuro_health_app   — runtime role: CONNECT + DML only, never DDL.
+#   neuronection_health_owner — POSTGRES_USER: owns the schema and runs migrations (DDL).
+#   neuronection_health_app   — runtime role: CONNECT + DML only, never DDL.
 #
 # Both roles share one password (POSTGRES_PASSWORD) so the env surface stays
 # at POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD (+ DATABASE_URL); the
@@ -14,13 +14,13 @@
 # to run alembic), while the runtime role can never alter the schema.
 #
 # Optionally creates the companion test database (POSTGRES_TEST_DB) next to
-# the main DB — the dev-db flavor sets it to neuro_health_test (backend
+# the main DB — the dev-db flavor sets it to neuronection_health_test (backend
 # tests refuse any database whose name does not end in _test).
 set -e
 
-DB="${POSTGRES_DB:-neuro_health}"
-OWNER="${POSTGRES_USER:-neuro_health_owner}"
-APP_USER="${POSTGRES_APP_USER:-neuro_health_app}"
+DB="${POSTGRES_DB:-neuronection_health}"
+OWNER="${POSTGRES_USER:-neuronection_health_owner}"
+APP_USER="${POSTGRES_APP_USER:-neuronection_health_app}"
 APP_PASSWORD="${POSTGRES_PASSWORD:-}"
 TEST_DB="${POSTGRES_TEST_DB:-}"
 

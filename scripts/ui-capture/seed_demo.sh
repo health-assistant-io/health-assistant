@@ -25,7 +25,7 @@ echo "→ Seeding demo data (using $PY_BIN)…"
 
 # Explicit demo-database override (family demo-tour standard): points the
 # seeder at a *_demo database outside the backend/.env default — used when
-# the capture targets a dedicated demo instance (e.g. a neuro_health_demo
+# the capture targets a dedicated demo instance (e.g. a neuronection_health_demo
 # database on the dev PostgreSQL container). The §13 guards still apply.
 if [[ -n "${HA_DEMO_DATABASE_URL:-}" ]]; then
   INIT_FLAG=""

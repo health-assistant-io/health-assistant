@@ -28,13 +28,13 @@ services:
     container_name: health-assistant-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+      POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       # The bootstrap superuser IS the migration owner role (deployment.md:
-      # neuro_health_owner runs migrations). init-roles.sh creates the
-      # least-privilege neuro_health_app runtime role on first boot.
-      POSTGRES_USER: neuro_health_owner
+      # neuronection_health_owner runs migrations). init-roles.sh creates the
+      # least-privilege neuronection_health_app runtime role on first boot.
+      POSTGRES_USER: neuronection_health_owner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_APP_USER: neuro_health_app
+      POSTGRES_APP_USER: neuronection_health_app
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -43,7 +43,7 @@ services:
       # Loopback-only (audit 2026-08 CFG-M2): dev DB with a well-known password.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U neuro_health_owner -d ${POSTGRES_DB:-neuro_health}"]
+      test: ["CMD-SHELL", "pg_isready -U neuronection_health_owner -d ${POSTGRES_DB:-neuronection_health}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,7 +72,7 @@ services:
 
   # Migrations (one-shot) — mirrors the prod/standalone `migrate` service:
   # runs `alembic upgrade head` as the owner role (DDL) and exits; the app
-  # services below connect as the least-privilege neuro_health_app role.
+  # services below connect as the least-privilege neuronection_health_app role.
   migrate:
     build:
       context: ..
@@ -83,10 +83,10 @@ services:
       - APP_ENV=${APP_ENV:-development}
       - DEBUG=${DEBUG:-false}
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=${POSTGRES_DB:-neuro_health}
-      - POSTGRES_USER=neuro_health_owner
+      - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
+      - POSTGRES_USER=neuronection_health_owner
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuro_health_owner:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuro_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       - REDIS_URL=redis://redis:6379
       # Key family (identity-auth §8, plan 16 H4): unset in dev ⇒ the app
       # generates per-process ephemeral keys (logins die on restart — pin
@@ -107,7 +107,7 @@ services:
   # Backend API
   #
   # Does NOT run migrations (handled by the `migrate` service above).
-  # Connects as the DML-only neuro_health_app role.
+  # Connects as the DML-only neuronection_health_app role.
   backend:
     build:
       context: ..
@@ -119,10 +119,10 @@ services:
       - APP_ENV=${APP_ENV:-development}
       - DEBUG=${DEBUG:-false}
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=${POSTGRES_DB:-neuro_health}
-      - POSTGRES_USER=neuro_health_app
+      - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
+      - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuro_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuro_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
@@ -214,10 +214,10 @@ services:
     init: true
     environment:
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=${POSTGRES_DB:-neuro_health}
-      - POSTGRES_USER=neuro_health_app
+      - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
+      - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuro_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuro_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
@@ -271,10 +271,10 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - POSTGRES_HOST=postgres
-      - POSTGRES_DB=${POSTGRES_DB:-neuro_health}
-      - POSTGRES_USER=neuro_health_app
+      - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
+      - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuro_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuro_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       - PYTHONPATH=/app/backend:/app
     depends_on:
       redis:

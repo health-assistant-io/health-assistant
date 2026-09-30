@@ -99,6 +99,65 @@ adopt_legacy_volumes() {
     done
 }
 
+# One-time database/role rename for the ADR-0022 amendment (2026-09-30):
+# legacy `neuro_health*` (and the pre-ADR `health_assistant`) names →
+# `neuronection_health*`. Existing volumes ignore POSTGRES_DB after first
+# boot, so postgres is started first and the rename runs inside it.
+# PostgreSQL refuses to rename the session's own user, so the owner role
+# is renamed through a throwaway superuser. No-op on fresh installs
+# (the legacy names simply don't exist); a connected bootstrap role is
+# required, else we fail loud with the manual recipe (docker/README.md →
+# "Compose project name & volumes").
+migrate_legacy_db_names() {
+    local NEW_DB="neuronection_health" ROLE OLD_DB OLD_EXISTS NEW_EXISTS CONNECTED=""
+    local PSQL
+    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d postgres >/dev/null \
+        || die "Could not start postgres to check legacy database names."
+    for _ in $(seq 1 30); do
+        for ROLE in neuronection_health_owner neuro_health_owner admin; do
+            if $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+                    psql -U "$ROLE" -d postgres -tAc "select 1" >/dev/null 2>&1; then
+                CONNECTED="$ROLE"
+                break 2
+            fi
+        done
+        sleep 2
+    done
+    [ -z "$CONNECTED" ] && die "Cannot connect to postgres to check legacy database names — see docker/README.md → \"Compose project name & volumes\"."
+    PSQL="$DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
+
+    for OLD_DB in neuro_health health_assistant; do
+        [ "$OLD_DB" = "$NEW_DB" ] && continue
+        OLD_EXISTS="$($PSQL -tAc "select 1 from pg_database where datname='$OLD_DB'")"
+        [ "$OLD_EXISTS" = "1" ] || continue
+        NEW_EXISTS="$($PSQL -tAc "select 1 from pg_database where datname='$NEW_DB'")"
+        [ "$NEW_EXISTS" = "1" ] && die "Both ${OLD_DB} and ${NEW_DB} exist — resolve manually (dump the old one, restore into ${NEW_DB}) before re-running."
+        $PSQL -c "ALTER DATABASE \"${OLD_DB}\" RENAME TO \"${NEW_DB}\";" >/dev/null
+        echo -e "${GREEN}Renamed database ${OLD_DB} → ${NEW_DB}${NC}"
+    done
+
+    if [ "$($PSQL -tAc "select 1 from pg_roles where rolname='neuro_health_app'")" = "1" ] \
+        && [ "$($PSQL -tAc "select 1 from pg_roles where rolname='neuronection_health_app'")" != "1" ]; then
+        $PSQL -c "ALTER ROLE neuro_health_app RENAME TO neuronection_health_app;" >/dev/null
+        echo -e "${GREEN}Renamed role neuro_health_app → neuronection_health_app${NC}"
+    fi
+
+    if [ "$($PSQL -tAc "select 1 from pg_roles where rolname='neuro_health_owner'")" = "1" ]; then
+        [ "$($PSQL -tAc "select 1 from pg_roles where rolname='neuronection_health_owner'")" = "1" ] \
+            && die "Both neuro_health_owner and neuronection_health_owner exist — resolve manually before re-running."
+        $PSQL -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null
+        $PSQL -c "CREATE ROLE ha_db_migrator LOGIN SUPERUSER;" >/dev/null
+        $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+            psql -U ha_db_migrator -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;" >/dev/null
+        $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+            psql -U neuronection_health_owner -d postgres -v ON_ERROR_STOP=1 \
+            -c "DROP ROLE ha_db_migrator;" >/dev/null
+        echo -e "${GREEN}Renamed role neuro_health_owner → neuronection_health_owner${NC}"
+    fi
+    $PSQL -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null 2>&1 || true
+}
+
 # Leftover-volume guard — call after freshly (re)generating .env.
 #
 # On a fresh clone, a leftover Postgres volume from a *previous* install on
@@ -106,7 +165,7 @@ adopt_legacy_volumes() {
 # container only applies POSTGRES_PASSWORD when the data dir is empty — once a
 # volume is initialized it keeps the OLD password, so the freshly generated
 # .env's new password makes `alembic upgrade head` (and the backend) fail with
-# "password authentication failed for user neuro_health_owner".
+# "password authentication failed for user neuronection_health_owner".
 #
 # Usage: check_leftover_db_volume "$ENV_WAS_FRESH"
 #   ENV_WAS_FRESH=1 → this install just minted new credentials; if the compose
@@ -122,7 +181,7 @@ check_leftover_db_volume() {
         echo -e "${YELLOW}Leftover database volume detected: ${PG_VOL}${NC}"
         echo -e "${YELLOW}It was initialized by a previous install with a DIFFERENT password than the"
         echo -e "${YELLOW}.env just generated. Starting now would fail with \"password authentication"
-        echo -e "${YELLOW}failed for user neuro_health_owner\" in the migrate step.${NC}"
+        echo -e "${YELLOW}failed for user neuronection_health_owner\" in the migrate step.${NC}"
         read -r -p "$(echo -e 'Reset this volume for a clean fresh install? (destructive) [y/N]: ')" RESET
         if [[ "$RESET" =~ ^[Yy] ]]; then
             if ! docker volume rm "$PG_VOL" >/dev/null 2>&1; then

@@ -113,6 +113,10 @@ if [ -z "$NO_PULL" ]; then
     $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull
 fi
 
+# One-time ADR-0022 DB/role rename (neuro_* → neuronection_*), before the
+# stack boots against the new names. No-op on fresh installs.
+migrate_legacy_db_names
+
 echo -e "${GREEN}Starting the standalone stack...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d
 

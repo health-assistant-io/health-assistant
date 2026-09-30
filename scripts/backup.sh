@@ -5,7 +5,7 @@
 # Reads the root .env (or environment) for POSTGRES_* settings. Output:
 #   <output-dir>/health-assistant-YYYYMMDD-HHMMSS.tar.gz
 #     manifest.json   — what this archive contains
-#     database.dump   — pg_dump custom format (neuro_health)
+#     database.dump   — pg_dump custom format (neuronection_health)
 #     uploads.tar.gz  — the `uploads` volume (UPLOAD_DIR=/app/uploads)
 set -euo pipefail
 
@@ -32,8 +32,8 @@ if [[ -f "$ROOT/.env" ]]; then
   done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ROOT/.env")
 fi
 
-DB_NAME="${POSTGRES_DB:-neuro_health}"
-DB_OWNER="neuro_health_owner"
+DB_NAME="${POSTGRES_DB:-neuronection_health}"
+DB_OWNER="neuronection_health_owner"
 DB_PASSWORD="${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (env or root .env)}"
 COMPOSE_FILE="${HA_COMPOSE_FILE:-docker/docker-compose.standalone.yml}"
 [[ "$COMPOSE_FILE" = /* ]] || COMPOSE_FILE="$ROOT/$COMPOSE_FILE"

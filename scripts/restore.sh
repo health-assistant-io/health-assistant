@@ -48,8 +48,8 @@ if [[ -f "$ROOT/.env" ]]; then
   done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ROOT/.env")
 fi
 
-DB_NAME="${POSTGRES_DB:-neuro_health}"
-DB_OWNER="neuro_health_owner"
+DB_NAME="${POSTGRES_DB:-neuronection_health}"
+DB_OWNER="neuronection_health_owner"
 DB_PASSWORD="${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (env or root .env)}"
 COMPOSE_FILE="${HA_COMPOSE_FILE:-docker/docker-compose.standalone.yml}"
 [[ "$COMPOSE_FILE" = /* ]] || COMPOSE_FILE="$ROOT/$COMPOSE_FILE"
@@ -82,19 +82,19 @@ echo "==> Restoring database '$DB_NAME' (drops existing rows)"
   -d "$DB_NAME" --clean --if-exists --no-owner < "$WORK/database.dump"
 
 # Re-apply the runtime-role grants. --no-owner makes every restored object
-# belong to neuro_health_owner, and dumps taken before the two-role split
-# (single `admin` user) carry no grants for neuro_health_app — without this
+# belong to neuronection_health_owner, and dumps taken before the two-role split
+# (single `admin` user) carry no grants for neuronection_health_app — without this
 # step the backend would lose DML on the restored tables.
-echo "==> Re-applying runtime-role grants for neuro_health_app"
+echo "==> Re-applying runtime-role grants for neuronection_health_app"
 "${COMPOSE[@]}" exec -T postgres \
   env PGPASSWORD="$DB_PASSWORD" psql -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 <<'SQL'
-GRANT USAGE ON SCHEMA public TO neuro_health_app;
+GRANT USAGE ON SCHEMA public TO neuronection_health_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO neuro_health_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO neuronection_health_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO neuro_health_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO neuro_health_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO neuro_health_app;
+  GRANT USAGE, SELECT ON SEQUENCES TO neuronection_health_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO neuronection_health_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO neuronection_health_app;
 SQL
 
 echo "==> Restoring uploads volume"

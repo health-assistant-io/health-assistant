@@ -79,9 +79,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    # deployment.md / ADR-0022 naming: neuro_<product>. Demo/test flavors use
-    # neuro_health_demo / neuro_health_test[_gwN] via env.
-    POSTGRES_DB: str = "neuro_health"
+    # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
+    # neuronection_health_demo / neuronection_health_test[_gwN] via env.
+    POSTGRES_DB: str = "neuronection_health"
     DATABASE_URL: Optional[str] = None
 
     @model_validator(mode="after")

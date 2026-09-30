@@ -11,13 +11,13 @@ jobs:
       postgres:
         image: timescale/timescaledb:latest-pg14
         env:
-          POSTGRES_DB: health_assistant_test
-          POSTGRES_USER: admin
+          POSTGRES_DB: neuronection_health_test
+          POSTGRES_USER: neuronection_health_owner
           POSTGRES_PASSWORD: password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U admin -d health_assistant_test"
+          --health-cmd "pg_isready -U neuronection_health_owner -d neuronection_health_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -50,11 +50,11 @@ jobs:
         env:
           # Configure via parts (not DATABASE_URL) so config.py assembles the
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
-          POSTGRES_USER: admin
+          POSTGRES_USER: neuronection_health_owner
           POSTGRES_PASSWORD: password
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: health_assistant_test
+          POSTGRES_DB: neuronection_health_test
           REDIS_URL: redis://localhost:6379
         run: |
           cd backend
@@ -64,11 +64,11 @@ jobs:
           pytest
       - name: Contract drift gate (identity-auth §18)
         env:
-          POSTGRES_USER: admin
+          POSTGRES_USER: neuronection_health_owner
           POSTGRES_PASSWORD: password
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: health_assistant_test
+          POSTGRES_DB: neuronection_health_test
           REDIS_URL: redis://localhost:6379
         run: |
           cd backend

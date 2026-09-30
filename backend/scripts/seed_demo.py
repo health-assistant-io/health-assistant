@@ -26,7 +26,7 @@ demo target, loudly and non-zero (exit 2), **before any demo data is
 written**:
 
 * target guard: the database must be PostgreSQL and literally named
-  ``*_demo`` (deployment.md: ``neuro_health_demo``). Anything else —
+  ``*_demo`` (deployment.md: ``neuronection_health_demo``). Anything else —
   including a dev/production database — is refused before it is touched.
 * instance guard: ``instance_settings.demo_mode`` must be ``true``.
   ``--init-demo`` may initialize it — but only on an EMPTY demo database
@@ -37,7 +37,7 @@ written**:
 Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
 
     # The demo stack's database (docker-compose.demo.yml runs this):
-    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuro_health_demo \\
+    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\
         python scripts/seed_demo.py
 
     # First run against a fresh, migrated, still-empty *_demo database:
@@ -153,7 +153,7 @@ def ensure_demo_target(url: str) -> str:
     if not name.endswith("_demo"):
         raise Refusal(
             f"target database {name!r} is not a demo database — expected a "
-            "name ending '_demo' (deployment.md: neuro_health_demo); "
+            "name ending '_demo' (deployment.md: neuronection_health_demo); "
             "refusing to seed (identity-auth §13)."
         )
     return url
@@ -1020,7 +1020,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Target database URL (else DATABASE_URL / POSTGRES_* env). "
             "Must be PostgreSQL named *_demo (deployment.md: "
-            "neuro_health_demo)."
+            "neuronection_health_demo)."
         ),
     )
     parser.add_argument(

@@ -4,14 +4,14 @@
 #   docker compose -f docker/docker-compose.dev-db.yml up -d
 #
 # Host ports are read from the root .env via POSTGRES_PORT and REDIS_PORT.
-# The init scripts create the app DB (`neuro_health` — deployment.md /
-# ADR-0022 naming), the family roles (`neuro_health_owner` runs migrations,
-# `neuro_health_app` is the DML-only runtime role) and the companion test
-# database `neuro_health_test` (pytest refuses any DB not ending in `_test`).
+# The init scripts create the app DB (`neuronection_health` — deployment.md /
+# ADR-0022 naming), the family roles (`neuronection_health_owner` runs migrations,
+# `neuronection_health_app` is the DML-only runtime role) and the companion test
+# database `neuronection_health_test` (pytest refuses any DB not ending in `_test`).
 #
 # NOTE for existing checkouts: the bootstrap user changed from `admin` to
-# `neuro_health_owner`. Update the root `.env`
-# (`POSTGRES_DB=neuro_health`, `POSTGRES_USER=neuro_health_owner`) and run
+# `neuronection_health_owner`. Update the root `.env`
+# (`POSTGRES_DB=neuronection_health`, `POSTGRES_USER=neuronection_health_owner`) and run
 # `./scripts/reset-dev-db.sh` to recreate the volume — see docker/README.md
 # → "Databases & roles".
 #
@@ -29,14 +29,14 @@ services:
     container_name: health-assistant-postgres-dev1
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-neuro_health}
+      POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       # The bootstrap superuser IS the migration owner role (deployment.md).
       # Hardcoded on purpose: a stale POSTGRES_USER=admin in an old .env must
       # not resurrect the single-admin-role layout on fresh volumes.
-      POSTGRES_USER: neuro_health_owner
+      POSTGRES_USER: neuronection_health_owner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
-      POSTGRES_APP_USER: neuro_health_app
-      POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-neuro_health_test}
+      POSTGRES_APP_USER: neuronection_health_app
+      POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-neuronection_health_test}
     volumes:
       - postgres_data-dev1:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -46,7 +46,7 @@ services:
       # password must not listen on every interface.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U neuro_health_owner -d ${POSTGRES_DB:-neuro_health}"]
+      test: ["CMD-SHELL", "pg_isready -U neuronection_health_owner -d ${POSTGRES_DB:-neuronection_health}"]
       interval: 10s
       timeout: 5s
       retries: 5

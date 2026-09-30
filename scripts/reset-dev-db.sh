@@ -9,7 +9,7 @@
 #
 # This is DESTRUCTIVE — every row in the dev DB is lost. The init scripts
 # (docker/init-db.sql + init-roles.sh) recreate the app DB, the family roles
-# and the `neuro_health_test` DB on first start of the new volume.
+# and the `neuronection_health_test` DB on first start of the new volume.
 #
 # Usage:
 #   ./scripts/reset-dev-db.sh                  # prompt to confirm, wipe both, restart
@@ -219,8 +219,8 @@ fi
 # Read back the actual ports from .env so the hint is accurate.
 PG_PORT="$(grep -E '^POSTGRES_PORT=' .env | cut -d= -f2 || true)"; PG_PORT="${PG_PORT:-5432}"
 RD_PORT="$(grep -E '^REDIS_PORT='    .env | cut -d= -f2 || true)"; RD_PORT="${RD_PORT:-6379}"
-PG_DB="$(grep -E '^POSTGRES_DB='     .env | cut -d= -f2 || true)"; PG_DB="${PG_DB:-neuro_health}"
-PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2 || true)"; PG_USER="${PG_USER:-neuro_health_owner}"
+PG_DB="$(grep -E '^POSTGRES_DB='     .env | cut -d= -f2 || true)"; PG_DB="${PG_DB:-neuronection_health}"
+PG_USER="$(grep -E '^POSTGRES_USER=' .env | cut -d= -f2 || true)"; PG_USER="${PG_USER:-neuronection_health_owner}"
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

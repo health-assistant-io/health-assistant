@@ -22,6 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 
 ### Changed
+- **Family datastore naming amended (ADR-0022 revision): `neuro_` →
+  `neuronection_` prefix.** The truncated prefix read as meaningless to
+  users; the pattern shape is unchanged — health's database is now
+  `neuronection_health` (+ `neuronection_health_test` /
+  `neuronection_health_demo`) with roles `neuronection_health_owner` /
+  `neuronection_health_app`. Family law (ADR-0022 clause 5 +
+  `guidelines/deployment.md` in the family repo) was amended first; health
+  adopts it here — compose defaults, `init-roles.sh`, backup/restore and
+  reset scripts, CI test databases (also dragged out of the ancient
+  `health_assistant_test`/`admin` era, as were `.env.example` and the
+  deploy workflow's prod `.env` defaults), `config.py`, seeder messages,
+  SECURITY/docs. **Existing installs migrate automatically**:
+  `install.sh`/`update-docker.sh` gain `migrate_legacy_db_names()` —
+  guarded one-time `ALTER DATABASE`/`ALTER ROLE` (PostgreSQL can't rename
+  the session's own user, so the owner role goes through a throwaway
+  superuser) — and both deploy workflows do the same mid-deploy; fresh or
+  already-renamed stacks no-op. Demo databases re-seed; dev DBs reset via
+  `./scripts/reset-dev-db.sh` (recipes in `docker/README.md` → "Renaming
+  `neuro_*` → `neuronection_*`"). Study and career follow in their own
+  repos (career's `POSTGRES_DB=career` drift folds in there).
 - **Compose stacks pin an explicit project name (`name:`) — deterministic
   volume/network prefixes:** every compose file now declares its Compose
   project — `health-assistant` (dev, standalone), `health-assistant-dev`

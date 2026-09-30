@@ -84,8 +84,8 @@ jobs:
             --name ha-test-postgres \
             --network "$JOB_NET" \
             --network-alias postgres \
-            -e POSTGRES_DB=health_assistant_test \
-            -e POSTGRES_USER=admin \
+            -e POSTGRES_DB=neuronection_health_test \
+            -e POSTGRES_USER=neuronection_health_owner \
             -e POSTGRES_PASSWORD=password \
             timescale/timescaledb:latest-pg14
 
@@ -97,7 +97,7 @@ jobs:
 
           echo "Waiting for postgres to accept connections…"
           for i in $(seq 1 30); do
-            if docker exec ha-test-postgres pg_isready -U admin -d health_assistant_test >/dev/null 2>&1; then
+            if docker exec ha-test-postgres pg_isready -U neuronection_health_owner -d neuronection_health_test >/dev/null 2>&1; then
               echo "postgres is ready"
               break
             fi
@@ -115,11 +115,11 @@ jobs:
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
           # postgres + redis are reached by their --network-alias names set
           # above (resolvable on the job's Docker network).
-          POSTGRES_USER: admin
+          POSTGRES_USER: neuronection_health_owner
           POSTGRES_PASSWORD: password
           POSTGRES_HOST: postgres
           POSTGRES_PORT: 5432
-          POSTGRES_DB: health_assistant_test
+          POSTGRES_DB: neuronection_health_test
           REDIS_URL: redis://redis:6379
         run: |
           cd backend
@@ -311,8 +311,8 @@ jobs:
             TRUSTED_PROXY_COUNT=${{ secrets.TRUSTED_PROXY_COUNT || '1' }}
             
             # PostgreSQL Secrets
-            POSTGRES_DB=${{ secrets.POSTGRES_DB || 'health_assistant' }}
-            POSTGRES_USER=${{ secrets.POSTGRES_USER || 'admin' }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB || 'neuronection_health' }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER || 'neuronection_health_owner' }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             POSTGRES_PORT=${{ env.POSTGRES_PORT }}
             
@@ -401,6 +401,60 @@ jobs:
                 done
             fi
             docker compose -f docker-compose.prod.yml down --remove-orphans
+            # One-time ADR-0022 DB/role rename (neuro_* → neuronection_*):
+            # existing volumes ignore POSTGRES_DB after first boot, so start
+            # postgres and rename inside it before the stack boots on the new
+            # names. PostgreSQL refuses to rename the session's own user, so
+            # the owner role is renamed through a throwaway superuser. No-op
+            # when the legacy names don't exist (fresh installs).
+            docker compose -f docker-compose.prod.yml up -d postgres
+            CONNECTED=""
+            for i in $(seq 1 30); do
+                for ROLE in neuronection_health_owner neuro_health_owner admin; do
+                    if docker compose -f docker-compose.prod.yml exec -T postgres \
+                            psql -U "$ROLE" -d postgres -tAc "select 1" >/dev/null 2>&1; then
+                        CONNECTED="$ROLE"
+                        break 2
+                    fi
+                done
+                sleep 2
+            done
+            if [ -z "$CONNECTED" ]; then
+                echo "Cannot connect to postgres to rename legacy database names — aborting deploy."
+                exit 1
+            fi
+            PSQLC="docker compose -f docker-compose.prod.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
+            for OLD_DB in neuro_health health_assistant; do
+                if [ "$($PSQLC -tAc "select 1 from pg_database where datname='$OLD_DB'")" = "1" ]; then
+                    if [ "$($PSQLC -tAc "select 1 from pg_database where datname='neuronection_health'")" = "1" ]; then
+                        echo "Both $OLD_DB and neuronection_health exist — resolve manually before re-running."
+                        exit 1
+                    fi
+                    $PSQLC -c "ALTER DATABASE \"$OLD_DB\" RENAME TO \"neuronection_health\";"
+                    echo "Renamed database $OLD_DB -> neuronection_health"
+                fi
+            done
+            if [ "$($PSQLC -tAc "select 1 from pg_roles where rolname='neuro_health_app'")" = "1" ] \
+                && [ "$($PSQLC -tAc "select 1 from pg_roles where rolname='neuronection_health_app'")" != "1" ]; then
+                $PSQLC -c "ALTER ROLE neuro_health_app RENAME TO neuronection_health_app;"
+                echo "Renamed role neuro_health_app -> neuronection_health_app"
+            fi
+            if [ "$($PSQLC -tAc "select 1 from pg_roles where rolname='neuro_health_owner'")" = "1" ]; then
+                if [ "$($PSQLC -tAc "select 1 from pg_roles where rolname='neuronection_health_owner'")" = "1" ]; then
+                    echo "Both neuro_health_owner and neuronection_health_owner exist — resolve manually before re-running."
+                    exit 1
+                fi
+                $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;"
+                $PSQLC -c "CREATE ROLE ha_db_migrator LOGIN SUPERUSER;"
+                docker compose -f docker-compose.prod.yml exec -T postgres \
+                    psql -U ha_db_migrator -d postgres -v ON_ERROR_STOP=1 \
+                    -c "ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;"
+                docker compose -f docker-compose.prod.yml exec -T postgres \
+                    psql -U neuronection_health_owner -d postgres -v ON_ERROR_STOP=1 \
+                    -c "DROP ROLE ha_db_migrator;"
+                echo "Renamed role neuro_health_owner -> neuronection_health_owner"
+            fi
+            $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null 2>&1 || true
             docker compose -f docker-compose.prod.yml up -d
             
             # 3. Wait and verify that containers successfully started

@@ -504,9 +504,9 @@ def test_seeder_target_guard_unit_rules():
     with pytest.raises(Refusal):
         ensure_demo_target("postgresql+asyncpg://u:p@h:5432/health_assistant")
     with pytest.raises(Refusal):
-        ensure_demo_target("postgresql+psycopg://u:p@h:5432/neuro_health")
+        ensure_demo_target("postgresql+psycopg://u:p@h:5432/neuronection_health")
     # The family demo names pass.
-    ensure_demo_target("postgresql+asyncpg://u:p@h:5432/neuro_health_demo")
+    ensure_demo_target("postgresql+asyncpg://u:p@h:5432/neuronection_health_demo")
 
 
 def test_seeder_refuses_non_demo_database_name():

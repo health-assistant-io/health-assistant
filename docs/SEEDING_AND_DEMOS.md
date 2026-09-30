@@ -329,7 +329,7 @@ patients, and clinical data. The seeder itself carries §13 guard rails and
 | instance flag | `instance_settings.demo_mode` is not `true` | unreadable facts (unmigrated schema) refuse too — fail-closed |
 | `--init-demo` | the demo database is not **empty** | the flag may only initialize a fresh, migrated `*_demo` DB |
 
-So the demo dataset only ever lands on `neuro_health_demo`-style targets.
+So the demo dataset only ever lands on `neuronection_health_demo`-style targets.
 A `--reset` flag is deliberately absent: demo resets are volume-level —
 the demo tree's `reset-demo.sh` wipes the DB volume and the stack re-seeds
 on boot.
