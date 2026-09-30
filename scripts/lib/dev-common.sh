@@ -179,6 +179,16 @@ dc_ensure_venv() {
 #   and no stamp trigger applies.
 # ---------------------------------------------------------------------------
 dc_ensure_node_deps() {
+  # Non-interactive by contract: dev supervisors (honcho) run children
+  # without a TTY, so ANY prompt here hangs that proc forever (seen with
+  # pnpm's modules-purge confirm after a dev-link unlink). stdin
+  # </dev/null turns every prompt into a hard EOF error — do NOT add
+  # CI=true to the pnpm call: it flips pnpm-11 install semantics
+  # (enableGlobalVirtualStore et al.) and desyncs the run-check.
+  # pnpm additionally self-heals stale
+  # node_modules state on every startup (a plain install is ~1s when up
+  # to date); the stamp fast-path stays npm-only, where installs are
+  # slower.
   local dir="$1" pm="$2" lock="${3:-}" lockfile stamp
   case "$pm" in
     npm) lockfile="${lock:-package-lock.json}" ;;
@@ -187,26 +197,31 @@ dc_ensure_node_deps() {
   esac
   [[ -f "$dir/$lockfile" ]] || lockfile="$dir/package.json"
   [[ -f "$lockfile" ]] || lockfile=""
-  if [[ ! -d "$dir/node_modules" ]]; then
-    dc_require_cmd "$pm" "See the project README for setup instructions."
-    dc_step "installing frontend dependencies in $dir ($pm)"
-    if [[ "$pm" == "pnpm" ]]; then
-      (cd "$dir" && pnpm install) || dc_die "pnpm install failed in $dir"
+  if [[ "$pm" == "pnpm" ]]; then
+    dc_require_cmd pnpm "See the project README for setup instructions."
+    if [[ -d "$dir/node_modules" ]]; then
+      dc_step "verifying frontend dependencies in $dir (pnpm)"
     else
-      (cd "$dir" && npm install) || dc_die "npm install failed in $dir"
+      dc_step "installing frontend dependencies in $dir (pnpm)"
     fi
+    (cd "$dir" && pnpm install --no-frozen-lockfile </dev/null) \
+      || dc_die "pnpm install failed in $dir (stale node_modules? rm -rf node_modules && pnpm install)"
+    return 0
+  fi
+  if [[ ! -d "$dir/node_modules" ]]; then
+    dc_require_cmd npm "See the project README for setup instructions."
+    dc_step "installing frontend dependencies in $dir (npm)"
+    (cd "$dir" && npm install --no-fund --no-audit </dev/null) \
+      || dc_die "npm install failed in $dir"
     [[ -n "$lockfile" ]] && touch "$dir/node_modules/.dc-deps.stamp"
     return 0
   fi
   stamp="$dir/node_modules/.dc-deps.stamp"
   if [[ -n "$lockfile" && ( ! -f "$stamp" || "$lockfile" -nt "$stamp" ) ]]; then
-    dc_require_cmd "$pm" "See the project README for setup instructions."
+    dc_require_cmd npm "See the project README for setup instructions."
     dc_step "frontend lockfile changed; reinstalling dependencies in $dir"
-    if [[ "$pm" == "pnpm" ]]; then
-      (cd "$dir" && pnpm install) || dc_die "pnpm install failed in $dir"
-    else
-      (cd "$dir" && npm install) || dc_die "npm install failed in $dir"
-    fi
+    (cd "$dir" && npm install --no-fund --no-audit </dev/null) \
+      || dc_die "npm install failed in $dir"
     touch "$stamp"
   fi
 }
