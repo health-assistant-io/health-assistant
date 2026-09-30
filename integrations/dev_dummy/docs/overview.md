@@ -38,5 +38,5 @@ Each opt-in toggle is documented in the config-flow schema, so the in-app setup 
 ## Compatibility
 
 - Requires Health Assistant core with the Integrations SDK (`integrations.sdk`) loaded.
-- Works without `INTEGRATION_SECRET_KEY` configured *unless* you set a `webhook_secret`. With a secret set, the platform endpoint refuses to save the config until the Fernet key is configured (fail-fast — the cipher raises `RuntimeError`).
+- Works without `HA_DATA_KEY` configured *unless* you set a `webhook_secret`. With a secret set, the platform endpoint refuses to save the config until the Fernet key is configured (fail-fast — the cipher raises `RuntimeError`).
 - The `enable_tools` toggle gracefully no-ops when `langchain-core` isn't installed.

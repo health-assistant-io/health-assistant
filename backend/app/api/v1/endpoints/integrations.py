@@ -382,7 +382,7 @@ async def submit_config_flow(
             # No Fernet key configured — the machine routes will 503 rather
             # than accept UUID-only traffic (fail-closed).
             logger.warning(
-                "INTEGRATION_SECRET_KEY unset; cannot provision machine secret "
+                "HA_DATA_KEY unset; cannot provision machine secret "
                 "for %s instance. Webhook/API routes will refuse this instance.",
                 domain,
             )
@@ -1420,7 +1420,7 @@ def _resolve_secret_field(
     except Exception as e:
         logger.warning(
             "Failed to decrypt %s for integration domain=%s: %s "
-            "(key rotation mismatch? set INTEGRATION_SECRET_KEY_PREVIOUS).",
+            "(key rotation mismatch? set HA_DATA_KEY_PREVIOUS).",
             field_name,
             domain,
             e,

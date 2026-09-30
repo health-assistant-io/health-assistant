@@ -1798,9 +1798,9 @@ class ImportService:
         self, payload: List[Dict[str, Any]], tenant_id: UUID, id_remap: Dict[str, str]
     ) -> Tuple[int, List[str]]:
         warnings: List[str] = []
-        if not settings.INTEGRATION_SECRET_KEY:
+        if not settings.HA_DATA_KEY:
             warnings.append(
-                "INTEGRATION_SECRET_KEY not set; imported integration secrets will not decrypt."
+                "HA_DATA_KEY not set; imported integration secrets will not decrypt."
             )
         count = 0
         for item in payload:

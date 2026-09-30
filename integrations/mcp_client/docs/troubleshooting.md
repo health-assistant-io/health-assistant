@@ -4,7 +4,7 @@
 
 The admin must add `X` to `MCP_STDIO_ALLOWED_COMMANDS` (comma-separated) in `.env` and restart the backend.
 
-## "INTEGRATION_SECRET_KEY is not configured"
+## "HA_DATA_KEY is not configured"
 
 Generate a Fernet key and set it in `.env`:
 

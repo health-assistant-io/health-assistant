@@ -6,12 +6,11 @@ use ``integrations.sdk.secrets`` which wraps the same key family inside
 ``user_config`` JSONB blobs.
 
 Identity-auth §8 (plan 16 H4): the cipher key is the per-purpose
-``HA_DATA_KEY`` (env alias ``INTEGRATION_SECRET_KEY``) — it encrypts at
+``HA_DATA_KEY`` — it encrypts at
 rest and **never signs anything**, and no key is derived from any other
 value. Rotation ring (preserved from the pre-H4 integration key):
 ``HA_DATA_KEY`` is the primary and the only key that *encrypts*;
-``HA_DATA_KEY_PREVIOUS`` (env alias
-``INTEGRATION_SECRET_KEY_PREVIOUS``, comma-separated) is tried on
+``HA_DATA_KEY_PREVIOUS`` (comma-separated) is tried on
 *decrypt* only, so ciphertext sealed before a rotation keeps working —
 no stored value becomes undecryptable across a key change.
 
@@ -42,7 +41,7 @@ ENCRYPTED_PREFIX = "enc::"
 MASK_MARKER = "***"
 
 DATA_KEY_HINT = (
-    "HA_DATA_KEY (env alias INTEGRATION_SECRET_KEY) must be 32-byte "
+    "HA_DATA_KEY must be 32-byte "
     "urlsafe-base64 key material — a Fernet key. Generate with: python3 -c "
     '"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
 )

@@ -4,7 +4,7 @@ B1: ``AIProviderModel.api_key`` was stored plaintext and returned in GET/
     list responses. Any authenticated user could read other tenants'
     provider keys by UUID. The fix:
 
-      - Adds ``app.core.encryption`` (Fernet, reuses INTEGRATION_SECRET_KEY)
+      - Adds ``app.core.encryption`` (Fernet, reuses HA_DATA_KEY)
       - Stores values with ``enc::<token>`` prefix
       - ``AIProviderModel.get_api_key_plaintext()`` is the only sanctioned
         plaintext reader (used by the LLM factory)
@@ -43,7 +43,7 @@ def _set_fernet_key(monkeypatch, key=None):
         key = Fernet.generate_key().decode()
     from app.core.config import settings
 
-    monkeypatch.setattr(settings, "INTEGRATION_SECRET_KEY", key)
+    monkeypatch.setattr(settings, "HA_DATA_KEY", key)
     return key
 
 

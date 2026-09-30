@@ -15,7 +15,7 @@ It is the simplest mode for a self-hosted box at home. Configure the bridge with
 
 When the bridge is reachable from the public internet, a URL-bound UUID isn't strong enough (it can't be rotated without recreating the instance, and a captured URL can be replayed). Set an **API Secret** in the bridge config flow:
 
-- The secret is **Fernet-encrypted at rest** (via `INTEGRATION_SECRET_KEY`) and masked as `"***"` on read — it never leaves the server in plaintext.
+- The secret is **Fernet-encrypted at rest** (via `HA_DATA_KEY`) and masked as `"***"` on read — it never leaves the server in plaintext.
 - It must be **at least 16 characters** for adequate HMAC strength.
 - **An `api_secret` is mandatory** — every bridge instance is provisioned with one at creation (shown once in the config-flow response; the platform stores it Fernet-encrypted). All data routes require a valid `X-Api-Signature` + `X-Api-Timestamp` pair. An **unsigned** `GET /status` remains the pre-pairing connectivity probe but returns only `{status, server_time}` (use `server_time` to resync a skewed clock); the full status payload requires a signature.
 - Leave the secret empty/blank to clear it and revert to UUID-only mode.

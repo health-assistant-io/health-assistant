@@ -13,10 +13,8 @@ easy to identify, mask on read, and re-encrypt after a key rotation.
 
 Key rotation (Phase 1.2 of the SDK hardening plan):
 
-* The primary key is ``settings.HA_DATA_KEY`` (env alias
-  ``INTEGRATION_SECRET_KEY`` — always used to *encrypt*).
-* ``settings.HA_DATA_KEY_PREVIOUS`` (env alias
-  ``INTEGRATION_SECRET_KEY_PREVIOUS``, comma-separated) holds prior
+* The primary key is ``settings.HA_DATA_KEY`` (always used to *encrypt*).
+* ``settings.HA_DATA_KEY_PREVIOUS`` (comma-separated) holds prior
   keys accepted for *decryption* only, so ciphertext produced before a
   rotation keeps decrypting.
 * A short ``_kid`` tag records which key produced a value, so a rotation
@@ -25,7 +23,7 @@ Key rotation (Phase 1.2 of the SDK hardening plan):
   the plaintext envelope so an encrypted blob can't be cut-and-pasted between
   rows in a multi-tenant JSONB column.
 
-If ``INTEGRATION_SECRET_KEY`` is unset, :class:`SecretCipher.from_settings`
+If ``HA_DATA_KEY`` is unset, :class:`SecretCipher.from_settings`
 raises ``RuntimeError`` — the platform endpoint turns this into a 400 so the
 user is told to configure the key before saving secrets. Integrations with
 no secret fields are unaffected (the cipher is never constructed).
@@ -86,14 +84,14 @@ class SecretCipher:
     disruptive: the first key in the list is the primary (used to encrypt),
     the rest are accepted for decryption only. Construct via
     :meth:`from_settings` to pick up both the primary and any
-    ``INTEGRATION_SECRET_KEY_PREVIOUS`` keys.
+    ``HA_DATA_KEY_PREVIOUS`` keys.
     """
 
     def __init__(self, key: Union[str, bytes, None], *, previous: Optional[List[Union[str, bytes]]] = None) -> None:
         keys: List[Union[str, bytes]] = []
         if not key:
             raise RuntimeError(
-                "INTEGRATION_SECRET_KEY is not configured. Set it (a Fernet "
+                "HA_DATA_KEY is not configured. Set it (a Fernet "
                 "key, base64 32 bytes) to use integrations that store secrets."
             )
         keys.append(key)
@@ -116,8 +114,8 @@ class SecretCipher:
         from app.core.config import get_settings
 
         settings = get_settings()
-        previous = [k.strip() for k in (settings.INTEGRATION_SECRET_KEY_PREVIOUS or "").split(",") if k.strip()]
-        return cls(settings.INTEGRATION_SECRET_KEY, previous=previous)
+        previous = [k.strip() for k in (settings.HA_DATA_KEY_PREVIOUS or "").split(",") if k.strip()]
+        return cls(settings.HA_DATA_KEY, previous=previous)
 
     def encrypt_value(self, value: Any, *, context: Optional[str] = None) -> Dict[str, str]:
         """Encrypt a single value -> ``{"_encrypted": "<token>", "_kid": "<tag>"}``.
@@ -152,7 +150,7 @@ class SecretCipher:
         except InvalidToken as e:
             raise ValueError(
                 "Encrypted config value could not be decrypted "
-                "(key missing/rotated? set INTEGRATION_SECRET_KEY_PREVIOUS)."
+                "(key missing/rotated? set HA_DATA_KEY_PREVIOUS)."
             ) from e
         value_str, stored_context = self._split_envelope(plaintext)
         if stored_context is not None and context is not None and stored_context != context:

@@ -8,7 +8,7 @@ Usage:
     cd backend && source venv/bin/activate
     PYTHONPATH=. python scripts/encrypt_existing_api_keys.py [--dry-run]
 
-Requires ``INTEGRATION_SECRET_KEY`` to be set in the environment. Generate
+Requires ``HA_DATA_KEY`` to be set in the environment. Generate
 one with::
 
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -54,7 +54,7 @@ async def run(dry_run: bool = False) -> int:
                 # Encryption helper fell back to plaintext (no key configured).
                 print(
                     f"  [SKIP] provider {p.id} ({p.name}): no Fernet key — "
-                    "would store plaintext. Set INTEGRATION_SECRET_KEY first."
+                    "would store plaintext. Set HA_DATA_KEY first."
                 )
                 continue
             print(f"  [ENC]  provider {p.id} ({p.name}): encrypting api_key")

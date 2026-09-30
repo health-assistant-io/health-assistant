@@ -81,7 +81,7 @@ def test_decrypt_legacy_value_without_kid(cipher_key):
 
 def test_rotation_decrypts_old_ciphertext():
     """After rotating the primary key, values encrypted with the OLD key
-    still decrypt (via INTEGRATION_SECRET_KEY_PREVIOUS)."""
+    still decrypt (via HA_DATA_KEY_PREVIOUS)."""
     old_key = Fernet.generate_key().decode()
     new_key = Fernet.generate_key().decode()
     old_cipher = SecretCipher(old_key)
@@ -121,7 +121,7 @@ def test_rotation_without_previous_key_fails():
 
 
 def test_empty_key_raises():
-    with pytest.raises(RuntimeError, match="INTEGRATION_SECRET_KEY is not configured"):
+    with pytest.raises(RuntimeError, match="HA_DATA_KEY is not configured"):
         SecretCipher(None)  # type: ignore[arg-type]
     with pytest.raises(RuntimeError):
         SecretCipher("")

@@ -44,7 +44,7 @@ from integrations.mcp_client.tool_adapter import (
 def _mcp_settings(monkeypatch):
     """Provide deterministic MCP settings + a Fernet key for all tests."""
     key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="  # valid Fernet key
-    monkeypatch.setenv("INTEGRATION_SECRET_KEY", key)
+    monkeypatch.setenv("HA_DATA_KEY", key)
     monkeypatch.setenv("MCP_STDIO_ALLOWED_COMMANDS", "npx,uvx,python,python3,node")
     monkeypatch.setenv("MCP_MAX_SERVERS_PER_USER", "5")
     monkeypatch.setenv("MCP_MAX_TOTAL_STDIO", "20")
@@ -192,7 +192,7 @@ class TestSecretCipher:
 
     def test_missing_key_raises(self, monkeypatch):
         with pytest.raises(
-            RuntimeError, match="INTEGRATION_SECRET_KEY is not configured"
+            RuntimeError, match="HA_DATA_KEY is not configured"
         ):
             SecretCipher(None)
 

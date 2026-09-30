@@ -45,7 +45,7 @@ class DevDummyConfigFlow(BaseConfigFlow):
 
         The platform endpoint:
         * Calls :meth:`prepare_for_storage` before persisting — encrypts
-          the value via ``INTEGRATION_SECRET_KEY``.
+          the value via ``HA_DATA_KEY``.
         * Calls :meth:`prepare_for_read` before returning config to the
           UI — masks the value as ``"***"``.
         The provider calls :meth:`decrypt_for_use` (or

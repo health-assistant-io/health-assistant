@@ -7,7 +7,7 @@ See `docs/` for the full guide. Multi-instance: one `MCP Client` integration per
 ## Quick start
 
 1. Admin: enable the `mcp_client` integration (`/admin/system/integrations`).
-2. Set `INTEGRATION_SECRET_KEY` in `.env` (Fernet key — see [Environment Variables](docs/environment.md) for all settings).
+2. Set `HA_DATA_KEY` in `.env` (Fernet key — see [Environment Variables](docs/environment.md) for all settings).
 3. Pick a transport:
    - **STDIO** — local subprocess, e.g. `command: npx`, `args: ["-y", "@modelcontextprotocol/server-github"]`, `env: { GITHUB_TOKEN: "..." }`.
    - **HTTP / SSE** — remote server, e.g. `url: https://api.example.com/mcp`, `auth_token: "..."`.

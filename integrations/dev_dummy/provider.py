@@ -507,7 +507,7 @@ class DevDummyProvider(BaseHealthProvider):
             return None
         # ``decrypt_for_use`` is the platform-sanctioned decrypt path.
         # Importing lazily keeps the provider importable in tests that
-        # don't configure ``INTEGRATION_SECRET_KEY``.
+        # do not configure ``HA_DATA_KEY``.
         try:
             from integrations.dev_dummy.config_flow import DevDummyConfigFlow
 

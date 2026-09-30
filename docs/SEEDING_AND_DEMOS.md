@@ -298,14 +298,13 @@ Set `HA_DEMO_MODE=true` (on an empty DB) in `.env`:
 
 ```bash
 HA_DEMO_MODE=true
-DEMO_USER_EMAIL=demo@healthassistant.local
-DEMO_USER_PASSWORD=Demo1234!
+HA_DEMO_EMAIL=demo@healthassistant.local
+HA_DEMO_PASSWORD=Demo1234!
 ```
 
-`DEMO_USER_EMAIL` / `DEMO_USER_PASSWORD` also accept the legacy
-`HA_DEMO_EMAIL` / `HA_DEMO_PASSWORD` env names (used by the UI screenshot
-capture tooling in §3). A loud warning is logged on every boot while demo
-mode is on.
+`HA_DEMO_EMAIL` / `HA_DEMO_PASSWORD` are the single source of truth shared
+with the UI screenshot capture tooling in §3. A loud warning is logged on
+every boot while demo mode is on.
 
 > **Never enable `HA_DEMO_MODE` on an instance that holds real health data.**
 >

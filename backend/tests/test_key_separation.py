@@ -7,12 +7,12 @@ Covers the three §8 invariants H4 enforces:
    ``HA_REFRESH_KEY`` and nothing else; cross-family tokens fail
    verification (a session token signed by the refresh key — or by the
    DATA_KEY — is not a session token).
-2. **DATA_KEY family** — ``HA_DATA_KEY`` (env alias
-   ``INTEGRATION_SECRET_KEY``) is the Fernet at-rest key and never
-   signs; the rotation ring (``HA_DATA_KEY_PREVIOUS`` / env alias
-   ``INTEGRATION_SECRET_KEY_PREVIOUS``) keeps old ciphertext decryptable
-   while new writes seal under the primary. No stored value becomes
-   undecryptable across the H4 fold or a rotation.
+2. **DATA_KEY family** — ``HA_DATA_KEY`` is the Fernet at-rest key and never
+   signs; the rotation ring (``HA_DATA_KEY_PREVIOUS``) keeps old
+   ciphertext decryptable while new writes seal under the primary. No
+   stored value becomes undecryptable across the H4 fold or a rotation
+   (the pre-H4 ``INTEGRATION_SECRET_KEY`` env names are retired — rename
+   them in .env, same values).
 3. **Boot guards** — servers must pin strong, distinct keys via env
    (missing/weak/placeholder/partial/cross-purpose pins refuse to
    boot); dev/test auto-generate ephemeral keys.
@@ -271,7 +271,7 @@ def test_prod_data_key_required_and_must_be_fernet_material():
     with pytest.raises(ValidationError, match="HA_DATA_KEY"):
         Settings(**kw)
     with pytest.raises(ValidationError, match="32 bytes"):
-        Settings(**{**kw, "INTEGRATION_SECRET_KEY": "not-fernet-material-at-all"})
+        Settings(**{**kw, "HA_DATA_KEY": "not-fernet-material-at-all"})
 
 
 def test_dev_generates_strong_distinct_keys():
@@ -286,31 +286,21 @@ def test_dev_generates_strong_distinct_keys():
     assert other.HA_REFRESH_KEY != s.HA_REFRESH_KEY
 
 
-def test_legacy_env_names_still_feed_the_data_family(monkeypatch):
+def test_legacy_env_names_are_gone(monkeypatch):
+    """No-legacy policy: the pre-H4 INTEGRATION_SECRET_KEY env names are
+    no longer accepted — an operator who still sets them gets the
+    canonical-missing behavior (ephemeral dev key / production boot
+    refusal), loudly, instead of a silent alias feed. The rename is
+    value-preserving: moving the same key value to HA_DATA_KEY keeps
+    every sealed ring decryptable."""
     monkeypatch.setenv("INTEGRATION_SECRET_KEY", OLD_DATA_KEY)
     monkeypatch.setenv("INTEGRATION_SECRET_KEY_PREVIOUS", f"{NEW_DATA_KEY},{OLD_DATA_KEY}")
     s = Settings(_env_file=None, APP_ENV="development")
-    assert s.HA_DATA_KEY == OLD_DATA_KEY
-    assert s.HA_DATA_KEY_PREVIOUS == f"{NEW_DATA_KEY},{OLD_DATA_KEY}"
-    assert s.INTEGRATION_SECRET_KEY == OLD_DATA_KEY
-    # The live singleton resolves the same family through the alias.
-    monkeypatch.setattr(settings, "HA_DATA_KEY", OLD_DATA_KEY)
-    monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", NEW_DATA_KEY)
-    assert data_key_family()[0] == OLD_DATA_KEY
-
-
-def test_ha_data_key_env_wins_over_legacy_alias(monkeypatch):
-    monkeypatch.setenv("HA_DATA_KEY", NEW_DATA_KEY)
-    monkeypatch.setenv("INTEGRATION_SECRET_KEY", OLD_DATA_KEY)
-    s = Settings(_env_file=None, APP_ENV="development")
-    assert s.HA_DATA_KEY == NEW_DATA_KEY
-
-
-def test_legacy_attribute_round_trip(monkeypatch):
-    """``settings.INTEGRATION_SECRET_KEY`` monkeypatching keeps working."""
-    monkeypatch.setattr(settings, "INTEGRATION_SECRET_KEY", OLD_DATA_KEY)
-    assert settings.HA_DATA_KEY == OLD_DATA_KEY
-    assert settings.INTEGRATION_SECRET_KEY == OLD_DATA_KEY
+    assert s.HA_DATA_KEY != OLD_DATA_KEY  # ignored: fresh ephemeral dev key
+    assert s.HA_DATA_KEY_PREVIOUS == ""  # ignored entirely
+    # The legacy attribute aliases are gone with the env names.
+    assert not hasattr(settings, "INTEGRATION_SECRET_KEY")
+    assert not hasattr(Settings(_env_file=None, APP_ENV="development"), "INTEGRATION_SECRET_KEY")
 
 
 # ===========================================================================

@@ -87,7 +87,7 @@ services:
       # them in .env for a stable dev stack).
       - HA_SESSION_KEY=${HA_SESSION_KEY:-}
       - HA_REFRESH_KEY=${HA_REFRESH_KEY:-}
-      - HA_DATA_KEY=${HA_DATA_KEY:-${INTEGRATION_SECRET_KEY:-}}
+      - HA_DATA_KEY=${HA_DATA_KEY:-}
       - HA_DATA_KEY_PREVIOUS=${HA_DATA_KEY_PREVIOUS:-}
       - PYTHONPATH=/app/backend:/app
     depends_on:
@@ -123,11 +123,11 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-}
       # Key family (identity-auth §8, plan 16 H4): unset in dev ⇒ the app
       # generates per-process ephemeral keys (logins die on restart — pin
-      # them in .env for a stable dev stack). Legacy INTEGRATION_SECRET_KEY
+      # them in .env for a stable dev stack).
       # still feeds the Fernet at-rest ring.
       - HA_SESSION_KEY=${HA_SESSION_KEY:-}
       - HA_REFRESH_KEY=${HA_REFRESH_KEY:-}
-      - HA_DATA_KEY=${HA_DATA_KEY:-${INTEGRATION_SECRET_KEY:-}}
+      - HA_DATA_KEY=${HA_DATA_KEY:-}
       - HA_DATA_KEY_PREVIOUS=${HA_DATA_KEY_PREVIOUS:-}
       - OCR_PROVIDER=${OCR_PROVIDER:-openai}
       - HA_AUTH_ACCESS_TTL_MINUTES=${HA_AUTH_ACCESS_TTL_MINUTES:-60}
@@ -218,10 +218,9 @@ services:
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-}
       # Key family (identity-auth §8, plan 16 H4; legacy
-      # INTEGRATION_SECRET_KEY still feeds the Fernet at-rest ring).
-      - HA_SESSION_KEY=${HA_SESSION_KEY:-}
+            - HA_SESSION_KEY=${HA_SESSION_KEY:-}
       - HA_REFRESH_KEY=${HA_REFRESH_KEY:-}
-      - HA_DATA_KEY=${HA_DATA_KEY:-${INTEGRATION_SECRET_KEY:-}}
+      - HA_DATA_KEY=${HA_DATA_KEY:-}
       - HA_DATA_KEY_PREVIOUS=${HA_DATA_KEY_PREVIOUS:-}
       - OCR_PROVIDER=${OCR_PROVIDER:-openai}
       - UPLOAD_DIR=/app/uploads

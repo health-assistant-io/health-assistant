@@ -160,7 +160,7 @@ def test_b13_production_rejects_weak_password(weak):
             POSTGRES_PASSWORD=weak,
             HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
             HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-            INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
         )
     assert "insecure database credentials" in str(exc_info.value)
 
@@ -175,7 +175,7 @@ def test_b13_production_accepts_strong_password():
         POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
         HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
         HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
         VAPID_PRIVATE_KEY="test-vapid-private-key-do-not-use",
     )

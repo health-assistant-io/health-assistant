@@ -295,7 +295,7 @@ async def test_demo_login_404_and_audited_off_demo(async_client):
 @pytest.mark.asyncio
 async def test_demo_login_mints_demo_stamped_tokens_on_demo_instance(async_client):
     await create_user(
-        email=settings.DEMO_USER_EMAIL,
+        email=settings.HA_DEMO_EMAIL,
         password="Demo1234!",
         unique=False,
         full_name="Demo",

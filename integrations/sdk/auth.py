@@ -372,7 +372,7 @@ class OAuthTokenStore:
     """Read/write the OAuth token blob from ``integration.user_config["_oauth"]``.
 
     ``access_token`` and ``refresh_token`` are Fernet-encrypted at rest (the
-    cipher comes from ``INTEGRATION_SECRET_KEY``). Other fields (``expires_at``,
+    cipher comes from ``HA_DATA_KEY``). Other fields (``expires_at``,
     ``patient``, ``scope``, ``client_id``) are stored in plaintext. The caller is
     responsible for persisting the ``user_config`` mutation (the SDK's
     ``set_sync_cursor`` / the endpoint's ``flag_modified`` + commit).

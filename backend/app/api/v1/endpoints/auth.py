@@ -475,7 +475,7 @@ async def demo_login(
 
     Only available while the DB instance fact ``demo_mode`` is true
     (init-only ``HA_DEMO_MODE`` — returns 404 otherwise). Looks up the
-    pre-seeded demo user (``DEMO_USER_EMAIL``) and issues tokens stamped
+    pre-seeded demo user (``HA_DEMO_EMAIL``) and issues tokens stamped
     with ``auth_mode="demo"`` so verifiers can reject them the moment the
     instance stops being a demo (S-7). The demo user + data are
     auto-seeded on boot (scripts/seed_demo.py).
@@ -495,7 +495,7 @@ async def demo_login(
             detail="Demo login is not enabled on this instance.",
         )
 
-    user = await get_user_by_email(settings.DEMO_USER_EMAIL)
+    user = await get_user_by_email(settings.HA_DEMO_EMAIL)
     if not user:
         await _audit_auth_event(
             "auth.demo_login",

@@ -706,7 +706,7 @@ class BaseConfigFlow(CoreBaseConfigFlow, ABC):
         """Hook called by the endpoint before persisting ``user_config``.
 
         Default: encrypts :meth:`get_secret_fields` via the platform Fernet
-        key (``INTEGRATION_SECRET_KEY``). Override to add custom transforms
+        key (``HA_DATA_KEY``). Override to add custom transforms
         (e.g. strip read-only fields), then call super() to keep encryption.
         """
         return encrypt_fields(config, self.get_secret_fields())

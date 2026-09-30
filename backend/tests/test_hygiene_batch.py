@@ -1,7 +1,7 @@
 """Regression tests for the small hygiene batch (B11, B14, B15, J9).
 
 B11: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY must be required in production
-     (matching the existing SECRET_KEY / INTEGRATION_SECRET_KEY pattern).
+     (matching the existing HA_* key pattern).
      Missing either → Settings raises at construction time.
 
 B14: check_observation_access used ``observation.subject.get("reference")``
@@ -51,7 +51,7 @@ def test_b11_vapid_keys_required_in_production(monkeypatch):
             DEBUG=False,
             HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
             HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-            INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
             DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
             # VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY intentionally unset
         )
@@ -70,7 +70,7 @@ def test_b11_vapid_keys_optional_in_development(monkeypatch):
     s = Settings(
         _env_file=None,
         APP_ENV="development",
-        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
     )
     assert s.VAPID_PUBLIC_KEY is None
@@ -87,7 +87,7 @@ def test_b11_vapid_keys_present_in_production_ok():
         DEBUG=False,
         HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
         HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-        INTEGRATION_SECRET_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
         VAPID_PUBLIC_KEY="BPkx...",
         VAPID_PRIVATE_KEY="abc123",

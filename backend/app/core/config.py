@@ -1,6 +1,6 @@
 import secrets
 from pathlib import Path
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from typing import Optional, ClassVar
@@ -66,17 +66,10 @@ class Settings(BaseSettings):
     # Orthogonal to APP_ENV so it composes with the production boot-guards
     # (the demo docker compose runs APP_ENV=production + HA_DEMO_MODE=true).
     HA_DEMO_MODE: bool = False
-    # The demo user. Aliased to the legacy HA_DEMO_EMAIL / HA_DEMO_PASSWORD
-    # env names so the existing demo docker compose + UI capture tooling keep
-    # working unchanged (single source of truth for "the demo credentials").
-    DEMO_USER_EMAIL: str = Field(
-        default="demo@healthassistant.local",
-        validation_alias=AliasChoices("DEMO_USER_EMAIL", "HA_DEMO_EMAIL"),
-    )
-    DEMO_USER_PASSWORD: str = Field(
-        default="Demo1234!",
-        validation_alias=AliasChoices("DEMO_USER_PASSWORD", "HA_DEMO_PASSWORD"),
-    )
+    # The demo credentials (single source of truth; the demo compose,
+    # capture tooling and deploy workflow all read these names).
+    HA_DEMO_EMAIL: str = "demo@healthassistant.local"
+    HA_DEMO_PASSWORD: str = "Demo1234!"
 
     # Database
     POSTGRES_USER: str = "admin"
@@ -165,55 +158,24 @@ class Settings(BaseSettings):
     # JWTs only, HA_DATA_KEY is the Fernet at-rest key and never signs
     # anything. No key is derived from another and no two purposes share
     # key material — the former single all-purpose SECRET_KEY is retired
-    # from all signing (every pre-H4 JWT dies at deploy; users re-login).
-    #
-    # Resolution: env first (the legacy INTEGRATION_SECRET_KEY env name
-    # still feeds HA_DATA_KEY so existing deployments keep their sealed
-    # at-rest ring — bridge pairing secrets, integration api_secrets and
-    # AI provider keys stay decryptable); dev/test fall back to
-    # per-process ephemeral keys (logins do not survive a restart — the
-    # same caveat the retired SECRET_KEY fallback carried). Production
-    # (server) deployments MUST pin the keys via env: the boot guards
-    # below refuse missing/weak/placeholder/cross-purpose values.
+    # from all signing (every pre-H4 JWT dies at deploy; users re-login),
+    # and the pre-H4 INTEGRATION_SECRET_KEY env names are gone with it
+    # (rename them in .env — same values, the sealed ring keeps
+    # decrypting; the boot guards below refuse missing/weak/placeholder/
+    # cross-purpose values, so a stale legacy .env fails loudly, not
+    # silently). Dev/test fall back to per-process ephemeral keys
+    # (logins do not survive a restart).
     HA_SESSION_KEY: Optional[str] = None
     HA_REFRESH_KEY: Optional[str] = None
     # Fernet key material (base64 32 bytes). The padded ``Fernet.generate_key()``
     # form is the canonical shape; the kit's unpadded token form is accepted
     # too (app.core.encryption normalizes the padding).
-    HA_DATA_KEY: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("HA_DATA_KEY", "INTEGRATION_SECRET_KEY"),
-    )
+    HA_DATA_KEY: Optional[str] = None
     # Prior Fernet keys (comma-separated) accepted for DECRYPTION only so
     # ciphertext sealed before a rotation keeps decrypting; the primary
     # HA_DATA_KEY always encrypts (the rotation ring — see
     # integrations/sdk/secrets.py and app/core/encryption.py).
-    HA_DATA_KEY_PREVIOUS: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "HA_DATA_KEY_PREVIOUS", "INTEGRATION_SECRET_KEY_PREVIOUS"
-        ),
-    )
-
-    # Legacy attribute aliases for the at-rest ring. The DATA_KEY family was
-    # read through the INTEGRATION_* names until H4; readers and tests that
-    # touch ``settings.INTEGRATION_SECRET_KEY`` keep working unchanged
-    # (monkeypatch-friendly: the setter writes the canonical field).
-    @property
-    def INTEGRATION_SECRET_KEY(self) -> Optional[str]:
-        return self.HA_DATA_KEY
-
-    @INTEGRATION_SECRET_KEY.setter
-    def INTEGRATION_SECRET_KEY(self, value: Optional[str]) -> None:
-        self.HA_DATA_KEY = value
-
-    @property
-    def INTEGRATION_SECRET_KEY_PREVIOUS(self) -> str:
-        return self.HA_DATA_KEY_PREVIOUS
-
-    @INTEGRATION_SECRET_KEY_PREVIOUS.setter
-    def INTEGRATION_SECRET_KEY_PREVIOUS(self, value: str) -> None:
-        self.HA_DATA_KEY_PREVIOUS = value
+    HA_DATA_KEY_PREVIOUS: str = ""
 
     # First-run setup-token guard — see dev/audits/setup-token-modes.md.
     # ``log``     (default) — print one-time token to container logs; required
@@ -293,7 +255,7 @@ class Settings(BaseSettings):
                 " with NO credentials. Authentication is effectively off.\n"
                 " NEVER use this for an instance that holds real health data.\n"
                 "══════════════════════════════════════════════════════",
-                self.DEMO_USER_EMAIL,
+                self.HA_DEMO_EMAIL,
             )
         return self
 
@@ -547,8 +509,7 @@ class Settings(BaseSettings):
     def _validate_data_key(self) -> "Settings":
         """Identity-auth §8 (plan 16 H4): the DATA_KEY family (Fernet at rest).
 
-        ``HA_DATA_KEY`` (env alias ``INTEGRATION_SECRET_KEY`` — the legacy
-        name keeps existing sealed data decryptable) is required on servers
+        ``HA_DATA_KEY`` is required on servers
         and must be valid 32-byte key material in every environment; dev/test
         fall back to an ephemeral key. It never signs anything (see
         ``_validate_key_separation``) and ``HA_DATA_KEY_PREVIOUS`` carries
@@ -566,8 +527,7 @@ class Settings(BaseSettings):
                 self.HA_DATA_KEY = Fernet.generate_key().decode()
             else:
                 raise ValueError(
-                    f"A valid HA_DATA_KEY (Fernet key, env alias "
-                    f"INTEGRATION_SECRET_KEY) must be provided via environment "
+                    f"A valid HA_DATA_KEY (Fernet key) must be provided via environment "
                     f"variables for APP_ENV={self.APP_ENV!r}. Refusing to boot "
                     "without one."
                 )
@@ -581,8 +541,7 @@ class Settings(BaseSettings):
         for prev in filter(None, (k.strip() for k in self.HA_DATA_KEY_PREVIOUS.split(","))):
             if not self._is_valid_fernet_material(prev):
                 raise ValueError(
-                    "HA_DATA_KEY_PREVIOUS (env alias "
-                    "INTEGRATION_SECRET_KEY_PREVIOUS) contains invalid Fernet "
+                    "HA_DATA_KEY_PREVIOUS contains invalid Fernet "
                     "key material — every entry must be 32-byte urlsafe base64."
                 )
         return self

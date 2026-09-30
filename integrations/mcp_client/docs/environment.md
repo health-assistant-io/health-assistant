@@ -6,7 +6,7 @@ All configuration for the MCP Client integration is done via environment variabl
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `INTEGRATION_SECRET_KEY` | Fernet key (base64 32 bytes) used to encrypt secret config fields (`env`, `headers`, `auth_token`) at rest. Required if the integration is enabled — saving config fails fast with a 400 if it's missing. | `ZG1h...==` |
+| `HA_DATA_KEY` | Fernet key (base64 32 bytes) used to encrypt secret config fields (`env`, `headers`, `auth_token`) at rest. Required if the integration is enabled — saving config fails fast with a 400 if it's missing. | `ZG1h...==` |
 
 Generate with:
 ```bash
@@ -36,7 +36,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```env
 # Required
-INTEGRATION_SECRET_KEY=
+HA_DATA_KEY=
 
 # STDIO security
 MCP_STDIO_ALLOWED_COMMANDS=npx,uvx,python,python3,node
@@ -54,7 +54,7 @@ INTEGRATION_MAX_TOOLS_PER_SESSION=20
 
 ## Notes
 
-- **`INTEGRATION_SECRET_KEY`** is a platform-level setting (used by the SDK for all integrations that declare secret fields, not just MCP). It lives in the SDK (`integrations.sdk.secrets`).
+- **`HA_DATA_KEY`** is a platform-level setting (used by the SDK for all integrations that declare secret fields, not just MCP). It lives in the SDK (`integrations.sdk.secrets`).
 - **`INTEGRATION_MAX_TOOLS_PER_SESSION`** is also platform-level (used by the generic tool aggregator for all tool-exposing integrations, not just MCP).
 - All other `MCP_*` variables are specific to the MCP Client integration.
 - Restart the backend after changing any of these.

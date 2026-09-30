@@ -7,7 +7,7 @@ The MCP Client introduces a meaningful attack surface: it lets users run local s
 | ID | Threat | Mitigation |
 |----|--------|------------|
 | T1 | Arbitrary code execution via STDIO command | Admin command allowlist (`MCP_STDIO_ALLOWED_COMMANDS`); reject absolute paths and shell metachars; args passed as a list (no shell); `cwd` restricted; per-process concurrency caps. |
-| T2 | Secret leakage at rest | SDK-level ``SecretCipher`` (Fernet) encrypts fields declared by ``get_secret_fields()`` before writing to ``user_config``; values are masked as ``***`` in API responses. Key: ``INTEGRATION_SECRET_KEY``. The encryption/masking is done generically by the platform endpoint via the SDK ``prepare_for_storage`` / ``prepare_for_read`` hooks — no MCP-specific code in the endpoint. |
+| T2 | Secret leakage at rest | SDK-level ``SecretCipher`` (Fernet) encrypts fields declared by ``get_secret_fields()`` before writing to ``user_config``; values are masked as ``***`` in API responses. Key: ``HA_DATA_KEY``. The encryption/masking is done generically by the platform endpoint via the SDK ``prepare_for_storage`` / ``prepare_for_read`` hooks — no MCP-specific code in the endpoint. |
 | T3 | Cross-user HTTP header/token contamination | Per-`UserIntegration` httpx client (FastMCP creates one per `Client`); never the SDK shared pool. |
 | T4 | Malicious tool descriptions/results (prompt injection) | Description length cap (`MAX_DESCRIPTION_LEN`); result size cap (`MCP_TOOL_RESULT_MAX_BYTES`, default 64 KB) with truncation marker; tool-name sanitization (no `__`); admin global disable via `system_integrations`. |
 | T5 | Tokenless proxy exposure | `handle_api_request` refuses tool invocation; only `GET /status` is exposed. All tool calls go through the authenticated `/ai-assistance/stream` endpoint. |
@@ -17,7 +17,7 @@ The MCP Client introduces a meaningful attack surface: it lets users run local s
 
 ## Encryption key
 
-`INTEGRATION_SECRET_KEY` must be a Fernet key (base64 32 bytes). Generate with:
+`HA_DATA_KEY` must be a Fernet key (base64 32 bytes). Generate with:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

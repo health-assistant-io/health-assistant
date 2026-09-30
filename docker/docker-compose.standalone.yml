@@ -9,7 +9,7 @@
 #
 # Required env vars (set in .env or your secret manager):
 #   POSTGRES_PASSWORD, HA_SESSION_KEY, HA_REFRESH_KEY, HA_DATA_KEY (or the
-#   legacy INTEGRATION_SECRET_KEY), REDIS_PASSWORD, FLOWER_PASSWORD,
+#   REDIS_PASSWORD, FLOWER_PASSWORD,
 #   REGISTRY, REPOSITORY, IMAGE_TAG (for pre-built images)
 #
 # Optional env vars (have defaults):
@@ -52,13 +52,12 @@ x-backend-env: &backend-env
   OPENAI_MODEL: ${OPENAI_MODEL:-}
   # Per-purpose key family (identity-auth §8, plan 16 H4): session/refresh
   # signing keys are REQUIRED (weak/missing values refuse to boot); the
-  # Fernet at-rest key keeps accepting the legacy INTEGRATION_SECRET_KEY
-  # name so pre-H4 deployments keep their sealed ring — HA_DATA_KEY wins
+    # name so pre-H4 deployments keep their sealed ring — HA_DATA_KEY wins
   # when both are set. _PREVIOUS is the decrypt-only rotation ring.
   HA_SESSION_KEY: ${HA_SESSION_KEY:?Set HA_SESSION_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
   HA_REFRESH_KEY: ${HA_REFRESH_KEY:?Set HA_REFRESH_KEY in .env (python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))")}
-  HA_DATA_KEY: ${HA_DATA_KEY:-${INTEGRATION_SECRET_KEY:-}}
-  HA_DATA_KEY_PREVIOUS: ${HA_DATA_KEY_PREVIOUS:-${INTEGRATION_SECRET_KEY_PREVIOUS:-}}
+  HA_DATA_KEY: ${HA_DATA_KEY:-}
+  HA_DATA_KEY_PREVIOUS: ${HA_DATA_KEY_PREVIOUS:-}
   OCR_PROVIDER: ${OCR_PROVIDER:-openai}
   HA_AUTH_ACCESS_TTL_MINUTES: ${HA_AUTH_ACCESS_TTL_MINUTES:-60}
   SMTP_HOST: ${SMTP_HOST:-}

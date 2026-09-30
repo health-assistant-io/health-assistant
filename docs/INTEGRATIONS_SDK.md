@@ -357,11 +357,11 @@ Reference: `integrations/mcp_client/provider.py` is the first integration to use
 
 Integrations with secret config fields (API keys, tokens, env vars) declare them via `get_secret_fields()`. The SDK handles the rest:
 
-- **On save:** `submit_config_flow` calls `config_flow.prepare_for_storage()` → encrypts secret fields with Fernet (`INTEGRATION_SECRET_KEY`).
+- **On save:** `submit_config_flow` calls `config_flow.prepare_for_storage()` → encrypts secret fields with Fernet (`HA_DATA_KEY`).
 - **On read:** `get_integration_details` calls `config_flow.prepare_for_read()` → masks secret fields as `"***"`.
 - **On use:** the provider calls `config_flow.decrypt_for_use()` or `decrypt_fields()` to get plaintext.
 
-No per-domain code in the endpoint. Set `INTEGRATION_SECRET_KEY` in `.env` (Fernet key, base64 32 bytes):
+No per-domain code in the endpoint. Set `HA_DATA_KEY` in `.env` (Fernet key, base64 32 bytes):
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -377,7 +377,7 @@ inside `user_config`, and returns the plaintexts **once** in the config-flow
 response (`{..., webhook_secret, api_secret, secret_notice}`). Senders/clients
 must sign with them; unsigned machine traffic is rejected.
 
-**Key rotation** (non-disruptive): set `INTEGRATION_SECRET_KEY` to the new key and `INTEGRATION_SECRET_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB.
+**Key rotation** (non-disruptive): set `HA_DATA_KEY` to the new key and `HA_DATA_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB.
 
 **SSRF defense**: every outbound SDK HTTP call (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, OAuth discovery/token calls) passes through `integrations.sdk.net_guard.assert_safe_url` — which rejects cloud-metadata (`169.254.169.254`), loopback, link-local, private, and reserved addresses before the request leaves the process. Default is deny-private; set `INTEGRATION_ALLOWED_HOSTS` or `INTEGRATION_BLOCK_PRIVATE_RANGES=false` for a trusted self-hosted target on the LAN.
 
@@ -478,7 +478,7 @@ refresh token is gone). Reference implementation:
 push with conditional update, remote Provenance, push resilience, and write-scope
 detection).
 
-Requires: `INTEGRATION_SECRET_KEY` (Fernet) + Redis (`REDIS_URL`) configured.
+Requires: `HA_DATA_KEY` (Fernet) + Redis (`REDIS_URL`) configured.
 
 ---
 
